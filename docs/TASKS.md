@@ -9,7 +9,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 ## M0: Spikes & foundations
 
 - [x] **S** Create Cargo workspace skeleton (`crates/`, `tools/`, `spikes/`)
-- [x] **S** CI (fmt, clippy, test): GitHub Actions in a `fedora:44` container, with deps in `ci/install-deps-fedora.sh` for reuse in GitLab CI
+- [x] **S** CI: GitHub Actions in `fedora:44` containers, with deps in `ci/install-deps-fedora.sh` for reuse in GitLab CI. Job `check` for the Rust code (fmt, clippy for the host and Android, tests), job `desktop` for the headless checks of the running app, side by side
 - [ ] **S** GitLab CI equivalent, if the repo moves there
 - [x] **S** License decision (D6): MIT OR Apache-2.0
 - [x] **S** Test corpus, part 1: pdf.js test PDFs (`corpus/fetch.sh`)

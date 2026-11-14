@@ -9,7 +9,7 @@
 # through a throwaway GSettings keyfile, so the user's settings are untouched.
 #
 # Needs mutter and dbus-run-session (Fedora: mutter, dbus-daemon; see
-# ci/install-deps-fedora.sh).
+# ci/install-deps-fedora.sh --headless).
 set -u
 if [ -z "${PDFRS_HEADLESS_INNER:-}" ]; then
   exec env PDFRS_HEADLESS_INNER=1 dbus-run-session -- "$0" "$@"

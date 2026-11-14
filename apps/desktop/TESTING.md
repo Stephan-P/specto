@@ -4,7 +4,7 @@
 
 ## Automated checks
 
-Much of the feature list is also checked automatically, in CI and locally (Linux, needs `mutter`; see `ci/install-deps-fedora.sh` for the packages):
+Much of the feature list is also checked automatically, in CI and locally (Linux, needs `mutter`; `ci/install-deps-fedora.sh --headless` installs the packages on Fedora):
 
 ```sh
 cargo build -p pdfrs-desktop

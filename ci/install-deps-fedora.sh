@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
-# System packages needed to build pdfrs on Fedora. Shared by GitHub Actions and
-# (later) GitLab CI so both run the same environment.
+# System packages needed to build and test pdfrs on Fedora. Shared by GitHub
+# Actions and (later) GitLab CI so both run the same environment.
+#
+#   ci/install-deps-fedora.sh             building, clippy and cargo test
+#   ci/install-deps-fedora.sh --headless  also the desktop app's headless checks
 set -euo pipefail
-dnf install -y --setopt=install_weak_deps=False \
-  gcc pkgconf-pkg-config git curl \
-  gtk4-devel libadwaita-devel \
-  poppler-utils qpdf \
-  mutter dbus-daemon glib2 python3 python3-gobject mesa-dri-drivers
-# The last line is for the headless desktop app tests (tools/headless):
-# a compositor, a session bus, gdbus, and software OpenGL.
+packages=(
+  gcc pkgconf-pkg-config git curl
+  gtk4-devel libadwaita-devel
+  # Reference tools used by tests: qpdf checks the files pdfrs-write saves.
+  poppler-utils qpdf
+)
+if [[ "${1:-}" == "--headless" ]]; then
+  # tools/headless: a compositor, a session bus, gdbus, Python with GObject
+  # (the check script), and software OpenGL.
+  packages+=(mutter dbus-daemon glib2 python3 python3-gobject mesa-dri-drivers)
+fi
+dnf install -y --setopt=install_weak_deps=False "${packages[@]}"
