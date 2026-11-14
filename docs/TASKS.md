@@ -86,10 +86,13 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M6: Android
 
-- [ ] **M** `pdfrs-ffi`: UniFFI surface (Session, Viewer, commands, events, `ViewHost` callback)
-- [ ] **M** NDK bitmap tile path, memory budget tuned for mobile, `onTrimMemory` → cache eviction
-- [ ] **M** Compose viewer: canvas, scroll/fling, pinch zoom, double-tap zoom, view modes
-- [ ] **M** SAF open/save (fd-based I/O), share intent ("Open with"), recent documents
+- [x] **M** `pdfrs-ffi`: `ViewSession` over `pdfrs-view` and the scheduler (viewport, scroll, zoom, layout and zoom modes, frames, `tiles_ready` callback). Tiles cross the FFI as opaque ids, so `TileKey` can change without touching Kotlin.
+- [ ] **M** `pdfrs-ffi`: editing commands and events, `ViewHost`-style callbacks (with M3–M5)
+- [x] **M** Tile path: Kotlin owns one `Bitmap` per tile and fills it through JNI; the cache bookkeeping (LRU, byte budget from `memoryClass`) lives in Rust and reports evictions; `onTrimMemory` keeps only what is on screen
+- [x] **M** Compose viewer: canvas, scroll with fling, pinch zoom, double-tap zoom, page indicator, rotation without reload. Checked on the emulator except pinch, which needs a real touch screen.
+- [ ] **S** Compose viewer: switch view modes (the session already supports them), jump to page, scrollbar
+- [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
+- [ ] **M** SAF fd-based I/O instead of reading the file into memory, save, recent documents, password prompt
 - [ ] **M** Thumbnails/page organizer (LazyVerticalGrid + drag reorder)
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME

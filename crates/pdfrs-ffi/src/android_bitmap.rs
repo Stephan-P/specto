@@ -1,81 +1,76 @@
-//! JNI side door for the hot path: render a page straight into an
+//! JNI side door for tile pixels: copies a finished tile straight into an
 //! `android.graphics.Bitmap`.
 //!
 //! UniFFI can't pass a `Bitmap`, and returning pixels through it costs extra
-//! copies (`Vec` → `RustBuffer` → `ByteArray` → `Bitmap`). Here Kotlin hands
-//! us the `Bitmap` plus [`PdfDocument::raw_handle`], and we copy the rendered
-//! pixels once into the locked bitmap memory.
+//! copies (measured in M0). Kotlin hands us the session id, the tile id from
+//! `ViewSession.takeFinished()` and a bitmap of the announced size.
 #![allow(unsafe_code)]
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use jni_sys::{JNIEnv, jclass, jfloat, jint, jlong, jobject};
+use jni_sys::{JNIEnv, jclass, jint, jlong, jobject};
 use ndk::bitmap::{Bitmap, BitmapFormat};
 
-use crate::PdfDocument;
-
 const OK: jint = 0;
-const ERR_RENDER: jint = -1;
+const ERR_UNKNOWN_TILE: jint = -1;
 const ERR_BITMAP: jint = -2;
-const ERR_SIZE_MISMATCH: jint = -3;
 const ERR_PANIC: jint = -4;
 
-/// `NativeBitmap.renderInto(doc: Long, page: Int, scale: Float, bitmap: Bitmap): Int`
+/// `NativeBitmap.copyTile(session: Long, tile: Long, bitmap: Bitmap): Int`
 ///
-/// The bitmap must be mutable `ARGB_8888` with exactly the dimensions from
-/// `PdfDocument.pixelSize(page, scale)`.
+/// The bitmap must be mutable `ARGB_8888` with the tile's dimensions.
 ///
 /// # Safety
 ///
-/// `doc` must come from `PdfDocument.rawHandle()` of an object the caller
-/// keeps alive (not yet `close()`d) for the duration of the call.
+/// Must only be called by the JVM as the native method above, which
+/// guarantees that `env` and `bitmap` are valid for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_net_xfbs_pdfrs_NativeBitmap_renderInto(
+pub unsafe extern "system" fn Java_net_xfbs_pdfrs_NativeBitmap_copyTile(
     env: *mut JNIEnv,
     _class: jclass,
-    doc: jlong,
-    page: jint,
-    scale: jfloat,
+    session: jlong,
+    tile: jlong,
     bitmap: jobject,
 ) -> jint {
-    // SAFETY: see the function's safety contract.
-    let doc = unsafe { &*(doc as *const PdfDocument) };
     // SAFETY: `env` and `bitmap` are valid for this JNI call.
     let bitmap = unsafe { Bitmap::from_jni(env, bitmap) };
     // Unwinding across `extern "system"` would abort the app.
-    catch_unwind(AssertUnwindSafe(|| render_into(doc, page, scale, &bitmap))).unwrap_or(ERR_PANIC)
+    catch_unwind(AssertUnwindSafe(|| {
+        copy_tile(session as u64, tile as u64, &bitmap)
+    }))
+    .unwrap_or(ERR_PANIC)
 }
 
-fn render_into(doc: &PdfDocument, page: jint, scale: f32, bitmap: &Bitmap) -> jint {
-    let Ok(page) = u32::try_from(page) else {
-        return ERR_RENDER;
-    };
-    let Ok(rendered) = doc.render(page, scale) else {
-        return ERR_RENDER;
-    };
+fn copy_tile(session: u64, tile: u64, bitmap: &Bitmap) -> jint {
+    let mut status = ERR_UNKNOWN_TILE;
+    crate::claim_tile(session, tile, |pixels| {
+        status = write(pixels, bitmap);
+        status == OK
+    });
+    status
+}
+
+fn write(src: &pdfrs_render::Bitmap, bitmap: &Bitmap) -> jint {
     let Ok(info) = bitmap.info() else {
         return ERR_BITMAP;
     };
-    if info.format() != BitmapFormat::RGBA_8888 {
+    if info.format() != BitmapFormat::RGBA_8888
+        || (info.width(), info.height()) != (src.width, src.height)
+    {
         return ERR_BITMAP;
     }
-    if (info.width(), info.height()) != (rendered.width, rendered.height) {
-        return ERR_SIZE_MISMATCH;
-    }
-    let Ok(pixels) = bitmap.lock_pixels() else {
+    let Ok(dst) = bitmap.lock_pixels() else {
         return ERR_BITMAP;
     };
-
-    let row = rendered.width as usize * 4;
+    let row = src.width as usize * 4;
     let stride = info.stride() as usize;
-    for (y, src) in rendered.data.chunks_exact(row).enumerate() {
+    for (y, line) in src.data.chunks_exact(row).enumerate() {
         // SAFETY: while locked, the bitmap owns `stride * height` bytes at
-        // `pixels`, and `row <= stride`. The source is our own `Vec`.
+        // `dst`, and `row <= stride`. The source is our own `Vec`.
         unsafe {
-            std::ptr::copy_nonoverlapping(src.as_ptr(), pixels.cast::<u8>().add(y * stride), row);
+            std::ptr::copy_nonoverlapping(line.as_ptr(), dst.cast::<u8>().add(y * stride), row);
         }
     }
-
     match bitmap.unlock_pixels() {
         Ok(()) => OK,
         Err(_) => ERR_BITMAP,

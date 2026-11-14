@@ -10,7 +10,9 @@ license.workspace = true
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
+pdfrs-geom.workspace = true
 pdfrs-render.workspace = true
+pdfrs-view.workspace = true
 thiserror.workspace = true
 uniffi.workspace = true
 
