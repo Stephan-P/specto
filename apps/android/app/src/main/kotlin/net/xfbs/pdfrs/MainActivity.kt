@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -152,9 +154,8 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
 
     var loaded by remember { mutableStateOf<Loaded?>(null) }
     var showPages by remember { mutableStateOf(false) }
-    // Which tab the top-left button opens: the contents if the document has
-    // an outline (until the user picks the other tab), otherwise the pages.
-    var preferContents by remember { mutableStateOf(true) }
+    // Which tab the top-left button opens: the one used last, pages at first.
+    var preferContents by remember { mutableStateOf(false) }
     var externalLink by remember { mutableStateOf<String?>(null) }
     var showGoTo by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
@@ -273,35 +274,19 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                 }
                 is Loaded.Ready ->
                     if (showPages) {
-                        val hasOutline = l.state.outline.isNotEmpty()
-                        val contents = hasOutline && preferContents
-                        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                            if (hasOutline) {
-                                PrimaryTabRow(selectedTabIndex = if (contents) 0 else 1) {
-                                    Tab(contents, onClick = { preferContents = true }, text = { Text("Contents") })
-                                    Tab(!contents, onClick = { preferContents = false }, text = { Text("Pages") })
-                                }
-                            }
-                            if (contents) {
-                                OutlineList(
-                                    l.state,
-                                    onPick = {
-                                        externalLink = l.state.openOutlineEntry(it)
-                                        showPages = false
-                                    },
-                                    Modifier.fillMaxSize(),
-                                )
-                            } else {
-                                PagesGrid(
-                                    l.state,
-                                    onPick = {
-                                        l.state.goToPage(it)
-                                        showPages = false
-                                    },
-                                    Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
+                        Navigator(
+                            l.state,
+                            startOnContents = preferContents,
+                            onTab = { preferContents = it },
+                            onPage = {
+                                l.state.goToPage(it)
+                                showPages = false
+                            },
+                            onOutlineEntry = {
+                                externalLink = l.state.openOutlineEntry(it)
+                                showPages = false
+                            },
+                        )
                     } else {
                         PdfView(l.state, Modifier.fillMaxSize(), onExternalLink = { externalLink = it })
                         PageIndicator(l.state, Modifier.align(Alignment.BottomCenter).padding(16.dp))
@@ -337,6 +322,47 @@ private fun Message(title: String, detail: String, action: String, onAction: () 
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         if (detail.isNotEmpty()) Text(detail, textAlign = TextAlign.Center)
         Button(onClick = onAction) { Text(action) }
+    }
+}
+
+/**
+ * What the top-left button opens: the page grid and, if the document has an
+ * outline, its contents as a second tab. The tabs can also be swiped.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Navigator(
+    state: PdfViewState,
+    startOnContents: Boolean,
+    onTab: (contents: Boolean) -> Unit,
+    onPage: (Int) -> Unit,
+    onOutlineEntry: (Int) -> Unit,
+) {
+    val background = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
+    if (state.outline.isEmpty()) {
+        PagesGrid(state, onPage, background)
+        return
+    }
+    val scope = rememberCoroutineScope()
+    val pager = rememberPagerState(initialPage = if (startOnContents) 1 else 0) { 2 }
+    LaunchedEffect(pager.settledPage) { onTab(pager.settledPage == 1) }
+    Column(background) {
+        PrimaryTabRow(selectedTabIndex = pager.currentPage) {
+            for ((index, title) in listOf("Pages", "Contents").withIndex()) {
+                Tab(
+                    selected = pager.currentPage == index,
+                    onClick = { scope.launch { pager.animateScrollToPage(index) } },
+                    text = { Text(title) },
+                )
+            }
+        }
+        HorizontalPager(pager, Modifier.fillMaxSize()) { tab ->
+            if (tab == 0) {
+                PagesGrid(state, onPage, Modifier.fillMaxSize())
+            } else {
+                OutlineList(state, onOutlineEntry, Modifier.fillMaxSize())
+            }
+        }
     }
 }
 
