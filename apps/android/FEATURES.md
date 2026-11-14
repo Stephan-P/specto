@@ -2,6 +2,8 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
+A handful of these are also checked automatically (`ReaderTest`: opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off), but automated tests can't judge how anything looks or feels.
+
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
 ## Opening

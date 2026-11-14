@@ -82,6 +82,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -171,6 +172,9 @@ private fun AppTheme(content: @Composable () -> Unit) {
 
 /** Keeps content that isn't the page itself clear of the camera cutout and the navigation bar. */
 private val besideAndBelow = WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+
+/** Identifies the page area to UI tests. */
+const val PAGE_VIEW_TAG = "page-view"
 
 /** Duration of the bars sliding in and out. */
 private const val BARS_MS = 220
@@ -465,7 +469,8 @@ private fun App(
                     } else {
                         PdfView(
                             l.state,
-                            Modifier.fillMaxSize(),
+                            // The tag is how UI tests find the page area.
+                            Modifier.fillMaxSize().testTag(PAGE_VIEW_TAG),
                             onExternalLink = { externalLink = it },
                             onTap = { fullScreen = !fullScreen },
                         )
