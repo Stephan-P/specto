@@ -67,8 +67,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** `pdfrs-text` fallbacks for glyphs without Unicode: reverse lookup in the embedded TrueType `cmap` (CID TrueType without `ToUnicode`); character code as Latin-1 / font encoding (Type 3)
 - [ ] **S** Investigate and report upstream: hayro ignores existing `ToUnicode` tables in `complex_ttf_font.pdf` and `issue16538.pdf`
 - [x] **M** Text selection (drag, double-click word, triple-click line) + copy. `pdfrs-text`: `position_at` (nearest position between characters, also in margins), word and line ranges, highlight quads per line. `pdfrs-view`: `Selection` (anchor and focus as page and character, across pages; character, word or line granularity), `nearest_pdf_point`/`pdf_to_view`. Desktop: drawn in the accent colour, I-beam cursor, Shift+click, autoscroll near the edges, *Primary*+C/A, Escape, primary selection, Edit menu on macOS
-- [ ] **M** Search: find bar, incremental results across pages (background), highlight matches, next/prev
-- [ ] **S** Text-layer cache per page: lazy on the desktop (extracted on the main thread when first needed, 0.1–0.25 s for a whole 300-page manual); eviction, and extraction in the background for search, still to do
+- [x] **M** Search (desktop): `pdfrs_text::SearchText` (per page: folded text, about 5 bytes per character, mapping back to characters; case and accents ignored, typographic quotes made plain, lines joined with a space and hyphenated line ends joined) and `Query`; `pdfrs_view::SearchResults` (document order, current match, wrap-around) and `Viewer::reveal`. Desktop: search bar (*Primary*+F, Enter / Shift+Enter, *Primary*+G / Shift+*Primary*+G, Escape), "3 of 17" status, all matches in yellow and the current one in orange, pages indexed in a background thread from the current page on. Not yet: right-to-left text in visual order, matches spanning pages, options (whole words, match case)
+- [x] **S** Text-layer cache per page (desktop): full text pages extracted on the main thread when first needed (0.1–0.25 s for a whole 300-page manual) and kept for the 64 most recently used pages; search uses the compact `SearchText` of every page, built in the background
 
 ## M3: Page editing
 
@@ -79,6 +79,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Desktop: page organizer (multi-select thumbnails, drag to reorder, drop PDF to insert, delete key)
 - [ ] **S** Save / Save As / "Export selected pages", atomic write, dirty-state tracking + close prompt
 - [ ] **S** Property test: random command sequence followed by undo-all restores the original state
+- [ ] **M** Round-trip harness, in CI from the first save path on: open → edit → save → reopen with our own parser and with an external validator (`qpdf --check`, which needs installing in `ci/install-deps-fedora.sh`), and compare renders of the untouched pages before and after
+- [ ] **S** File changed on disk while open: notice it (file monitor), and never save over a file that changed since it was read without asking; the unedited case can simply reload
 
 ## M4: Markup
 
@@ -89,6 +91,9 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Select / move / resize / recolor / delete annotations, properties popover
 - [ ] **M** `pdfrs-write`: incremental-update save path (used when only annotations/forms changed)
 - [ ] **S** Annotation sidebar/list (jump to annotation)
+- [ ] **M** Signature and image stamps: a Stamp kind in the annotation model (decide before the model settles) with an image appearance stream; saved signatures kept in the app's data directory; placed, moved and resized like other annotations
+- [ ] **M** Creating a signature on the desktop: drawn with the pointer in a signature box (relative motion, smoothed), with a stylus or touchscreen (`GtkGestureStylus`, shared with the ink tool), or imported from an image with the paper background made transparent. No raw trackpad access: Linux offers apps no absolute finger positions
+- [ ] **S** Android: draw a signature by finger or stylus; a way to bring it to the desktop (export/import as an image)
 
 ## M5: Forms
 
@@ -136,6 +141,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME
 - [ ] **S** Text selection with Android selection handles + copy/share
+- [ ] **M** Search on Android: the text layer and search results through `pdfrs-ffi` (coarse calls: matches with their quads per page, not per glyph), a search bar with next/previous and highlighted matches
+- [ ] **M** F-Droid: check that the Gradle dependencies are all free software, make the build reproducible, write the metadata
 
 ## M7: Polish & hardening
 
@@ -149,3 +156,27 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Accessibility: keyboard-only operation, screen-reader labels for chrome
 - [ ] **S** Dark mode (UI chrome; optional inverted page rendering)
 - [ ] **S** Packaging: Flatpak (desktop), signed APK/AAB (Android)
+- [ ] **S** Decide the app's name and application ID before anything is published (Flathub ID, Android package name; both are painful to change later)
+- [ ] **S** Desktop integration files: `.desktop` file with the PDF MIME type (so "Open with" lists the app), icon, AppStream metainfo with screenshots (all required by Flathub)
+- [ ] **S–M** macOS app bundle: file association, Dock icon, bundled GTK
+- [ ] **S** `cargo-deny` in CI: security advisories and licence compatibility with MIT OR Apache-2.0
+- [ ] **M** Performance regression checks in CI: tile render times, frame times and peak memory on a few fixed documents (starting from the gtk-canvas spike's benchmark mode), compared against stored numbers with a tolerance
+- [ ] **S** Preferences: default layout and zoom for documents opened for the first time (desktop: a preferences window; Android: also persist paged or continuous)
+- [ ] **M** Desktop: large files without reading them into memory (mmap or ranged reads), re-opened safely after a save
+- [ ] **L** Decide whether page content is exposed to screen readers (the text layer through AT-SPI and TalkBack, reading order, tagged PDF structure), and if so, plan it
+- [ ] **S** Crash handling: a panic hook that writes a log file the user can attach to a bug report (no telemetry); desktop and Android
+- [ ] **S–M** Touch on Linux (2-in-1 laptops, phones): drag to scroll, long-press to select, a layout for narrow windows; touch input in the headless checks
+
+## M8: Internationalization
+
+Each app uses its platform's own mechanism, and the core crates carry no user-facing text. The first two tasks are worth doing early, before M3–M5 add many more strings.
+
+- [ ] **S** Desktop: move the UI strings into gettext (`gettext-rs`, catalogues in `apps/desktop/po`), English only at first. Sentences built with `format!` ("({} of {})", "Links of this kind aren't opened: …") become whole translatable strings with placeholders; counts use `ngettext`
+- [ ] **S** Android: move the literal `Text("…")` strings into `strings.xml` (`stringResource`, `plurals` for counts)
+- [ ] **S** Core: no user-facing text from the crates. Frontends map error variants (`OpenError`, the `pdfrs-ffi` errors) to their own translated messages instead of showing the `thiserror` text
+- [ ] **S** Numbers through the locale: page counts, the zoom percentage
+- [ ] **S** Desktop: build and install the `.mo` files (also in the Flatpak), `bindtextdomain` at startup, a `.pot` target; check that it works on macOS with Homebrew's gettext
+- [ ] **S** A first translation (German?) in both apps, to prove the pipeline; a headless check that starts the desktop app under another locale
+- [ ] **S** Right-to-left UI languages: check the chrome of both apps under an RTL locale (GTK and Compose mirror on their own; the sidebar side, the thumbnail strip and icons with a direction need a look). The page canvas does not mirror
+- [ ] **M** Binding direction in `pdfrs-view`: one property for both the order of pages in a two-page spread and the swipe direction. Defaults to the document's `/ViewerPreferences /Direction` (read in `pdfrs-source`), independent of the UI language; a "Right to left" toggle per document, saved with the view state, since many right-to-left PDFs don't set it. Through `pdfrs-ffi` for Android
+- [ ] **S** Decide how translations are contributed (plain `.po`/`strings.xml` in the repo, or a hosted tool such as Weblate)
