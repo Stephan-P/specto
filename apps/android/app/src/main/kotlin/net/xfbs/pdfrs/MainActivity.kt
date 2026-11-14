@@ -10,7 +10,11 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.OpenableColumns
+import android.view.KeyEvent
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -49,7 +53,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -117,23 +120,84 @@ class MainActivity : ComponentActivity() {
     private var document by mutableStateOf<Uri?>(null)
     private var current: Loaded.Ready? = null
     private lateinit var store: DocumentStore
+    private lateinit var settings: AppSettings
+
+    /** Moves on or back through the document being read, for the volume keys; null while none is on screen. */
+    private var pageKeys: ((forward: Boolean) -> Unit)? = null
+
+    private val main = Handler(Looper.getMainLooper())
+    private val letScreenTurnOff = Runnable { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         store = DocumentStore(File(filesDir, "documents.json"))
+        settings = AppSettings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         document = intent.viewedDocument()
         setContent {
+            // Also when the switch itself is flipped.
+            val keepScreenOn = settings.keepScreenOn
+            LaunchedEffect(keepScreenOn) { stayAwake() }
             AppTheme {
                 App(
                     document = document,
                     store = store,
+                    settings = settings,
                     onDocument = { document = it },
-                    onReady = { current = it },
+                    onReady = {
+                        current = it
+                        stayAwake()
+                    },
+                    onPageKeys = { pageKeys = it },
                 )
             }
         }
     }
+
+    /**
+     * With [AppSettings.keepScreenOn] and a document open, keeps the screen
+     * on for a while from now; called whenever the reader does something. A
+     * phone left lying on the table still goes dark in the end.
+     */
+    private fun stayAwake() {
+        main.removeCallbacks(letScreenTurnOff)
+        if (settings.keepScreenOn && current != null) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            main.postDelayed(letScreenTurnOff, KEEP_SCREEN_ON_MINUTES * 60_000L)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        stayAwake()
+    }
+
+    override fun onDestroy() {
+        main.removeCallbacks(letScreenTurnOff)
+        super.onDestroy()
+    }
+
+    /** Whether [keyCode] is a volume key that is to move through the document, and which way: true for volume down (onwards). */
+    private fun pageKey(keyCode: Int): Boolean? = when {
+        pageKeys == null || !settings.volumeKeysTurnPages -> null
+        keyCode == KeyEvent.KEYCODE_VOLUME_DOWN -> true
+        keyCode == KeyEvent.KEYCODE_VOLUME_UP -> false
+        else -> null
+    }
+
+    // Only keys nothing else wanted arrive here: with a menu or dialog open,
+    // the volume keys change the volume as usual.
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val forward = pageKey(keyCode) ?: return super.onKeyDown(keyCode, event)
+        pageKeys?.invoke(forward)
+        return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
+        // Its key down was used, so the system shouldn't see half a key press.
+        pageKey(keyCode) != null || super.onKeyUp(keyCode, event)
 
     override fun onStop() {
         super.onStop()
@@ -223,7 +287,7 @@ private sealed interface Loaded {
     data object Loading : Loaded
 
     /** [key] identifies the document in the [DocumentStore]. */
-    class Ready(val state: PdfViewState, val name: String, val key: String) : Loaded
+    class Ready(val state: PdfViewState, val name: String, val key: String, val bytes: Long) : Loaded
     class Locked(val pdf: ByteArray, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
     class Failed(val message: String) : Loaded
 }
@@ -273,7 +337,7 @@ private suspend fun Context.open(
     }
     store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
     releaseUnused(store)
-    Loaded.Ready(state, name, key)
+    Loaded.Ready(state, name, key, pdf.size.toLong())
 } catch (e: PdfException.PasswordRequired) {
     Loaded.Locked(pdf, name, uri, wrongPassword = password != null)
 } catch (e: Exception) {
@@ -285,8 +349,11 @@ private suspend fun Context.open(
 private fun App(
     document: Uri?,
     store: DocumentStore,
+    settings: AppSettings,
     onDocument: (Uri?) -> Unit,
     onReady: (Loaded.Ready?) -> Unit,
+    /** Hands over what the volume keys should do; null while no document is on screen. */
+    onPageKeys: (((forward: Boolean) -> Unit)?) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -304,6 +371,8 @@ private fun App(
     // the bars back.
     var fullScreen by remember { mutableStateOf(false) }
     var showGoTo by remember { mutableStateOf(false) }
+    var showProperties by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
         (loaded as? Loaded.Ready)?.let {
             store.saveView(it.key, it.state.savedView(), it.state.sidebarOpen)
@@ -358,6 +427,19 @@ private fun App(
     var stripState by remember { mutableStateOf<PdfViewState?>(null) }
     if (hasStrip) stripState = ready?.state else if (ready == null) stripState = null
 
+    if (showSettings) {
+        // In place of everything else; the document stays open underneath.
+        BackHandler { showSettings = false }
+        SideEffect { onPageKeys(null) }
+        SettingsScreen(settings, onBack = { showSettings = false })
+        return
+    }
+    // The volume keys move through the document like Page Down and Page Up,
+    // while it is what the reader sees.
+    val pageKeys: ((Boolean) -> Unit)? =
+        if (ready != null && !overlay) { forward -> ready.state.pageBy(scope, forward) } else null
+    SideEffect { onPageKeys(pageKeys) }
+
     Scaffold(
         // The page view goes edge to edge: under the camera cutout (in
         // landscape, beside it) and under the navigation handle. Everything
@@ -406,6 +488,8 @@ private fun App(
                     )
                 },
                 actions = {
+                    // How this document is shown; everything else is behind ⋮.
+                    if (ready != null && !overlay) ViewMenu(ready.state, wide)
                     var menu by remember { mutableStateOf(false) }
                     IconButton(onClick = { menu = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
@@ -436,6 +520,29 @@ private fun App(
                                 },
                             )
                         }
+                        if (ready != null) {
+                            DropdownMenuItem(
+                                text = { Text("Go to page…") },
+                                onClick = {
+                                    menu = false
+                                    showGoTo = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Properties") },
+                                onClick = {
+                                    menu = false
+                                    showProperties = true
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Settings") },
+                            onClick = {
+                                menu = false
+                                showSettings = true
+                            },
+                        )
                         if (document != null) {
                             // Back to the start screen and its recent documents.
                             DropdownMenuItem(
@@ -445,51 +552,6 @@ private fun App(
                                     onDocument(null)
                                 },
                             )
-                        }
-                        if (ready != null) {
-                            DropdownMenuItem(
-                                text = { Text("Go to page…") },
-                                onClick = {
-                                    menu = false
-                                    showGoTo = true
-                                },
-                            )
-                            // Not remembered: every document opens paged.
-                            val continuous = !ready.state.paged
-                            DropdownMenuItem(
-                                text = { Text("Continuous scrolling") },
-                                trailingIcon = {
-                                    if (continuous) Icon(Icons.Filled.Check, contentDescription = "On")
-                                },
-                                onClick = {
-                                    menu = false
-                                    ready.state.paged = continuous
-                                },
-                            )
-                            if (wide) {
-                                val two = ready.state.twoPages
-                                val cover = ready.state.coverAlone
-                                DropdownMenuItem(
-                                    text = { Text("Two pages") },
-                                    trailingIcon = { if (two) Icon(Icons.Filled.Check, contentDescription = "On") },
-                                    onClick = {
-                                        menu = false
-                                        ready.state.setSpread(!two, cover)
-                                    },
-                                )
-                                if (two) {
-                                    DropdownMenuItem(
-                                        text = { Text("First page alone") },
-                                        trailingIcon = {
-                                            if (cover) Icon(Icons.Filled.Check, contentDescription = "On")
-                                        },
-                                        onClick = {
-                                            menu = false
-                                            ready.state.setSpread(true, !cover)
-                                        },
-                                    )
-                                }
-                            }
                         }
                     }
                 },
@@ -608,6 +670,10 @@ private fun App(
 
     externalLink?.let { link ->
         ExternalLinkDialog(link, onDismiss = { externalLink = null })
+    }
+
+    if (showProperties && ready != null) {
+        PropertiesDialog(ready.state, ready.name, ready.bytes, onDismiss = { showProperties = false })
     }
 
     if (showGoTo && ready != null) {

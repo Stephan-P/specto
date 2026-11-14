@@ -841,8 +841,11 @@ endobj
 223 0 obj
 << /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [45 52 200 76] /Dest [10 0 R /XYZ 0 842 0] >>
 endobj
+224 0 obj
+<< /Title (The pdfrs handbook) /Author (Ada Lovelace) /Creator (make-fixtures.py) /CreationDate (D:20240305142210+01'00') >>
+endobj
 xref
-0 224
+0 225
 0000000000 65535 f 
 0000000009 00000 n 
 0000000152 00000 n 
@@ -1067,8 +1070,9 @@ xref
 0000054837 00000 n 
 0000054953 00000 n 
 0000055069 00000 n 
+0000055185 00000 n 
 trailer
-<< /Size 224 /Root 1 0 R  >>
+<< /Size 225 /Root 1 0 R /Info 224 0 R >>
 startxref
-55185
+55327
 %%EOF

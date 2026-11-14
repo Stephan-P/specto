@@ -145,6 +145,8 @@ private fun DocumentStore.Entry.toJson(): JSONObject {
         it.zoom?.let { zoom -> json.put("zoom", zoom) }
         if (it.twoPages) json.put("two", true)
         if (it.coverAlone) json.put("cover", true)
+        // Only when it isn't the mode's own fit.
+        if (it.fitWidth == it.paged) json.put("fitWidth", it.fitWidth)
     }
     return json
 }
@@ -164,6 +166,7 @@ private fun JSONObject.toEntry() = DocumentStore.Entry(
             zoom = if (has("zoom")) getDouble("zoom") else null,
             twoPages = optBoolean("two", false),
             coverAlone = optBoolean("cover", false),
+            fitWidth = optBoolean("fitWidth", !optBoolean("paged", true)),
         )
     } else {
         null

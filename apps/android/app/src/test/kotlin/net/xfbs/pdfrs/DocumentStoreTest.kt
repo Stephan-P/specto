@@ -17,6 +17,7 @@ class DocumentStoreTest {
     private val file: File by lazy { File(folder.root, "documents.json") }
     private val view = SavedView(
         page = 3u, pageOffset = 0.25, paged = false, zoom = 1.5, twoPages = true, coverAlone = true,
+        fitWidth = false,
     )
 
     @Test
@@ -133,5 +134,25 @@ class DocumentStoreTest {
         // Small files work too.
         assertNotEquals(DocumentStore.fingerprint(byteArrayOf(1, 2)), DocumentStore.fingerprint(byteArrayOf(1, 3)))
         assertEquals(32, DocumentStore.fingerprint(ByteArray(0)).length)
+    }
+
+    @Test
+    fun theFitIsKeptOnlyWhereItIsNotTheModesOwn() {
+        val paged = view.copy(paged = true, fitWidth = true)
+        DocumentStore(file).apply {
+            opened("wide", "a.pdf", null, pageCount = 3)
+            saveView("wide", paged)
+            opened("usual", "b.pdf", null, pageCount = 3)
+            saveView("usual", paged.copy(fitWidth = false))
+            opened("scrolling", "c.pdf", null, pageCount = 3)
+            saveView("scrolling", view.copy(fitWidth = true))
+        }
+        val again = DocumentStore(file)
+        assertEquals(true, again.find("wide")?.view?.fitWidth)
+        assertEquals(false, again.find("usual")?.view?.fitWidth)
+        assertEquals(true, again.find("scrolling")?.view?.fitWidth)
+        // Files written before there was a choice: paged fits the page, scrolling the width.
+        val text = file.readText()
+        assertEquals(1, Regex("fitWidth").findAll(text).count())
     }
 }

@@ -124,6 +124,29 @@ pub struct SavedView {
     pub two_pages: bool,
     /// With two pages: the first page on its own, like a book's cover.
     pub cover_alone: bool,
+    /// Fitted means the page's width rather than the whole page; see
+    /// [`ViewSession::set_fit_width`].
+    pub fit_width: bool,
+}
+
+/// What a document says about itself (its `/Info` dictionary and header),
+/// for a properties dialog. Any of it may be missing or wrong: it is whatever
+/// the program that wrote the file put there.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct DocumentInfo {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub subject: Option<String>,
+    pub keywords: Option<String>,
+    /// The program the document was written in.
+    pub creator: Option<String>,
+    /// The program that turned it into a PDF.
+    pub producer: Option<String>,
+    /// ISO 8601 with the offset from UTC, e.g. `2024-03-05T14:22:10+01:00`.
+    pub created: Option<String>,
+    pub modified: Option<String>,
+    /// E.g. "1.7".
+    pub pdf_version: String,
 }
 
 /// A distance in logical pixels (dp).
@@ -247,6 +270,9 @@ struct State {
     source: SourceDocument,
     /// Links per page, parsed on first use.
     links: HashMap<usize, Vec<Link>>,
+    /// What the view is fitted to unless the reader zoomed, and returns to:
+    /// `FitPage` or `FitWidth`.
+    fit: pdfrs_view::ZoomMode,
 }
 
 impl State {
@@ -311,6 +337,7 @@ impl Shared {
             viewer,
             tiles,
             thumbnails,
+            fit,
             ..
         } = state;
         tiles.begin_frame();
@@ -367,7 +394,7 @@ impl Shared {
             device_scale: viewer.device_scale().get(),
             current_page: viewer.current_spread().first().map_or(0, |&p| p as u32),
             last_page: viewer.current_spread().last().map_or(0, |&p| p as u32),
-            zoom_factor: viewer.zoom_relative_to(home_fit(viewer)),
+            zoom_factor: viewer.zoom_relative_to(*fit),
             paged: viewer.settings().swipe,
             two_pages: viewer.layout_mode().is_two_page(),
             cover_alone: viewer.settings().cover_alone,
@@ -390,13 +417,17 @@ impl Shared {
     }
 }
 
-/// The zoom mode a view returns to: the whole page when swiping through
+/// The fit a view mode starts with: the whole page when swiping through
 /// pages, the width when scrolling.
-fn home_fit(viewer: &Viewer) -> pdfrs_view::ZoomMode {
-    if viewer.settings().swipe {
-        pdfrs_view::ZoomMode::FitPage
-    } else {
+fn default_fit(paged: bool) -> pdfrs_view::ZoomMode {
+    fit_mode(!paged)
+}
+
+fn fit_mode(fit_width: bool) -> pdfrs_view::ZoomMode {
+    if fit_width {
         pdfrs_view::ZoomMode::FitWidth
+    } else {
+        pdfrs_view::ZoomMode::FitPage
     }
 }
 
@@ -485,6 +516,8 @@ impl ViewSession {
                 thumbnails: (0, 0),
                 source,
                 links: HashMap::new(),
+                // Sessions start out scrolling.
+                fit: default_fit(false),
             }),
             outline,
             labels,
@@ -533,6 +566,23 @@ impl ViewSession {
                 (1..=self.page_count as usize).contains(&n).then(|| n - 1)
             })
             .map(|i| i as u32)
+    }
+
+    /// What the document says about itself.
+    pub fn info(&self) -> DocumentInfo {
+        let state = self.shared.lock();
+        let m = state.source.metadata();
+        DocumentInfo {
+            title: m.title,
+            author: m.author,
+            subject: m.subject,
+            keywords: m.keywords,
+            creator: m.creator,
+            producer: m.producer,
+            created: m.created.map(|d| d.to_string()),
+            modified: m.modified.map(|d| d.to_string()),
+            pdf_version: state.source.version().to_owned(),
+        }
     }
 
     /// The outline (table of contents), flattened in reading order. Empty if
@@ -621,14 +671,30 @@ impl ViewSession {
     }
 
     /// Switches between swiping through pages and scrolling, keeping the
-    /// page. Sessions start out [`ViewMode::Continuous`].
+    /// page. Sessions start out [`ViewMode::Continuous`]. A change of mode
+    /// also returns to the mode's own fit: the whole page when swiping, the
+    /// width when scrolling (see [`set_fit_width`](Self::set_fit_width)).
     pub fn set_view_mode(&self, mode: ViewMode) {
         let mut state = self.shared.lock();
-        let viewer = &mut state.viewer;
         let paged = mode == ViewMode::Paged;
+        if paged != state.viewer.settings().swipe {
+            state.fit = default_fit(paged);
+        }
+        let fit = state.fit;
+        let viewer = &mut state.viewer;
         viewer.set_layout_mode(layout_for(paged, viewer.layout_mode().is_two_page()));
         viewer.set_swipe(paged);
-        viewer.set_zoom_mode(home_fit(viewer));
+        viewer.set_zoom_mode(fit);
+    }
+
+    /// Chooses what the view is fitted to: the page's width, with the rest
+    /// of a taller page reached by scrolling, or the whole page. Also undoes
+    /// any zooming. The choice holds until the view mode changes.
+    pub fn set_fit_width(&self, fit_width: bool) {
+        let mut state = self.shared.lock();
+        state.fit = fit_mode(fit_width);
+        let fit = state.fit;
+        state.viewer.set_zoom_mode(fit);
     }
 
     /// Shows pages two side by side (or one at a time again), in either view
@@ -636,6 +702,7 @@ impl ViewSession {
     /// its own, so that a book's left and right pages end up left and right.
     pub fn set_spread(&self, two_pages: bool, cover_alone: bool) {
         let mut state = self.shared.lock();
+        let fit = state.fit;
         let viewer = &mut state.viewer;
         let layout = layout_for(viewer.settings().swipe, two_pages);
         if layout == viewer.layout_mode() && cover_alone == viewer.settings().cover_alone {
@@ -643,7 +710,7 @@ impl ViewSession {
         }
         viewer.set_layout_mode(layout);
         viewer.set_cover_alone(cover_alone);
-        viewer.set_zoom_mode(home_fit(viewer));
+        viewer.set_zoom_mode(fit);
     }
 
     /// Where the reader is, to be stored and passed to
@@ -658,6 +725,7 @@ impl ViewSession {
             zoom: (view.zoom_mode == pdfrs_view::ZoomMode::Fixed).then_some(view.zoom),
             two_pages: view.layout.is_two_page(),
             cover_alone: view.cover_alone,
+            fit_width: state.fit == pdfrs_view::ZoomMode::FitWidth,
         }
     }
 
@@ -671,7 +739,9 @@ impl ViewSession {
             ViewMode::Continuous
         });
         self.set_spread(saved.two_pages, saved.cover_alone);
+        self.set_fit_width(saved.fit_width);
         let mut state = self.shared.lock();
+        let fit = state.fit;
         let viewer = &mut state.viewer;
         let mut view = viewer.view_state();
         view.page = saved.page as usize;
@@ -681,15 +751,15 @@ impl ViewSession {
                 view.zoom_mode = pdfrs_view::ZoomMode::Fixed;
                 view.zoom = zoom;
             }
-            None => view.zoom_mode = home_fit(viewer),
+            None => view.zoom_mode = fit,
         }
         viewer.restore_view_state(&view);
     }
 
-    /// Back to the view mode's fitted zoom (after zooming in).
+    /// Back to the fitted view (after zooming in).
     pub fn fit(&self) {
         let mut state = self.shared.lock();
-        let fit = home_fit(&state.viewer);
+        let fit = state.fit;
         state.viewer.set_zoom_mode(fit);
     }
 

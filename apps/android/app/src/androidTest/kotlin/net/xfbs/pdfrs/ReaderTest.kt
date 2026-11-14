@@ -120,15 +120,58 @@ class ReaderTest : AppTest() {
         openPages()
         goTo("6", range = "1–12")
         waitForText("6 / 12")
-        menu("Continuous scrolling")
+        view("Continuous")
         waitForText("6 / 12")
         // Now the pages scroll up and down.
         page.performTouchInput { swipeUp() }
         waitUntilGone("6 / 12")
         page.performKeyInput { pressKey(Key.MoveEnd) }
         waitForText("12 / 12")
-        menu("Continuous scrolling")
+        view("Single page")
         waitForText("12 / 12")
+    }
+
+    @Test
+    fun theViewMenuTicksWhatIsChosen() {
+        openPages()
+        compose.onNodeWithContentDescription("View: Single page").performClick()
+        chosen("Single page").assertIsDisplayed()
+        chosen("Fit page").assertIsDisplayed()
+        chosen("Continuous").assertDoesNotExist()
+        compose.onNodeWithText("Fit width").performClick()
+        compose.onNodeWithTag(VIEW_BUTTON_TAG).performClick()
+        chosen("Fit width").assertIsDisplayed()
+        // Each layout starts with its own fit: the width when scrolling, the
+        // whole page otherwise.
+        compose.onNodeWithText("Fit page").performClick()
+        view("Continuous")
+        compose.onNodeWithContentDescription("View: Continuous").performClick()
+        chosen("Fit width").assertIsDisplayed()
+        compose.onNodeWithText("Single page").performClick()
+        compose.onNodeWithTag(VIEW_BUTTON_TAG).performClick()
+        chosen("Fit page").assertIsDisplayed()
+    }
+
+    @Test
+    fun fittedToTheWidthATallPageScrollsBeforeItTurns() {
+        // On a narrow window a page fitted to the width is all there anyway.
+        assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
+        openPages()
+        view("Fit width")
+        page.performKeyInput { pressKey(Key.PageDown) }
+        compose.waitForIdle()
+        compose.onNodeWithText("1 / 12").assertIsDisplayed()
+        // A few screenfuls on, the page ends and the next one comes.
+        compose.waitUntil(WAIT_MS) {
+            page.performKeyInput { pressKey(Key.PageDown) }
+            compose.waitForIdle()
+            compose.onAllNodesWithText("2 / 12").fetchSemanticsNodes().isNotEmpty()
+        }
+        // The fit belongs to the document.
+        reopen("pages.pdf")
+        waitForText("2 / 12")
+        compose.onNodeWithTag(VIEW_BUTTON_TAG).performClick()
+        chosen("Fit width").assertIsDisplayed()
     }
 
     // --- pages, full screen, the strip --------------------------------------
@@ -232,18 +275,18 @@ class ReaderTest : AppTest() {
     fun twoPagesSideBySideOnAWideWindow() {
         assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
         openPages()
-        menu("Two pages")
+        view("Two pages")
         waitForText("1–2 / 12")
         // A swipe now turns a pair of pages.
         page.performTouchInput { swipeLeft() }
         waitForText("3–4 / 12")
         // With the first page alone, the pairs are 2–3, 4–5, …
-        menu("First page alone")
+        view("First page alone")
         waitForText("2–3 / 12")
         page.performTouchInput { swipeLeft() }
         waitForText("4–5 / 12")
         // Back to one page at a time, on the same page.
-        menu("Two pages")
+        view("Single page")
         waitForText("4 / 12")
         page.performTouchInput { swipeLeft() }
         waitForText("5 / 12")
@@ -253,9 +296,10 @@ class ReaderTest : AppTest() {
     fun noTwoPagesOnANarrowWindow() {
         assumeTrue("needs a window narrower than $WIDE_WINDOW_DP dp", !wide)
         openPages()
-        compose.onNodeWithContentDescription("More").performClick()
-        compose.onNodeWithText("Continuous scrolling").assertIsDisplayed()
+        compose.onNodeWithTag(VIEW_BUTTON_TAG).performClick()
+        compose.onNodeWithText("Continuous").assertIsDisplayed()
         compose.onNodeWithText("Two pages").assertDoesNotExist()
+        compose.onNodeWithText("First page alone").assertDoesNotExist()
     }
 
     @Test
@@ -308,7 +352,7 @@ class ReaderTest : AppTest() {
     fun twoPagesAreRememberedForTheDocument() {
         assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
         openPages()
-        menu("Two pages")
+        view("Two pages")
         page.performTouchInput { swipeLeft() }
         waitForText("3–4 / 12")
         // Leave and come back: still on that pair, still two pages at a time.

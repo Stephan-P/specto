@@ -9,7 +9,8 @@ uncompressed PDFs using the standard fonts, so they stay small and diff-able.
 pages.pdf  12 A4 pages, each headed "Page n of 12".
 book.pdf   14 pages with a nested outline, a linked table of contents on
            page 1 (plus one link to a web page), "Back to contents" links,
-           and printed page numbers i-iii, 1-9, A-1, A-2.
+           printed page numbers i-iii, 1-9, A-1, A-2, and a title, an author
+           and a creation date.
 locked.pdf 3 pages, encrypted (RC4, 40 bit) with the password "secret".
 """
 
@@ -176,7 +177,13 @@ def book_pdf(count=14):
             f"/Contents {page_id(p) + 1} 0 R {RESOURCES} >>"
         ).encode()
         objects[page_id(p) + 1] = stream(content)
-    write("book.pdf", objects)
+    # What the document says about itself, for "Properties".
+    info = max(objects) + 1
+    objects[info] = (
+        b"<< /Title (The pdfrs handbook) /Author (Ada Lovelace) /Creator (make-fixtures.py) "
+        b"/CreationDate (D:20240305142210+01'00') >>"
+    )
+    write("book.pdf", objects, trailer_extra=f"/Info {info} 0 R")
 
 
 def rc4(key, data):

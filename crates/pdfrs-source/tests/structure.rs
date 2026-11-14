@@ -4,12 +4,18 @@ use pdfrs_source::{Destination, NamedAction, OpenError, SourceDocument, Target};
 /// Builds a PDF from numbered object bodies (object `i + 1` = `objects[i]`),
 /// with object 1 as the catalog. The xref is left out; hayro rebuilds it.
 fn pdf(objects: &[&str]) -> Vec<u8> {
-    let mut out = String::from("%PDF-1.7\n");
+    pdf_with_trailer(objects, "")
+}
+
+/// As [`pdf`], with `extra` entries in the trailer and written as PDF 1.4.
+fn pdf_with_trailer(objects: &[&str], extra: &str) -> Vec<u8> {
+    let version = if extra.is_empty() { "1.7" } else { "1.4" };
+    let mut out = format!("%PDF-{version}\n");
     for (i, body) in objects.iter().enumerate() {
         out.push_str(&format!("{} 0 obj\n{body}\nendobj\n", i + 1));
     }
     out.push_str(&format!(
-        "trailer << /Root 1 0 R /Size {} >>\n%%EOF\n",
+        "trailer << /Root 1 0 R /Size {} {extra} >>\n%%EOF\n",
         objects.len() + 1
     ));
     out.into_bytes()
@@ -127,6 +133,33 @@ fn page_labels_from_a_number_tree() {
     let all: Vec<String> = (0..4).map(|i| labels.label(i)).collect();
     assert_eq!(all, ["i", "ii", "7", "ApA"]);
     assert_eq!(labels.find("ii"), Some(1));
+}
+
+#[test]
+fn metadata_with_dates_and_the_version() {
+    let data = pdf_with_trailer(
+        &[
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 600 800] >>",
+            "<< /Type /Page /Parent 2 0 R >>",
+            "<< /Title <FEFF0043006800e9> /Author (  Ada  ) /Subject () /Producer (pdfrs tests)
+                /CreationDate (D:20240305142210+01'00') /ModDate (D:20250101000000-05'30') >>",
+        ],
+        "/Info 4 0 R",
+    );
+    let doc = SourceDocument::open(data, None).unwrap();
+    let m = doc.metadata();
+    assert_eq!(m.title.as_deref(), Some("Ché"));
+    assert_eq!(m.author.as_deref(), Some("Ada"));
+    assert_eq!((m.subject, m.keywords, m.creator), (None, None, None));
+    assert_eq!(m.producer.as_deref(), Some("pdfrs tests"));
+    let created = m.created.unwrap();
+    assert_eq!(created.utc_offset_minutes, 60);
+    assert_eq!(created.to_string(), "2024-03-05T14:22:10+01:00");
+    let modified = m.modified.unwrap();
+    assert_eq!(modified.utc_offset_minutes, -330);
+    assert_eq!(modified.to_string(), "2025-01-01T00:00:00-05:30");
+    assert_eq!(doc.version(), "1.4");
 }
 
 #[test]

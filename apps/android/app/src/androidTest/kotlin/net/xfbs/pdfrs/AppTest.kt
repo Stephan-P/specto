@@ -1,7 +1,10 @@
 package net.xfbs.pdfrs
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -44,8 +47,10 @@ abstract class AppTest {
 
     @Before
     fun forgetEverything() {
-        // No reading positions or recents from earlier tests.
-        File(instrumentation.targetContext.filesDir, "documents.json").delete()
+        // No reading positions, recents or settings from earlier tests.
+        val target = instrumentation.targetContext
+        File(target.filesDir, "documents.json").delete()
+        target.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     @After
@@ -103,6 +108,16 @@ abstract class AppTest {
         compose.onNodeWithText(item).performClick()
         compose.waitForIdle()
     }
+
+    /** Picks an item of the view menu (layout and fit), behind the button left of ⋮. */
+    protected fun view(item: String) {
+        compose.onNodeWithTag(VIEW_BUTTON_TAG).performClick()
+        compose.onNodeWithText(item).performClick()
+        compose.waitForIdle()
+    }
+
+    /** The item of an open view menu called [item], if it is the one ticked. */
+    protected fun chosen(item: String) = compose.onNode(hasText(item) and hasContentDescription("Chosen"))
 
     /** "Go to page…" with [text] typed into its field, whose label names the [range]. */
     protected fun goTo(text: String, range: String) {

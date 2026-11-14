@@ -25,6 +25,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import uniffi.pdfrs_ffi.Activated
+import uniffi.pdfrs_ffi.DocumentInfo
+import uniffi.pdfrs_ffi.PageSize
 import uniffi.pdfrs_ffi.OutlineEntry
 import uniffi.pdfrs_ffi.SavedView
 import uniffi.pdfrs_ffi.ViewListener
@@ -101,14 +103,21 @@ class PdfViewState(
     /** Width and height of the view in dp. */
     private var viewport = Offset.Zero
 
+    /** Device pixels per dp. */
+    private var density = 1f
+
     val pageCount: Int = session.pageCount().toInt()
 
+    /** Width and height of each page as displayed, in points (1/72 inch). */
+    val pageSizes: List<PageSize> = session.pageSizes()
+
     /** Width / height of each page as displayed. */
-    private val aspects = session.pageSizes().let { sizes ->
-        FloatArray(sizes.size) { sizes[it].width / sizes[it].height }
-    }
+    private val aspects = FloatArray(pageSizes.size) { pageSizes[it].width / pageSizes[it].height }
 
     fun pageAspect(page: Int): Float = aspects[page]
+
+    /** What the document says about itself: title, author, dates, … */
+    fun info(): DocumentInfo = session.info()
 
     /**
      * The pages' printed numbers, for documents that number them other than
@@ -138,12 +147,34 @@ class PdfViewState(
      * scrolling column. Keeps the current page.
      */
     var paged: Boolean
-        get() = frame?.paged ?: true
+        get() = pagedNow
         set(value) {
+            if (value == paged) return
             stopMotion()
             session.setViewMode(if (value) ViewMode.PAGED else ViewMode.CONTINUOUS)
+            // Each mode starts with its own fit.
+            fitWidth = !value
             refresh()
         }
+
+    /**
+     * What the view is fitted to unless the reader zoomed in: the page's
+     * width, the rest of a taller page being reached by scrolling, or else
+     * the whole page. Pages start out whole when [paged] and fitted to the
+     * width when scrolling; setting it also undoes any zooming.
+     */
+    var fitWidth: Boolean by mutableStateOf(restore?.fitWidth ?: false)
+        private set
+
+    fun fit(width: Boolean) {
+        stopMotion()
+        session.setFitWidth(width)
+        fitWidth = width
+        refresh()
+    }
+
+    /** Follows the frames, but only changes when the mode does: the top bar reads it. */
+    private var pagedNow by mutableStateOf(true)
 
     /**
      * What to draw. Changes whenever the view or the available tiles change,
@@ -181,6 +212,7 @@ class PdfViewState(
         // it on every frame.
         Native.setViewport(sessionId, widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
         viewport = Offset(widthDp, heightDp)
+        this.density = density
         // A position only means something once the view has a size.
         pendingRestore?.let { session.restoreView(it.copy(twoPages = it.twoPages && wideWindow)) }
         pendingRestore = null
@@ -231,27 +263,45 @@ class PdfViewState(
     }
 
     /**
-     * Page Down and Page Up: a page turn when paged, most of a screenful when
-     * scrolling continuously.
+     * Page Down and Page Up: most of a screenful. When [paged], that is a
+     * page turn, unless the page is taller than the view (fitted to the
+     * width, or zoomed in) and has more to show in that direction.
      */
     fun pageBy(scope: CoroutineScope, forward: Boolean) {
-        if (paged) return turnPage(forward)
-        stopMotion()
+        val current = frame ?: return
         val distance = viewport.y * SCREENFUL * (if (forward) 1 else -1)
+        if (current.paged) {
+            if (!hasMore(current, forward)) return turnPage(forward)
+            stopMotion()
+            motion = scope.launch {
+                var done = 0f
+                animate(0f, 1f, animationSpec = tween(SLIDE_MS, easing = LinearOutSlowInEasing)) { t, _ ->
+                    Native.scrollInPageBy(sessionId, 0.0, (distance * (t - done)).toDouble())
+                    done = t
+                    refresh()
+                }
+            }
+            return
+        }
+        stopMotion()
         motion = scope.launch { slideBy(Offset(0f, distance)) }
     }
 
     /**
-     * Arrow up and down: a small scroll, or, on a fitted page that has
-     * nowhere to scroll to, a page turn.
+     * Arrow up and down: a small scroll, or, where a page has no more to
+     * show in that direction, a page turn.
      */
     fun lineBy(forward: Boolean) {
         val current = frame ?: return
-        if (current.paged && current.zoomFactor < 1.01) return turnPage(forward)
+        if (current.paged && !hasMore(current, forward)) return turnPage(forward)
         stopMotion()
         Native.scrollInPageBy(sessionId, 0.0, (if (forward) LINE_DP else -LINE_DP).toDouble())
         refresh()
     }
+
+    /** Whether the pages being looked at continue beyond the view's bottom (or top) edge. */
+    private fun hasMore(f: ViewFrame, forward: Boolean): Boolean =
+        if (forward) f.currentBottom() > viewport.y * density + 1 else f.currentTop() < -1
 
     /** Zooms around the middle of the view. */
     fun zoomStep(zoomIn: Boolean) {
@@ -372,8 +422,8 @@ class PdfViewState(
                 motion = scope.launch { slideBy(Offset(snap.x.toFloat(), snap.y.toFloat())) }
                 return
             }
-            // A fitted page has nowhere to go.
-            if (current.zoomFactor < 1.01) return
+            // A page that is all there has nowhere to go.
+            if (current.currentFitsIn(viewport.x * density + 1, viewport.y * density + 1)) return
         }
         motion = scope.launch {
             var last = Offset.Zero
@@ -469,6 +519,7 @@ class PdfViewState(
             bitmaps.remove(id)
         }
         frame = next
+        pagedNow = next.paged
         currentPage = next.currentPage
         lastPage = next.lastPage
         if (!next.sameThumbnailsAs(thumbnails)) thumbnails = next

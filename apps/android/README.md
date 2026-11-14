@@ -18,10 +18,11 @@ What it can do today:
 - Pinch and double-tap zoom, with pages sharp at any zoom
 - A thumbnail strip, a grid of all pages, the table of contents, links, and printed page numbers ("iii (3 / 240)")
 - Two pages side by side on tablets and other wide windows, optionally with the cover page on its own
-- Full screen, keyboard navigation, light and dark mode
+- Fit page or fit width, full screen, keyboard navigation, light and dark mode
 - Password-protected PDFs
 - Recent documents, and continuing where you left off
-- Sharing the open document with other apps
+- Sharing the open document with other apps, and its properties (title, author, page size, …)
+- Optional: keep the screen on while reading, turn pages with the volume keys
 
 Coming next: search and text selection. After that: annotations, filling in forms, and reordering pages.
 

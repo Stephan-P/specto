@@ -15,8 +15,8 @@ use hayro_syntax::object::dict::keys::{
     A, ANNOTS, D, DEST, DESTS, FIRST, KIDS, LIMITS, NAMES, NEXT, NUMS, OUTLINES, P, PAGE_LABELS,
     RECT, S, ST, SUBTYPE, TITLE, URI,
 };
-use hayro_syntax::object::{Array, Dict, MaybeRef, Name, Object, ObjectIdentifier};
-use hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
+use hayro_syntax::object::{Array, DateTime, Dict, MaybeRef, Name, Object, ObjectIdentifier};
+use hayro_syntax::{DecryptionError, LoadPdfError, Pdf, PdfVersion};
 use pdfrs_geom::{PdfBox, PdfPoint};
 
 pub use hayro_syntax;
@@ -72,6 +72,58 @@ pub struct Metadata {
     pub keywords: Option<String>,
     pub creator: Option<String>,
     pub producer: Option<String>,
+    pub created: Option<Date>,
+    pub modified: Option<Date>,
+}
+
+/// A date and time as a document states it: on the clock of wherever it was
+/// written, with that place's offset from UTC.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Date {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+    /// Minutes east of UTC.
+    pub utc_offset_minutes: i16,
+}
+
+/// ISO 8601 with the offset, e.g. `2024-03-05T14:22:10+01:00`.
+impl std::fmt::Display for Date {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let offset = self.utc_offset_minutes;
+        write!(
+            f,
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}{:02}:{:02}",
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            if offset < 0 { '-' } else { '+' },
+            offset.unsigned_abs() / 60,
+            offset.unsigned_abs() % 60,
+        )
+    }
+}
+
+impl From<DateTime> for Date {
+    fn from(d: DateTime) -> Self {
+        let hours = i16::from(d.utc_offset_hour);
+        let minutes = i16::from(d.utc_offset_minute);
+        Self {
+            year: d.year,
+            month: d.month,
+            day: d.day,
+            hour: d.hour,
+            minute: d.minute,
+            second: d.second,
+            utc_offset_minutes: hours * 60 + if hours < 0 { -minutes } else { minutes },
+        }
+    }
 }
 
 /// Where a destination points: a page and, optionally, a position on it.
@@ -185,6 +237,23 @@ impl SourceDocument {
             keywords: text(&m.keywords),
             creator: text(&m.creator),
             producer: text(&m.producer),
+            created: m.creation_date.map(Date::from),
+            modified: m.modification_date.map(Date::from),
+        }
+    }
+
+    /// The version of PDF the file says it is written in, e.g. "1.7".
+    pub fn version(&self) -> &'static str {
+        match self.pdf.version() {
+            PdfVersion::Pdf10 => "1.0",
+            PdfVersion::Pdf11 => "1.1",
+            PdfVersion::Pdf12 => "1.2",
+            PdfVersion::Pdf13 => "1.3",
+            PdfVersion::Pdf14 => "1.4",
+            PdfVersion::Pdf15 => "1.5",
+            PdfVersion::Pdf16 => "1.6",
+            PdfVersion::Pdf17 => "1.7",
+            PdfVersion::Pdf20 => "2.0",
         }
     }
 

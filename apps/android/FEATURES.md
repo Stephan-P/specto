@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (`ReaderTest` and `DocumentTest` in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode or the camera cutout.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode, the camera cutout or whether the screen really stays on.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -10,7 +10,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Start screen | Launch the app from the launcher | "Open PDF" button, top bar with only the ⋮ menu; below it "Recent", once documents have been opened |
+| Start screen | Launch the app from the launcher | "Open PDF" button, top bar with only the ⋮ menu (Open… and Settings); below it "Recent", once documents have been opened |
 | Recent documents | Open a few files with "Open PDF", then relaunch the app (or ⋮ → "Close") | Up to 20 documents, newest first, each with the page it was left on and when; tap one to reopen it. Files handed over by another app are usually not listed, because the app isn't allowed to read them again later |
 | Continue reading | Read to some page, zoom or switch to continuous scrolling, leave the app, open the same file again (by any route) | It opens where it was left: same page and position, same mode and zoom. The file is recognised by its content, so a copy or a renamed file continues too |
 | A recent file is gone | Delete or move a listed file, then tap it | "Couldn't open this file", and it disappears from the list |
@@ -26,6 +26,15 @@ Useful documents for a full round: a long book with an outline and links, a docu
 |---|---|---|
 | Share | With a document open, ⋮ → "Share…", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app |
 | Only for documents | Open the ⋮ menu on the start screen, and after a file failed to open | No "Share…" |
+
+## The top bar
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Three buttons | Open a document | Left: Pages and Contents. Right: the view button, whose icon is a small picture of the current layout, and ⋮ |
+| View menu | Tap the view button | The layouts, each with its picture ("Single page" and "Continuous"; on wide windows also "Two pages" and "Two pages, continuous"), then "Fit page" and "Fit width". The current layout and fit are ticked. Everything in this menu is remembered for the document |
+| ⋮ menu | Tap ⋮ | Open…, Share…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown |
+| Properties | ⋮ → "Properties" | A dialog with the file name, what the document says about itself (title, author, subject, keywords, the programs it was made with, when it was created and changed; whatever it doesn't state is left out), the number of pages, their size ("210 × 297 mm (A4)"; a note if pages differ), the file size and the PDF version. Values can be selected and copied |
 
 ## Reading, one page at a time (default)
 
@@ -45,10 +54,20 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Switch | ⋮ → "Continuous scrolling" (tick shown when on) | One column of pages fitted to the width, on the same page as before; switching back keeps the page too |
+| Switch | View button → "Continuous" | One column of pages fitted to the width, on the same page as before; switching back ("Single page") keeps the page too |
 | Scroll | Drag and flick up and down | Smooth scrolling that slows down by itself |
 | Zoom | Pinch, double tap | As in paged mode; double tap returns to fit width |
 | Remembered per document | Switch a document to continuous, open another, come back | New documents open paged; a document opened before opens in the mode it was left in |
+
+## Fit page and fit width
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Fit width | Hold the phone sideways (or use a tablet), view button → "Fit width" | Pages fill the width, in either layout. One page at a time, a page is now taller than the screen: drag to read down it, swipe sideways to turn; the next page starts at its top, fitted to the width again |
+| Fit page | View button → "Fit page" | Every page is shown whole; with "Continuous", whole pages scroll past |
+| Undoes zooming | Zoom in, then pick the ticked fit again | Back to the fitted view. Double tap also returns to the chosen fit |
+| Starts as suits the layout | Switch between "Single page" and "Continuous" | Single pages start whole, continuous scrolling starts fitted to the width; a different choice lasts until the layout is switched |
+| Remembered | Pick "Fit width", leave the app, open the document again | Still fitted to the width |
 
 ## Finding your way
 
@@ -85,8 +104,8 @@ Applies when the app's window is at least 840 dp wide: a tablet in landscape, bu
 | Stays open | Tap a page or an outline entry in the sidebar | The document goes there; the sidebar stays, and its page list scrolls to keep the current page in view as you read on |
 | Fold away | Top-left button | The sidebar slides out, the document takes the room and the thumbnail strip returns; the button brings the sidebar back. Whether it was open is remembered for the document |
 | Full screen | Tap the page | The sidebar leaves along with the bars, and returns with them |
-| Two pages | ⋮ → "Two pages" | Pages are shown in pairs, fitted together, and the page indicator names both ("4–5 / 12"); a swipe turns a pair, and with continuous scrolling the pairs form one column. The menu item only exists on wide windows |
-| First page alone | With two pages on, ⋮ → "First page alone" | The first page stands by itself and the pairs shift by one (2–3, 4–5, …), so a book's left and right pages land left and right |
+| Two pages | View button → "Two pages" or "Two pages, continuous" | Pages are shown in pairs, fitted together, and the page indicator names both ("4–5 / 12"); a swipe turns a pair, or the pairs form one scrolling column. These layouts are only offered on wide windows |
+| First page alone | In a two-page layout, view button → "First page alone" | The first page stands by itself and the pairs shift by one (2–3, 4–5, …), so a book's left and right pages land left and right |
 | Remembered | Turn on two pages, leave the app, open the document again | Still two pages, on the same pair; other documents are unaffected |
 | Falls back | Rotate to portrait, or put the app in split screen | The phone layout: Pages and Contents full screen on request, the strip at the bottom, one page at a time even if two pages are on (they return with the room); same document and page throughout |
 
@@ -97,9 +116,20 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Feature | How to check | Expected |
 |---|---|---|
 | Turn pages | → and ←, Page Down and Page Up, Space and Shift+Space, Backspace | Next or previous page; with two pages, the next or previous pair; nothing at either end. In continuous scrolling, → and ← go to the top of the next or previous page, while Page Down, Page Up and Space scroll most of a screenful |
-| Scroll | ↓ and ↑ | A small scroll; on a fitted page in paged mode, where there is nothing to scroll, they turn the page instead |
+| Read down a tall page | With "Fit width" on a wide screen (or zoomed in), Page Down or Space repeatedly | Most of a screenful further down the page each time; at its end, the next page. Page Up likewise, upwards |
+| Scroll | ↓ and ↑ | A small scroll; one page at a time, where the page has no more to show in that direction (always, if it is shown whole), they turn the page instead |
 | Ends | Home and End | First and last page |
 | Zoom | Ctrl with +, − and 0 | Zoom in and out around the middle of the view, and back to the fitted view |
+
+## Settings
+
+⋮ → "Settings", with or without a document open. They hold for the whole app and are kept; both switches are off at first. Back, or the arrow, returns to where you were.
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Keep the screen on | Switch it on, open a document and leave the phone alone | The screen stays on for ten minutes after the last touch or key, then goes dark after the system's usual wait. On the start screen, and with the switch off, it goes dark as usual |
+| Volume keys turn pages | Switch it on, open a document, press volume down and volume up | Volume down goes on, volume up goes back, like Page Down and Page Up: a page turn, or most of a screenful when scrolling or on a page taller than the screen. Holding a key keeps going. The volume doesn't change |
+| Volume keys otherwise | With the switch on: on the start screen, in Settings, in Pages or Contents on a phone, or with a menu or dialog open; and anywhere with the switch off | The keys change the volume as usual |
 
 ## Behaviour of the app as a whole
 

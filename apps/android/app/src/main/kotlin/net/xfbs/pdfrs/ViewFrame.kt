@@ -63,6 +63,25 @@ class ViewFrame private constructor(
     fun pageWidth(i: Int): Float = pageRects[4 * i + 2]
     fun pageHeight(i: Int): Float = pageRects[4 * i + 3]
 
+    /** Whether [i] is one of the pages being looked at ([currentPage] to [lastPage]). */
+    private fun isCurrent(i: Int): Boolean = pageIndex[i] in currentPage..lastPage
+
+    /** The top edge of the pages being looked at; 0 if none of them is visible. */
+    fun currentTop(): Float =
+        (0 until pageCount).filter(::isCurrent).minOfOrNull { pageTop(it) } ?: 0f
+
+    /** Their bottom edge. */
+    fun currentBottom(): Float =
+        (0 until pageCount).filter(::isCurrent).maxOfOrNull { pageTop(it) + pageHeight(it) } ?: 0f
+
+    /** Whether they are no larger than [width] × [height] pixels, so that there is nowhere to pan to. */
+    fun currentFitsIn(width: Float, height: Float): Boolean {
+        val pages = (0 until pageCount).filter(::isCurrent)
+        if (pages.isEmpty()) return true
+        val across = pages.maxOf { pageLeft(it) + pageWidth(it) } - pages.minOf { pageLeft(it) }
+        return across <= width && currentBottom() - currentTop() <= height
+    }
+
     /** Tiles of the [i]th visible page, to draw in order: indices for the `tile*` accessors. */
     fun tiles(i: Int): IntRange = tileStart[i] until tileStart[i + 1]
 

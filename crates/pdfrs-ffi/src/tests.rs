@@ -484,6 +484,87 @@ fn saved_view_continues_where_the_reader_left_off() {
 }
 
 #[test]
+fn fit_page_or_fit_width() {
+    // Pages of 200×300 pt in a wide view: fitted whole they are 300 high,
+    // fitted to the width three times as large.
+    let (a, _rx) = open(4, 1 << 20);
+    a.set_viewport(616.0, 316.0, 2.0);
+    a.set_view_mode(ViewMode::Paged);
+    let whole = a.frame();
+    assert_eq!((whole.zoom, whole.zoom_factor), (1.0, 1.0));
+    assert!(!a.saved_view().fit_width);
+
+    a.set_fit_width(true);
+    let wide = a.frame();
+    assert_eq!((wide.zoom, wide.zoom_factor), (3.0, 1.0));
+    assert_eq!(wide.zoom_mode, ZoomMode::FitWidth);
+    // The rest of the page is reached by scrolling within it.
+    hot::scroll_in_page_by(a.id(), 0.0, 100.0);
+    assert!(a.frame().pages[0].rect.y < -90.0);
+
+    // Turning the page and zooming come back to the chosen fit.
+    a.turn_page(true);
+    let next = a.frame();
+    assert_eq!(
+        (next.current_page, next.zoom, next.zoom_factor),
+        (1, 3.0, 1.0)
+    );
+    a.zoom_by(2.0, 308.0, 158.0);
+    assert_eq!(a.frame().zoom_factor, 2.0);
+    a.fit();
+    assert_eq!(a.frame().zoom, 3.0);
+
+    // It is saved with the view, zoomed in or not.
+    a.zoom_by(2.0, 308.0, 158.0);
+    let saved = a.saved_view();
+    assert!(saved.fit_width && saved.zoom == Some(6.0));
+    let (b, _rx) = open(4, 1 << 20);
+    b.set_viewport(616.0, 316.0, 2.0);
+    b.restore_view(saved);
+    assert_eq!(b.saved_view(), saved);
+    assert_eq!(b.frame().zoom_factor, 2.0);
+    b.fit();
+    assert_eq!(b.frame().zoom, 3.0);
+
+    // Each view mode starts with its own fit; choosing the same mode again
+    // changes nothing.
+    a.set_view_mode(ViewMode::Paged);
+    assert!(a.saved_view().fit_width);
+    a.set_view_mode(ViewMode::Continuous);
+    assert!(a.saved_view().fit_width);
+    a.set_fit_width(false);
+    let whole = a.frame();
+    assert_eq!((whole.zoom, whole.zoom_factor), (1.0, 1.0));
+    a.set_view_mode(ViewMode::Paged);
+    assert!(!a.saved_view().fit_width);
+    a.set_view_mode(ViewMode::Continuous);
+    assert!(a.saved_view().fit_width);
+}
+
+#[test]
+fn what_a_document_says_about_itself() {
+    let (plain, _rx) = open(1, 1 << 20);
+    let info = plain.info();
+    assert_eq!(info.pdf_version, "1.7");
+    assert_eq!((info.title, info.author, info.created), (None, None, None));
+
+    let mut pdf = String::from_utf8(sample_pdf(1)).unwrap();
+    pdf = pdf.replace(
+        "trailer << /Root 1 0 R",
+        "5 0 obj << /Title (Notes) /Creator (ed) /CreationDate (D:20240305142210+01'00') >> endobj\n\
+         trailer << /Info 5 0 R /Root 1 0 R",
+    );
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(pdf.into_bytes(), None, 1 << 20, listener).unwrap();
+    let info = session.info();
+    assert_eq!(info.title.as_deref(), Some("Notes"));
+    assert_eq!(info.creator.as_deref(), Some("ed"));
+    assert_eq!(info.created.as_deref(), Some("2024-03-05T14:22:10+01:00"));
+    assert_eq!((info.author, info.modified), (None, None));
+}
+
+#[test]
 fn two_pages_side_by_side() {
     let (session, rx) = open(5, 64 << 20);
     // Wide enough for two 200 × 300 pt pages at 1 dp per point:
