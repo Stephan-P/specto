@@ -53,7 +53,9 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Desktop: open via dialog, drag-and-drop or command line (one window per document), password prompt, start page
 - [x] **S** Desktop: recent files (GTK `RecentManager`, so they also show up in GNOME; listed on the start page) and per-file view state: page and position, layout, zoom, sidebar (`pdfrs_view::ViewState`, stored in `$XDG_STATE_HOME/pdfrs/view-state.ini`, last 200 files). Ctrl+Q closes windows one by one so each saves.
 - [x] **S** Desktop: one scheduler for the whole app. `Scheduler::client` gives each view its own queue, results and wake-up callback; workers serve clients round-robin. Three windows now share 4 workers instead of starting 4 each.
-- [x] **S** Headless GUI smoke test: `tools/headless/run.sh tools/headless/smoke.sh file.pdf out/` (screenshots via a debug-only `app.screenshot` action). Could run in CI.
+- [x] **S** Headless GUI smoke test: `tools/headless/run.sh tools/headless/smoke.sh file.pdf out/` (screenshots via a debug-only screenshot action)
+- [x] **S** Headless desktop checks in CI: `tools/headless/check.py` drives the app over D-Bus (window actions plus debug-only `debug-state`, `debug-screenshot`, `debug-go-to`), with generated PDFs whose pages each have their own colour, so screenshots show which page is on screen. Opening, start page, broken files, navigation, page labels, layouts, zoom and its limits, sidebar, saved state, two windows; at scales 1, 1.25 and 2.
+- [ ] **S** Headless checks with pointer input (link clicks, drags, later text selection): needs synthetic input, e.g. mutter's RemoteDesktop D-Bus API
 - [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
 - [ ] **S** Android: outline and links through `pdfrs-ffi`
 

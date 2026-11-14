@@ -7,12 +7,19 @@
 # Fractional scales use mutter's scale-monitor-framebuffer feature, enabled
 # through a throwaway GSettings keyfile, so the user's settings are untouched.
 #
-# Needs mutter and dbus-run-session (Fedora: mutter, dbus-daemon).
+# Needs mutter and dbus-run-session (Fedora: mutter, dbus-daemon; see
+# ci/install-deps-fedora.sh).
 set -u
 if [ -z "${PDFRS_HEADLESS_INNER:-}" ]; then
   exec env PDFRS_HEADLESS_INNER=1 dbus-run-session -- "$0" "$@"
 fi
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+# Containers (CI) have no runtime directory.
+runtime=
+if [ ! -w "$XDG_RUNTIME_DIR" ]; then
+  runtime=$(mktemp -d -t pdfrs-runtime.XXXXXX)
+  export XDG_RUNTIME_DIR=$runtime
+fi
 display=wayland-pdfrs-$$
 log=$(mktemp -t pdfrs-mutter.XXXXXX)
 config=$(mktemp -d -t pdfrs-xdg.XXXXXX)
@@ -22,14 +29,24 @@ printf '[org/gnome/mutter]\nexperimental-features=["scale-monitor-framebuffer"]\
 GSETTINGS_BACKEND=keyfile XDG_CONFIG_HOME=$config mutter --headless --wayland --no-x11 --wayland-display="$display" \
   --virtual-monitor 1920x1200 >"$log" 2>&1 &
 mutter=$!
-for _ in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/$display" ] && break; sleep 0.1; done
+for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/$display" ] && break; sleep 0.1; done
+if [ ! -S "$XDG_RUNTIME_DIR/$display" ]; then
+  echo "mutter didn't start:" >&2
+  cat "$log" >&2
+  kill "$mutter" 2>/dev/null
+  exit 1
+fi
 if [ -n "${PDFRS_SCALE:-}" ]; then
   sleep 0.5
-  python3 -I "$(dirname "$0")/set-scale.py" "$PDFRS_SCALE" >&2
+  if ! python3 -I "$(dirname "$0")/set-scale.py" "$PDFRS_SCALE" >&2; then
+    echo "couldn't set the scale to $PDFRS_SCALE" >&2
+    kill "$mutter"
+    exit 1
+  fi
   sleep 0.5
 fi
 WAYLAND_DISPLAY=$display GDK_BACKEND=wayland GTK_A11Y=none "$@"
 rc=$?
 kill "$mutter"; wait "$mutter" 2>/dev/null
-rm -rf "$log" "$config"
+rm -rf "$log" "$config" $runtime
 exit $rc

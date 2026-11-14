@@ -10,6 +10,7 @@ use pdfrs_render::OpenError;
 use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
+use crate::debug;
 use crate::document::{Document, SharedDocument};
 use crate::outline::OutlineView;
 use crate::state;
@@ -55,6 +56,8 @@ pub struct Inner {
     /// Thumbnails / Contents, if the document has an outline.
     sidebar_stack: RefCell<Option<adw::ViewStack>>,
     last_page: Cell<usize>,
+    /// The last message shown as a toast, for tests.
+    last_toast: RefCell<String>,
 }
 
 impl Window {
@@ -224,10 +227,14 @@ impl Window {
             sidebar: RefCell::default(),
             sidebar_stack: RefCell::default(),
             last_page: Cell::new(usize::MAX),
+            last_toast: RefCell::default(),
         }));
         this.setup_actions();
         this.setup_page_entry();
         this.setup_drop();
+        if debug::enabled() {
+            this.setup_debug_actions();
+        }
         let weak = Rc::downgrade(&this.0);
         this.0.canvas.connect_view_changed(move || {
             if let Some(inner) = weak.upgrade() {
@@ -592,7 +599,81 @@ impl Window {
     }
 
     fn toast(&self, message: &str) {
+        self.0.last_toast.replace(message.to_owned());
         self.0.toasts.add_toast(adw::Toast::new(message));
+    }
+
+    /// The test hooks described in `debug.rs`.
+    fn setup_debug_actions(&self) {
+        let string = String::static_variant_type();
+        let action = |name: &str, f: fn(&Window, &str)| {
+            let weak = Rc::downgrade(&self.0);
+            gio::ActionEntry::builder(name)
+                .parameter_type(Some(&string))
+                .activate(move |_: &adw::ApplicationWindow, _, param| {
+                    if let (Some(inner), Some(arg)) =
+                        (weak.upgrade(), param.and_then(|p| p.get::<String>()))
+                    {
+                        f(&Window(inner), &arg);
+                    }
+                })
+                .build()
+        };
+        self.0.window.add_action_entries([
+            action("debug-state", |w, path| {
+                if let Err(e) = std::fs::write(path, w.debug_state()) {
+                    eprintln!("debug-state: {path}: {e}");
+                }
+            }),
+            action("debug-screenshot", |w, path| {
+                debug::screenshot(w.0.window.upcast_ref(), path)
+            }),
+            action("debug-go-to", |w, text| {
+                let entry = &w.0.page_entry;
+                entry.grab_focus();
+                entry.set_text(text);
+                entry.emit_activate();
+            }),
+        ]);
+    }
+
+    /// The window's state as JSON, for tests.
+    fn debug_state(&self) -> String {
+        let inner = &self.0;
+        let mut json = debug::Json::default();
+        json.str(
+            "view",
+            &inner.stack.visible_child_name().unwrap_or_default(),
+        )
+        .str("title", &inner.window.title().unwrap_or_default())
+        .str("toast", &inner.last_toast.borrow())
+        .bool("sidebar", inner.split.shows_sidebar())
+        .str(
+            "sidebar_page",
+            &inner
+                .sidebar_stack
+                .borrow()
+                .as_ref()
+                .and_then(|s| s.visible_child_name())
+                .unwrap_or_default(),
+        )
+        .str("page_entry", &inner.page_entry.text())
+        .str("page_total", &inner.page_total.label())
+        .str("zoom_label", &inner.zoom_button.label().unwrap_or_default())
+        .num("scale", inner.canvas.device_scale())
+        .bool("complete", inner.canvas.is_complete());
+        let width = inner.window.width();
+        json.num("width", width as f64)
+            .num("height", inner.window.height() as f64);
+        inner.canvas.with_viewer(|v| {
+            json.num("page", v.current_page() as f64)
+                .num("page_count", v.page_count() as f64)
+                .str("layout", v.layout_mode().name())
+                .bool("cover_alone", v.settings().cover_alone)
+                .str("zoom_mode", v.zoom_mode().name())
+                .num("zoom", v.zoom());
+        });
+        json.finish()
     }
 
     fn set_document_actions_enabled(&self, enabled: bool) {

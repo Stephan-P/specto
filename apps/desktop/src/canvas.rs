@@ -46,6 +46,9 @@ mod imp {
         /// Spinner for pages that take long to render. Only exists while one
         /// is shown: it asks for a redraw every frame while it animates.
         pub spinner: RefCell<Option<(adw::SpinnerPaintable, glib::SignalHandlerId)>>,
+        /// Whether the last frame was final: every visible page sharp and
+        /// nothing left to settle. Reset when the view changes.
+        pub complete: Cell<bool>,
     }
 
     impl Default for Canvas {
@@ -63,6 +66,7 @@ mod imp {
                 pointer: Cell::default(),
                 settle_timer: RefCell::default(),
                 spinner: RefCell::default(),
+                complete: Cell::default(),
             }
         }
     }
@@ -181,6 +185,8 @@ mod imp {
             snapshot.restore();
             d.set_canvas_requests(frame.requests);
             drop(guard);
+            self.complete
+                .set(frame.complete && frame.settles_at.is_none());
             if let Some(at) = frame.settles_at {
                 obj.redraw_at(now, at);
             }
@@ -261,11 +267,17 @@ impl Canvas {
             return;
         };
         f(&mut doc.borrow_mut().viewer);
+        self.imp().complete.set(false);
         self.sync_adjustments();
         self.queue_draw();
         if let Some(cb) = self.imp().on_view_changed.borrow().as_ref() {
             cb();
         }
+    }
+
+    /// Whether the last frame was drawn completely, with sharp tiles.
+    pub fn is_complete(&self) -> bool {
+        self.imp().complete.get()
     }
 
     /// Read-only access to the viewer.
@@ -353,7 +365,7 @@ impl Canvas {
         imp.settle_timer.replace(Some(id));
     }
 
-    fn device_scale(&self) -> f64 {
+    pub fn device_scale(&self) -> f64 {
         self.native()
             .and_then(|n| n.surface())
             .map_or(self.scale_factor() as f64, |s| s.scale())

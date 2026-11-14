@@ -54,7 +54,7 @@ target/release/pdfrs corpus corpus/files/... --reference  # regression run, see 
 - `apps/desktop`: GTK4 + libadwaita app (`pdfrs-gtk`)
 - `apps/android`: Android app (Kotlin + Compose)
 - `tools/pdfrs-cli`: the `pdfrs` dev tool
-- `tools/headless`: run the desktop app under a headless compositor and take screenshots
+- `tools/headless`: run the desktop app under a headless compositor; `check.py` is the automated end-to-end check (also in CI), `smoke.sh` takes screenshots
 - `spikes/`: throwaway prototype code from M0 (to be deleted once ported): `lopdf-spike` (editing/saving), `gtk-canvas` (tiled GTK viewer, `cargo run --release -p gtk-canvas -- file.pdf`)
 - `corpus/`: test corpus fetch script (files are git-ignored)
 

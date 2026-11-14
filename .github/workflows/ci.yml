@@ -35,6 +35,31 @@ jobs:
         run: cargo clippy -p pdfrs-ffi --all-targets --target aarch64-linux-android
       - name: Test
         run: cargo test --workspace
+      - name: Build the desktop app
+        run: cargo build -p pdfrs-desktop
+      # The desktop app in a headless compositor, driven over D-Bus: see
+      # tools/headless/check.py. At scale 1, fractional and HiDPI.
+      - name: Desktop app (scale 1)
+        run: tools/headless/run.sh python3 -I tools/headless/check.py
+        env:
+          PDFRS_CHECK_OUT: check-out/1
+      - name: Desktop app (scale 1.25)
+        run: tools/headless/run.sh python3 -I tools/headless/check.py
+        env:
+          PDFRS_SCALE: "1.25"
+          PDFRS_CHECK_OUT: check-out/1.25
+      - name: Desktop app (scale 2)
+        run: tools/headless/run.sh python3 -I tools/headless/check.py
+        env:
+          PDFRS_SCALE: "2"
+          PDFRS_CHECK_OUT: check-out/2
+      - name: Upload screenshots of failed checks
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-check-screenshots
+          path: check-out/
+          if-no-files-found: ignore
 
   android:
     # Builds the Android app (which cross-compiles the Rust library and

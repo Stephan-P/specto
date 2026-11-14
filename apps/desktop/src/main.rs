@@ -3,6 +3,7 @@
 //! `pdfrs-gtk [FILE…]` opens each file in its own window.
 
 mod canvas;
+mod debug;
 mod document;
 mod outline;
 mod state;
@@ -61,9 +62,6 @@ fn main() -> glib::ExitCode {
             })
             .build();
         app.add_action_entries([quit]);
-        if std::env::var_os("PDFRS_DEBUG").is_some() {
-            app.add_action_entries([debug_screenshot()]);
-        }
     });
 
     app.connect_activate(|app| Window::new(app).present());
@@ -75,31 +73,6 @@ fn main() -> glib::ExitCode {
         }
     });
     app.run()
-}
-
-/// `app.screenshot(path)`: saves the active window as PNG. Only registered
-/// with `PDFRS_DEBUG=1`; trigger it with
-/// `gapplication action net.xfbs.pdfrs screenshot "'/tmp/shot.png'"`.
-fn debug_screenshot() -> gio::ActionEntry<adw::Application> {
-    gio::ActionEntry::builder("screenshot")
-        .parameter_type(Some(&String::static_variant_type()))
-        .activate(|app: &adw::Application, _, param| {
-            let (Some(window), Some(path)) =
-                (app.active_window(), param.and_then(|p| p.get::<String>()))
-            else {
-                return;
-            };
-            // At device resolution, so HiDPI sharpness shows in the PNG.
-            let scale = window.surface().map_or(1.0, |s| s.scale()) as f32;
-            let paintable = gtk::WidgetPaintable::new(Some(&window));
-            let snapshot = gtk::Snapshot::new();
-            snapshot.scale(scale, scale);
-            paintable.snapshot(&snapshot, window.width() as f64, window.height() as f64);
-            if let (Some(node), Some(renderer)) = (snapshot.to_node(), window.renderer()) {
-                let _ = renderer.render_texture(&node, None).save_to_png(&path);
-            }
-        })
-        .build()
 }
 
 /// On macOS, registers each `<Primary>` shortcut with `<Meta>` (Cmd) first:

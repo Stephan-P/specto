@@ -5,4 +5,7 @@ set -euo pipefail
 dnf install -y --setopt=install_weak_deps=False \
   gcc pkgconf-pkg-config git curl \
   gtk4-devel libadwaita-devel \
-  poppler-utils qpdf
+  poppler-utils qpdf \
+  mutter dbus-daemon glib2 python3 python3-gobject mesa-dri-drivers
+# The last line is for the headless desktop app tests (tools/headless):
+# a compositor, a session bus, gdbus, and software OpenGL.

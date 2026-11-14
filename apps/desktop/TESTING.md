@@ -2,6 +2,19 @@
 
 [FEATURES.md](FEATURES.md) is the checklist: go through every feature there on each platform (Linux and macOS). This file has the setup, and the checks that need a particular test file or whose expected result isn't obvious from the feature list.
 
+## Automated checks
+
+Much of the feature list is also checked automatically, in CI and locally (Linux, needs `mutter`; see `ci/install-deps-fedora.sh` for the packages):
+
+```sh
+cargo build -p pdfrs-desktop
+tools/headless/run.sh python3 -I tools/headless/check.py
+PDFRS_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py   # also 1.25
+tools/headless/run.sh python3 -I tools/headless/check.py zoom layouts    # some tests only
+```
+
+The app runs in a headless compositor with its own saved state, so yours isn't touched. What's covered is listed at the top of `tools/headless/check.py`. Not covered: anything needing the pointer (links, dragging, pinch), dialogs, how sharp the text looks, and macOS. Those still need the manual pass.
+
 ## Setup
 
 All commands and paths are relative to the repository root.

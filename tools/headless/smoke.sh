@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Opens a PDF in pdfrs-gtk, switches layouts and zoom via D-Bus actions, and
-# saves a screenshot after each step.
+# saves a screenshot after each step, for looking at. check.py has the
+# automated checks.
 #
 #   cargo build --release -p pdfrs-desktop
 #   tools/headless/run.sh tools/headless/smoke.sh <file.pdf> <out-dir>
@@ -9,9 +10,9 @@ pdf=$1 out=$2
 app=net.xfbs.pdfrs obj=/net/xfbs/pdfrs/window/1
 bin=${PDFRS_GTK:-target/release/pdfrs-gtk}
 mkdir -p "$out"
-shot() { sleep "${2:-1.5}"; gapplication action $app screenshot "'$(realpath "$out")/$1.png'"; sleep 0.3; }
 win() { gdbus call --session --dest $app --object-path $obj \
           --method org.gtk.Actions.Activate "$1" "${2:-[]}" '{}' >/dev/null; }
+shot() { sleep "${2:-1.5}"; win debug-screenshot "[<'$(realpath "$out")/$1.png'>]"; sleep 0.3; }
 
 PDFRS_DEBUG=1 "$bin" "$pdf" 2>"$out/stderr.log" &
 pid=$!
