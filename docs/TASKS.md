@@ -174,7 +174,9 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M7: Polish & hardening
 
-- [ ] **M** Printing (desktop; Android via `PrintManager`)
+- [x] **M** Printing on the desktop: `GtkPrintOperation` with the print dialog (all, current page, ranges, the sidebar selection), the document as edited, pages fitted and centred, landscape paper for wide pages; rendered at 300 dpi on a thread of its own with deferred drawing; settings remembered while the app runs. Headless check `print_to_file` (export to PDF, read back with poppler)
+- [ ] **M** Printing on Android via `PrintManager` (a `PrintDocumentAdapter` writing the pages as edited)
+- [ ] **S** Vector printing: send the pages themselves (e.g. the saved PDF through the print backend) instead of 300 dpi images, for smaller print-to-file output and selectable text
 - [x] **S** Encrypted PDFs: password prompt on open (desktop + Android)
 - [ ] **L** Encrypted save: keep the original security handler on incremental + full-rewrite saves, and encrypt merged-in objects with the target key (D9)
 - [ ] **M** Permission flags: honor owner-password restrictions (edit/annotate/print), with an "unlock" prompt for the owner password. A setting in both apps turns honouring off (D9); what a restriction blocks should say so and point there

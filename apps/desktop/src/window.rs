@@ -14,6 +14,7 @@ use crate::canvas::Canvas;
 use crate::debug;
 use crate::document::{Document, Indexed, MAIN, PageBundle, SaveJob, SharedDocument};
 use crate::outline::OutlineView;
+use crate::print;
 use crate::state;
 use crate::thumbnails::Sidebar;
 
@@ -44,6 +45,7 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "delete-pages",
     "export-pages",
     "reload",
+    "print",
 ];
 
 #[derive(Clone)]
@@ -95,6 +97,8 @@ pub struct Inner {
     password: RefCell<Option<String>>,
     /// Says that the file changed on disk while there are edits, or is gone.
     banner: adw::Banner,
+    /// How many print jobs finished (for tests).
+    printed: Cell<u32>,
 }
 
 impl Window {
@@ -180,6 +184,7 @@ impl Window {
             m.append(Some("Save"), Some("win.save"));
             m.append(Some("Save As…"), Some("win.save-as"));
             m.append(Some("Export Selected Pages…"), Some("win.export-pages"));
+            m.append(Some("Print…"), Some("win.print"));
             m
         });
         main_menu.append_section(None, &undo_section);
@@ -368,6 +373,7 @@ impl Window {
             check_pending: Cell::new(false),
             password: RefCell::default(),
             banner,
+            printed: Cell::new(0),
         }));
         this.setup_actions();
         this.setup_page_entry();
@@ -1248,6 +1254,15 @@ impl Window {
                     s.drop_bundle_at(bundle, &w.0.window, y);
                 }
             }),
+            // Prints to a PDF file without the dialog: "out.pdf", or
+            // "out.pdf|selection" for the pages selected in the sidebar.
+            action("debug-print-to-file", |w, arg| {
+                let (path, selection) = match arg.strip_suffix("|selection") {
+                    Some(p) => (p, true),
+                    None => (arg, false),
+                };
+                w.print(Some((path.into(), selection)));
+            }),
             // Export Selected Pages without the file dialog.
             action("debug-export", |w, path| {
                 let (w, file) = (w.clone(), gio::File::for_path(path));
@@ -1408,6 +1423,7 @@ impl Window {
                         .unwrap_or_default(),
                 )
                 .str("subtitle", &inner.title.subtitle())
+                .num("printed", f64::from(inner.printed.get()))
                 .str(
                     "banner",
                     &if inner.banner.is_revealed() {
@@ -1548,6 +1564,41 @@ impl Window {
                 select: pages.clone(),
                 go_to: None,
             })
+        });
+    }
+
+    /// Shows the print dialog for the document as edited (or prints to a
+    /// PDF file without it: see `print::print`).
+    fn print(&self, export: Option<(std::path::PathBuf, bool)>) {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return;
+        };
+        let job = {
+            let d = doc.borrow();
+            print::Job {
+                pages: d.bundle(&(0..d.edit().page_count()).collect::<Vec<_>>()),
+                name: d.name.clone(),
+                current: d.viewer.current_page(),
+                selected: inner
+                    .sidebar
+                    .borrow()
+                    .as_ref()
+                    .map(Sidebar::selected)
+                    .unwrap_or_default(),
+            }
+        };
+        let weak = Rc::downgrade(&self.0);
+        print::print(job, &inner.window, export, move |outcome| {
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            let w = Window(inner);
+            match outcome {
+                print::Outcome::Done => w.0.printed.set(w.0.printed.get() + 1),
+                print::Outcome::Cancelled => {}
+                print::Outcome::Failed(e) => w.toast(&format!("Couldn't print: {e}")),
+            }
         });
     }
 
@@ -2071,6 +2122,9 @@ impl Window {
                     let w = w.clone();
                     glib::spawn_future_local(async move { w.choose_insert_file().await });
                 }))
+                .build(),
+            gio::ActionEntry::builder("print")
+                .activate(with(|w| w.print(None)))
                 .build(),
             gio::ActionEntry::builder("reload")
                 .activate(with(|w| {

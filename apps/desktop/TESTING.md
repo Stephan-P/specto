@@ -147,6 +147,18 @@ Work on copies of the test files.
 - A file that is a symbolic link: after saving, the link is still a link, pointing at the updated file.
 - GIANT: saving takes a few seconds and the window stays responsive meanwhile.
 
+### Printing
+
+Print to a real printer where you can; otherwise "Print to File" (PDF) shows the same.
+
+- LONG: *Primary*+P, all pages to a file: the file has 352 pages in order, each centred on the paper, landscape pages (if any were rotated) on landscape paper. The window stays responsive while it prints.
+- Rotate page 2, then print the current page (page 2): it's printed turned, on landscape paper.
+- Select thumbnails 3, 5 and 9, *Primary*+P, choose "Selection": only those three. A range such as 10–12 prints those pages.
+- With pages inserted from another file, they're printed in their place.
+- Print again: the dialog starts with the printer and settings used last time.
+- GIANT: prints (slowly), at the paper size, without freezing the window.
+- macOS: File → Print, and Cmd+P. Whether real printers appear depends on how Homebrew's GTK was built; note what the dialog offers.
+
 ### Changes by other programs
 
 Use a copy of LONG, and another program that saves PDFs (`qpdf`, a PDF editor, or just `cp`).

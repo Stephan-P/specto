@@ -309,6 +309,17 @@ impl PageBundle {
     pub fn page_count(&self) -> usize {
         self.pages.len()
     }
+
+    /// The files, each with its password.
+    pub fn files(&self) -> &[(PdfData, Option<String>)] {
+        &self.files
+    }
+
+    /// The pages: index in [`files`](Self::files), page of that file, and
+    /// the rotation the user gave it.
+    pub fn pages(&self) -> &[(usize, u32, Rotation)] {
+        &self.pages
+    }
 }
 
 /// What saving needs, taken from the session so the file can be written

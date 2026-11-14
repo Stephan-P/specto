@@ -87,9 +87,17 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - When the open file is moved or deleted, a banner says so; Save writes it again
 - A file pdfrs can't save correctly (a few damaged ones) isn't written: a message says so instead
 
+## Printing
+
+- Print (*Primary*+P, the main menu) with the system's print dialog: printer, copies, paper, all pages, the current page, a range, or the pages selected in the sidebar ("Selection")
+- Prints the document as edited: pages in their order, with their rotation, including inserted pages
+- Each page fitted to the paper and centred; pages wider than tall go on landscape paper
+- Pages are printed as images at 300 dpi (sharp on paper, but a "Print to File" PDF is large and has no selectable text; Export Selected Pages keeps it)
+- The dialog remembers the last printer and settings while the app runs
+
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -105,6 +113,6 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Not yet
 
-- Printing, annotations, form filling
+- Annotations, form filling
 - Highlighting the current outline entry
 - Dark mode for page content

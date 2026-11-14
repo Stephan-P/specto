@@ -196,7 +196,7 @@ How the full rewrite works (`pdfrs_write::write`):
 
 ### Desktop
 
-GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew's GTK. Links `pdfrs-view` directly as a Rust crate. A custom `GtkWidget` subclass (implementing `GtkScrollable`) draws each frame's `PageDraw`s in `snapshot()`, turning tiles into `GdkMemoryTexture`s. The surrounding chrome uses stock widgets: `AdwOverlaySplitView` with a `GtkListView` of thumbnails and a `GtkTreeListModel` outline, `GtkFileDialog`, and `GtkGestureZoom` for touchpad pinch. Planned: `GtkPrintOperation`, `GtkGestureStylus` for pen input, and Flatpak packaging (file access through the portal).
+GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew's GTK. Links `pdfrs-view` directly as a Rust crate. A custom `GtkWidget` subclass (implementing `GtkScrollable`) draws each frame's `PageDraw`s in `snapshot()`, turning tiles into `GdkMemoryTexture`s. The surrounding chrome uses stock widgets: `AdwOverlaySplitView` with a `GtkListView` of thumbnails and a `GtkTreeListModel` outline, `GtkFileDialog`, and `GtkGestureZoom` for touchpad pinch. Printing uses `GtkPrintOperation`, with pages rendered at 300 dpi on a thread of their own (deferred drawing). Planned: `GtkGestureStylus` for pen input, and Flatpak packaging (file access through the portal).
 
 ### Android
 

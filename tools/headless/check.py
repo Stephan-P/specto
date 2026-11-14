@@ -54,6 +54,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
   if there are no edits; with edits, a banner offers to, and Save asks
   before overwriting; our own saves don't count; a deleted file gets a
   banner
+- print_to_file: printing (to a PDF file, through a test hook) prints the
+  pages as edited, landscape ones on landscape paper, each with its own
+  content; "Selection" prints the selected thumbnails only
 - insert_file: pages of another file inserted after the current page, shown
   and searched; the pages keep their labels, the inserted ones numbered by
   position; undo; saved, they're in the file
@@ -87,6 +90,7 @@ tests, which use mutter's remote desktop API through PyGObject.
 """
 
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -1377,6 +1381,62 @@ def test_file_changed(ctx):
     w.wait("the banner", lambda s: "moved or deleted" in s["banner"])
     w.action("save")
     w.wait("the file written again", lambda s: os.path.exists(path) and s["banner"] == "")
+
+
+def printed_pages(path):
+    """Each page of the PDF at `path`: (landscape, colour covering most of
+    it), read with poppler (pdfinfo, pdftoppm) rather than pdfrs."""
+    info = subprocess.run(["pdfinfo", "-f", "1", "-l", "999", path],
+                          capture_output=True, text=True).stdout
+    sizes = re.findall(r"^Page +\d+ size: +([\d.]+) x ([\d.]+)", info, re.M)
+    out = []
+    for i, (w, h) in enumerate(sizes, 1):
+        prefix = os.path.join(os.path.dirname(path), f"printed-{i}")
+        subprocess.run(["pdftoppm", "-r", "20", "-f", str(i), "-l", str(i),
+                        "-singlefile", path, prefix], check=True)
+        # Printing and reading back may move a channel by one or two.
+        width, height, pixels = read_ppm(prefix + ".ppm")
+        counts = {}
+        for k in range(0, len(pixels), 3):
+            px = pixels[k : k + 3]
+            for page, c in enumerate(PALETTE[:PAGES]):
+                if all(abs(a - b) <= 3 for a, b in zip(px, c)):
+                    counts[page] = counts.get(page, 0) + 1
+                    break
+        top = max(counts, key=counts.get) if counts else None
+        out.append((float(w) > float(h), top))
+    return out
+
+
+def test_print_to_file(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    w.maximize()
+    w.settled("maximized")
+    inp = ctx.input().attach(w)
+    w.action("next-page")
+    w.wait("page 2", lambda s: s["page"] == 1)
+    w.action("rotate-right")
+    w.wait("page 2 rotated", lambda s: rotations(s)[1] == 90)
+    out = os.path.join(ctx.home, "printed.pdf")
+    w.action("debug-print-to-file", gvariant_str(out))
+    s = w.wait("the print", lambda s: s["printed"] == 1)
+    check(s["toast"] == "", s)
+    pages = printed_pages(out)
+    check(len(pages) == PAGES, f"{len(pages)} pages printed")
+    # Page 2 turned by the user and page ROTATED by its file are landscape.
+    landscape = [i for i, (wide, _) in enumerate(pages) if wide]
+    check(landscape == sorted([1, ROTATED]), f"landscape: {landscape}")
+    check([c for _, c in pages] == list(range(PAGES)), f"colours: {pages}")
+    # Selection: thumbnails 1 and 3 only.
+    click_thumbnail(w, inp, 0)
+    click_thumbnail(w, inp, 2, control=True)
+    selected_thumbnails(w, [0, 2])
+    out = os.path.join(ctx.home, "selection.pdf")
+    w.action("debug-print-to-file", gvariant_str(out + "|selection"))
+    w.wait("the second print", lambda s: s["printed"] == 2)
+    pages = printed_pages(out)
+    check([c for _, c in pages] == [0, 2], f"selection printed: {pages}")
 
 
 def test_insert_file(ctx):

@@ -6,6 +6,7 @@ mod canvas;
 mod debug;
 mod document;
 mod outline;
+mod print;
 mod state;
 mod thumbnails;
 mod window;
@@ -28,6 +29,7 @@ fn main() -> glib::ExitCode {
             ("win.open", &["<Primary>o"][..]),
             ("win.save", &["<Primary>s"]),
             ("win.save-as", &["<Shift><Primary>s"]),
+            ("win.print", &["<Primary>p"]),
             (
                 "win.zoom-in",
                 &["<Primary>plus", "<Primary>equal", "<Primary>KP_Add"],
@@ -129,6 +131,7 @@ fn menubar() -> gio::Menu {
             ("Save As…", "win.save-as"),
             ("Export Selected Pages…", "win.export-pages"),
         ]),
+        section(&[("Print…", "win.print")]),
         section(&[("Close Window", "window.close")]),
         section(&[("Quit pdfrs", "app.quit")]),
     ]);
