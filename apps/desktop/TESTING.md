@@ -12,7 +12,7 @@ target/release/pdfrs-gtk                 # start page
 target/release/pdfrs-gtk a.pdf b.pdf     # one window per file
 ```
 
-macOS needs GTK 4 and libadwaita 1.6 or newer from Homebrew: `brew install gtk4 libadwaita`.
+macOS needs GTK 4, libadwaita 1.6 or newer and the Adwaita icons from Homebrew: `brew install gtk4 libadwaita adwaita-icon-theme`. Without the icon theme, header bar and sidebar icons are missing.
 
 *Primary* means Ctrl on Linux and Cmd on macOS.
 
@@ -89,7 +89,7 @@ Resetting saved state:
 
 ## Platform notes
 
-- macOS: GTK draws its own window decorations and menus (no global menu bar). Opening PDFs from Finder with "Open With" isn't expected to work yet, since there's no app bundle; use the command line, the dialog or drag-and-drop. Retina screens are scale 2.
+- macOS: the app has a menu bar (File, View, Go) in the system menu bar, with the shortcuts shown; GTK draws its own window decorations. Shortcuts should work with Cmd (and also with Ctrl). Opening PDFs from Finder with "Open With" isn't expected to work yet, since there's no app bundle; use the command line, the dialog or drag-and-drop. Retina screens are scale 2.
 - Linux: fractional scaling needs to be enabled in GNOME (Settings → Displays). Recently opened PDFs should also appear in GNOME Files under Recent.
 
 ## Reporting

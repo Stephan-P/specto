@@ -34,11 +34,23 @@ fn main() -> glib::ExitCode {
             ("win.fit-width", &["<Primary>8"]),
             ("win.fit-page", &["<Primary>9"]),
             ("win.go-to-page", &["<Primary>l"]),
+            ("win.layout::single", &["<Primary>1"]),
+            ("win.layout::continuous", &["<Primary>2"]),
+            ("win.layout::two-page", &["<Primary>3"]),
+            ("win.layout::two-page-continuous", &["<Primary>4"]),
             ("win.show-sidebar", &["F9"]),
             ("window.close", &["<Primary>w"]),
             ("app.quit", &["<Primary>q"]),
         ] {
-            app.set_accels_for_action(action, accels);
+            let accels = platform_accels(accels);
+            let accels: Vec<&str> = accels.iter().map(String::as_str).collect();
+            app.set_accels_for_action(action, &accels);
+        }
+        // macOS shows this in the system menu bar. Elsewhere the in-window
+        // header bar menus are enough (and libadwaita windows don't show
+        // a menu bar anyway).
+        if cfg!(target_os = "macos") {
+            app.set_menubar(Some(&menubar()));
         }
         // Close windows one by one, so each saves its view state.
         let quit = gio::ActionEntry::builder("quit")
@@ -88,4 +100,81 @@ fn debug_screenshot() -> gio::ActionEntry<adw::Application> {
             }
         })
         .build()
+}
+
+/// On macOS also registers each `<Primary>` shortcut with `<Meta>` (Cmd),
+/// in case GTK maps `<Primary>` to Ctrl there.
+fn platform_accels(accels: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = accels.iter().map(|a| a.to_string()).collect();
+    if cfg!(target_os = "macos") {
+        out.extend(
+            accels
+                .iter()
+                .filter_map(|a| a.strip_prefix("<Primary>"))
+                .map(|key| format!("<Meta>{key}")),
+        );
+    }
+    out
+}
+
+/// The application menu bar (macOS only): File, View and Go, like Preview.
+fn menubar() -> gio::Menu {
+    let section = |items: &[(&str, &str)]| {
+        let m = gio::Menu::new();
+        for (label, action) in items {
+            m.append(Some(label), Some(action));
+        }
+        m
+    };
+    let submenu = |sections: &[gio::Menu]| {
+        let m = gio::Menu::new();
+        for s in sections {
+            m.append_section(None, s);
+        }
+        m
+    };
+
+    let file = submenu(&[
+        section(&[("Open…", "win.open")]),
+        section(&[("Close Window", "window.close")]),
+        section(&[("Quit pdfrs", "app.quit")]),
+    ]);
+    let view = submenu(&[
+        section(&[
+            ("Single Page", "win.layout::single"),
+            ("Continuous", "win.layout::continuous"),
+            ("Two Pages", "win.layout::two-page"),
+            ("Two Pages, Continuous", "win.layout::two-page-continuous"),
+        ]),
+        section(&[("Show Cover Page Alone", "win.cover-alone")]),
+        section(&[
+            ("Actual Size", "win.zoom-actual"),
+            ("Fit Width", "win.fit-width"),
+            ("Fit Page", "win.fit-page"),
+            ("Zoom In", "win.zoom-in"),
+            ("Zoom Out", "win.zoom-out"),
+        ]),
+        section(&[
+            ("Show Sidebar", "win.show-sidebar"),
+            ("Thumbnails", "win.sidebar-page::thumbnails"),
+            ("Contents", "win.sidebar-page::outline"),
+        ]),
+    ]);
+    let go = submenu(&[
+        section(&[
+            ("Previous Page", "win.previous-page"),
+            ("Next Page", "win.next-page"),
+        ]),
+        section(&[
+            ("First Page", "win.first-page"),
+            ("Last Page", "win.last-page"),
+        ]),
+        section(&[("Go to Page…", "win.go-to-page")]),
+    ]);
+
+    let bar = gio::Menu::new();
+    bar.append_submenu(Some("File"), &file);
+    bar.append_submenu(Some("View"), &view);
+    bar.append_submenu(Some("Go"), &go);
+    bar
 }

@@ -16,7 +16,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 ## Viewing
 
 - Continuous scrolling with native overlay scrollbars and kinetic touchpad scrolling
-- Layouts: single page, continuous, two pages, two pages continuous; optionally the first page alone (book cover)
+- Layouts: single page, continuous, two pages, two pages continuous (*Primary*+1 to 4); optionally the first page alone (book cover)
 - Rotated pages and mixed page sizes shown correctly
 - Sharp on HiDPI and fractionally scaled screens: once zooming stops, pages are drawn at exactly the screen resolution
 - Low-resolution previews while pages render, then sharp tiles
@@ -36,6 +36,11 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Thumbnail sidebar (F9); the current page is highlighted and kept in view
 - Contents tab with the document's outline, when it has one; entries jump to the exact position
 - Links: in-document links and named actions (next page, …) are followed; web and mail links open in the default app; other kinds are refused
+
+## macOS
+
+- Menu bar in the system menu bar: File (Open, Close Window, Quit), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page)
+- Shortcuts with Cmd
 
 ## Remembering state
 

@@ -25,6 +25,10 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "layout",
     "cover-alone",
     "go-to-page",
+    "next-page",
+    "previous-page",
+    "first-page",
+    "last-page",
 ];
 
 #[derive(Clone)]
@@ -646,6 +650,21 @@ impl Window {
             gio::ActionEntry::builder("go-to-page")
                 .activate(with(|w| {
                     w.0.page_entry.grab_focus();
+                }))
+                .build(),
+            gio::ActionEntry::builder("next-page")
+                .activate(with(|w| w.0.canvas.update_viewer(Viewer::next_page)))
+                .build(),
+            gio::ActionEntry::builder("previous-page")
+                .activate(with(|w| w.0.canvas.update_viewer(Viewer::previous_page)))
+                .build(),
+            gio::ActionEntry::builder("first-page")
+                .activate(with(|w| w.0.canvas.update_viewer(|v| v.go_to_page(0))))
+                .build(),
+            gio::ActionEntry::builder("last-page")
+                .activate(with(|w| {
+                    w.0.canvas
+                        .update_viewer(|v| v.go_to_page(v.page_count().saturating_sub(1)))
                 }))
                 .build(),
         ]);
