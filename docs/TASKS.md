@@ -19,7 +19,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** hayro spike: render page content without annotations (`Content::PageOnly`, tested)
 - [x] **M** lopdf spike: delete, merge, reorder, incremental highlight (D2). Validated with hayro and Poppler; qpdf isn't installed.
 - [x] **S** lopdf spike: AES-256 encrypt, encrypted incremental save, decrypt → edit → re-encrypt (D9)
-- [ ] **S** Verify Preview's encryption behavior on a Mac (user password, owner-password restrictions, Export → Encrypt) and update D9
+- [x] **S** Verify Preview's encryption behavior on a Mac: saving keeps the password; user and owner passwords can be added, changed or removed in a File-menu settings panel (D9)
+- [ ] **S** Check how Preview handles owner-password restrictions (no open password, but editing or printing restricted) and update D9
 - [x] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + zoom, about 55 fps (D3, see M0-FINDINGS.md)
 - [x] **S** Manual check of the canvas spike on real hardware: works on macOS (GTK), but HiDPI output looks off
 - [x] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap`; tile pixels need a JNI path, not UniFFI (D4/D5, see M0-FINDINGS.md)
@@ -106,7 +107,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** Encrypted PDFs: password prompt on open (desktop + Android)
 - [ ] **L** Encrypted save: keep the original security handler on incremental + full-rewrite saves, and encrypt merged-in objects with the target key (D9)
 - [ ] **M** Permission flags: honor owner-password restrictions (edit/annotate/print), with an "unlock" prompt for the owner password
-- [ ] **S** Export dialog: add / change / remove password (AES-256)
+- [ ] **S** Document security dialog (like Preview's, from the File menu): add / change / remove user and owner passwords (AES-256), saved with the document
 - [ ] **M** Fuzzing (`cargo-fuzz`) for parser and save path; fix crashes
 - [ ] **M** Performance pass: profile big/complex docs, startup time, memory
 - [ ] **M** Accessibility: keyboard-only operation, screen-reader labels for chrome
