@@ -29,34 +29,77 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Shape of a grid cell; pages are fitted into it whatever their own shape. */
 private const val CELL_ASPECT = 0.72f
 
-/** Thumbnails to prepare beyond the visible ones, for scrolling down. */
-private const val PREFETCH = 6
+/** Thumbnails to prepare beyond the visible ones, for scrolling on. */
+const val THUMBNAIL_PREFETCH = 6
+
+private val thumbnailPaint = Paint().apply { isFilterBitmap = true }
+
+/**
+ * The thumbnail of [page] on a white sheet, filling the space it is given
+ * (the caller sets the aspect ratio), outlined, more strongly if [selected].
+ * Blank until the thumbnail is rendered. The thumbnails are the page view's
+ * own low-resolution placeholder tiles, so nothing is rendered twice; the
+ * caller must announce the pages it shows with [PdfViewState.showThumbnails].
+ */
+@Composable
+fun PageThumbnail(
+    state: PdfViewState,
+    page: Int,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    selectedBorder: Dp = 3.dp,
+) {
+    val tile = state.thumbnailId(page)
+    val bitmap = if (tile != 0L) state.bitmap(tile) else null
+    val outline =
+        if (selected) {
+            Modifier.border(selectedBorder, MaterialTheme.colorScheme.primary)
+        } else {
+            Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        }
+    Box(
+        modifier
+            .background(Color.White)
+            .drawBehind {
+                // Not `Image`: the tile cache may recycle a bitmap, and
+                // drawing a recycled one would throw.
+                if (bitmap != null && !bitmap.isRecycled) {
+                    drawIntoCanvas {
+                        it.nativeCanvas.drawBitmap(
+                            bitmap, null, RectF(0f, 0f, size.width, size.height), thumbnailPaint,
+                        )
+                    }
+                }
+            }
+            .then(outline),
+    )
+}
 
 /**
  * All pages as a grid of thumbnails; tapping one calls [onPick] with its
- * zero-based index. The thumbnails are the page view's own low-resolution
- * placeholder tiles, so nothing is rendered twice.
+ * zero-based index.
  */
 @Composable
 fun PagesGrid(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val current = state.frame?.currentPage ?: 0
+    val current = state.currentPage
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = current)
-    val paint = remember { Paint().apply { isFilterBitmap = true } }
+    val owner = remember { Any() }
 
     LaunchedEffect(state, grid) {
         snapshotFlow {
             val visible = grid.layoutInfo.visibleItemsInfo
-            if (visible.isEmpty()) 0 to 0 else visible.first().index to visible.size + PREFETCH
-        }.distinctUntilChanged().collect { (first, count) -> state.showThumbnails(first, count) }
+            if (visible.isEmpty()) 0 to 0 else visible.first().index to visible.size + THUMBNAIL_PREFETCH
+        }.distinctUntilChanged().collect { (first, count) -> state.showThumbnails(owner, first, count) }
     }
     DisposableEffect(state) {
-        onDispose { state.showThumbnails(0, 0) }
+        onDispose { state.hideThumbnails(owner) }
     }
 
     LazyVerticalGrid(
@@ -74,30 +117,13 @@ fun PagesGrid(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = M
             ) {
                 Box(Modifier.fillMaxWidth().aspectRatio(CELL_ASPECT), contentAlignment = Alignment.Center) {
                     val aspect = state.pageAspect(page)
-                    val bitmap = state.frame?.thumbnailId(page)?.takeIf { it != 0L }?.let(state::bitmap)
-                    val outline =
-                        if (page == current) {
-                            Modifier.border(3.dp, MaterialTheme.colorScheme.primary)
-                        } else {
-                            Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        }
-                    Box(
+                    PageThumbnail(
+                        state,
+                        page,
+                        selected = page == current,
                         Modifier
                             .aspectRatio(aspect, matchHeightConstraintsFirst = aspect < CELL_ASPECT)
-                            .fillMaxSize()
-                            .background(Color.White)
-                            .drawBehind {
-                                // Not `Image`: the tile cache may recycle a bitmap,
-                                // and drawing a recycled one would throw.
-                                if (bitmap != null && !bitmap.isRecycled) {
-                                    drawIntoCanvas {
-                                        it.nativeCanvas.drawBitmap(
-                                            bitmap, null, RectF(0f, 0f, size.width, size.height), paint,
-                                        )
-                                    }
-                                }
-                            }
-                            .then(outline),
+                            .fillMaxSize(),
                     )
                 }
                 Text(

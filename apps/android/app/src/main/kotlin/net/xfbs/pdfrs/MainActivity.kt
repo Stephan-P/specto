@@ -1,5 +1,6 @@
 package net.xfbs.pdfrs
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.ComponentCallbacks2
 import android.content.Context
@@ -18,8 +19,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -69,6 +74,10 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import uniffi.pdfrs_ffi.Activated
 import uniffi.pdfrs_ffi.PdfException
 
 class MainActivity : ComponentActivity() {
@@ -157,6 +166,9 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
     // Which tab the top-left button opens: the one used last, pages at first.
     var preferContents by remember { mutableStateOf(false) }
     var externalLink by remember { mutableStateOf<String?>(null) }
+    // Tapping the page hides everything but the page; tapping again brings
+    // the bars back.
+    var fullScreen by remember { mutableStateOf(false) }
     var showGoTo by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
         (loaded as? Loaded.Ready)?.state?.close()
@@ -166,6 +178,7 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
 
     LaunchedEffect(document) {
         showPages = false
+        fullScreen = false
         show(null)
         if (document == null) return@LaunchedEffect
         loaded = Loaded.Loading
@@ -187,11 +200,22 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
     }
 
     val ready = loaded as? Loaded.Ready
+    val immersive = fullScreen && ready != null && !showPages
     BackHandler(enabled = showPages) { showPages = false }
+    BackHandler(enabled = immersive) { fullScreen = false }
+    StatusBar(hidden = immersive)
 
     Scaffold(
+        // Full screen: the page may extend under the navigation handle, but
+        // not under the camera cutout.
+        contentWindowInsets = if (immersive) WindowInsets.displayCutout else WindowInsets.safeDrawing,
+        bottomBar = {
+            if (ready != null && !showPages && !immersive && ready.state.pageCount > 1) {
+                ThumbnailStrip(ready.state)
+            }
+        },
         topBar = {
-            TopAppBar(
+            if (!immersive) TopAppBar(
                 navigationIcon = {
                     if (ready != null) {
                         IconButton(onClick = { showPages = !showPages }) {
@@ -283,13 +307,22 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                                 showPages = false
                             },
                             onOutlineEntry = {
-                                externalLink = l.state.openOutlineEntry(it)
+                                (l.state.openOutlineEntry(it) as? Activated.Uri)?.let { link ->
+                                    externalLink = link.uri
+                                }
                                 showPages = false
                             },
                         )
                     } else {
-                        PdfView(l.state, Modifier.fillMaxSize(), onExternalLink = { externalLink = it })
-                        PageIndicator(l.state, Modifier.align(Alignment.BottomCenter).padding(16.dp))
+                        PdfView(
+                            l.state,
+                            Modifier.fillMaxSize(),
+                            onExternalLink = { externalLink = it },
+                            onTap = { fullScreen = !fullScreen },
+                        )
+                        if (!immersive) {
+                            PageIndicator(l.state, Modifier.align(Alignment.BottomCenter).padding(12.dp))
+                        }
                     }
             }
         }
@@ -309,6 +342,26 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                 ready.state.goToPage(it)
             },
         )
+    }
+}
+
+/**
+ * Hides or shows the status bar. The navigation bar stays: hiding it makes
+ * Android show its "viewing full screen" explanation and turns going home
+ * into two swipes, for the sake of a thin handle.
+ */
+@Composable
+private fun StatusBar(hidden: Boolean) {
+    val view = LocalView.current
+    LaunchedEffect(hidden) {
+        val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
+        val bars = WindowCompat.getInsetsController(window, view)
+        if (hidden) {
+            bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars.hide(WindowInsetsCompat.Type.statusBars())
+        } else {
+            bars.show(WindowInsetsCompat.Type.statusBars())
+        }
     }
 }
 
@@ -469,7 +522,7 @@ private fun GoToPageDialog(pageCount: Int, onDismiss: () -> Unit, onPage: (Int) 
 
 @Composable
 private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
-    val frame = state.frame ?: return
+    val current = state.currentPage
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
@@ -477,7 +530,7 @@ private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
     ) {
         Text(
-            "${frame.currentPage + 1} / ${state.pageCount}",
+            "${current + 1} / ${state.pageCount}",
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
         )

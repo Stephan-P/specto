@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
@@ -75,6 +76,7 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     private var buffer = newBuffer(16 * 1024)
     private var motion: Job? = null
     private val settle = Runnable { refresh() }
+    private var thumbnailOwner: Any? = null
 
     val pageCount: Int = session.pageCount().toInt()
 
@@ -105,9 +107,27 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
             refresh()
         }
 
-    /** What to draw. Changes whenever the view or the available tiles change. */
+    /**
+     * What to draw. Changes whenever the view or the available tiles change,
+     * i.e. on every step of a scroll: only the page canvas should read it.
+     * The bars around it read [currentPage] and [thumbnailId], which change
+     * far less often.
+     */
     var frame: ViewFrame? by mutableStateOf(null)
         private set
+
+    /** Zero-based index of the page being looked at. */
+    var currentPage: Int by mutableIntStateOf(0)
+        private set
+
+    /** The frame that last changed which thumbnails are available. */
+    private var thumbnails: ViewFrame? by mutableStateOf(null)
+
+    /**
+     * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't
+     * rendered yet or wasn't announced with [showThumbnails].
+     */
+    fun thumbnailId(page: Int): Long = thumbnails?.thumbnailId(page) ?: 0
 
     fun bitmap(id: Long): Bitmap? = bitmaps[id]
 
@@ -128,24 +148,21 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
 
     /**
      * A tap at [at]: follows a link there, if any. Links within the document
-     * are followed right away; for an external one its URI is returned, and
-     * opening it (after asking) is up to the caller.
+     * are followed right away ([Activated.Moved]); for an external one
+     * ([Activated.Uri]), opening it after asking is up to the caller.
+     * [Activated.Nothing] means the tap hit no link.
      */
-    fun tap(at: Offset): String? = finish(session.tap(at.x.toDouble(), at.y.toDouble()))
+    fun tap(at: Offset): Activated = finish(session.tap(at.x.toDouble(), at.y.toDouble()))
 
     /** Goes where entry [index] of [outline] leads; see [tap] for the result. */
-    fun openOutlineEntry(index: Int): String? = finish(session.activateOutline(index.toUInt()))
+    fun openOutlineEntry(index: Int): Activated = finish(session.activateOutline(index.toUInt()))
 
-    private fun finish(activated: Activated): String? {
-        when (activated) {
-            Activated.Nothing -> {}
-            Activated.Moved -> {
-                stopMotion()
-                refresh()
-            }
-            is Activated.Uri -> return activated.uri
+    private fun finish(activated: Activated): Activated {
+        if (activated == Activated.Moved) {
+            stopMotion()
+            refresh()
         }
-        return null
+        return activated
     }
 
     /** Shows [page] (zero-based) at the top of the view. */
@@ -156,12 +173,23 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     }
 
     /**
-     * Tells which pages' thumbnails are on screen ([count] may be 0), so
-     * that they get rendered and kept: see [ViewFrame.thumbnailId].
+     * Tells which pages' thumbnails are on screen, so that they get rendered
+     * and kept: see [ViewFrame.thumbnailId]. One range at a time: [owner]
+     * identifies the caller (the page grid, the thumbnail strip), and the
+     * last one to call wins.
      */
-    fun showThumbnails(first: Int, count: Int) {
+    fun showThumbnails(owner: Any, first: Int, count: Int) {
         if (closed) return
+        thumbnailOwner = owner
         Native.setThumbnailRange(sessionId, first, count)
+        refresh()
+    }
+
+    /** [owner] no longer shows thumbnails. Does nothing if another took over since. */
+    fun hideThumbnails(owner: Any) {
+        if (closed || thumbnailOwner !== owner) return
+        thumbnailOwner = null
+        Native.setThumbnailRange(sessionId, 0, 0)
         refresh()
     }
 
@@ -303,6 +331,8 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
             bitmaps.remove(id)
         }
         frame = next
+        currentPage = next.currentPage
+        if (!next.sameThumbnailsAs(thumbnails)) thumbnails = next
         // After zooming, the view sharpens (switches to exact-scale tiles)
         // only when a frame is planned once the zoom has been still for a while.
         main.removeCallbacks(settle)
@@ -313,6 +343,7 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
         stopMotion()
         closed = true
         main.removeCallbacks(settle)
+        thumbnails = null
         frame = null
         for (i in 0 until bitmaps.size()) bitmaps.valueAt(i).recycle()
         bitmaps.clear()

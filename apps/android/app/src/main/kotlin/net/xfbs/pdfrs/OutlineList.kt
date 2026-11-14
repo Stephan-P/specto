@@ -59,7 +59,7 @@ fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier =
         }
     }
     // Where the reader is: the last entry at or before the current page.
-    val currentPage = state.frame?.currentPage ?: 0
+    val currentPage = state.currentPage
     val here = entries.indexOfLast { e -> e.page?.let { it.toInt() <= currentPage } == true }
     val list = rememberLazyListState(
         initialFirstVisibleItemIndex = (visible.indexOf(here) - 3).coerceAtLeast(0),

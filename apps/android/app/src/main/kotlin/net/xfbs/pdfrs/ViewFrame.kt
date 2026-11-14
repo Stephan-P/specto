@@ -45,6 +45,10 @@ class ViewFrame private constructor(
      */
     fun thumbnailId(page: Int): Long = thumbnails.getOrElse(page - thumbnailFirst) { 0 }
 
+    /** Whether [other] reports the same thumbnails for the same pages. */
+    fun sameThumbnailsAs(other: ViewFrame?): Boolean =
+        other != null && thumbnailFirst == other.thumbnailFirst && thumbnails.contentEquals(other.thumbnails)
+
     /** Zero-based page index of the [i]th visible page. */
     fun page(i: Int): Int = pageIndex[i]
 

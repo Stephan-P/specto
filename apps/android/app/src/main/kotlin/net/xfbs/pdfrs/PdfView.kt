@@ -35,15 +35,21 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.abs
+import uniffi.pdfrs_ffi.Activated
 
 /**
  * Draws the frames planned by [state] and turns touches into scrolling or
  * swiping between pages, pinch zoom and double-tap zoom. A tap follows a
- * link; links leaving the document are passed to [onExternalLink]. No layout
- * maths happens here.
+ * link; links leaving the document are passed to [onExternalLink], and taps
+ * that hit no link to [onTap]. No layout maths happens here.
  */
 @Composable
-fun PdfView(state: PdfViewState, modifier: Modifier = Modifier, onExternalLink: (String) -> Unit = {}) {
+fun PdfView(
+    state: PdfViewState,
+    modifier: Modifier = Modifier,
+    onExternalLink: (String) -> Unit = {},
+    onTap: () -> Unit = {},
+) {
     val density = LocalDensity.current.density
     val scope = rememberCoroutineScope()
     val exactPaint = remember { Paint().apply { isFilterBitmap = false } }
@@ -74,7 +80,13 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier, onExternalLink: 
             .onSizeChanged { state.setViewport(it.width / density, it.height / density, density) }
             .pointerInput(state) {
                 detectTapGestures(
-                    onTap = { state.tap(it / density)?.let(onExternalLink) },
+                    onTap = {
+                        when (val hit = state.tap(it / density)) {
+                            Activated.Nothing -> onTap()
+                            Activated.Moved -> {}
+                            is Activated.Uri -> onExternalLink(hit.uri)
+                        }
+                    },
                     onDoubleTap = { state.doubleTap(scope, it / density) },
                 )
             }
