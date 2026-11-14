@@ -1,6 +1,5 @@
 package net.xfbs.pdfrs
 
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -71,13 +70,7 @@ class DocumentTest : AppTest() {
      * its top-left corner. The pages are A4 and shown fitted and centred.
      */
     private fun tapOnPage(x: Float, fromTop: Float) {
-        page.performTouchInput {
-            val margin = 8 * density
-            val zoom = minOf((width - 2 * margin) / 595f, (height - 2 * margin) / 842f)
-            val left = (width - 595f * zoom) / 2
-            val top = (height - 842f * zoom) / 2
-            click(Offset(left + x * zoom, top + fromTop * zoom))
-        }
+        page.performTouchInput { click(pagePoint(x, fromTop)) }
     }
 
     @Test

@@ -3,6 +3,8 @@ package net.xfbs.pdfrs
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.TouchInjectionScope
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -100,6 +102,19 @@ abstract class AppTest {
          * document; a wait that is satisfied sooner costs nothing.
          */
         const val WAIT_MS = 30_000L
+    }
+
+    /**
+     * The point of the current page that is ([x], [fromTop]) points from its
+     * top-left corner. The test documents' pages are A4 and shown fitted and
+     * centred.
+     */
+    protected fun TouchInjectionScope.pagePoint(x: Float, fromTop: Float): Offset {
+        val margin = 8 * density
+        val zoom = minOf((width - 2 * margin) / 595f, (height - 2 * margin) / 842f)
+        val left = (width - 595f * zoom) / 2
+        val top = (height - 842f * zoom) / 2
+        return Offset(left + x * zoom, top + fromTop * zoom)
     }
 
     /** Picks an item of the ⋮ menu. */

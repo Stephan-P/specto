@@ -20,6 +20,8 @@ class ViewFrame private constructor(
     val twoPages: Boolean,
     /** With two pages: the first page stands on its own. */
     val coverAlone: Boolean,
+    /** Text is selected, on screen or not. */
+    val selection: Boolean,
     /** Zoom relative to the fitted state of the view mode: 1.0 when fitted. */
     val zoomFactor: Double,
     /** Zero-based index of the page the user is looking at. */
@@ -43,7 +45,39 @@ class ViewFrame private constructor(
     private val tileExact: BooleanArray,
     private val thumbnailFirst: Int,
     private val thumbnails: LongArray,
+    /** Eight numbers per highlight: x and y of its four corners. */
+    private val highlights: FloatArray,
+    /**
+     * Where the selection starts, for its handle: the edge of its first
+     * line as bottom x, bottom y, top x, top y. Null if that isn't on screen.
+     */
+    val selectionStart: FloatArray?,
+    /** Where the selection ends, likewise. */
+    val selectionEnd: FloatArray?,
 ) {
+    /**
+     * How many stretches of selected text are on screen, one per line. Each
+     * is a quadrilateral (lines can be rotated) with the corners 0: start
+     * bottom, 1: end bottom, 2: end top, 3: start top.
+     */
+    val highlightCount: Int get() = highlights.size / 8
+
+    fun highlightX(i: Int, corner: Int): Float = highlights[8 * i + 2 * corner]
+    fun highlightY(i: Int, corner: Int): Float = highlights[8 * i + 2 * corner + 1]
+
+    /** What the highlights on screen cover, as left, top, right, bottom; null without any. */
+    fun highlightBounds(): FloatArray? {
+        if (highlights.isEmpty()) return null
+        val bounds = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+        for (i in highlights.indices step 2) {
+            bounds[0] = minOf(bounds[0], highlights[i])
+            bounds[1] = minOf(bounds[1], highlights[i + 1])
+            bounds[2] = maxOf(bounds[2], highlights[i])
+            bounds[3] = maxOf(bounds[3], highlights[i + 1])
+        }
+        return bounds
+    }
+
     /**
      * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't
      * rendered yet or [page] is outside the range last passed to
@@ -140,12 +174,27 @@ class ViewFrame private constructor(
             val thumbnailFirst = b.getInt()
             val thumbnails = LongArray(b.getInt())
             for (i in thumbnails.indices) thumbnails[i] = b.getLong()
+            val highlights = FloatArray(8 * b.getInt())
+            val edges = b.getInt()
+            for (i in 0 until highlights.size / 8) {
+                b.getInt() // kind: only selections so far
+                b.getInt()
+                for (k in 0 until 8) highlights[8 * i + k] = b.getFloat()
+            }
+            // Always there, but only meaningful if its bit is set.
+            fun edge(present: Boolean): FloatArray? {
+                val edge = FloatArray(4) { b.getFloat() }
+                return edge.takeIf { present }
+            }
+            val selectionStart = edge(edges and 1 != 0)
+            val selectionEnd = edge(edges and 2 != 0)
             return ViewFrame(
                 complete = flags and 1 != 0,
                 settled = flags and 2 != 0,
                 paged = flags and 4 != 0,
                 twoPages = flags and 8 != 0,
                 coverAlone = flags and 16 != 0,
+                selection = flags and 32 != 0,
                 zoomFactor = zoomFactor,
                 currentPage = currentPage,
                 lastPage = lastPage,
@@ -162,6 +211,9 @@ class ViewFrame private constructor(
                 tileExact = tileExact,
                 thumbnailFirst = thumbnailFirst,
                 thumbnails = thumbnails,
+                highlights = highlights,
+                selectionStart = selectionStart,
+                selectionEnd = selectionEnd,
             )
         }
     }

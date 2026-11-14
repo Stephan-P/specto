@@ -563,6 +563,129 @@ fn fit_page_or_fit_width() {
     assert!(a.saved_view().fit_width);
 }
 
+/// Two pages of 200×300 pt with text in Helvetica, 16 pt: "Hello brave
+/// world" (from x 20; "brave" from about 61, "world" from about 105) with
+/// "second line here" below it, and "Other page".
+fn text_pdf() -> Vec<u8> {
+    let first = "BT /F1 16 Tf 20 250 Td (Hello brave world) Tj 0 -30 Td (second line here) Tj ET";
+    let second = "BT /F1 16 Tf 20 250 Td (Other page) Tj ET";
+    format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [10 0 R 11 0 R] /Count 2 /MediaBox [0 0 200 300]\
+           /Resources << /Font << /F1 3 0 R >> >> >> endobj\n\
+         3 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{first}\nendstream endobj\n\
+         5 0 obj << /Length {} >> stream\n{second}\nendstream endobj\n\
+         10 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj\n\
+         11 0 obj << /Type /Page /Parent 2 0 R /Contents 5 0 R >> endobj\n\
+         trailer << /Root 1 0 R /Size 99 >>\n%%EOF\n",
+        first.len(),
+        second.len(),
+    )
+    .into_bytes()
+}
+
+#[test]
+fn selecting_text() {
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(text_pdf(), None, 1 << 20, listener).unwrap();
+    // Fitted, a page is shown 1:1 with its top-left corner at (8, 8), so
+    // PDF (x, y) is at (8 + x, 8 + 300 - y) in the view.
+    session.set_viewport(216.0, 316.0, 2.0);
+    session.set_view_mode(ViewMode::Paged);
+    let at = |x: f64, y: f64| (8.0 + x, 308.0 - y);
+    let text = |s: &ViewSession| s.selected_text().unwrap_or_default();
+    let frame = session.frame();
+    assert!(!frame.selection && frame.highlights.is_empty());
+    assert_eq!(session.selected_text(), None);
+
+    // A long press away from any text selects nothing; on a word, the word.
+    let (x, y) = at(100.0, 100.0);
+    assert!(!session.select_word_at(x, y));
+    assert!(!session.frame().selection);
+    let (x, y) = at(30.0, 255.0);
+    assert!(session.select_word_at(x, y));
+    assert_eq!(text(&session), "Hello");
+
+    // It is highlighted where the word is, in device pixels (two per
+    // logical one), and both ends are on screen for their handles.
+    let frame = session.frame();
+    assert!(frame.selection);
+    let [h] = frame.highlights[..] else {
+        panic!("one line is selected: {:?}", frame.highlights);
+    };
+    assert!((h.start_bottom.x - 56.0).abs() < 4.0, "{h:?}");
+    assert!((h.end_bottom.x - 129.0).abs() < 6.0, "{h:?}");
+    assert!(h.start_top.y < h.start_bottom.y && h.start_bottom.y < 2.0 * 70.0);
+    let (start, end) = (frame.selection_start.unwrap(), frame.selection_end.unwrap());
+    assert_eq!((start.bottom, start.top), (h.start_bottom, h.start_top));
+    assert_eq!((end.bottom, end.top), (h.end_bottom, h.end_top));
+
+    // Moving on after the long press selects word by word.
+    let (x, y) = at(80.0, 255.0);
+    session.select_to(x, y);
+    assert_eq!(text(&session), "Hello brave");
+
+    // Taking the end by its handle moves it character by character, here
+    // on to the next line.
+    session.grab_selection(true);
+    let (x, y) = at(72.0, 225.0);
+    session.select_to(x, y);
+    assert_eq!(text(&session), "Hello brave world\nsecond");
+    assert_eq!(session.frame().highlights.len(), 2);
+
+    // The start likewise; the end stays.
+    session.grab_selection(false);
+    let (x, y) = at(62.0, 255.0);
+    session.select_to(x, y);
+    assert_eq!(text(&session), "brave world\nsecond");
+
+    // An end dragged onto the other doesn't leave an empty selection.
+    session.grab_selection(true);
+    let (x, y) = at(62.0, 255.0);
+    session.select_to(x, y);
+    assert_eq!(text(&session), "brave world\nsecond");
+
+    // The frame's compact form carries the same.
+    let mut buf = vec![0u8; 1 << 16];
+    let n = hot::frame(session.id(), &mut buf);
+    let hot_frame = decode_frame(&buf[..n as usize]);
+    let frame = session.frame();
+    assert!(hot_frame.selection);
+    assert_eq!(hot_frame.highlights, frame.highlights);
+    assert_eq!(hot_frame.selection_start, frame.selection_start);
+    assert_eq!(hot_frame.selection_end, frame.selection_end);
+
+    // Everything, across pages; an end on a page that isn't shown has no
+    // place for a handle.
+    session.select_all();
+    assert_eq!(
+        text(&session),
+        "Hello brave world\nsecond line here\nOther page"
+    );
+    let frame = session.frame();
+    assert!(frame.selection && frame.selection_start.is_some());
+    if frame.pages.iter().all(|p| p.page != 1) {
+        assert_eq!(frame.selection_end, None);
+    }
+
+    // The selection stays with the text when the view changes.
+    session.zoom_by(2.0, 108.0, 158.0);
+    assert_eq!(
+        text(&session),
+        "Hello brave world\nsecond line here\nOther page"
+    );
+    assert!(!session.frame().highlights.is_empty());
+
+    session.clear_selection();
+    let frame = session.frame();
+    assert!(!frame.selection && frame.highlights.is_empty());
+    assert_eq!((frame.selection_start, frame.selection_end), (None, None));
+    assert_eq!(session.selected_text(), None);
+}
+
 #[test]
 fn what_a_document_says_about_itself() {
     let (plain, _rx) = open(1, 1 << 20);
@@ -741,8 +864,38 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     let thumbnails = (0..thumbnail_count)
         .map(|_| u64::from_ne_bytes(take(&mut b)))
         .collect();
+    let point = |b: &mut &[u8]| Point {
+        x: f32::from_ne_bytes(take(b)),
+        y: f32::from_ne_bytes(take(b)),
+    };
+    let highlight_count = u32_(&mut b);
+    let edges = u32_(&mut b);
+    let highlights = (0..highlight_count)
+        .map(|_| {
+            assert_eq!((u32_(&mut b), u32_(&mut b)), (0, 0));
+            Highlight {
+                start_bottom: point(&mut b),
+                end_bottom: point(&mut b),
+                end_top: point(&mut b),
+                start_top: point(&mut b),
+            }
+        })
+        .collect();
+    let mut edge = |present: bool| {
+        let e = SelectionEdge {
+            bottom: point(&mut b),
+            top: point(&mut b),
+        };
+        present.then_some(e)
+    };
+    let selection_start = edge(edges & 1 != 0);
+    let selection_end = edge(edges & 2 != 0);
     assert!(b.is_empty(), "trailing bytes");
     Frame {
+        selection: flags & 32 != 0,
+        highlights,
+        selection_start,
+        selection_end,
         thumbnail_first,
         thumbnails,
         pages,
@@ -810,6 +963,27 @@ fn fixture_frame() -> Frame {
         cover_alone: false,
         thumbnail_first: 2,
         thumbnails: vec![0, 11, 12],
+        selection: true,
+        highlights: vec![
+            Highlight {
+                start_bottom: Point { x: 100.0, y: 80.5 },
+                end_bottom: Point { x: 900.0, y: 80.5 },
+                end_top: Point { x: 900.0, y: 50.25 },
+                start_top: Point { x: 100.0, y: 50.25 },
+            },
+            Highlight {
+                start_bottom: Point { x: 60.0, y: 120.0 },
+                end_bottom: Point { x: 300.0, y: 121.0 },
+                end_top: Point { x: 300.5, y: 91.0 },
+                start_top: Point { x: 60.5, y: 90.0 },
+            },
+        ],
+        // The selection starts above the view.
+        selection_start: None,
+        selection_end: Some(SelectionEdge {
+            bottom: Point { x: 300.0, y: 121.0 },
+            top: Point { x: 300.5, y: 91.0 },
+        }),
     }
 }
 

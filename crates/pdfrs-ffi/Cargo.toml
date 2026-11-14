@@ -13,6 +13,7 @@ crate-type = ["lib", "cdylib"]
 pdfrs-geom.workspace = true
 pdfrs-render.workspace = true
 pdfrs-source.workspace = true
+pdfrs-text.workspace = true
 pdfrs-view.workspace = true
 thiserror.workspace = true
 uniffi.workspace = true

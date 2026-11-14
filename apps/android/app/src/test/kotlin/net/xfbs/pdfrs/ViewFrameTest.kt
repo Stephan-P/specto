@@ -79,4 +79,40 @@ class ViewFrameTest {
         assertTrue(frame.sameThumbnailsAs(frame))
         assertFalse(frame.sameThumbnailsAs(null))
     }
+
+    @Test
+    fun selection() {
+        assertTrue(frame.selection)
+        // Two lines, the second slightly rotated.
+        assertEquals(2, frame.highlightCount)
+        assertEquals(100f, frame.highlightX(0, 0))
+        assertEquals(80.5f, frame.highlightY(0, 0))
+        assertEquals(900f, frame.highlightX(0, 2))
+        assertEquals(50.25f, frame.highlightY(0, 2))
+        assertEquals(60.5f, frame.highlightX(1, 3))
+        assertEquals(90f, frame.highlightY(1, 3))
+        assertArrayEquals(floatArrayOf(60f, 50.25f, 900f, 121f), frame.highlightBounds(), 0f)
+        // It starts above the view and ends on it.
+        assertEquals(null, frame.selectionStart)
+        assertArrayEquals(floatArrayOf(300f, 121f, 300.5f, 91f), frame.selectionEnd, 0f)
+    }
+
+    @Test
+    fun handles() {
+        // The end handle hangs below the end of the last line, to the right.
+        val edge = frame.selectionEnd!!
+        assertEquals(330f to 151f, handleCentre(edge, end = true, radius = 30f))
+        assertEquals(270f to 151f, handleCentre(edge, end = false, radius = 30f))
+
+        // A touch on it takes hold of the end; the selection then follows
+        // the middle of the line's edge, not the finger below it.
+        val grab = frame.handleAt(340f, 160f, radius = 30f, reach = 80f)!!
+        assertTrue(grab.end)
+        assertEquals(300.25f - 340f, grab.dx)
+        assertEquals(106f - 160f, grab.dy)
+        // Near enough still counts; further away is no handle.
+        assertTrue(frame.handleAt(330f, 151f + 79f, radius = 30f, reach = 80f)!!.end)
+        assertEquals(null, frame.handleAt(330f, 151f + 81f, radius = 30f, reach = 80f))
+        assertEquals(null, frame.handleAt(100f, 60f, radius = 30f, reach = 80f))
+    }
 }

@@ -151,7 +151,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Page organizer: drag to reorder, delete and rotate in the thumbnail grid (with M3)
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME
-- [ ] **S** Text selection with Android selection handles + copy/share
+- [x] **M** Text selection with Android's handles and copy: a long press selects a word (and, moving on, further words), a handle at each end moves it by characters, dragging to the edge scrolls on in continuous mode, and the system's floating text menu offers Copy and Select all. `pdfrs-ffi` uses `pdfrs-view`'s `Selection` and reports the highlights and handle positions in each frame (the frame layout has a kind per highlight, for search matches later). Its text-page cache is a second copy of the desktop app's `TextCache`: one to share when the search session moves into a crate
+- [ ] **S** Share the selected text (the system's text menu only knows Copy and Select all, so this needs a menu of our own)
 - [ ] **M** Search on Android: the text layer and search results through `pdfrs-ffi` (coarse calls: matches with their quads per page, not per glyph), a search bar with next/previous and highlighted matches
 - [ ] **M** F-Droid: check that the Gradle dependencies are all free software, make the build reproducible, write the metadata
 - [ ] **S** Back after a jump: the system's Back returns to where a link or outline entry was followed from (with M1's back and forward)

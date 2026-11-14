@@ -35,6 +35,13 @@ object Native {
     @JvmStatic
     external fun zoomBy(session: Long, factor: Double, x: Double, y: Double)
 
+    /**
+     * Extends the text selection to the text nearest to ([x], [y]) dp: from
+     * the word a long press selected, or moving the end last taken hold of.
+     */
+    @JvmStatic
+    external fun selectTo(session: Long, x: Double, y: Double)
+
     /** The pages whose thumbnails are on screen; see [ViewFrame.thumbnailId]. */
     @JvmStatic
     external fun setThumbnailRange(session: Long, first: Int, count: Int)

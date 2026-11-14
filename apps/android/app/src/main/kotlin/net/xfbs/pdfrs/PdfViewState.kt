@@ -22,8 +22,10 @@ import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uniffi.pdfrs_ffi.Activated
 import uniffi.pdfrs_ffi.DocumentInfo
 import uniffi.pdfrs_ffi.PageSize
@@ -175,6 +177,62 @@ class PdfViewState(
 
     /** Follows the frames, but only changes when the mode does: the top bar reads it. */
     private var pagedNow by mutableStateOf(true)
+
+    // --- text selection -----------------------------------------------------
+    //
+    // The selection lives in Rust and shows up in frames: the highlights to
+    // draw and where its two handles go.
+
+    /** Whether any text is selected, on screen or not. */
+    var hasSelection: Boolean by mutableStateOf(false)
+        private set
+
+    /** A long press at [at]: selects the word there. False if there is no text there. */
+    fun selectWordAt(at: Offset): Boolean {
+        if (closed || !session.selectWordAt(at.x.toDouble(), at.y.toDouble())) return false
+        stopMotion()
+        refresh()
+        return true
+    }
+
+    /**
+     * A handle was touched: [selectTo] now moves that end of the selection
+     * (its end, or else its start) and the other one stays.
+     */
+    fun grabSelection(end: Boolean) {
+        if (!closed) session.grabSelection(end)
+    }
+
+    /**
+     * Extends the selection to the text nearest to [at]: word by word from
+     * the word a long press selected, or moving the end last grabbed.
+     */
+    fun selectTo(at: Offset) {
+        Native.selectTo(sessionId, at.x.toDouble(), at.y.toDouble())
+        refresh()
+    }
+
+    fun selectAll() {
+        if (closed) return
+        session.selectAll()
+        refresh()
+    }
+
+    fun clearSelection() {
+        if (closed || !hasSelection) return
+        session.clearSelection()
+        refresh()
+    }
+
+    /**
+     * The selected text, for copying; null if there is none. Reads every
+     * selected page, which takes a moment for a whole long document, so not
+     * on the main thread.
+     */
+    suspend fun selectedText(): String? = withContext(Dispatchers.Default) {
+        // The document may be closed meanwhile.
+        runCatching { session.selectedText() }.getOrNull()
+    }
 
     /**
      * What to draw. Changes whenever the view or the available tiles change,
@@ -520,6 +578,7 @@ class PdfViewState(
         }
         frame = next
         pagedNow = next.paged
+        hasSelection = next.selection
         currentPage = next.currentPage
         lastPage = next.lastPage
         if (!next.sameThumbnailsAs(thumbnails)) thumbnails = next

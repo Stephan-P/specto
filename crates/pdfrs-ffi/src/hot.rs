@@ -7,7 +7,8 @@
 //!
 //! ```text
 //! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged,
-//!                      bit 3: two pages, bit 4: first page alone
+//!                      bit 3: two pages, bit 4: first page alone,
+//!                      bit 5: text is selected
 //! u32 zoom_mode        0 fixed, 1 fit width, 2 fit page
 //! u32 current_page
 //! i32 settles_in_ms    -1: none
@@ -26,12 +27,20 @@
 //! u32 thumbnail_first
 //! u32 thumbnail_count
 //! thumbnail_count × { u64 id }    0: not rendered yet
+//! u32 highlight_count
+//! u32 edges            bit 0: the selection's start is on screen, bit 1: its end
+//! highlight_count × {
+//!     u32 kind (0: selection), u32 unused
+//!     4 × { f32 x, y }  start bottom, end bottom, end top, start top
+//! }
+//! 2 × { f32 bottom x, y, top x, y }    the selection's start and end edge,
+//!                                      zeros if not on screen
 //! ```
 //!
 //! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then
 //! `count × { u64 id, u32 width, u32 height }`.
 
-use crate::{FinishedTile, Frame, Rect, ZoomMode, find_session};
+use crate::{FinishedTile, Frame, Point, Rect, ZoomMode, find_session};
 
 /// See `ViewSession::set_viewport`. Here because the app animates its bars,
 /// which resizes the view on every frame. `false` if the session is closed.
@@ -92,6 +101,15 @@ pub fn zoom_by(session: u64, factor: f64, x: f64, y: f64) -> bool {
         .lock()
         .viewer
         .zoom_by(factor, pdfrs_geom::ViewPoint::new(x, y));
+    true
+}
+
+/// See `ViewSession::select_to`. `false` if the session is closed.
+pub fn select_to(session: u64, x: f64, y: f64) -> bool {
+    let Some(session) = find_session(session) else {
+        return false;
+    };
+    session.lock().select_to(pdfrs_geom::ViewPoint::new(x, y));
     true
 }
 
@@ -167,7 +185,8 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
             | u32::from(frame.settled) << 1
             | u32::from(frame.paged) << 2
             | u32::from(frame.two_pages) << 3
-            | u32::from(frame.cover_alone) << 4,
+            | u32::from(frame.cover_alone) << 4
+            | u32::from(frame.selection) << 5,
     );
     put_u32(
         buf,
@@ -208,4 +227,27 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
     for id in &frame.thumbnails {
         buf.extend_from_slice(&id.to_ne_bytes());
     }
+    put_u32(buf, frame.highlights.len() as u32);
+    put_u32(
+        buf,
+        u32::from(frame.selection_start.is_some()) | u32::from(frame.selection_end.is_some()) << 1,
+    );
+    for h in &frame.highlights {
+        put_u32(buf, 0);
+        put_u32(buf, 0);
+        for p in [h.start_bottom, h.end_bottom, h.end_top, h.start_top] {
+            put_point(buf, p);
+        }
+    }
+    for edge in [frame.selection_start, frame.selection_end] {
+        let zero = Point { x: 0.0, y: 0.0 };
+        let (bottom, top) = edge.map_or((zero, zero), |e| (e.bottom, e.top));
+        put_point(buf, bottom);
+        put_point(buf, top);
+    }
+}
+
+fn put_point(buf: &mut Vec<u8>, p: Point) {
+    buf.extend_from_slice(&p.x.to_ne_bytes());
+    buf.extend_from_slice(&p.y.to_ne_bytes());
 }

@@ -30,7 +30,11 @@ use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::{Bitmap, OpenError};
 use pdfrs_source::{Link, NamedAction, OutlineItem, PageLabels, PdfData, SourceDocument, Target};
-use pdfrs_view::{Settings, ViewPage, Viewer};
+use pdfrs_text::{Extractor, TextPage};
+use pdfrs_view::{
+    Granularity, Selection, Settings, TextPages, ViewPage, Viewer, over_text, text_char,
+    text_position,
+};
 
 use tiles::TileBook;
 
@@ -44,8 +48,10 @@ pub enum PdfError {
     UnsupportedEncryption,
     #[error("not a valid PDF file")]
     Invalid,
-    #[error("couldn't read the file: {message}")]
-    Io { message: String },
+    // Not `message`: in the generated Kotlin exception that would clash
+    // with `Throwable.message`, and the bindings wouldn't compile.
+    #[error("couldn't read the file: {reason}")]
+    Io { reason: String },
 }
 
 impl From<OpenError> for PdfError {
@@ -185,6 +191,32 @@ impl From<DeviceRect> for Rect {
     }
 }
 
+/// A point in device pixels, relative to the top-left of the view.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct Point {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// Text to highlight: the part of one line that is selected, as the four
+/// corners of a quadrilateral (lines can be rotated). "Start" and "end" are
+/// along the line, "bottom" is its baseline side.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct Highlight {
+    pub start_bottom: Point,
+    pub end_bottom: Point,
+    pub end_top: Point,
+    pub start_top: Point,
+}
+
+/// One end of the selection on screen: the edge of its first or last line,
+/// where a handle for moving that end belongs.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct SelectionEdge {
+    pub bottom: Point,
+    pub top: Point,
+}
+
 #[derive(Clone, Copy, Debug, uniffi::Record)]
 pub struct TileDraw {
     /// Id of a tile previously handed out by [`ViewSession::take_finished`].
@@ -243,6 +275,14 @@ pub struct Frame {
     /// For each page of that range, the id of its thumbnail tile, or 0 while
     /// it is still being rendered.
     pub thumbnails: Vec<u64>,
+    /// Whether any text is selected, on screen or not.
+    pub selection: bool,
+    /// The selected text on the visible pages: draw these over the pages.
+    pub highlights: Vec<Highlight>,
+    /// Where the selection starts and ends, for its handles; `None` for an
+    /// end that isn't on a visible page.
+    pub selection_start: Option<SelectionEdge>,
+    pub selection_end: Option<SelectionEdge>,
 }
 
 /// Size of a page as displayed, in PDF points.
@@ -275,9 +315,76 @@ struct State {
     /// What the view is fitted to unless the reader zoomed, and returns to:
     /// `FitPage` or `FitWidth`.
     fit: pdfrs_view::ZoomMode,
+    /// Text pages extracted so far, for selecting.
+    texts: TextCache,
+    selection: Option<Selection>,
+}
+
+/// How many pages' text is kept (the least recently used go first). A page
+/// takes about 100 bytes per character.
+const TEXT_PAGES: usize = 24;
+
+/// Text pages by page number.
+#[derive(Default)]
+struct TextCache {
+    pages: HashMap<usize, (Arc<TextPage>, u64)>,
+    clock: u64,
+}
+
+/// The document's text pages, extracted when first needed: a fraction of a
+/// millisecond to a few milliseconds per page.
+struct TextLayer<'a> {
+    source: &'a SourceDocument,
+    cache: &'a mut TextCache,
+}
+
+impl TextPages for TextLayer<'_> {
+    fn text_page(&mut self, page: usize) -> Option<Arc<TextPage>> {
+        let cache = &mut *self.cache;
+        cache.clock += 1;
+        if let Some((text, used)) = cache.pages.get_mut(&page) {
+            *used = cache.clock;
+            return Some(text.clone());
+        }
+        let text = Arc::new(Extractor::new(self.source.pdf()).page(page)?);
+        cache.pages.insert(page, (text.clone(), cache.clock));
+        if cache.pages.len() > TEXT_PAGES
+            && let Some(&oldest) = cache
+                .pages
+                .iter()
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(p, _)| p)
+        {
+            cache.pages.remove(&oldest);
+        }
+        Some(text)
+    }
 }
 
 impl State {
+    /// The viewer, the text layer and the selection, to work on together.
+    fn text(&mut self) -> (&Viewer, TextLayer<'_>, &mut Option<Selection>) {
+        let texts = TextLayer {
+            source: &self.source,
+            cache: &mut self.texts,
+        };
+        (&self.viewer, texts, &mut self.selection)
+    }
+
+    /// Moves the end of the selection that isn't its anchor to the text
+    /// nearest to `p`. A selection never shrinks to nothing this way.
+    fn select_to(&mut self, p: ViewPoint) {
+        let (viewer, mut texts, selection) = self.text();
+        let (Some(s), Some(to)) = (selection.as_mut(), text_position(viewer, &mut texts, p)) else {
+            return;
+        };
+        let before = s.clone();
+        s.extend(&mut texts, to);
+        if s.is_empty() {
+            *s = before;
+        }
+    }
+
     /// Does what a link or outline entry asks for.
     fn follow(&mut self, target: &Target) -> Activated {
         let viewer = &mut self.viewer;
@@ -340,6 +447,9 @@ impl Shared {
             tiles,
             thumbnails,
             fit,
+            source,
+            texts,
+            selection,
             ..
         } = state;
         tiles.begin_frame();
@@ -383,7 +493,50 @@ impl Shared {
             })
             .collect();
         self.scheduler.request(planned.requests);
+
+        // The selection on the visible pages. Positions come in logical
+        // pixels; everything in a frame is in device pixels.
+        let selection = selection.as_ref().filter(|s| !s.is_empty());
+        let mut highlights = Vec::new();
+        let (mut selection_start, mut selection_end) = (None, None);
+        if let Some(selection) = selection {
+            let px = viewer.device_scale().get() / viewer.zoom();
+            let point = |p: ViewPoint| Point {
+                x: (p.x * px) as f32,
+                y: (p.y * px) as f32,
+            };
+            let mut texts = TextLayer {
+                source,
+                cache: texts,
+            };
+            let (start, end) = selection.range();
+            for page in &planned.pages {
+                let quads = selection.view_quads(viewer, &mut texts, page.page);
+                if let (true, Some(q)) = (page.page == start.page, quads.first()) {
+                    selection_start = Some(SelectionEdge {
+                        bottom: point(q[0]),
+                        top: point(q[3]),
+                    });
+                }
+                if let (true, Some(q)) = (page.page == end.page, quads.last()) {
+                    selection_end = Some(SelectionEdge {
+                        bottom: point(q[1]),
+                        top: point(q[2]),
+                    });
+                }
+                highlights.extend(quads.iter().map(|q| Highlight {
+                    start_bottom: point(q[0]),
+                    end_bottom: point(q[1]),
+                    end_top: point(q[2]),
+                    start_top: point(q[3]),
+                }));
+            }
+        }
         Frame {
+            selection: selection.is_some(),
+            highlights,
+            selection_start,
+            selection_end,
             thumbnail_first,
             thumbnails: thumbnail_ids,
             pages,
@@ -489,7 +642,7 @@ impl PdfFile {
     pub fn from_fd(fd: i32) -> Result<Arc<Self>, PdfError> {
         if fd < 0 {
             return Err(PdfError::Io {
-                message: "invalid file descriptor".into(),
+                reason: "invalid file descriptor".into(),
             });
         }
         #[cfg(unix)]
@@ -502,12 +655,12 @@ impl PdfFile {
             PdfData::from_file(file)
                 .map(|d| Arc::new(Self(d)))
                 .map_err(|e| PdfError::Io {
-                    message: e.to_string(),
+                    reason: e.to_string(),
                 })
         }
         #[cfg(not(unix))]
         Err(PdfError::Io {
-            message: "file descriptors are not supported here".into(),
+            reason: "file descriptors are not supported here".into(),
         })
     }
 
@@ -594,6 +747,8 @@ impl ViewSession {
                 links: HashMap::new(),
                 // Sessions start out scrolling.
                 fit: default_fit(false),
+                texts: TextCache::default(),
+                selection: None,
             }),
             outline,
             labels,
@@ -703,6 +858,77 @@ impl ViewSession {
             Some(target) => state.follow(&target),
             None => Activated::Nothing,
         }
+    }
+
+    // --- text selection ------------------------------------------------------
+    //
+    // Positions are in logical pixels from the view's top-left, like taps.
+    // The selection shows up in frames: [`Frame::highlights`] and the edges
+    // for its handles.
+
+    /// A long press at (`x`, `y`): selects the word there and returns true,
+    /// or does nothing and returns false if there is no text there. Moving
+    /// on with [`select_to`](Self::select_to) then selects word by word.
+    pub fn select_word_at(&self, x: f64, y: f64) -> bool {
+        let mut state = self.shared.lock();
+        let (viewer, mut texts, selection) = state.text();
+        let p = ViewPoint::new(x, y);
+        if !over_text(viewer, &mut texts, p) {
+            return false;
+        }
+        let Some(at) = text_char(viewer, &mut texts, p) else {
+            return false;
+        };
+        let word = Selection::new(&mut texts, at, Granularity::Word);
+        if word.is_empty() {
+            return false;
+        }
+        *selection = Some(word);
+        true
+    }
+
+    /// Takes hold of one end of the selection (its end, or else its start),
+    /// as when a handle is touched: [`select_to`](Self::select_to) then
+    /// moves that end, character by character, and the other one stays.
+    pub fn grab_selection(&self, end: bool) {
+        let mut state = self.shared.lock();
+        let (_, mut texts, selection) = state.text();
+        let Some(current) = selection.as_ref() else {
+            return;
+        };
+        let (start, stop) = current.range();
+        let (fixed, moving) = if end { (start, stop) } else { (stop, start) };
+        let mut held = Selection::new(&mut texts, fixed, Granularity::Char);
+        held.extend(&mut texts, moving);
+        *selection = Some(held);
+    }
+
+    /// Extends the selection to the text nearest to (`x`, `y`): from the
+    /// word first selected, or moving the end last grabbed. `Native.selectTo`
+    /// does the same without UniFFI's overhead, for drags.
+    pub fn select_to(&self, x: f64, y: f64) {
+        hot::select_to(self.id, x, y);
+    }
+
+    /// Selects the whole document.
+    pub fn select_all(&self) {
+        let mut state = self.shared.lock();
+        state.selection = Some(Selection::all(self.page_count as usize));
+    }
+
+    pub fn clear_selection(&self) {
+        self.shared.lock().selection = None;
+    }
+
+    /// The selected text, for copying: lines and pages separated by
+    /// newlines. `None` if nothing is selected or the selection holds no
+    /// text. Reads every selected page, which takes a while for a long
+    /// document selected as a whole.
+    pub fn selected_text(&self) -> Option<String> {
+        let mut state = self.shared.lock();
+        let (_, mut texts, selection) = state.text();
+        let text = selection.as_ref()?.text(&mut texts);
+        (!text.is_empty()).then_some(text)
     }
 
     /// Sizes of all pages as displayed, e.g. for the thumbnail grid's cells.
