@@ -17,7 +17,9 @@ win() { gdbus call --session --dest $app --object-path $obj \
 # Fresh saved state and recent files, so yours aren't used or touched.
 home=$(mktemp -d)
 trap 'kill $pid 2>/dev/null; rm -rf "$home"' EXIT
-XDG_STATE_HOME=$home/state XDG_DATA_HOME=$home/data PDFRS_DEBUG=1 "$bin" "$pdf" 2>/dev/null &
+# Light mode, whatever the desktop is set to.
+ADW_DEBUG_COLOR_SCHEME=prefer-light \
+  XDG_STATE_HOME=$home/state XDG_DATA_HOME=$home/data PDFRS_DEBUG=1 "$bin" "$pdf" 2>/dev/null &
 pid=$!
 sleep 2
 win sidebar-page "[<'outline'>]"
