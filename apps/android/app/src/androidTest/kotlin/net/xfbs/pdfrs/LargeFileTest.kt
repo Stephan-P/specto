@@ -97,7 +97,10 @@ class LargeFileTest : AppTest() {
         menu("Close")
         waitForText("Recent")
         compose.onNodeWithText("large.pdf").performClick()
+        // The list goes at once and the document takes a moment to open, so
+        // its name has to be waited for (the list had it too, hence both).
         waitUntilGone("Recent")
+        waitForText("large.pdf")
         compose.onNodeWithText("large.pdf").assertIsDisplayed()
     }
 }
