@@ -26,6 +26,8 @@ fn main() -> glib::ExitCode {
     app.connect_startup(|app| {
         for (action, accels) in [
             ("win.open", &["<Primary>o"][..]),
+            ("win.save", &["<Primary>s"]),
+            ("win.save-as", &["<Shift><Primary>s"]),
             (
                 "win.zoom-in",
                 &["<Primary>plus", "<Primary>equal", "<Primary>KP_Add"],
@@ -122,6 +124,7 @@ fn menubar() -> gio::Menu {
 
     let file = submenu(&[
         section(&[("Open…", "win.open")]),
+        section(&[("Save", "win.save"), ("Save As…", "win.save-as")]),
         section(&[("Close Window", "window.close")]),
         section(&[("Quit pdfrs", "app.quit")]),
     ]);

@@ -38,6 +38,8 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "find-previous",
     "rotate-left",
     "rotate-right",
+    "save",
+    "save-as",
 ];
 
 #[derive(Clone)]
@@ -72,6 +74,12 @@ pub struct Inner {
     search_status: gtk::Label,
     /// Undo and Redo in the main menu, named after the edit.
     undo_section: gio::Menu,
+    /// A save is running in the background.
+    saving: Cell<bool>,
+    /// The user chose to close despite unsaved changes (or saved them).
+    close_confirmed: Cell<bool>,
+    /// The "Save changes?" dialog while it's open (for tests).
+    alert: RefCell<Option<adw::AlertDialog>>,
 }
 
 impl Window {
@@ -151,6 +159,12 @@ impl Window {
         // The main menu: editing, for now.
         let undo_section = gio::Menu::new();
         let main_menu = gio::Menu::new();
+        main_menu.append_section(None, &{
+            let m = gio::Menu::new();
+            m.append(Some("Save"), Some("win.save"));
+            m.append(Some("Save As…"), Some("win.save-as"));
+            m
+        });
         main_menu.append_section(None, &undo_section);
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
@@ -318,6 +332,9 @@ impl Window {
             search_entry,
             search_status,
             undo_section,
+            saving: Cell::new(false),
+            close_confirmed: Cell::new(false),
+            alert: RefCell::default(),
         }));
         this.setup_actions();
         this.setup_page_entry();
@@ -340,12 +357,18 @@ impl Window {
         });
         this.set_document_actions_enabled(false);
 
-        // Remember where the user was in this file.
+        // Ask about unsaved changes; remember where the user was in this file.
         let weak = Rc::downgrade(&this.0);
         this.0.window.connect_close_request(move |_| {
-            if let Some(inner) = weak.upgrade() {
-                Window(inner).save_state();
+            let Some(inner) = weak.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            let w = Window(inner);
+            if w.is_modified() && !w.0.close_confirmed.get() {
+                glib::spawn_future_local(async move { w.confirm_close().await });
+                return glib::Propagation::Stop;
             }
+            w.save_state();
             glib::Propagation::Proceed
         });
 
@@ -893,6 +916,20 @@ impl Window {
                 debug::screenshot(w.0.window.upcast_ref(), path)
             }),
             action("debug-maximize", |w, _| w.0.window.maximize()),
+            // Save As without the file dialog.
+            action("debug-save-as", |w, path| {
+                let (w, file) = (w.clone(), gio::File::for_path(path));
+                glib::spawn_future_local(async move {
+                    w.save_as_file(file).await;
+                });
+            }),
+            // Answers the open "Save changes?" dialog.
+            action("debug-alert-response", |w, response| {
+                if let Some(alert) = w.0.alert.borrow().clone() {
+                    alert.emit_by_name::<()>("response", &[&response]);
+                    alert.force_close();
+                }
+            }),
             action("debug-go-to", |w, text| {
                 let entry = &w.0.page_entry;
                 entry.grab_focus();
@@ -1006,6 +1043,16 @@ impl Window {
             // [page of the file, rotation in degrees] per position.
             json.raw("edit_pages", &format!("[{}]", pages.join(", ")))
                 .bool("modified", d.edit.is_modified())
+                .bool("saving", inner.saving.get())
+                .str(
+                    "alert",
+                    &inner
+                        .alert
+                        .borrow()
+                        .as_ref()
+                        .map(|a| a.heading().unwrap_or_default().to_string())
+                        .unwrap_or_default(),
+                )
                 .str("subtitle", &inner.title.subtitle())
                 .str(
                     "undo",
@@ -1042,6 +1089,166 @@ impl Window {
             return;
         };
         self.edit(|d| d.rotate(&pages, by));
+    }
+
+    fn is_modified(&self) -> bool {
+        self.0
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| d.borrow().edit.is_modified())
+    }
+
+    /// Saves the document to its file, if it has changes. Returns whether
+    /// it's saved now.
+    async fn save(&self) -> bool {
+        if !self.is_modified() {
+            return true;
+        }
+        let Some(uri) = self.0.uri.borrow().clone() else {
+            return false;
+        };
+        self.save_to(gio::File::for_uri(&uri)).await
+    }
+
+    /// Asks where to save a copy, saves it there, and from then on shows
+    /// that file.
+    async fn save_as(&self) {
+        let inner = &self.0;
+        let Some(name) = inner
+            .document
+            .borrow()
+            .as_ref()
+            .map(|d| d.borrow().name.clone())
+        else {
+            return;
+        };
+        let dialog = gtk::FileDialog::builder()
+            .title("Save As")
+            .initial_name(&name)
+            .build();
+        if let Some(folder) = inner
+            .uri
+            .borrow()
+            .as_ref()
+            .and_then(|u| gio::File::for_uri(u).parent())
+        {
+            dialog.set_initial_folder(Some(&folder));
+        }
+        if let Ok(file) = dialog.save_future(Some(&inner.window)).await {
+            self.save_as_file(file).await;
+        }
+    }
+
+    /// Saves to `file` and makes it the document's file.
+    async fn save_as_file(&self, file: gio::File) -> bool {
+        if !self.save_to(file.clone()).await {
+            return false;
+        }
+        let inner = &self.0;
+        let name = file.basename().map_or_else(
+            || file.uri().to_string(),
+            |b| b.to_string_lossy().into_owned(),
+        );
+        if let Some(doc) = inner.document.borrow().as_ref() {
+            doc.borrow_mut().name = name.clone();
+        }
+        inner.window.set_title(Some(&name));
+        inner.title.set_title(&name);
+        let uri = file.uri().to_string();
+        inner.uri.replace(Some(uri.clone()));
+        gtk::RecentManager::default().add_item(&uri);
+        self.save_state();
+        true
+    }
+
+    /// Writes the document to `file`. Local files are written next to the
+    /// old one and renamed into place (see `pdfrs_write::replace_file`);
+    /// others through GIO. Returns whether it worked; if not, says why.
+    async fn save_to(&self, file: gio::File) -> bool {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return false;
+        };
+        if inner.saving.replace(true) {
+            return false;
+        }
+        let job = doc.borrow().save_job();
+        let version = job.version;
+        let result = match file.path() {
+            Some(path) => gio::spawn_blocking(move || job.save(&path).map_err(save_error))
+                .await
+                .unwrap_or_else(|_| Err("saving failed".to_owned())),
+            None => {
+                match gio::spawn_blocking(move || job.write().map_err(save_error))
+                    .await
+                    .unwrap_or_else(|_| Err("saving failed".to_owned()))
+                {
+                    Ok(bytes) => file
+                        .replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
+                        .await
+                        .map(|_| ())
+                        .map_err(|(_, e)| e.message().to_owned()),
+                    Err(e) => Err(e),
+                }
+            }
+        };
+        inner.saving.set(false);
+        match result {
+            Ok(()) => {
+                doc.borrow_mut().edit.mark_saved_version(version);
+                self.update_edit_state();
+                true
+            }
+            Err(e) => {
+                let name = file
+                    .basename()
+                    .map_or_else(String::new, |b| b.to_string_lossy().into_owned());
+                self.toast(&format!("Couldn't save “{name}”: {e}"));
+                false
+            }
+        }
+    }
+
+    /// Asks whether to save changes before closing, then closes (or not).
+    async fn confirm_close(&self) {
+        let inner = &self.0;
+        if inner.alert.borrow().is_some() {
+            return;
+        }
+        let name = inner
+            .document
+            .borrow()
+            .as_ref()
+            .map(|d| d.borrow().name.clone())
+            .unwrap_or_default();
+        let alert = adw::AlertDialog::new(
+            Some("Save Changes?"),
+            Some(&format!(
+                "“{name}” has unsaved changes. Changes that aren't saved will be lost."
+            )),
+        );
+        alert.add_responses(&[
+            ("cancel", "_Cancel"),
+            ("discard", "_Discard"),
+            ("save", "_Save"),
+        ]);
+        alert.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+        alert.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+        alert.set_default_response(Some("save"));
+        alert.set_close_response("cancel");
+        inner.alert.replace(Some(alert.clone()));
+        let response = alert.choose_future(Some(&inner.window)).await;
+        inner.alert.replace(None);
+        let close = match response.as_str() {
+            "discard" => true,
+            "save" => self.save().await,
+            _ => false,
+        };
+        if close {
+            inner.close_confirmed.set(true);
+            inner.window.close();
+        }
     }
 
     /// Applies an edit to the document, then updates the view, the sidebar
@@ -1213,6 +1420,20 @@ impl Window {
                 .build(),
             gio::ActionEntry::builder("find-previous")
                 .activate(with(|w| w.search_step(false)))
+                .build(),
+            gio::ActionEntry::builder("save")
+                .activate(with(|w| {
+                    let w = w.clone();
+                    glib::spawn_future_local(async move {
+                        w.save().await;
+                    });
+                }))
+                .build(),
+            gio::ActionEntry::builder("save-as")
+                .activate(with(|w| {
+                    let w = w.clone();
+                    glib::spawn_future_local(async move { w.save_as().await });
+                }))
                 .build(),
             gio::ActionEntry::builder("rotate-left")
                 .activate(with(|w| w.rotate(Rotation::Cw270)))
@@ -1447,5 +1668,19 @@ fn edit_name(edit: Edit) -> String {
         format!("{verb} Page")
     } else {
         format!("{verb} {n} Pages")
+    }
+}
+
+/// Why saving failed, for a message.
+fn save_error(e: pdfrs_write::WriteError) -> String {
+    use pdfrs_write::WriteError as E;
+    match e {
+        E::Io(e) => {
+            // "Permission denied (os error 13)" → without the code.
+            let text = e.to_string();
+            text.split(" (os error").next().unwrap_or(&text).to_owned()
+        }
+        E::PasswordRequired => "the document's password is needed".to_owned(),
+        _ => "pdfrs can't save this document correctly yet".to_owned(),
     }
 }

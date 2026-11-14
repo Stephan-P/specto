@@ -1628,9 +1628,11 @@ dependencies = [
  "anyhow",
  "clap",
  "image",
+ "pdfrs-doc",
  "pdfrs-render",
  "pdfrs-source",
  "pdfrs-text",
+ "pdfrs-write",
  "wait-timeout",
 ]
 
@@ -1647,6 +1649,7 @@ dependencies = [
  "pdfrs-source",
  "pdfrs-text",
  "pdfrs-view",
+ "pdfrs-write",
 ]
 
 [[package]]
@@ -1715,6 +1718,17 @@ dependencies = [
  "pdfrs-geom",
  "pdfrs-render",
  "pdfrs-text",
+]
+
+[[package]]
+name = "pdfrs-write"
+version = "0.1.0"
+dependencies = [
+ "lopdf",
+ "pdfrs-doc",
+ "pdfrs-render",
+ "pdfrs-source",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

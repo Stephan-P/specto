@@ -67,11 +67,15 @@ fn save_screenshot(window: &gtk::Widget, path: &str) -> bool {
         return false;
     };
     let texture = renderer.render_texture(&node, None);
+    // Written under another name and renamed, so a test waiting for the
+    // file never reads it half-written.
+    let part = format!("{path}.part");
     let result = if path.ends_with(".ppm") {
-        std::fs::write(path, ppm(&texture)).map_err(|e| e.to_string())
+        std::fs::write(&part, ppm(&texture)).map_err(|e| e.to_string())
     } else {
-        texture.save_to_png(path).map_err(|e| e.to_string())
-    };
+        texture.save_to_png(&part).map_err(|e| e.to_string())
+    }
+    .and_then(|()| std::fs::rename(&part, path).map_err(|e| e.to_string()));
     if let Err(e) = result {
         eprintln!("debug-screenshot: {path}: {e}");
     }

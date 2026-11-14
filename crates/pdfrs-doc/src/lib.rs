@@ -52,6 +52,10 @@ pub enum Edit {
     Insert { pages: usize },
 }
 
+/// One state of an [`EditDoc`]'s pages (see [`EditDoc::version`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Version(u64);
+
 /// A page list as it was, for undo or redo.
 #[derive(Clone, Debug)]
 struct Step {
@@ -107,6 +111,20 @@ impl EditDoc {
     /// Records that the current state was saved.
     pub fn mark_saved(&mut self) {
         self.saved = Some(self.version);
+    }
+
+    /// Identifies the current state, for [`mark_saved_version`]: a save in
+    /// the background takes a copy of the pages, and when it's done, only
+    /// that state counts as saved, not edits made meanwhile.
+    ///
+    /// [`mark_saved_version`]: Self::mark_saved_version
+    pub fn version(&self) -> Version {
+        Version(self.version)
+    }
+
+    /// Records that the state `version` was saved.
+    pub fn mark_saved_version(&mut self, version: Version) {
+        self.saved = Some(version.0);
     }
 
     /// The sources that pages still come from, in order of first use.

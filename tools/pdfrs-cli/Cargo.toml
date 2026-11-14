@@ -10,9 +10,11 @@ name = "pdfrs"
 path = "src/main.rs"
 
 [dependencies]
+pdfrs-doc.workspace = true
 pdfrs-render.workspace = true
 pdfrs-source.workspace = true
 pdfrs-text.workspace = true
+pdfrs-write.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 image.workspace = true

@@ -30,6 +30,11 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - rotate_and_undo: Ctrl+Right and Ctrl+Left turn the current page, both
   pages of a spread in the two-page layout; "Edited" in the title; Ctrl+Z
   and Shift+Ctrl+Z; in the page entry, Ctrl+Left moves the cursor instead
+- save: a rotated page is saved (opened again, it's still rotated, and
+  the page labels are kept); Save As writes a copy and shows it, leaving
+  the original as it was
+- close_prompt: quitting with unsaved changes asks first; Cancel keeps the
+  window, Discard closes without saving, Save saves and closes
 
 With the virtual pointer and keyboard, on a Courier text PDF:
 
@@ -556,8 +561,8 @@ class Window:
         if os.path.exists(path):
             os.remove(path)
         self.action("debug-screenshot", gvariant_str(path))
-        # The action runs before the D-Bus call returns, so the file should
-        # be there; allow a moment anyway.
+        # The app saves it after the next frame is painted, under another
+        # name, then renames it: once it's there, it's complete.
         deadline = time.monotonic() + 5
         while not os.path.exists(path):
             if time.monotonic() > deadline:
@@ -966,6 +971,99 @@ def test_rotate_and_undo(ctx):
     inp.keys(Input.CONTROL, Input.LEFT)
     time.sleep(0.5)
     check(w.state()["edit_pages"] == before, "Ctrl+Left in the page entry rotated a page")
+
+
+def turned(s, page):
+    """Whether `page` is shown turned by 90° or 270°: its x axis runs
+    vertically on screen."""
+    a, b = next(p[1:3] for p in s["pages"] if p[0] == page)
+    return abs(a) < 1e-6 and abs(b) > 0
+
+
+def copy_of_pages(ctx, name="doc.pdf"):
+    """A copy of the pages PDF that a test can change."""
+    path = os.path.join(ctx.home, name)
+    shutil.copy(ctx.pages, path)
+    return path
+
+
+def test_save(ctx):
+    path = copy_of_pages(ctx)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.action("next-page")
+    w.settled("page 2", lambda s: s["page"] == 1)
+    w.action("rotate-right")
+    w.wait("page 2 rotated", lambda s: s["modified"])
+    w.action("save")
+    s = w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    check("Edited" not in s["subtitle"] and s["toast"] == "", s)
+    app.quit()
+    # Opened again: page 2 is turned, nothing else, and it isn't an edit.
+    app = ctx.app([path])
+    w = app.window()
+    w.action("next-page")
+    s = w.settled("page 2", lambda s: s["page"] == 1)
+    check(turned(s, 1) and not turned(s, 0), s["pages"])
+    check(not s["modified"] and s["page_entry"] == LABELS[1], s)
+    # Save As: a copy, shown from then on; the file opened stays as it was.
+    before = open(path, "rb").read()
+    w.action("rotate-left")
+    w.wait("page 2 turned back", lambda s: s["modified"])
+    copy = os.path.join(ctx.home, "copy.pdf")
+    w.action("debug-save-as", gvariant_str(copy))
+    s = w.wait("the copy", lambda s: s["title"] == "copy.pdf" and not s["modified"])
+    check(open(path, "rb").read() == before, "Save As changed the original file")
+    check(os.path.exists(copy), "no copy written")
+    app.quit()
+    w = ctx.app([copy]).window()
+    w.action("next-page")
+    s = w.settled("page 2 of the copy", lambda s: s["page"] == 1)
+    check(not turned(s, 1), s["pages"])
+
+
+def test_close_prompt(ctx):
+    path = copy_of_pages(ctx)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.action("rotate-right")
+    w.wait("page 1 rotated", lambda s: s["modified"])
+    # Cancel: the window stays, still edited.
+    gdbus_activate(APP_PATH, "quit")
+    w.wait("the question", lambda s: s["alert"] == "Save Changes?")
+    time.sleep(0.5)  # the dialog's animation
+    w.screenshot("prompt")
+    w.action("debug-alert-response", gvariant_str("cancel"))
+    s = w.wait("the question to go", lambda s: s["alert"] == "")
+    time.sleep(0.5)
+    check(app.proc.poll() is None and w.state()["modified"], "the window closed")
+    # Save: saved, then closed.
+    gdbus_activate(APP_PATH, "quit")
+    w.wait("the question", lambda s: s["alert"] == "Save Changes?")
+    w.action("debug-alert-response", gvariant_str("save"))
+    try:
+        app.proc.wait(timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise CheckFailed("the app didn't quit after saving")
+    check(app.proc.returncode == 0, f"app exited with {app.proc.returncode}")
+    # Discard: closed without saving the second rotation.
+    app = ctx.app([path])
+    w = app.window()
+    s = w.settled()
+    check(turned(s, 0), "the first rotation wasn't saved")
+    w.action("rotate-right")
+    w.wait("page 1 rotated again", lambda s: s["modified"])
+    gdbus_activate(APP_PATH, "quit")
+    w.wait("the question", lambda s: s["alert"] == "Save Changes?")
+    w.action("debug-alert-response", gvariant_str("discard"))
+    try:
+        app.proc.wait(timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise CheckFailed("the app didn't quit after discarding")
+    s = ctx.app([path]).window().settled()
+    check(turned(s, 0), "the discarded rotation was saved")
 
 
 def test_select_after_rotating(ctx):

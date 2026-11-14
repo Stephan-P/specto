@@ -24,7 +24,7 @@ Not planned, at least for now: editing existing page content (reflowing text), X
 
 ## Status
 
-Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and rotate pages; Android gets text selection and search next. Saving and the rest of the editing (pages, annotations, forms) come after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
+Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and rotate pages and save the result; Android gets text selection and search next. The rest of the editing (deleting, moving and inserting pages, annotations, forms) comes after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 ## Building
 
@@ -34,6 +34,7 @@ target/release/pdfrs-gtk file.pdf                         # the desktop app
 target/release/pdfrs info file.pdf                        # the command-line dev tool
 target/release/pdfrs render file.pdf -o out -s 2          # pages → PNG
 target/release/pdfrs text file.pdf -p 1                   # the text layer
+target/release/pdfrs save file.pdf -o out.pdf -p 3,1-2    # pick, reorder, rotate (-r 90) pages
 target/release/pdfrs corpus corpus/files/... --reference  # regression run, see corpus/README.md
 ```
 
@@ -45,6 +46,7 @@ The desktop app needs the GTK 4 and libadwaita development packages; see [apps/d
 - `crates/pdfrs-source`: opening (large files are memory-mapped), metadata, outline, links and page labels
 - `crates/pdfrs-text`: text layer (characters with positions, words, lines)
 - `crates/pdfrs-doc`: edit model (the pages of a document being edited, undo and redo)
+- `crates/pdfrs-write`: saving (a full rewrite with lopdf, checked against the original)
 - `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
 - `crates/pdfrs-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
 - `crates/pdfrs-ffi`: bindings for Android (UniFFI, plus JNI for the per-frame path)

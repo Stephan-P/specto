@@ -18,12 +18,12 @@ What it can do today:
 - Thumbnails, the table of contents, links, and printed page numbers ("iv", "A-3")
 - Selecting and copying text: drag, double-click a word, triple-click a line, select all
 - Searching, ignoring case and accents, with all matches highlighted
-- Rotating pages, with undo and redo
+- Rotating pages, with undo and redo, and saving the result
 - Password-protected PDFs
 - Recent files, and remembering where you were in each file
 - Staying responsive on huge or very complex pages
 
-Coming next, more editing: saving, reordering and deleting pages, merging documents, annotations (highlights, notes, drawings) and filling in forms.
+Coming next, more editing: reordering and deleting pages, merging documents, annotations (highlights, notes, drawings) and filling in forms.
 
 The full list of features is in [FEATURES.md](FEATURES.md).
 
@@ -36,6 +36,7 @@ The core of pdfrs is implemented in Rust and shared with the Android app. The GT
 - `pdfrs-source`: reading the table of contents, links and page labels
 - `pdfrs-text`: the text on each page, for selection and search
 - `pdfrs-doc`: the pages of a document being edited, with undo and redo
+- `pdfrs-write`: saving, by writing the edited pages as a new PDF
 
 The app itself draws the rendered tiles, handles input, and provides the windows, menus and sidebar with GTK 4 and libadwaita. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 

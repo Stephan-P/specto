@@ -82,11 +82,15 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Desktop: rotate left and right (current page or spread), undo and redo with the edit's name in the main menu, "Edited" in the title; text, search and links keyed by page of the file so they survive edits. Headless checks `rotate_and_undo`, `select_after_rotating`
 - [ ] **S** Desktop: delete and move pages (with the page organizer below)
 - [ ] **M** Commands: insert pages from another PDF / merge (multi-source sessions)
-- [ ] **L** `pdfrs-write`: full rewrite save (object copying across sources, resource dedup, unreferenced-object GC, xref/object streams)
+- [x] **L** `pdfrs-write`: full rewrite save: flat page tree, rotation, deleted pages removed with what only they used, pages copied in from other sources, object and xref streams, encryption kept. Streams repaired from hayro where lopdf reads them wrong; the result is read back and checked page by page before it's used. Corpus: 1,066 of 1,077 files identical when rendered, 11 refused, none damaged
+- [ ] **M** `pdfrs-write`: save the 11 corpus files it refuses (lopdf can't read damaged cross-reference tables or page trees that hayro recovers; one has an encryption dictionary lopdf re-encrypts wrongly), e.g. by building the objects from hayro's reading of the file
+- [ ] **S** `pdfrs-write`: page labels after deleting or moving pages: write labels that keep each remaining page's label instead of dropping them; the same in the viewer
+- [ ] **S** `pdfrs-write`: deduplicate resources shared between sources (fonts embedded in both of two merged files)
 - [ ] **M** Desktop: page organizer (multi-select thumbnails, drag to reorder, drop PDF to insert, delete key)
-- [ ] **S** Save / Save As / "Export selected pages", atomic write, dirty-state tracking + close prompt
+- [x] **S** Desktop: Save (*Primary*+S) and Save As (Shift+*Primary*+S) in the main menu and the macOS File menu; written in the background to a temporary file renamed into place; edits made meanwhile stay unsaved; "Save Changes?" when closing or quitting with changes. Headless checks `save`, `close_prompt`
+- [ ] **S** "Export selected pages" (with the page organizer)
 - [x] **S** Property test: random edit sequence followed by undo-all restores the original state, and redo-all every state after it
-- [ ] **M** Round-trip harness, in CI from the first save path on: open → edit → save → reopen with our own parser and with an external validator (`qpdf --check`, which needs installing in `ci/install-deps-fedora.sh`), and compare renders of the untouched pages before and after
+- [x] **M** Round-trip harness: `crates/pdfrs-write/tests/write.rs` writes edited fixtures (inherited attributes, labels, outline, links, encryption, two sources), reopens them, compares every page's render with its source page, and runs `qpdf --check` (installed in CI). The corpus run is an ignored test
 - [ ] **S** File changed on disk while open: notice it (file monitor), and never save over a file that changed since it was read without asking; the unedited case can simply reload
 
 ## M4: Markup

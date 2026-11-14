@@ -29,6 +29,8 @@ Rendering only needs read access. Editing and saving need a mutable object model
 
 **Decision:** lopdf in `pdfrs-write` for the object model and saving, with hayro for viewing. In M0, lopdf loaded 1092/1095 corpus files and passed every editing scenario (delete, merge, reorder, incremental annotation, encryption). Merging needs our own page-import code (renumber objects, push down inherited attributes), because lopdf has none. See [M0-FINDINGS.md](M0-FINDINGS.md).
 
+**Since (M3):** the concern above came true in a few corpus files: lopdf drops streams without a valid `/Length`, decrypts per-stream `/Crypt` filters wrongly, and loses objects behind damaged cross-reference tables. `pdfrs-write` now takes each stream's bytes from hayro where the two disagree, and reads every result back with hayro, refusing to save if any page differs from its source. A writer built entirely on hayro-syntax's reading (with pdf-writer for output) remains the fallback if lopdf's gaps grow.
+
 ## D3: Desktop UI toolkit: GTK4 + libadwaita (Decided, 2026-11-14)
 
 The desktop app targets **Linux only**. That removes gpui's main advantage (consistency across platforms), while GTK4 already has what a Preview-class app needs: print, DnD list/grid views, file dialogs via portals, stylus and touchpad gestures, accessibility. We give up idiomatic Rust ergonomics (GObject subclassing) and some rendering headroom. The comparison below is kept for reference.

@@ -14,7 +14,7 @@ use std::sync::{Arc, OnceLock};
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use pdfrs_doc::{Edit, EditDoc, Rotation, SourceId};
+use pdfrs_doc::{Edit, EditDoc, PageRef, Rotation, SourceId, Version};
 use pdfrs_geom::{PageGeometry, ViewPoint};
 use pdfrs_render::OpenError;
 use pdfrs_render::scheduler::{Client, Scheduler};
@@ -513,8 +513,48 @@ fn view_pages(edit: &EditDoc, doc: DocId, geometries: &[PageGeometry]) -> Vec<Vi
         .collect()
 }
 
+/// What saving needs, taken from the document so the file can be written
+/// on another thread.
+pub struct SaveJob {
+    data: PdfData,
+    password: Option<String>,
+    pages: Vec<PageRef>,
+    /// The state being saved, to mark as saved when done.
+    pub version: Version,
+}
+
+impl SaveJob {
+    /// The new file's bytes.
+    pub fn write(&self) -> Result<Vec<u8>, pdfrs_write::WriteError> {
+        pdfrs_write::write(&[self.source()], &self.pages)
+    }
+
+    /// Writes the new file to `path`, replacing it safely if it exists.
+    pub fn save(&self, path: &std::path::Path) -> Result<(), pdfrs_write::WriteError> {
+        pdfrs_write::save(path, &[self.source()], &self.pages)
+    }
+
+    fn source(&self) -> pdfrs_write::Source<'_> {
+        pdfrs_write::Source {
+            id: SOURCE,
+            data: &self.data,
+            password: self.password.as_deref(),
+        }
+    }
+}
+
 impl Document {
     // --- editing ----------------------------------------------------------
+
+    /// A copy of what's needed to save the document as it is now.
+    pub fn save_job(&self) -> SaveJob {
+        SaveJob {
+            data: self.data.clone(),
+            password: self.password.clone(),
+            pages: self.edit.pages().to_vec(),
+            version: self.edit.version(),
+        }
+    }
 
     /// Turns the pages at `which` clockwise by `by`. Returns whether
     /// anything changed.

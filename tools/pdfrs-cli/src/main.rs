@@ -42,6 +42,22 @@ enum Command {
         #[arg(long)]
         annotations: bool,
     },
+    /// Write a copy of a PDF with pages picked, reordered or rotated, as the
+    /// apps save edited documents.
+    Save {
+        file: PathBuf,
+        /// Where to write; may be the input file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Pages to keep, in order, 1-based, e.g. "3,1-2". Default: all.
+        #[arg(short, long)]
+        pages: Option<String>,
+        /// Turn the kept pages clockwise by this many degrees (90, 180, 270).
+        #[arg(short, long, default_value_t = 0)]
+        rotate: i64,
+        #[arg(long)]
+        password: Option<String>,
+    },
     /// Render a single file and print per-page results (used by `corpus`).
     #[command(hide = true)]
     Check(check::CheckArgs),
@@ -63,6 +79,19 @@ fn main() -> Result<()> {
             password,
             annotations,
         } => text(&file, pages.as_deref(), password.as_deref(), annotations),
+        Command::Save {
+            file,
+            output,
+            pages,
+            rotate,
+            password,
+        } => save(
+            &file,
+            &output,
+            pages.as_deref(),
+            rotate,
+            password.as_deref(),
+        ),
         Command::Check(args) => check::run(&args),
         Command::Corpus(args) => corpus::run(&args),
     }
@@ -246,6 +275,48 @@ fn print_outline(items: &[pdfrs_source::OutlineItem], depth: usize) {
 }
 
 /// Parses "1,3,5-7" (1-based, inclusive) into zero-based indices.
+fn save(
+    file: &Path,
+    output: &Path,
+    pages: Option<&str>,
+    rotate: i64,
+    password: Option<&str>,
+) -> Result<()> {
+    use pdfrs_doc::{PageRef, Rotation, SourceId};
+    if rotate % 90 != 0 {
+        bail!("--rotate must be a multiple of 90");
+    }
+    let count = open(file, password)?.page_count();
+    let pages = match pages {
+        Some(spec) => parse_pages(spec, count)?,
+        None => (0..count).collect(),
+    };
+    let rotation = Rotation::from_degrees(rotate);
+    let pages: Vec<PageRef> = pages
+        .into_iter()
+        .map(|i| PageRef {
+            rotation,
+            ..PageRef::new(SourceId(0), i as u32)
+        })
+        .collect();
+    let data = pdfrs_source::PdfData::open(file)?;
+    let source = pdfrs_write::Source {
+        id: SourceId(0),
+        data: &data,
+        password,
+    };
+    let start = Instant::now();
+    pdfrs_write::save(output, &[source], &pages)
+        .with_context(|| format!("saving {}", output.display()))?;
+    println!(
+        "{} pages → {} in {:.2} s",
+        pages.len(),
+        output.display(),
+        start.elapsed().as_secs_f64()
+    );
+    Ok(())
+}
+
 pub(crate) fn parse_pages(spec: &str, count: usize) -> Result<Vec<usize>> {
     let mut pages = Vec::new();
     for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {

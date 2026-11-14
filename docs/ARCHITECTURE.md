@@ -19,7 +19,7 @@ pdfrs/
 │   ├── pdfrs-doc       # edit model: page list and undo/redo (later annotations, form values)
 │   ├── pdfrs-annot     # (M4) annotation types + appearance-stream generation
 │   ├── pdfrs-forms     # (M5) AcroForm model, field values, appearance regeneration
-│   ├── pdfrs-write     # (M3) serialization: full rewrite + incremental update
+│   ├── pdfrs-write     # saving: full rewrite (lopdf), checked against hayro; incremental update later
 │   ├── pdfrs-view      # UI-agnostic viewer: layout modes, viewport, zoom, hit-test, tools
 │   └── pdfrs-ffi       # Android bindings: UniFFI (Kotlin), plus JNI for the per-frame path
 ├── apps/
@@ -161,13 +161,20 @@ Still to come: a `ViewHost`-style callback for redraws and native text inputs (f
 | Change type | Strategy |
 |---|---|
 | Only annotations / form values changed | **Incremental update** (append to original file). Fast, and preserves existing digital signatures' byte ranges. |
-| Pages deleted / reordered / merged | **Full rewrite**: copy reachable objects from each source (dedup shared resources), write a fresh xref and object streams, and drop unreferenced objects. |
+| Pages rotated / deleted / reordered / merged | **Full rewrite**: copy reachable objects from each source, write a fresh xref and object streams, and drop unreferenced objects. (Implemented; deduplicating resources shared between sources isn't yet.) |
 
 Annotations are always saved as standard PDF annotations, never flattened into page content, as Preview does (D8).
 
 **Encrypted documents** (D9): the security handler, key and permissions of the document being saved are kept. Incremental updates encrypt the newly appended objects with the existing key. A full rewrite re-encrypts with the same password and permissions. Merged pages from other (decrypted) sources get encrypted with the target document's key. "Export…" can add, change or remove a password.
 
-Always write to a temp file and rename atomically. Never overwrite the file a `SourceDoc` is still memory-mapping from without re-opening it afterwards.
+Always write to a temp file and rename atomically (`pdfrs_write::replace_file`, which keeps permissions and follows symbolic links). The renamed-over file stays readable through an open mapping, so the document doesn't need re-opening after a save: its edits stay relative to the original data, and saving again writes the same result.
+
+How the full rewrite works (`pdfrs_write::write`):
+
+- lopdf loads (and decrypts) the main source. Inherited page attributes are pushed down onto each page, the page tree becomes one flat list of the pages kept, and each page's `/Rotate` gets the user's rotation added. Deleted pages are removed; references to them (outline entries, links) dangle, which readers treat as null. Page labels are dropped unless every page is still there, in order. A page used twice gets its own page dictionary and copies of its annotations. Pages from other sources are copied in, renumbered.
+- lopdf loses some data that hayro recovers: the contents of streams without a valid `/Length`, and of streams it decrypts wrongly (per-stream `/Crypt` filters). Every stream's bytes are compared with hayro's reading of the same object, and hayro's win, so the saved file has what the app showed.
+- After writing, the result is read back with hayro and each page compared with its source page (content, boxes, resource names). Any difference fails the save with `WriteError::Unsupported` instead of writing a damaged file.
+- On the corpus (`cargo test --release -p pdfrs-write -- --ignored`), 1,066 of 1,077 files are rewritten with every page rendering identically, unchanged and with pages reversed and rotated. The other 11 are refused, nearly all damaged files that lopdf can't read; none is written damaged.
 
 ## Frontend integration
 

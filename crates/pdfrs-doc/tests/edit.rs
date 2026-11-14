@@ -105,6 +105,18 @@ fn modified_is_relative_to_the_last_save() {
 }
 
 #[test]
+fn edits_during_a_save_stay_unsaved() {
+    let mut doc = EditDoc::from_source(A, 3);
+    doc.rotate(&[0], Rotation::Cw90);
+    let saving = doc.version();
+    doc.rotate(&[1], Rotation::Cw90);
+    doc.mark_saved_version(saving);
+    assert!(doc.is_modified());
+    doc.undo();
+    assert!(!doc.is_modified());
+}
+
+#[test]
 fn history_is_limited() {
     let mut doc = EditDoc::from_source(A, 2);
     for _ in 0..UNDO_LIMIT + 10 {

@@ -116,6 +116,18 @@ Resetting saved state:
 - macOS: Edit → Undo and Redo, and Tools → Rotate Left and Rotate Right, with Cmd+Z, Shift+Cmd+Z, Cmd+Left and Cmd+Right.
 - A PDF over 64 MB (a scanned book, say) opens at once, and the app's memory use stays well below the file's size.
 
+### Saving
+
+Work on copies of the test files.
+
+- LONG: rotate a few pages, *Primary*+S. "Edited" goes away; reopened, the pages are rotated, and the Contents, links and printed page numbers still work. The file opens in other viewers too (Evince or Papers on Linux, Preview on macOS).
+- ENCRYPTED: rotate a page and save: reopening asks for the password again, and `secret` still works.
+- Save As into another folder: the window shows the new name; the original file is unchanged.
+- With changes, close the window (*Primary*+W) or quit (*Primary*+Q): "Save Changes?" appears. Cancel keeps the window; Discard closes without saving; Save saves, then closes. With several edited windows, quitting asks for each one.
+- Saving into a folder you can't write to: a message "Couldn't save … Permission denied", and the document stays "Edited".
+- A file that is a symbolic link: after saving, the link is still a link, pointing at the updated file.
+- GIANT: saving takes a few seconds and the window stays responsive meanwhile.
+
 ### Remembering state
 
 - LONG: go to page 200, switch to Two Pages, zoom to 150%, open the Contents tab, close, reopen. All of it is restored, at the same spot on page 200.

@@ -67,11 +67,19 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Selection, search, links and the table of contents keep working on edited pages
 - In the page entry or the search field, the shortcuts act on the text instead (Undo, moving by words)
 
-Edits can't be saved yet.
+## Saving
+
+- Save (*Primary*+S) and Save As (Shift+*Primary*+S), in the main menu
+- The new file is written next to the old one and then takes its place, so the old file is intact until the new one is complete
+- Encrypted documents stay encrypted, with the same password
+- Saved files keep the outline, links, metadata and page labels (labels only while all pages are there, in their order)
+- Closing a window or quitting with unsaved changes asks "Save Changes?": Save, Discard or Cancel
+- Edits made while a save is running stay "Edited"
+- A file pdfrs can't save correctly (a few damaged ones) isn't written: a message says so instead
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -87,6 +95,6 @@ Edits can't be saved yet.
 
 ## Not yet
 
-- Printing, saving, deleting and moving pages, annotations, form filling
+- Printing, deleting and moving pages, inserting pages from other files, annotations, form filling
 - Highlighting the current outline entry
 - Dark mode for page content
