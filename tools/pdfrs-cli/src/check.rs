@@ -7,18 +7,19 @@
 //! `page  width  height  ms  status  diff_fraction  mean_abs_diff`
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Instant;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::Args;
 use pdfrs_render::{Bitmap, Document, OpenError, RenderRequest};
+use wait_timeout::ChildExt;
 
 #[derive(Args)]
 pub struct CheckArgs {
     pub file: PathBuf,
     #[arg(long, default_value_t = 2.0)]
-    pub scale: f32,
+    pub scale: f64,
     #[arg(long, default_value_t = 10)]
     pub max_pages: usize,
     /// Compare against `pdftoppm` (Poppler).
@@ -93,17 +94,29 @@ pub fn run(args: &CheckArgs) -> Result<()> {
     Ok(())
 }
 
-fn reference_render(file: &Path, page: usize, scale: f32, tmp: &Path) -> Result<image::RgbImage> {
+/// pdftoppm gets its own deadline, shorter than `corpus`'s per-file timeout.
+/// Otherwise `corpus` kills this process first and pdftoppm is orphaned,
+/// burning CPU in the background indefinitely.
+const REFERENCE_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn reference_render(file: &Path, page: usize, scale: f64, tmp: &Path) -> Result<image::RgbImage> {
     let root = tmp.join("ref");
     let n = (page + 1).to_string();
-    let status = Command::new("pdftoppm")
+    let mut child = Command::new("pdftoppm")
         .args(["-cropbox", "-png", "-singlefile", "-f", &n, "-l", &n, "-r"])
         .arg(format!("{}", 72.0 * scale))
         .arg(file)
         .arg(&root)
-        .output()
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .context("running pdftoppm")?;
-    anyhow::ensure!(status.status.success(), "pdftoppm failed");
+    let Some(status) = child.wait_timeout(REFERENCE_TIMEOUT)? else {
+        let _ = child.kill();
+        let _ = child.wait();
+        anyhow::bail!("pdftoppm timed out");
+    };
+    anyhow::ensure!(status.success(), "pdftoppm failed");
     Ok(image::open(root.with_extension("png"))?.into_rgb8())
 }
 

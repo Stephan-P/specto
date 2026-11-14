@@ -9,6 +9,7 @@ rust-version = "1.92" # hayro 0.9 requires 1.92
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
+pdfrs-geom = { path = "crates/pdfrs-geom" }
 pdfrs-render = { path = "crates/pdfrs-render" }
 hayro = "0.9"
 anyhow = "1"

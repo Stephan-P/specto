@@ -42,7 +42,8 @@ target/release/pdfrs corpus corpus/files/... --reference  # regression run, see 
 
 ## Layout
 
-- `crates/pdfrs-render`: `Document` trait + hayro backend (full pages, tiles, with or without annotations)
+- `crates/pdfrs-geom`: typed coordinate spaces and page geometry (crop box, rotation)
+- `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
 - `tools/pdfrs-cli`: the `pdfrs` dev tool
 - `spikes/`: throwaway prototype code from M0 (to be deleted once ported): `lopdf-spike` (editing/saving), `gtk-canvas` (tiled GTK viewer, `cargo run --release -p gtk-canvas -- file.pdf`)
 - `corpus/`: test corpus fetch script (files are git-ignored)

@@ -1,142 +1,192 @@
 use std::sync::Arc;
 
-use hayro::hayro_interpret::util::TransformExt;
 use hayro::hayro_interpret::{InterpreterSettings, RenderContent};
+use hayro::hayro_syntax::object::Rect as HayroRect;
+use hayro::hayro_syntax::page::{Page, Rotation as HayroRotation};
 use hayro::hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use hayro::kurbo::Affine;
 use hayro::vello_cpu::color::AlphaColor;
 use hayro::vello_cpu::color::palette::css::TRANSPARENT;
 use hayro::vello_cpu::{Pixmap, RasterizerSettings, RenderContext, Resources, TargetInit};
 use hayro::{RenderCache, RenderSettings, render_into};
+use pdfrs_geom::{DeviceIntRect, PageGeometry, PdfBox, PdfPoint, Rotation};
 
-use crate::{
-    Bitmap, Content, Document, OpenError, PageSize, PixelRect, RenderError, RenderRequest,
-};
+use crate::{Bitmap, Content, Document, OpenError, RenderError, RenderRequest};
 
 /// vello_cpu addresses pixels with `u16`.
 const MAX_DIMENSION: u32 = u16::MAX as u32;
 
+self_cell::self_cell!(
+    /// A parsed PDF together with hayro's render cache, which borrows it.
+    struct PdfWithCache {
+        owner: Pdf,
+        #[not_covariant]
+        dependent: RenderCache,
+    }
+);
+
+/// Lets hayro read from an `Arc<[u8]>` shared between threads without copying.
+struct SharedBytes(Arc<[u8]>);
+
+impl AsRef<[u8]> for SharedBytes {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 /// A PDF opened with the pure-Rust hayro renderer.
+///
+/// Keeps hayro's font/glyph/image cache across renders, which makes tiles of
+/// the same page 1.4–6× faster (measured in M1). The cache only grows, so
+/// long-lived users should re-open the document now and then.
+/// Not `Send`: the cache uses `Rc`.
 pub struct HayroDocument {
-    pdf: Pdf,
+    inner: PdfWithCache,
     settings: InterpreterSettings,
+    geometries: Vec<PageGeometry>,
 }
 
 impl HayroDocument {
-    pub fn open(data: Vec<u8>, password: Option<&str>) -> Result<Self, OpenError> {
-        let pdf =
-            Pdf::new_with_password(Arc::new(data), password.unwrap_or("")).map_err(
-                |e| match e {
-                    LoadPdfError::Decryption(DecryptionError::PasswordProtected) => {
-                        OpenError::PasswordRequired
-                    }
-                    LoadPdfError::Decryption(DecryptionError::UnsupportedAlgorithm) => {
-                        OpenError::UnsupportedEncryption
-                    }
-                    LoadPdfError::Decryption(_) => OpenError::InvalidEncryption,
-                    LoadPdfError::Invalid => OpenError::Invalid,
-                },
-            )?;
+    pub fn open(data: impl Into<Arc<[u8]>>, password: Option<&str>) -> Result<Self, OpenError> {
+        let data: Arc<[u8]> = data.into();
+        let pdf = Pdf::new_with_password(Arc::new(SharedBytes(data)), password.unwrap_or(""))
+            .map_err(|e| match e {
+                LoadPdfError::Decryption(DecryptionError::PasswordProtected) => {
+                    OpenError::PasswordRequired
+                }
+                LoadPdfError::Decryption(DecryptionError::UnsupportedAlgorithm) => {
+                    OpenError::UnsupportedEncryption
+                }
+                LoadPdfError::Decryption(_) => OpenError::InvalidEncryption,
+                LoadPdfError::Invalid => OpenError::Invalid,
+            })?;
+        let geometries = pdf.pages().iter().map(geometry_of).collect();
         Ok(Self {
-            pdf,
+            inner: PdfWithCache::new(pdf, |_| RenderCache::new()),
             // Defaults use hayro's embedded standard fonts and CMaps.
             // TODO: resolve fallback fonts via fontconfig for better CJK coverage.
             settings: InterpreterSettings::default(),
+            geometries,
         })
     }
 
     pub fn pdf(&self) -> &Pdf {
-        &self.pdf
+        self.inner.borrow_owner()
     }
+}
+
+fn geometry_of(page: &Page<'_>) -> PageGeometry {
+    let to_box = |r: HayroRect| PdfBox::new(PdfPoint::new(r.x0, r.y0), PdfPoint::new(r.x1, r.y1));
+    let rotation = match page.rotation() {
+        HayroRotation::None => Rotation::None,
+        HayroRotation::Horizontal => Rotation::Cw90,
+        HayroRotation::Flipped => Rotation::Cw180,
+        HayroRotation::FlippedHorizontal => Rotation::Cw270,
+    };
+    PageGeometry::new(
+        to_box(page.media_box()),
+        Some(to_box(page.crop_box())),
+        rotation,
+    )
 }
 
 impl Document for HayroDocument {
     fn page_count(&self) -> usize {
-        self.pdf.pages().len()
+        self.geometries.len()
     }
 
-    fn page_size(&self, page: usize) -> Option<PageSize> {
-        let (width, height) = self.pdf.pages().get(page)?.render_dimensions();
-        Some(PageSize { width, height })
+    fn page_geometry(&self, page: usize) -> Option<PageGeometry> {
+        self.geometries.get(page).copied()
     }
 
     fn render(&self, req: &RenderRequest) -> Result<Bitmap, RenderError> {
-        let page = self
-            .pdf
-            .pages()
-            .get(req.page)
-            .ok_or(RenderError::PageOutOfRange(req.page))?;
-        let (pw, ph) = page.render_dimensions();
-        let (full_w, full_h) = PageSize {
-            width: pw,
-            height: ph,
-        }
-        .pixels(req.scale);
-
-        let region = req.region.unwrap_or(PixelRect {
-            x: 0,
-            y: 0,
-            width: full_w,
-            height: full_h,
-        });
-        if region.width == 0
-            || region.height == 0
-            || region.x + region.width > full_w
-            || region.y + region.height > full_h
-        {
+        let geometry = self
+            .page_geometry(req.page)
+            .ok_or(RenderError::PageOutOfRange(req.page))?
+            .rotated(req.rotation);
+        let full = geometry.pixel_size(req.scale);
+        let region = req.region.unwrap_or_else(|| DeviceIntRect::from_size(full));
+        if region.is_empty() || region.max.x > full.width || region.max.y > full.height {
             return Err(RenderError::RegionOutOfBounds);
         }
-        if region.width > MAX_DIMENSION || region.height > MAX_DIMENSION {
-            return Err(RenderError::TooLarge(region.width, region.height));
+        let (w, h) = (region.width(), region.height());
+        if w > MAX_DIMENSION || h > MAX_DIMENSION {
+            return Err(RenderError::TooLarge(w, h));
         }
 
         // Scale non-uniformly by a hair so the page exactly fills the rounded
         // pixel dimensions; tiles then line up seamlessly with full renders.
-        let sx = full_w as f64 / pw as f64;
-        let sy = full_h as f64 / ph as f64;
-        let transform = Affine::translate((-(region.x as f64), -(region.y as f64)))
+        let size = geometry.size();
+        let sx = full.width as f64 / size.width;
+        let sy = full.height as f64 / size.height;
+        let page_t = geometry.pdf_to_page();
+        let transform = Affine::translate((-(region.min.x as f64), -(region.min.y as f64)))
             * Affine::scale_non_uniform(sx, sy)
-            * page.initial_transform(true).to_kurbo();
+            * Affine::new([
+                page_t.m11, page_t.m12, page_t.m21, page_t.m22, page_t.m31, page_t.m32,
+            ]);
 
         let mut settings = self.settings.clone();
         settings.render_content = match req.content {
             Content::PageAndAnnotations => RenderContent::all(),
             Content::PageOnly => RenderContent::PAGE,
         };
-
-        let (w, h) = (region.width as u16, region.height as u16);
-        let mut ctx = RenderContext::new(w, h);
-        // TODO: keep a RenderCache per document across calls. It borrows the
-        // `Pdf`, so that needs a self-referential owner or a per-thread cache.
-        let cache = RenderCache::new();
-        render_into(
-            page,
-            &cache,
-            &settings,
-            &RenderSettings::default(),
-            &mut ctx,
-            transform,
-        );
-        ctx.flush();
-
         let background = req
             .background
             .map(|[r, g, b, a]| AlphaColor::from_rgba8(r, g, b, a))
             .unwrap_or(TRANSPARENT);
-        let mut pixmap = Pixmap::new(w, h);
-        ctx.render_with(
-            &mut pixmap,
-            &mut Resources::default(),
-            RasterizerSettings {
-                target_init: TargetInit::Clear(background),
-                ..Default::default()
-            },
-        );
 
+        let data = self.inner.with_dependent(|pdf, cache| {
+            let page = &pdf.pages()[req.page];
+            let mut ctx = RenderContext::new(w as u16, h as u16);
+            render_into(
+                page,
+                cache,
+                &settings,
+                &RenderSettings::default(),
+                &mut ctx,
+                transform,
+            );
+            ctx.flush();
+            let mut pixmap = Pixmap::new(w as u16, h as u16);
+            ctx.render_with(
+                &mut pixmap,
+                &mut Resources::default(),
+                RasterizerSettings {
+                    target_init: TargetInit::Clear(background),
+                    ..Default::default()
+                },
+            );
+            pixmap.data_as_u8_slice().to_vec()
+        });
         Ok(Bitmap {
-            width: region.width,
-            height: region.height,
-            data: pixmap.data_as_u8_slice().to_vec(),
+            width: w,
+            height: h,
+            data,
         })
     }
+}
+
+/// Checks that our page transform agrees with hayro's own for every page.
+/// Otherwise annotation positions, hit-testing and rendering would drift apart.
+pub fn check_geometry_matches_hayro(doc: &HayroDocument) -> Result<(), String> {
+    use hayro::hayro_interpret::util::TransformExt;
+    for (i, page) in doc.pdf().pages().iter().enumerate() {
+        let t = doc.geometries[i].pdf_to_page();
+        let ours = [t.m11, t.m12, t.m21, t.m22, t.m31, t.m32];
+        let theirs = page.initial_transform(true).to_kurbo().as_coeffs();
+        let (rw, rh) = page.render_dimensions();
+        let size = doc.geometries[i].size();
+        let size_ok =
+            (size.width - rw as f64).abs() < 1e-3 && (size.height - rh as f64).abs() < 1e-3;
+        // hayro computes in f32 in places; compare relative to page size.
+        let tol = 1e-4 * (1.0 + size.width.max(size.height));
+        let tf_ok = ours.iter().zip(theirs).all(|(a, b)| (a - b).abs() < tol);
+        if !(size_ok && tf_ok) {
+            return Err(format!(
+                "page {i}: ours {ours:?} {size:?}, hayro {theirs:?} ({rw}×{rh})"
+            ));
+        }
+    }
+    Ok(())
 }

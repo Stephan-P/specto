@@ -12,7 +12,7 @@ Rendered the first 3 pages of each at scale 2 (144 dpi). Each file ran in its ow
 |---|---|
 | Files rendered | 1073 / 1095 |
 | Crashes (panic / abort) | **0** |
-| Timeouts (> 60 s) | 4: `bomb_giant` (decompression bomb), two `tiling-pattern-tiny-steps*`, `issue19517` |
+| Timeouts (> 60 s) | 4, but see the correction below: 3 of them were Poppler, not hayro |
 | Failed to open | 18: 6 need a password, 12 invalid. Poppler can't open most of the invalid ones either. |
 | Page time | median 2.8 ms · p90 22 ms · p99 213 ms · max 5.2 s |
 | Total wall time | 147 s for 1095 files including Poppler reference renders |
@@ -36,7 +36,8 @@ Manual review of the 8 worst:
 
 - hayro is good enough to build on. It was robust (no crashes) and fast on typical pages, and roughly half the "worst" differences were Poppler's bugs, not hayro's.
 - Its README is outdated. 0.9 **does** decrypt RC4/AES-128/AES-256 (`Pdf::new_with_password`). It also has `RenderContent::{PAGE, ANNOTATIONS}`, so page content can be rendered without annotations. That's exactly what our "annotations as overlay" design needs, and it's verified by a test in `pdfrs-render`.
-- We need **guards** against pathological files: a render deadline/cancellation, plus a memory cap (`bomb_giant`). hayro has no cancellation API yet, so the viewer must render on worker threads and be able to drop late results.
+- We need **guards** against pathological files. hayro has no cancellation API, so the viewer must render on worker threads and be able to drop late results.
+- **Correction (M1):** the corpus runner rendered with hayro *and* `pdftoppm` within the same per-file timeout. Re-timed with hayro alone: `tiling-pattern-tiny-steps` 0.5 ms, `tiling-pattern-tiny-steps-large` 4.6 ms, `bomb_giant` 1.3 ms. Those were **Poppler** hangs. Only `issue19517` is slow in hayro: 41 s for a 4.4 × 5.9 m page at 2× (25216 × 33612 px). (The runner also orphaned the hung `pdftoppm` processes; it now gives them their own 20 s timeout.)
 - `RenderCache` borrows the `Pdf` and uses `Rc`, so it's `!Send` and can't easily be stored next to the document. For the viewer we'll want one cache per worker thread (e.g. a thread owns a `Pdf` and its cache). We need to measure how much the cache helps on text-heavy pages.
 - Poppler is a weak oracle. Getting PDFium (BSD) reference renders would make the regression suite more useful.
 

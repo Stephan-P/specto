@@ -19,7 +19,7 @@ pub struct CorpusArgs {
     #[arg(short, long, default_value = "out/corpus")]
     pub output: PathBuf,
     #[arg(long, default_value_t = 2.0)]
-    pub scale: f32,
+    pub scale: f64,
     #[arg(long, default_value_t = 10)]
     pub max_pages: usize,
     /// Per-file timeout in seconds.

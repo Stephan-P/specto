@@ -21,18 +21,20 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** lopdf spike: AES-256 encrypt, encrypted incremental save, decrypt → edit → re-encrypt (D9)
 - [ ] **S** Verify Preview's encryption behavior on a Mac (user password, owner-password restrictions, Export → Encrypt) and update D9
 - [x] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + zoom, about 55 fps (D3, see M0-FINDINGS.md)
-- [ ] **S** Manual check of the canvas spike on a real HiDPI display with a touchpad (pinch, fractional scale)
+- [x] **S** Manual check of the canvas spike on real hardware: works on macOS (GTK), but HiDPI output looks off
+- [ ] **S** Fix HiDPI sharpness. Suspects: (1) zoom levels are picked with `round()` on a √2 scale, so tiles can be rendered up to 19% *below* device resolution and upscaled; use `ceil()` and always downsample. (2) Page and tile positions are rounded to logical px, not device px, so on fractional scales textures land between pixels and get filtered. Verify by comparing the reported `Surface::scale()` with the tile pixel size.
 - [ ] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap` (D4/D5). Do this on the other machine.
 
 ## M1: Core viewer (desktop)
 
-- [ ] **M** Render guards: per-render deadline (drop late results), memory cap for huge images and decompression bombs, from the M0 timeouts
-- [ ] **S** Per-thread hayro `RenderCache` (it's `!Send` and borrows the `Pdf`); measure the speedup on text-heavy pages
+- [ ] **M** Render guards. hayro interprets the whole page for every tile, so a huge or complex page (e.g. `issue19517`, 41 s at 2×) blocks a worker. Needed: a deadline after which the page shows "too complex", spare workers so one stuck page can't starve the rest, and a memory cap for huge images.
+- [x] **S** Keep hayro's `RenderCache` across renders (`self_cell`), reset per worker after 32 pages. Measured 1.4–6× faster tiles.
 
-- [ ] **S** `pdfrs-geom`: coordinate-space newtypes, page rotation/CropBox transform, tests
+- [x] **S** `pdfrs-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p pdfrs-render -- --ignored`).
 - [ ] **M** `pdfrs-source`: open file (mmap), page count, page sizes/rotation, outline, metadata, password prompt hook
-- [ ] **M** `pdfrs-render`: `Renderer` trait + hayro backend, tile rendering at arbitrary scale
-- [ ] **M** Render scheduler: worker pool, priorities, cancellation, LRU tile cache with memory budget
+- [x] **M** `pdfrs-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
+- [x] **M** Render scheduler (`pdfrs_render::scheduler`): worker pool, multiple documents, a priority queue that's replaced every frame, panics isolated per tile. `TileCache<T>` (`pdfrs_render::tile`) has an LRU byte budget, protects tiles used this frame, and is generic over the frontend's texture type.
+- [x] **S** HiDPI fix: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike). Still needs checking on the Mac.
 - [ ] **M** `pdfrs-view`: layout engine for Single / Continuous / Two-up / Two-up continuous (+ "cover page alone" option)
 - [ ] **M** `pdfrs-view`: viewport, zoom (fit width/page, fixed), zoom buckets, scroll/pinch handling, HiDPI scale factor
 - [ ] **M** Desktop: canvas widget drawing tiles, scaled placeholders while sharp tiles render

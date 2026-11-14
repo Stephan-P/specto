@@ -7,20 +7,17 @@
 //! Throwaway code; the real thing will be driven by `pdfrs-view`.
 
 mod canvas;
-mod workers;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Instant;
 
 use adw::prelude::*;
 use gtk::{gdk, glib};
-use pdfrs_render::{Document, HayroDocument};
+use pdfrs_render::scheduler::Scheduler;
 
 use canvas::{PdfCanvas, State};
-use workers::Pool;
 
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -44,22 +41,18 @@ fn main() -> glib::ExitCode {
 }
 
 fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<PathBuf>) {
-    let data = Arc::new(std::fs::read(path).expect("read pdf"));
-    let doc = HayroDocument::open((*data).clone(), None).expect("open pdf");
-    let pages = (0..doc.page_count())
-        .map(|i| {
-            let s = doc.page_size(i).unwrap();
-            (s.width as f64, s.height as f64)
-        })
-        .collect();
-    let state = Rc::new(RefCell::new(State::new(pages)));
-
-    let (tx, rx) = async_channel::unbounded();
+    let data = std::fs::read(path).expect("read pdf");
+    let (tx, rx) = async_channel::unbounded::<()>();
     let threads = std::env::var("PDFRS_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| n.get()));
-    state.borrow_mut().pool = Some(Pool::new(data, threads, tx));
+    // Workers wake the main loop; the main loop then collects finished tiles.
+    let scheduler = Scheduler::new(threads, move || {
+        let _ = tx.try_send(());
+    });
+    let opened = scheduler.open(data, None).expect("open pdf");
+    let state = Rc::new(RefCell::new(State::new(scheduler, opened.id, opened.pages)));
 
     let canvas = PdfCanvas::new(state.clone());
 
@@ -68,19 +61,22 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         let state = state.clone();
         let canvas = canvas.clone();
         glib::spawn_future_local(async move {
-            while let Ok(r) = rx.recv().await {
-                let bytes = r.bitmap.data.len();
-                let texture = gdk::MemoryTexture::new(
-                    r.bitmap.width as i32,
-                    r.bitmap.height as i32,
-                    gdk::MemoryFormat::R8g8b8a8Premultiplied,
-                    &glib::Bytes::from_owned(r.bitmap.data),
-                    r.bitmap.width as usize * 4,
-                );
+            while rx.recv().await.is_ok() {
                 let mut s = state.borrow_mut();
-                s.stats.tiles_rendered += 1;
-                s.stats.tile_ms.push(r.ms);
-                s.insert(r.key, texture.upcast(), bytes);
+                for f in s.scheduler.take_finished() {
+                    let Ok(bitmap) = f.result else { continue };
+                    let bytes = bitmap.data.len();
+                    let texture = gdk::MemoryTexture::new(
+                        bitmap.width as i32,
+                        bitmap.height as i32,
+                        gdk::MemoryFormat::R8g8b8a8Premultiplied,
+                        &glib::Bytes::from_owned(bitmap.data),
+                        bitmap.width as usize * 4,
+                    );
+                    s.stats.tiles_rendered += 1;
+                    s.stats.tile_ms.push(f.elapsed.as_secs_f64() * 1000.0);
+                    s.cache.insert(f.key, texture.upcast(), bytes);
+                }
                 drop(s);
                 canvas.queue_draw();
             }
@@ -169,7 +165,7 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         let canvas_ref = canvas.clone();
         canvas.connect_realize(move |_| {
             let mut s = state.borrow_mut();
-            let max_w = s.pages.iter().map(|p| p.0).fold(0.0, f64::max);
+            let max_w = s.max_page_width();
             s.zoom = ((canvas_ref.width().max(1100) as f64 - 4.0 * canvas::GAP) / max_w).min(1.5);
         });
     }
@@ -210,7 +206,7 @@ fn run_bench(
         if let Some(&last) = intervals.borrow().last()
             && last > 50.0
         {
-            let q = state.borrow().pool.as_ref().map_or(0, |p| p.queue_len());
+            let q = state.borrow().scheduler.pending();
             eprintln!(
                 "long frame: {last:.0} ms at t={t:.2} s (queue {q}, zoom {:.2})",
                 state.borrow().zoom
@@ -323,7 +319,10 @@ fn report(s: &State, intervals: &[f64], canvas: &PdfCanvas) {
         s.stats.blurry_frames,
         s.stats.frames
     );
-    if let Some(pool) = &s.pool {
-        println!("queue at end: {}", pool.queue_len());
-    }
+    println!(
+        "pending at end: {} · cache {} tiles / {} MB",
+        s.scheduler.pending(),
+        s.cache.len(),
+        s.cache.bytes() >> 20
+    );
 }

@@ -12,9 +12,9 @@
 ```
 pdfrs/
 ├── crates/
-│   ├── pdfrs-geom      # coordinate spaces, transforms, rects/quads (newtypes)
+│   ├── pdfrs-geom      # typed coordinate spaces (euclid), PageGeometry: CropBox, /Rotate
 │   ├── pdfrs-source    # parsing + read access to source PDFs (wraps parser backend)
-│   ├── pdfrs-render    # Renderer trait, hayro backend, tile cache, render scheduler
+│   ├── pdfrs-render    # Document trait, hayro backend, TileCache<T>, render scheduler
 │   ├── pdfrs-text      # text extraction with glyph quads → selection, search, highlight targets
 │   ├── pdfrs-doc       # edit model: page list, annotations, form values, undo/redo, commands
 │   ├── pdfrs-annot     # annotation types + appearance-stream generation

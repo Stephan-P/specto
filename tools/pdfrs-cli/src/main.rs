@@ -36,7 +36,7 @@ enum Command {
         pages: Option<String>,
         /// Device pixels per PDF point (2.0 = 144 dpi).
         #[arg(short, long, default_value_t = 2.0)]
-        scale: f32,
+        scale: f64,
         /// Don't draw annotations stored in the file.
         #[arg(long)]
         no_annotations: bool,
@@ -93,8 +93,18 @@ fn info(file: &Path, password: Option<&str>) -> Result<()> {
         println!("title:    {}", String::from_utf8_lossy(title));
     }
     for i in 0..doc.page_count().min(10) {
-        let s = doc.page_size(i).expect("index in range");
-        println!("page {:>3}: {:.1} × {:.1} pt", i + 1, s.width, s.height);
+        let g = doc.page_geometry(i).expect("index in range");
+        let s = g.size();
+        let rot = match g.rotation().degrees() {
+            0 => String::new(),
+            d => format!(" (rotated {d}°)"),
+        };
+        println!(
+            "page {:>3}: {:.1} × {:.1} pt{rot}",
+            i + 1,
+            s.width,
+            s.height
+        );
     }
     if doc.page_count() > 10 {
         println!("…");
@@ -106,7 +116,7 @@ fn render(
     file: &Path,
     output: &Path,
     pages: Option<&str>,
-    scale: f32,
+    scale: f64,
     no_annotations: bool,
     password: Option<&str>,
 ) -> Result<()> {
