@@ -35,3 +35,31 @@ jobs:
         run: cargo clippy -p pdfrs-ffi --all-targets --target aarch64-linux-android
       - name: Test
         run: cargo test --workspace
+
+  android:
+    # Builds the Android app (which cross-compiles the Rust library and
+    # generates its Kotlin bindings) and runs the Kotlin unit tests.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install the NDK
+        # Must match `ndkVersion` in apps/android/app/build.gradle.kts. The
+        # runner image ships the Android SDK; Gradle fetches the platform and
+        # build tools itself once the licences are accepted.
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and unit tests
+        working-directory: apps/android
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest

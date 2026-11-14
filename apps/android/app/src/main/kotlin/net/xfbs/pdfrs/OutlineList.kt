@@ -28,6 +28,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import uniffi.pdfrs_ffi.OutlineEntry
+
+/**
+ * The indices of the [entries] to show, given the indices of the [expanded]
+ * ones: an entry is shown unless one of its ancestors is collapsed.
+ */
+internal fun visibleOutlineRows(entries: List<OutlineEntry>, expanded: Set<Int>): List<Int> = buildList {
+    var hiddenBelow = Int.MAX_VALUE
+    for ((i, entry) in entries.withIndex()) {
+        val depth = entry.depth.toInt()
+        if (depth > hiddenBelow) continue
+        hiddenBelow = Int.MAX_VALUE
+        add(i)
+        if (entry.hasChildren && i !in expanded) hiddenBelow = depth
+    }
+}
 
 /** Outlines up to this size start fully expanded; longer ones show their top level. */
 private const val EXPAND_ALL_UP_TO = 40
@@ -45,19 +61,7 @@ fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier =
             else emptySet(),
         )
     }
-    // An entry is shown unless one of its ancestors is collapsed.
-    val visible = remember(entries, expanded) {
-        buildList {
-            var hiddenBelow = Int.MAX_VALUE
-            for ((i, entry) in entries.withIndex()) {
-                val depth = entry.depth.toInt()
-                if (depth > hiddenBelow) continue
-                hiddenBelow = Int.MAX_VALUE
-                add(i)
-                if (entry.hasChildren && i !in expanded) hiddenBelow = depth
-            }
-        }
-    }
+    val visible = remember(entries, expanded) { visibleOutlineRows(entries, expanded) }
     // Where the reader is: the last entry at or before the current page.
     val currentPage = state.currentPage
     val here = entries.indexOfLast { e -> e.page?.let { it.toInt() <= currentPage } == true }

@@ -562,6 +562,80 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     }
 }
 
+/// A frame with something in every field. The Android app's `ViewFrameTest`
+/// decodes the encoded form of exactly this.
+fn fixture_frame() -> Frame {
+    let rect = |x, y, width, height| Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+    Frame {
+        pages: vec![
+            PageDraw {
+                page: 4,
+                rect: rect(21.0, -300.0, 1038.0, 1469.0),
+                tiles: vec![
+                    TileDraw {
+                        id: 7,
+                        dest: rect(21.0, -300.0, 512.0, 512.0),
+                        exact: true,
+                    },
+                    TileDraw {
+                        id: 1 << 40,
+                        dest: rect(533.0, -300.0, 463.5, 463.25),
+                        exact: false,
+                    },
+                ],
+            },
+            PageDraw {
+                page: 5,
+                rect: rect(21.0, 1190.0, 1038.0, 734.0),
+                tiles: vec![],
+            },
+        ],
+        evicted: vec![3, 9_000_000_000],
+        complete: false,
+        settled: true,
+        settles_in_ms: Some(180),
+        device_scale: 1.744537353515625,
+        current_page: 4,
+        zoom: 0.6645856618881226,
+        zoom_mode: ZoomMode::FitPage,
+        zoom_factor: 1.5,
+        paged: true,
+        thumbnail_first: 2,
+        thumbnails: vec![0, 11, 12],
+    }
+}
+
+/// `fixtures/frame.bin` is what Rust writes for [`fixture_frame`] and what
+/// the Kotlin decoder is tested with, so the two can't drift apart unnoticed.
+/// After a deliberate change to the layout, update `ViewFrame.decode` and
+/// rerun with `PDFRS_UPDATE_FIXTURES=1`.
+#[test]
+#[cfg(target_endian = "little")]
+fn frame_fixture_is_current() {
+    let mut bytes = Vec::new();
+    hot::encode_frame(&fixture_frame(), &mut bytes);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/frame.bin");
+    if std::env::var_os("PDFRS_UPDATE_FIXTURES").is_some() {
+        std::fs::write(&path, &bytes).unwrap();
+    }
+    let fixture = std::fs::read(&path).unwrap();
+    assert!(
+        fixture == bytes,
+        "the frame layout changed: update ViewFrame.decode in apps/android, \
+         then rerun with PDFRS_UPDATE_FIXTURES=1"
+    );
+    // And it reads back as what was written.
+    assert_eq!(
+        format!("{:?}", decode_frame(&bytes)),
+        format!("{:?}", fixture_frame())
+    );
+}
+
 #[test]
 fn hot_path_matches_the_uniffi_one() {
     let (session, rx) = open(8, 64 << 20);

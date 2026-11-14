@@ -30,6 +30,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        // android.util.Log and friends do nothing in JVM unit tests instead of throwing.
+        unitTests.isReturnDefaultValues = true
+    }
+
+    // Data written by Rust that the Kotlin side must read; see ViewFrameTest.
+    sourceSets.getByName("test").resources.directories.add("../../../crates/pdfrs-ffi/fixtures")
 }
 
 dependencies {
@@ -40,6 +48,9 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.activity.compose)
     implementation(libs.jna) { artifact { type = "aar" } }
+
+    testImplementation(libs.junit)
+    testImplementation(libs.json)
 }
 
 // --- Rust -------------------------------------------------------------------

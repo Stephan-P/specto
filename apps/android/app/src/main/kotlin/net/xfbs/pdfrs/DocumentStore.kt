@@ -1,6 +1,5 @@
 package net.xfbs.pdfrs
 
-import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import java.io.File
@@ -24,10 +23,10 @@ private const val FINGERPRINT_SPAN = 64 * 1024
  *
  * A document is recognised by its content ([fingerprint]), not by where it
  * came from: the same file arrives under different addresses depending on
- * the app that hands it over. Kept in a small JSON file in the app's private
- * storage. Main thread only.
+ * the app that hands it over. Kept in a small JSON [file] (in the app's
+ * private storage). Main thread only.
  */
-class DocumentStore(context: Context) {
+class DocumentStore(private val file: File) {
     class Entry(
         val key: String,
         val name: String,
@@ -38,8 +37,6 @@ class DocumentStore(context: Context) {
         val pageCount: Int,
         val view: SavedView?,
     )
-
-    private val file = File(context.filesDir, "documents.json")
 
     /** Most recently opened first. Observable, so the start screen follows. */
     private val entries = mutableStateListOf<Entry>()
