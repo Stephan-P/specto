@@ -2,7 +2,11 @@
 
 A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and Jetpack Compose, it shares its core with the pdfrs desktop app.
 
-(A screenshot will follow.)
+<p align="center">
+  <img src="screenshot-phone.png" width="20%" alt="pdfrs on a phone: a page of a manual with diagrams, the page number, and a strip of page thumbnails along the bottom">
+  &nbsp;
+  <img src="screenshot-tablet.png" width="72%" alt="pdfrs on a tablet: two pages side by side, with the table of contents in a sidebar">
+</p>
 
 Android has few open-source PDF viewers, and the ones there are tend to feel clunky: slow to render, blurry while zooming, or awkward to navigate. pdfrs aims to be a reader that is simply nice to use, with smooth page turns, sharp pages at any zoom, and quick ways to find your way around a long document. Light editing, such as annotations and filling in forms, will follow.
 
@@ -49,11 +53,13 @@ Gradle cross-compiles the Rust library and generates the Kotlin bindings as part
 
 ```sh
 cd apps/android
-./gradlew :app:testDebugUnitTest                                       # unit tests (also in CI)
+./gradlew :app:testDebugUnitTest                                       # unit tests
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest  # UI tests on an emulator
 ```
 
-The UI tests (`ReaderTest`) cover opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off, the layout on wide windows, and turning pages with keys. Everything else is checked by hand with [FEATURES.md](FEATURES.md).
+The UI tests (`ReaderTest`, `DocumentTest`) cover most of [FEATURES.md](FEATURES.md) on phone-sized and tablet-sized screens: turning pages by swipe and key, the strip, the page grid, the table of contents, links, printed page numbers, full screen, the sidebar and two pages on wide windows, rotation, passwords, and what is remembered. The serial matters when a phone is plugged in as well: a test run installs and then removes the app on its target.
+
+CI builds the app and runs the unit tests on every change, and the UI tests on an emulator for pushes to `main`. What tests can't judge (how it looks and feels, the file picker, pinch zoom) is checked by hand with [FEATURES.md](FEATURES.md).
 
 ## Project structure
 
@@ -73,3 +79,4 @@ Elsewhere:
 - `app/src/androidTest/`: UI tests, with their test PDFs in `assets/` (written by `make-fixtures.py`)
 - `app/build.gradle.kts`: the build, including cross-compiling the Rust library
 - `FEATURES.md`: the feature list, as things to check by hand
+- `screenshot-phone.png`, `screenshot-tablet.png`: the screenshots above, taken on the emulators with hwloc's manual (BSD licence), the document the desktop app's screenshot shows too

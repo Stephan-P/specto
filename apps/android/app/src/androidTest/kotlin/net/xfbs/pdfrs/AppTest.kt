@@ -81,11 +81,20 @@ abstract class AppTest {
     }
 
     protected fun waitForText(text: String) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     }
 
     protected fun waitUntilGone(text: String) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty() }
+    }
+
+    protected companion object {
+        /**
+         * How long to wait for the app to show something. Generous: an
+         * emulator in CI renders in software and can take a while to open a
+         * document; a wait that is satisfied sooner costs nothing.
+         */
+        const val WAIT_MS = 30_000L
     }
 
     /** Picks an item of the ⋮ menu. */

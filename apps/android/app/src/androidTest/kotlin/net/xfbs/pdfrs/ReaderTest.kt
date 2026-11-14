@@ -152,7 +152,7 @@ class ReaderTest : AppTest() {
         // The bars and the page indicator leave ...
         waitUntilGone("pages.pdf")
         waitUntilGone("1 / 12")
-        compose.waitUntil(10_000) {
+        compose.waitUntil(WAIT_MS) {
             compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isEmpty() &&
                 compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty()
         }
@@ -195,7 +195,7 @@ class ReaderTest : AppTest() {
         waitForText("3 / 12")
         compose.onNodeWithTag(SIDEBAR_TAG).assertIsDisplayed()
         compose.onNodeWithContentDescription("Contents and pages").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty() }
         compose.waitForIdle()
         assertTrue(page.fetchSemanticsNode().size.width > pageWidth)
         compose.onNodeWithText("3 / 12").assertIsDisplayed()
@@ -206,7 +206,7 @@ class ReaderTest : AppTest() {
         assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
         openPages()
         compose.onNodeWithContentDescription("Contents and pages").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty() }
         reopen("pages.pdf")
         waitForText("1 / 12")
         compose.waitForIdle()
@@ -277,7 +277,7 @@ class ReaderTest : AppTest() {
             device.setRotation(UiAutomation.ROTATION_FREEZE_90)
             // The window changes shape (on a tablet, between the sidebar and
             // the phone layout); the document doesn't reload.
-            compose.waitUntil(15_000) { landscape() != before }
+            compose.waitUntil(WAIT_MS) { landscape() != before }
             waitForText("3 / 12")
             page.assertIsDisplayed()
             page.performTouchInput { swipeLeft() }
@@ -286,7 +286,7 @@ class ReaderTest : AppTest() {
             device.setRotation(UiAutomation.ROTATION_FREEZE_0)
             device.setRotation(UiAutomation.ROTATION_UNFREEZE)
         }
-        compose.waitUntil(15_000) { landscape() == before }
+        compose.waitUntil(WAIT_MS) { landscape() == before }
         waitForText("4 / 12")
     }
 

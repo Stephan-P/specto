@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # "Run workflow" in the Actions tab.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -88,3 +90,55 @@ jobs:
       - name: Build and unit tests
         working-directory: apps/android
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
+
+  android-ui:
+    # The Android app's UI tests, on an emulator. Slow (the emulator renders
+    # in software) and now and then flaky, so not on every pull request.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The emulator on these runners is x86-64, unlike phones.
+          targets: x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install the NDK
+        # Must match `ndkVersion` in apps/android/app/build.gradle.kts.
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Let the emulator use hardware virtualisation
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: UI tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # A released Android version (development uses newer ones), in a
+          # phone's shape.
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          # The app's own animations are part of what is tested.
+          disable-animations: false
+          working-directory: apps/android
+          script: ./gradlew :app:connectedDebugAndroidTest -Ppdfrs.abis=x86_64
+      - name: Keep the test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ui-test-report
+          path: apps/android/app/build/reports/androidTests/connected/
+
