@@ -90,7 +90,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **M** `pdfrs-ffi`: `ViewSession` over `pdfrs-view` and the scheduler (viewport, scroll, zoom, layout and zoom modes, frames, `tiles_ready` callback). Tiles cross the FFI as opaque ids, so `TileKey` can change without touching Kotlin.
 - [ ] **M** `pdfrs-ffi`: editing commands and events, `ViewHost`-style callbacks (with M3–M5)
 - [x] **M** Tile path: Kotlin owns one `Bitmap` per tile and fills it through JNI; the cache bookkeeping (LRU, byte budget from `memoryClass`) lives in Rust and reports evictions; `onTrimMemory` keeps only what is on screen
-- [x] **M** Compose viewer: canvas, scroll with fling, pinch zoom, double-tap zoom, page indicator, rotation without reload. Settles to exact-scale tiles after zooming; pixel-identical to `pdfrs render` on the emulator (M0-FINDINGS.md). Pinch is untested: it needs a real touch screen.
+- [x] **M** Compose viewer: canvas, scroll with fling, pinch zoom, double-tap zoom, page indicator, rotation without reload. Settles to exact-scale tiles after zooming; pixel-identical to `pdfrs render` on the emulator (M0-FINDINGS.md). Works on a Pixel 9a, including pinch. The per-frame path uses JNI instead of UniFFI (M0-FINDINGS.md).
+- [ ] **S** Measure a release build on the phone (frame times, memory); the numbers so far are from debug builds
 - [ ] **S** Compose viewer: switch view modes (the session already supports them), jump to page, scrollbar
 - [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
 - [ ] **M** SAF fd-based I/O instead of reading the file into memory, save, recent documents, password prompt

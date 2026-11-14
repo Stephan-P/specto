@@ -5,14 +5,20 @@
 //! render scheduler. Kotlin forwards gestures, asks for a [`Frame`] and draws
 //! it. See `docs/ARCHITECTURE.md` ("Android").
 //!
-//! Tile pixels never cross UniFFI (M0 measured that as too slow). Kotlin owns
-//! one `Bitmap` per tile, keyed by an opaque id, and fills it through the JNI
-//! function in `android_bitmap.rs`. Which tiles exist is decided here: the
-//! cache bookkeeping lives in Rust, and [`Frame::evicted`] tells Kotlin which
-//! bitmaps to drop.
+//! UniFFI is used for everything that happens occasionally (opening, modes,
+//! viewport changes). Its Kotlin bindings go through JNA, and a single call
+//! costs a few hundred microseconds on a phone, so what runs every frame goes
+//! through plain JNI instead (`jni.rs`, backed by [`hot`]): scrolling,
+//! zooming, planning a frame and collecting finished tiles.
+//!
+//! Tile pixels never cross UniFFI either (M0 measured that as too slow).
+//! Kotlin owns one `Bitmap` per tile, keyed by an opaque id, and fills it
+//! through JNI. Which tiles exist is decided here: the cache bookkeeping
+//! lives in Rust, and [`Frame::evicted`] tells Kotlin which bitmaps to drop.
 
+pub mod hot;
 #[cfg(target_os = "android")]
-mod android_bitmap;
+mod jni;
 mod tiles;
 
 use std::collections::HashMap;
@@ -147,6 +153,9 @@ pub struct FinishedTile {
 struct State {
     viewer: Viewer,
     tiles: TileBook,
+    /// The last frame encoded for [`hot::frame`], kept so a caller whose
+    /// buffer was too small can fetch it again without planning a new one.
+    encoded: Vec<u8>,
 }
 
 struct Shared {
@@ -157,6 +166,59 @@ struct Shared {
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn frame(&self, state: &mut State) -> Frame {
+        let State { viewer, tiles, .. } = state;
+        tiles.begin_frame();
+        let now = Instant::now();
+        let planned = viewer.frame(now, |key| tiles.knows(key));
+        let pages = planned
+            .pages
+            .iter()
+            .map(|page| PageDraw {
+                page: page.page as u32,
+                rect: page.rect.into(),
+                tiles: page
+                    .layers
+                    .iter()
+                    .filter_map(|layer| {
+                        Some(TileDraw {
+                            id: tiles.use_tile(&layer.key)?,
+                            dest: layer.dest.into(),
+                            exact: layer.exact,
+                        })
+                    })
+                    .collect(),
+            })
+            .collect();
+        self.scheduler.request(planned.requests);
+        Frame {
+            pages,
+            evicted: tiles.take_evicted(),
+            complete: planned.complete,
+            settled: viewer.is_settled(now),
+            settles_in_ms: planned
+                .settles_at
+                .map(|at| at.saturating_duration_since(now).as_millis() as u32),
+            device_scale: viewer.device_scale().get(),
+            current_page: viewer.current_page() as u32,
+            zoom: viewer.zoom(),
+            zoom_mode: match viewer.zoom_mode() {
+                pdfrs_view::ZoomMode::Fixed => ZoomMode::Fixed,
+                pdfrs_view::ZoomMode::FitWidth => ZoomMode::FitWidth,
+                pdfrs_view::ZoomMode::FitPage => ZoomMode::FitPage,
+            },
+        }
+    }
+
+    fn take_finished(&self) -> Vec<FinishedTile> {
+        let finished = self.scheduler.take_finished();
+        let mut state = self.lock();
+        let State { viewer, tiles, .. } = &mut *state;
+        tiles.add_finished(finished, |key| {
+            viewer.placeholder_key(key.page as usize) == Some(*key)
+        })
     }
 }
 
@@ -170,7 +232,7 @@ fn find_session(id: u64) -> Option<Arc<Shared>> {
     sessions.get(&id)?.upgrade()
 }
 
-/// The Rust half of `NativeBitmap.copyTile`: hands the pixels of finished
+/// The Rust half of `Native.copyTile`: hands the pixels of finished
 /// tile `tile` of session `session` to `write`, which copies them into the
 /// frontend's bitmap. If `write` returns `true`, the tile counts as cached
 /// from now on. Returns `false` for unknown sessions and tiles, or if `write`
@@ -225,6 +287,7 @@ impl ViewSession {
             state: Mutex::new(State {
                 viewer: Viewer::new(pages, settings),
                 tiles: TileBook::new(cache_bytes as usize),
+                encoded: Vec::new(),
             }),
         });
         let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
@@ -239,7 +302,7 @@ impl ViewSession {
         }))
     }
 
-    /// Identifies this session to `NativeBitmap.copyTile`.
+    /// Identifies this session to the JNI functions in `Native`.
     pub fn id(&self) -> u64 {
         self.id
     }
@@ -306,60 +369,14 @@ impl ViewSession {
     /// Plans what to draw now and queues the tiles that are still missing.
     /// Call after anything changed: input, a new viewport, or new tiles.
     pub fn frame(&self) -> Frame {
-        let mut state = self.shared.lock();
-        let State { viewer, tiles } = &mut *state;
-        tiles.begin_frame();
-        let now = Instant::now();
-        let planned = viewer.frame(now, |key| tiles.knows(key));
-        let pages = planned
-            .pages
-            .iter()
-            .map(|page| PageDraw {
-                page: page.page as u32,
-                rect: page.rect.into(),
-                tiles: page
-                    .layers
-                    .iter()
-                    .filter_map(|layer| {
-                        Some(TileDraw {
-                            id: tiles.use_tile(&layer.key)?,
-                            dest: layer.dest.into(),
-                            exact: layer.exact,
-                        })
-                    })
-                    .collect(),
-            })
-            .collect();
-        self.shared.scheduler.request(planned.requests);
-        Frame {
-            pages,
-            evicted: tiles.take_evicted(),
-            complete: planned.complete,
-            settled: viewer.is_settled(now),
-            settles_in_ms: planned
-                .settles_at
-                .map(|at| at.saturating_duration_since(now).as_millis() as u32),
-            device_scale: viewer.device_scale().get(),
-            current_page: viewer.current_page() as u32,
-            zoom: viewer.zoom(),
-            zoom_mode: match viewer.zoom_mode() {
-                pdfrs_view::ZoomMode::Fixed => ZoomMode::Fixed,
-                pdfrs_view::ZoomMode::FitWidth => ZoomMode::FitWidth,
-                pdfrs_view::ZoomMode::FitPage => ZoomMode::FitPage,
-            },
-        }
+        self.shared.frame(&mut self.shared.lock())
     }
 
     /// Tiles that finished rendering. For each, create a bitmap of the given
-    /// size and pass it to `NativeBitmap.copyTile`; then call [`frame`](Self::frame).
+    /// size and pass it to `Native.copyTile`; then call [`frame`](Self::frame).
     /// Tiles not copied before the next call are discarded.
     pub fn take_finished(&self) -> Vec<FinishedTile> {
-        let finished = self.shared.scheduler.take_finished();
-        let mut state = self.shared.lock();
-        let State { viewer, tiles } = &mut *state;
-        tiles.add_finished(finished, |key| {
-            viewer.placeholder_key(key.page as usize) == Some(*key)
-        })
+        self.shared.take_finished()
     }
 
     /// Drops every tile the last frame didn't use (`onTrimMemory`). Their ids

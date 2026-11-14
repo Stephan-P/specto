@@ -134,7 +134,7 @@ Two ways to get pixels into a `Bitmap`, measured warm on the same document objec
 
 - Returning a 6.6 MB buffer through UniFFI costs about 6 ms per page on top of a 3 ms render, a third of a 60 Hz frame. UniFFI is fine for the coarse API, but **tiles should not go through it**. (A first measurement a few minutes after the emulator booted showed 61–72 ms vs 16–18 ms; those numbers were inflated by the emulator still settling and did not reproduce.)
 - `HayroDocument` is not `Send` since M1 (render cache), but UniFFI objects are called from any thread. The spike's `PdfDocument` holds the shared bytes and opens one copy per calling thread; the real surface should sit on `pdfrs_render::scheduler` instead.
-- The JNI side door is small: one `extern "system"` function taking `PdfDocument.rawHandle()` and the `Bitmap`, using only `jni-sys` types and the `ndk` crate (`crates/pdfrs-ffi/src/android_bitmap.rs`). No `jni` crate needed.
+- The JNI side door is small: one `extern "system"` function taking `PdfDocument.rawHandle()` and the `Bitmap`, using only `jni-sys` types and the `ndk` crate (in the spike; the real viewer's JNI functions are in `crates/pdfrs-ffi/src/jni.rs` and take a session id instead of a raw handle). No `jni` crate needed.
 - It is not truly zero-copy yet: hayro renders into its own `Pixmap`, which is then copied into the locked bitmap. Rendering straight into bitmap memory would need a hayro/vello_cpu target over a borrowed buffer.
 
 **Conclusion:** Compose + UniFFI works for the API surface, with a hand-written JNI path for tile pixels. **D4 and D5 stand**, with D5's "JNI for the hot path" alternative now required rather than optional.
@@ -153,7 +153,18 @@ Two ways to get pixels into a `Bitmap`, measured warm on the same document objec
 - The canvas origin is a whole pixel ((0, 310) here), so no fractional-offset correction is needed in Compose.
 - Memory: about 40 MB native heap after opening, about 100 MB after heavy scrolling with a 96 MB tile budget, back to about 44 MB after `onTrimMemory`.
 - Placeholders are evicted last rather than pinned: at up to 0.5 MB per page, pinning them all would exceed the whole budget on a long document.
-- Not covered: pinch (adb can't send multi-touch) and a physical device.
+- Not covered on the emulator: pinch (adb can't send multi-touch).
+
+**On a phone (Pixel 9a, GrapheneOS, Android 17, 120 Hz, debug build):** the same sharpness check is pixel-identical at fit width (1.7445 px/pt). Pinch works by hand. Frame timing from `dumpsys gfxinfo` over a scripted run of 18 flings through the 40-page PDF:
+
+| Per-frame path | Frame planning call | Slow frames | p50 / p90 / p95 / p99 |
+|---|---|---|---|
+| UniFFI (`scrollBy` + `frame()` through JNA) | 1.0–2.8 ms | 28 of 1694 (1.65%) | 8 / 12 / 14 / 19 ms |
+| JNI (`Native.scrollBy` + `Native.frame` into a `ByteBuffer`) | 0.22–0.35 ms | 13 of 2147 (0.61%) | 7 / 10 / 12 / 16 ms |
+
+- Planning a frame takes about 4 µs in Rust. Through UniFFI even a trivial call (`session.id()`) cost 200–370 µs on both the phone and the emulator, so the bindings, not the work, dominated. Everything that runs per frame (scroll, zoom, frame, finished tiles) now goes through plain JNI (`crates/pdfrs-ffi/src/hot.rs` and `jni.rs`); UniFFI stays for occasional calls. **This extends D5: UniFFI for the coarse API, JNI for pixels and for the per-frame path.**
+- These are debug-build numbers; a release build has not been measured.
+- Memory after the fling run: about 360 MB PSS, of which about 117 MB is Android's GPU texture cache and about 98 MB native heap (tile bitmaps within a 64 MB budget, plus render caches). The tile budget is now a quarter of `memoryClass` because every drawn bitmap also has a GPU copy.
 
 ## Not done yet
 

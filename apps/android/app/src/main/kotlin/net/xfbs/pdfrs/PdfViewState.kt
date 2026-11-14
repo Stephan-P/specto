@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.LongSparseArray
 import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.VectorConverter
@@ -14,17 +15,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import uniffi.pdfrs_ffi.Frame
 import uniffi.pdfrs_ffi.ViewListener
 import uniffi.pdfrs_ffi.ViewSession
 import uniffi.pdfrs_ffi.ZoomMode
 
 private const val TAG = "pdfrs"
+
+private fun newBuffer(bytes: Int): ByteBuffer =
+    ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
 
 /** How far a double tap zooms in, relative to fit width. */
 private const val DOUBLE_TAP_ZOOM = 2.5
@@ -32,6 +37,9 @@ private const val DOUBLE_TAP_ZOOM = 2.5
 /**
  * One open document: the Rust [ViewSession] (layout, zoom, scrolling, tile
  * planning and rendering) plus the tile bitmaps it tells us to keep.
+ *
+ * Whatever happens every frame goes through [Native] (plain JNI); the
+ * generated UniFFI bindings are only used for occasional calls.
  *
  * Main thread only, except [tilesReady]. Positions and distances are in dp
  * unless noted. Call [close] when done.
@@ -54,7 +62,8 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
     }
     private val session = ViewSession.open(pdf, null, cacheBytes.toULong(), listener)
     private val sessionId = session.id().toLong()
-    private val bitmaps = HashMap<ULong, Bitmap>()
+    private val bitmaps = LongSparseArray<Bitmap>()
+    private var buffer = newBuffer(16 * 1024)
     private var motion: Job? = null
     private val settle = Runnable { refresh() }
     private var fitWidthZoom = 1.0
@@ -62,10 +71,10 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
     val pageCount: Int = session.pageCount().toInt()
 
     /** What to draw. Changes whenever the view or the available tiles change. */
-    var frame: Frame? by mutableStateOf(null)
+    var frame: ViewFrame? by mutableStateOf(null)
         private set
 
-    fun bitmap(id: ULong): Bitmap? = bitmaps[id]
+    fun bitmap(id: Long): Bitmap? = bitmaps[id]
 
     fun setViewport(widthDp: Float, heightDp: Float, density: Float) {
         session.setViewport(widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
@@ -73,12 +82,19 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
     }
 
     fun scrollBy(delta: Offset) {
-        session.scrollBy(delta.x.toDouble(), delta.y.toDouble())
+        Native.scrollBy(sessionId, delta.x.toDouble(), delta.y.toDouble())
         refresh()
     }
 
     fun zoomBy(factor: Float, anchor: Offset) {
-        session.zoomBy(factor.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
+        Native.zoomBy(sessionId, factor.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
+        refresh()
+    }
+
+    /** A pinch step: zoom and pan together, planning only one frame. */
+    fun transformBy(zoom: Float, anchor: Offset, pan: Offset) {
+        if (zoom != 1f) Native.zoomBy(sessionId, zoom.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
+        if (pan != Offset.Zero) Native.scrollBy(sessionId, pan.x.toDouble(), pan.y.toDouble())
         refresh()
     }
 
@@ -142,18 +158,27 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
         if (closed) return
         session.trimMemory()
         refresh()
-        Log.i(TAG, "trimmed to ${bitmaps.size} tiles, ${bitmaps.values.sumOf { it.allocationByteCount } shr 20} MB")
+        Log.i(TAG, "trimmed to ${bitmaps.size()} tiles")
     }
 
     private fun collectTiles() {
         if (closed) return
-        for (tile in session.takeFinished()) {
-            val bitmap = Bitmap.createBitmap(tile.width.toInt(), tile.height.toInt(), Bitmap.Config.ARGB_8888)
-            if (NativeBitmap.copyTile(sessionId, tile.id.toLong(), bitmap) == 0) {
-                bitmap.prepareToDraw()
-                bitmaps[tile.id] = bitmap
-            } else {
-                bitmap.recycle()
+        // Tiles that don't fit this time are rendered again; 16 bytes each,
+        // so the buffer holds about a thousand.
+        if (Native.takeFinished(sessionId, buffer) > 0) {
+            val b = buffer
+            b.position(0)
+            val count = b.getInt()
+            b.getInt()
+            repeat(count) {
+                val id = b.getLong()
+                val bitmap = Bitmap.createBitmap(b.getInt(), b.getInt(), Bitmap.Config.ARGB_8888)
+                if (Native.copyTile(sessionId, id, bitmap) == 0) {
+                    bitmap.prepareToDraw()
+                    bitmaps.put(id, bitmap)
+                } else {
+                    bitmap.recycle()
+                }
             }
         }
         refresh()
@@ -161,17 +186,26 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
 
     private fun refresh() {
         if (closed) return
-        val next = session.frame()
+        var length = Native.frame(sessionId, buffer)
+        if (length < 0) {
+            buffer = newBuffer(-length * 2)
+            length = Native.lastFrame(sessionId, buffer)
+        }
+        if (length <= 0) return
+        val next = ViewFrame.decode(buffer, length)
         // Free the pixels now rather than whenever the GC gets to them. The
         // new frame never draws an evicted tile, and a frame already handed to
         // the render thread keeps its own reference to the pixels.
-        for (id in next.evicted) bitmaps.remove(id)?.recycle()
-        if (next.zoomMode == ZoomMode.FIT_WIDTH) fitWidthZoom = next.zoom
+        for (id in next.evicted) {
+            bitmaps[id]?.recycle()
+            bitmaps.remove(id)
+        }
+        if (next.fitsWidth) fitWidthZoom = next.zoom
         frame = next
         // After zooming, the view sharpens (switches to exact-scale tiles)
         // only when a frame is planned once the zoom has been still for a while.
         main.removeCallbacks(settle)
-        next.settlesInMs?.let { main.postDelayed(settle, it.toLong() + 1) }
+        if (next.settlesInMs >= 0) main.postDelayed(settle, next.settlesInMs + 1L)
     }
 
     override fun close() {
@@ -179,7 +213,7 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
         closed = true
         main.removeCallbacks(settle)
         frame = null
-        bitmaps.values.forEach(Bitmap::recycle)
+        for (i in 0 until bitmaps.size()) bitmaps.valueAt(i).recycle()
         bitmaps.clear()
         // Also releases the listener, which the session holds on to.
         session.close()

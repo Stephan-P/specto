@@ -54,11 +54,12 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
     val frame = state.frame
     if (frame != null && frame.settled && frame.complete && Log.isLoggable("pdfrs", Log.DEBUG)) {
         LaunchedEffect(frame) {
-            val page = frame.pages.firstOrNull() ?: return@LaunchedEffect
+            if (frame.pageCount == 0) return@LaunchedEffect
             Log.d(
                 "pdfrs",
                 "settled: device scale ${frame.deviceScale}, canvas origin (${origin.x}, ${origin.y}) px, " +
-                    "page ${page.page.toInt() + 1} at (${page.rect.x}, ${page.rect.y}) ${page.rect.width}x${page.rect.height}",
+                    "page ${frame.page(0) + 1} at (${frame.pageLeft(0)}, ${frame.pageTop(0)}) " +
+                    "${frame.pageWidth(0)}x${frame.pageHeight(0)}",
             )
         }
     }
@@ -93,14 +94,15 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                                 (event.changes.size > 1 && abs(1 - zoomed) > 0.03f)
                         }
                         if (dragging) {
-                            if (zoom != 1f) {
-                                if (!zooming) {
-                                    zooming = true
-                                    state.beginZoomGesture()
-                                }
-                                state.zoomBy(zoom, event.calculateCentroid(useCurrent = false) / density)
+                            if (zoom != 1f && !zooming) {
+                                zooming = true
+                                state.beginZoomGesture()
                             }
-                            if (pan != Offset.Zero) state.scrollBy(-pan / density)
+                            state.transformBy(
+                                zoom,
+                                event.calculateCentroid(useCurrent = false) / density,
+                                -pan / density,
+                            )
                             event.changes.forEach { if (it.positionChanged()) it.consume() }
                         }
                         // Only a single finger lifting off leads to a fling.
@@ -120,17 +122,19 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                 }
             },
     ) {
-        for (page in state.frame?.pages.orEmpty()) {
-            val r = page.rect
-            drawRect(Color.White, Offset(r.x, r.y), Size(r.width, r.height))
-            clipRect(r.x, r.y, r.x + r.width, r.y + r.height) {
+        val f = state.frame ?: return@Canvas
+        for (p in 0 until f.pageCount) {
+            val left = f.pageLeft(p)
+            val top = f.pageTop(p)
+            val size = Size(f.pageWidth(p), f.pageHeight(p))
+            drawRect(Color.White, Offset(left, top), size)
+            clipRect(left, top, left + size.width, top + size.height) {
                 drawIntoCanvas { canvas ->
-                    for (tile in page.tiles) {
-                        val bitmap = state.bitmap(tile.id) ?: continue
-                        val d = tile.dest
-                        dest.set(d.x, d.y, d.x + d.width, d.y + d.height)
+                    for (t in f.tiles(p)) {
+                        val bitmap = state.bitmap(f.tileId(t)) ?: continue
                         // Destinations can be fractional, so no IntOffset-based drawImage.
-                        val paint = if (tile.exact) exactPaint else scaledPaint
+                        dest.set(f.tileLeft(t), f.tileTop(t), f.tileRight(t), f.tileBottom(t))
+                        val paint = if (f.tileIsExact(t)) exactPaint else scaledPaint
                         canvas.nativeCanvas.drawBitmap(bitmap, null, dest, paint)
                     }
                 }

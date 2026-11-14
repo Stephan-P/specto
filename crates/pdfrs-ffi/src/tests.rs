@@ -220,3 +220,110 @@ fn closed_sessions_are_not_found() {
     assert!(find_session(id).is_none());
     assert!(!claim_tile(id, 1, |_| true));
 }
+
+/// Reads the frame layout documented in `hot.rs`, like the Kotlin side does.
+fn decode_frame(mut b: &[u8]) -> Frame {
+    fn take<const N: usize>(b: &mut &[u8]) -> [u8; N] {
+        let (head, rest) = b.split_at(N);
+        *b = rest;
+        head.try_into().unwrap()
+    }
+    let u32_ = |b: &mut &[u8]| u32::from_ne_bytes(take(b));
+    let rect = |b: &mut &[u8]| Rect {
+        x: f32::from_ne_bytes(take(b)),
+        y: f32::from_ne_bytes(take(b)),
+        width: f32::from_ne_bytes(take(b)),
+        height: f32::from_ne_bytes(take(b)),
+    };
+    let flags = u32_(&mut b);
+    let zoom_mode = [ZoomMode::Fixed, ZoomMode::FitWidth, ZoomMode::FitPage][u32_(&mut b) as usize];
+    let current_page = u32_(&mut b);
+    let settles = i32::from_ne_bytes(take(&mut b));
+    let zoom = f64::from_ne_bytes(take(&mut b));
+    let device_scale = f64::from_ne_bytes(take(&mut b));
+    let evicted_count = u32_(&mut b);
+    let page_count = u32_(&mut b);
+    let evicted = (0..evicted_count)
+        .map(|_| u64::from_ne_bytes(take(&mut b)))
+        .collect();
+    let pages = (0..page_count)
+        .map(|_| {
+            let page = u32_(&mut b);
+            let tile_count = u32_(&mut b);
+            let page_rect = rect(&mut b);
+            let tiles = (0..tile_count)
+                .map(|_| {
+                    let id = u64::from_ne_bytes(take(&mut b));
+                    let dest = rect(&mut b);
+                    let exact = u32_(&mut b) != 0;
+                    u32_(&mut b);
+                    TileDraw { id, dest, exact }
+                })
+                .collect();
+            PageDraw {
+                page,
+                rect: page_rect,
+                tiles,
+            }
+        })
+        .collect();
+    assert!(b.is_empty(), "trailing bytes");
+    Frame {
+        pages,
+        evicted,
+        complete: flags & 1 != 0,
+        settled: flags & 2 != 0,
+        settles_in_ms: u32::try_from(settles).ok(),
+        device_scale,
+        current_page,
+        zoom,
+        zoom_mode,
+    }
+}
+
+#[test]
+fn hot_path_matches_the_uniffi_one() {
+    let (session, rx) = open(8, 64 << 20);
+    session.set_viewport(200.0, 300.0, 2.625);
+    settle(&session, &rx);
+    let id = session.id();
+
+    assert!(hot::scroll_by(id, 0.0, 450.0));
+    assert!(hot::zoom_by(id, 1.25, 100.0, 150.0));
+    let mut buf = vec![0u8; 1 << 16];
+    let n = hot::frame(id, &mut buf);
+    assert!(n > 0);
+    let hot_frame = decode_frame(&buf[..n as usize]);
+    // Nothing changed in between, so the UniFFI call plans the same frame
+    // (its eviction list is empty: the hot call already took it).
+    let frame = session.frame();
+    assert_eq!(
+        format!("{:?}", hot_frame.pages),
+        format!("{:?}", frame.pages)
+    );
+    assert_eq!(hot_frame.current_page, frame.current_page);
+    assert_eq!(hot_frame.zoom, frame.zoom);
+    assert_eq!(hot_frame.zoom_mode, ZoomMode::Fixed);
+    assert_eq!(hot_frame.device_scale, frame.device_scale);
+    assert!(!hot_frame.settled && hot_frame.settles_in_ms.is_some());
+
+    // A buffer that is too small reports the size needed; the frame can then
+    // be fetched again without planning a new one.
+    let mut small = [0u8; 16];
+    let needed = hot::frame(id, &mut small);
+    assert!(needed < -16);
+    let mut exact = vec![0u8; (-needed) as usize];
+    assert_eq!(hot::last_frame(id, &mut exact), -needed);
+    decode_frame(&exact);
+
+    // Finished tiles: count, then (id, width, height) each.
+    let (finished, _) = (hot::take_finished(id, &mut buf), ());
+    assert!(finished >= 8);
+    let count = u32::from_ne_bytes(buf[..4].try_into().unwrap()) as i64;
+    assert_eq!(finished, 8 + count * 16);
+
+    // A closed session is not found.
+    drop(session);
+    assert!(!hot::scroll_by(id, 0.0, 1.0));
+    assert_eq!(hot::frame(id, &mut buf), 0);
+}

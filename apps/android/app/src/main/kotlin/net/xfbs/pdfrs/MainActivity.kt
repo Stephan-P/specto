@@ -79,10 +79,14 @@ class MainActivity : ComponentActivity() {
 
 private fun Intent.viewedDocument(): Uri? = data.takeIf { action == Intent.ACTION_VIEW }
 
-/** Budget for tile bitmaps: a share of what the system considers normal for an app here. */
+/**
+ * Budget for tile bitmaps: a share of what the system considers normal for an
+ * app here. A drawn tile also has a copy on the GPU, so the real cost is up
+ * to twice this.
+ */
 private fun Context.tileCacheBytes(): Long {
     val memoryClassMb = (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).memoryClass
-    return (memoryClassMb / 2).coerceIn(48, 256) * 1024L * 1024L
+    return (memoryClassMb / 4).coerceIn(32, 128) * 1024L * 1024L
 }
 
 private fun Context.displayName(uri: Uri): String {
@@ -187,7 +191,7 @@ private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
     ) {
         Text(
-            "${frame.currentPage.toInt() + 1} / ${state.pageCount}",
+            "${frame.currentPage + 1} / ${state.pageCount}",
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
         )
