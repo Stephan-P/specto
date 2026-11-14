@@ -2,3 +2,5 @@
 /corpus/files/
 /out/
 /.claude/worktrees/
+/packaging/flatpak/cargo-sources.json
+*.pyc

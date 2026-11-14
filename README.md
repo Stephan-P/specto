@@ -38,7 +38,7 @@ target/release/pdfrs save file.pdf -o out.pdf -p 3,1-2    # pick, reorder, rotat
 target/release/pdfrs corpus corpus/files/... --reference  # regression run, see corpus/README.md
 ```
 
-The desktop app needs the GTK 4 and libadwaita development packages; see [apps/desktop/README.md](apps/desktop/README.md). For Android, see [apps/android/README.md](apps/android/README.md).
+The desktop app needs the GTK 4 and libadwaita development packages; see [apps/desktop/README.md](apps/desktop/README.md). For Android, see [apps/android/README.md](apps/android/README.md). To build a Flatpak and install it, see [packaging/README.md](packaging/README.md).
 
 ## Layout
 
@@ -57,6 +57,7 @@ The desktop app needs the GTK 4 and libadwaita development packages; see [apps/d
 - `tools/test-files.sh`: copies of the test files for testing by hand, in `target/test-files/`
 - `tools/headless`: run the desktop app under a headless compositor; `check.py` is the automated end-to-end check (also in CI), `smoke.sh` takes screenshots
 - `spikes/`: early prototypes behind the measurements in docs/M0-FINDINGS.md. Only `lopdf-spike` is left (editing and saving, with the incremental and encrypted saving that `pdfrs-write` doesn't do yet); the tiled GTK viewer and the text extraction check were removed once the desktop app and `pdfrs-text` had replaced them
+- `packaging/`: installable packages of the desktop app (Flatpak)
 - `corpus/`: test corpus fetch script (the files are git-ignored)
 
 ## Documentation

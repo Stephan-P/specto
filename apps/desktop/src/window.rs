@@ -156,7 +156,7 @@ impl Window {
         toasts.set_child(Some(&stack));
 
         // Header bar.
-        let title = adw::WindowTitle::new("pdfrs", "");
+        let title = adw::WindowTitle::new(crate::APP_NAME, "");
         let header = adw::HeaderBar::builder().title_widget(&title).build();
         let sidebar_toggle = gtk::ToggleButton::builder()
             .icon_name("sidebar-show-symbolic")
@@ -329,7 +329,7 @@ impl Window {
 
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("pdfrs")
+            .title(crate::APP_NAME)
             .default_width(1000)
             .default_height(800)
             .content(&view)
@@ -396,6 +396,18 @@ impl Window {
             }
         });
         this.set_document_actions_enabled(false);
+
+        // Look at the file again when coming back to the window: file
+        // monitors miss changes on some file systems, and in the Flatpak
+        // sandbox (the document portal) they miss changes made outside it.
+        let weak = Rc::downgrade(&this.0);
+        this.0.window.connect_is_active_notify(move |window| {
+            if let Some(inner) = weak.upgrade()
+                && window.is_active()
+            {
+                Window(inner).schedule_check();
+            }
+        });
 
         // Ask about unsaved changes; remember where the user was in this file.
         let weak = Rc::downgrade(&this.0);
@@ -741,8 +753,7 @@ impl Window {
         items.sort_by_key(|i| std::cmp::Reverse(i.modified().to_unix()));
         for info in items.into_iter().take(8) {
             let file = gio::File::for_uri(&info.uri());
-            let subtitle = file
-                .parent()
+            let subtitle = folder(&file)
                 .and_then(|p| p.path())
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
@@ -1314,6 +1325,22 @@ impl Window {
                 .and_then(|s| s.visible_child_name())
                 .unwrap_or_default(),
         )
+        .raw("recent", &{
+            // [title, subtitle] per row of the start page's recent files.
+            let mut rows = Vec::new();
+            let mut child = inner.recent_list.first_child();
+            while let Some(c) = child {
+                if let Some(row) = c.downcast_ref::<adw::ActionRow>() {
+                    rows.push(format!(
+                        "[{}, {}]",
+                        debug::quote(&row.title()),
+                        debug::quote(&row.subtitle().unwrap_or_default())
+                    ));
+                }
+                child = c.next_sibling();
+            }
+            format!("[{}]", rows.join(", "))
+        })
         .str("page_entry", &inner.page_entry.text())
         .str("page_total", &inner.page_total.label())
         .str("zoom_label", &inner.zoom_button.label().unwrap_or_default())
@@ -1610,7 +1637,7 @@ impl Window {
             .uri
             .borrow()
             .as_ref()
-            .and_then(|u| gio::File::for_uri(u).parent())
+            .and_then(|u| folder(&gio::File::for_uri(u)))
         {
             dialog.set_initial_folder(Some(&folder));
         }
@@ -1737,7 +1764,7 @@ impl Window {
             .uri
             .borrow()
             .as_ref()
-            .and_then(|u| gio::File::for_uri(u).parent())
+            .and_then(|u| folder(&gio::File::for_uri(u)))
         {
             dialog.set_initial_folder(Some(&folder));
         }
@@ -1816,7 +1843,7 @@ impl Window {
             .uri
             .borrow()
             .as_ref()
-            .and_then(|u| gio::File::for_uri(u).parent())
+            .and_then(|u| folder(&gio::File::for_uri(u)))
         {
             dialog.set_initial_folder(Some(&folder));
         }
@@ -2481,6 +2508,54 @@ async fn write_job(job: SaveJob, file: &gio::File) -> Result<(), String> {
     }
 }
 
+/// The folder `file` is in, as people know it. In the Flatpak sandbox,
+/// files come through the document portal, at `/run/user/…/doc/…`; the
+/// portal says where they really are.
+fn folder(file: &gio::File) -> Option<gio::File> {
+    const HOST_PATH: &str = "xattr::document-portal.host-path";
+    let host = file
+        .path()
+        .filter(|p| p.starts_with("/run/user") || p.starts_with("/run/flatpak"))
+        .and_then(|_| {
+            file.query_info(
+                HOST_PATH,
+                gio::FileQueryInfoFlags::NONE,
+                gio::Cancellable::NONE,
+            )
+            .ok()
+        })
+        .and_then(|info| info.attribute_string(HOST_PATH))
+        .map(|p| gio::File::for_path(unescape_xattr(&p)));
+    host.unwrap_or_else(|| file.clone()).parent()
+}
+
+/// Undoes GIO's escaping of extended attributes, which writes bytes that
+/// aren't printable ASCII, and backslashes, as `\xNN`.
+fn unescape_xattr(text: &str) -> std::path::PathBuf {
+    use std::os::unix::ffi::OsStringExt;
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes
+            .get(i..i + 4)
+            .filter(|b| b.starts_with(b"\\x"))
+            .and_then(|b| std::str::from_utf8(&b[2..]).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match hex {
+            Some(b) => {
+                out.push(b);
+                i += 4;
+            }
+            None => {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    std::ffi::OsString::from_vec(out).into()
+}
+
 /// The last part of `file`'s name, for messages.
 fn file_name(file: &gio::File) -> String {
     file.basename()
@@ -2531,13 +2606,22 @@ fn save_error(e: pdfrs_write::WriteError) -> String {
             text.split(" (os error").next().unwrap_or(&text).to_owned()
         }
         E::PasswordRequired => "the document's password is needed".to_owned(),
-        _ => "pdfrs can't save this document correctly yet".to_owned(),
+        _ => format!("{} can't save this document correctly yet", crate::APP_NAME),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{export_name, position_after_move};
+    use super::{export_name, position_after_move, unescape_xattr};
+
+    #[test]
+    fn xattr_paths() {
+        assert_eq!(
+            unescape_xattr(r"/home/a/R\xc3\xa9sum\xc3\xa9s/x\x5cy.pdf"),
+            std::path::Path::new("/home/a/Résumés/x\\y.pdf")
+        );
+        assert_eq!(unescape_xattr(r"/a/\xzz"), std::path::Path::new(r"/a/\xzz"));
+    }
 
     #[test]
     fn export_names() {

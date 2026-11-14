@@ -126,7 +126,7 @@ impl Json {
     }
 }
 
-fn quote(s: &str) -> String {
+pub fn quote(s: &str) -> String {
     let mut out = String::from('"');
     for c in s.chars() {
         match c {

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Before publishing: add <url type="homepage">, <url type="bugtracker">,
+     <screenshots> (images at a public URL), <developer> and <releases>. -->
+<component type="desktop-application">
+  <id>net.xfbs.pdfrs</id>
+  <launchable type="desktop-id">net.xfbs.pdfrs.desktop</launchable>
+  <name>pdfrs</name>
+  <summary>View PDF documents and rearrange their pages</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <description>
+    <p>
+      A fast PDF viewer with light editing, in the spirit of Preview on macOS.
+      It stays responsive on huge documents and renders pages sharply at any zoom.
+    </p>
+    <p>Viewing:</p>
+    <ul>
+      <li>Single page, continuous and two pages side by side</li>
+      <li>Thumbnails, table of contents, links and printed page numbers</li>
+      <li>Search, and selecting and copying text</li>
+      <li>Encrypted documents</li>
+      <li>Remembers where you were in each document</li>
+    </ul>
+    <p>Editing:</p>
+    <ul>
+      <li>Rotate, delete and reorder pages by dragging thumbnails</li>
+      <li>Insert pages from other documents, or drag them between windows</li>
+      <li>Export a selection of pages to a new document</li>
+      <li>Printing</li>
+    </ul>
+  </description>
+  <provides>
+    <binary>pdfrs-gtk</binary>
+    <mediatype>application/pdf</mediatype>
+  </provides>
+  <categories>
+    <category>Office</category>
+    <category>Viewer</category>
+  </categories>
+  <keywords>
+    <keyword>PDF</keyword>
+    <keyword>document</keyword>
+    <keyword>viewer</keyword>
+  </keywords>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+</component>

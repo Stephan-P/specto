@@ -16,7 +16,13 @@ use gtk::{gio, glib};
 
 use window::Window;
 
-const APP_ID: &str = "net.xfbs.pdfrs";
+/// The application ID: D-Bus name, `.desktop` file and icon name, Flatpak
+/// ID. The files in `data/` are named after it; renaming the app means
+/// changing this, those file names and their contents.
+pub const APP_ID: &str = "net.xfbs.pdfrs";
+
+/// The name shown to people: window titles, the macOS menu.
+pub const APP_NAME: &str = "pdfrs";
 
 fn main() -> glib::ExitCode {
     let app = adw::Application::builder()
@@ -24,7 +30,9 @@ fn main() -> glib::ExitCode {
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
         .build();
 
+    glib::set_application_name(APP_NAME);
     app.connect_startup(|app| {
+        gtk::Window::set_default_icon_name(APP_ID);
         for (action, accels) in [
             ("win.open", &["<Primary>o"][..]),
             ("win.save", &["<Primary>s"]),
@@ -109,6 +117,7 @@ fn platform_accels(accels: &[&str]) -> Vec<String> {
 /// The application menu bar (macOS only): File, Edit, View, Go and Tools,
 /// like Preview.
 fn menubar() -> gio::Menu {
+    let quit = format!("Quit {APP_NAME}");
     let section = |items: &[(&str, &str)]| {
         let m = gio::Menu::new();
         for (label, action) in items {
@@ -133,7 +142,7 @@ fn menubar() -> gio::Menu {
         ]),
         section(&[("Print…", "win.print")]),
         section(&[("Close Window", "window.close")]),
-        section(&[("Quit pdfrs", "app.quit")]),
+        section(&[(&quit, "app.quit")]),
     ]);
     let edit = submenu(&[
         section(&[("Undo", "win.undo"), ("Redo", "win.redo")]),

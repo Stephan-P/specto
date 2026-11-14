@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=pdfrs
+GenericName=Document Viewer
+Comment=View PDF documents and rearrange their pages
+Exec=pdfrs-gtk %U
+Icon=net.xfbs.pdfrs
+Terminal=false
+Categories=Office;Viewer;GTK;
+MimeType=application/pdf;
+Keywords=PDF;document;viewer;pages;print;
+StartupNotify=true
+SingleMainWindow=false

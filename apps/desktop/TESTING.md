@@ -169,6 +169,16 @@ Use a copy of LONG, and another program that saves PDFs (`qpdf`, a PDF editor, o
 - Delete or move the file: a banner says so. Save writes it back where it was.
 - ENCRYPTED, replaced by another encrypted copy with the same password: reloaded without asking; with a different password, the password dialog comes up.
 
+### Flatpak
+
+Build and install it with `packaging/flatpak/build.sh` (see packaging/README.md), then start it from the GNOME app grid or with `flatpak run net.xfbs.pdfrs`. The app sees only the files it's given, so these go through the document portal.
+
+- The app grid shows it with its icon; GNOME Files lists it under "Open With" for PDFs, and opening a PDF that way works.
+- Open a PDF with the Open dialog, from GNOME Files, and by dropping it on the window. The start page later lists it with its real folder (not `/run/user/…`); the Save As and Export dialogs start in that folder.
+- Rotate a page, save, open the file in another viewer: turned. No leftover hidden files next to it.
+- Insert Pages from File, Export Selected Pages and Print work like outside the sandbox.
+- Change the file with another program while the window is in the background, then switch back to it: the new version is shown (or with edits, the banner).
+
 ### Remembering state
 
 - LONG: go to page 200, switch to Two Pages, zoom to 150%, open the Contents tab, close, reopen. All of it is restored, at the same spot on page 200.

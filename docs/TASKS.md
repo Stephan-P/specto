@@ -188,9 +188,14 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Performance pass: profile big/complex docs, startup time, memory
 - [ ] **M** Accessibility: keyboard-only operation, screen-reader labels for chrome
 - [ ] **S** Dark mode (UI chrome; optional inverted page rendering)
-- [ ] **S** Packaging: Flatpak (desktop), signed APK/AAB (Android)
-- [ ] **S** Decide the app's name and application ID before anything is published (Flathub ID, Android package name; both are painful to change later)
-- [ ] **S** Desktop integration files: `.desktop` file with the PDF MIME type (so "Open with" lists the app), icon, AppStream metainfo with screenshots (all required by Flathub)
+- [x] **S** Flatpak (`packaging/flatpak`, see packaging/README.md): GNOME 51 runtime, crates downloaded ahead by flatpak-builder (`cargo-sources.py`), no file system access. Checked in the sandbox: opening and saving through the document portal (the temporary file and rename work there), the start page and file dialogs show the real folder (the portal's host path), and a file changed outside is noticed when the window becomes active again (file monitors don't see it through the portal)
+- [ ] **S** Publish on Flathub: needs the name, a homepage, screenshots at a public URL, releases in the metainfo, and the manifest and `cargo-sources.json` in a Flathub repository
+- [ ] **S** Signed APK/AAB (Android)
+- [ ] **S** Decide the app's name and application ID before anything is published (Flathub ID, Android package name; both are painful to change later). Desktop: `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, the files in `apps/desktop/data` and `packaging/flatpak`
+- [x] **S** Desktop integration files (`apps/desktop/data`): `.desktop` file with the PDF MIME type (so "Open with" lists the app), a placeholder icon, AppStream metainfo (screenshots, homepage and releases still missing)
+- [ ] **S** A real icon
+- [ ] **S** deb and rpm packages (`cargo-deb`, `cargo-generate-rpm`), with the files from `apps/desktop/data`; they need libadwaita 1.6 or newer from the distribution
+- [ ] **S** Desktop: an About dialog (version, licence, links), from the metainfo
 - [ ] **S–M** macOS app bundle: file association, Dock icon, bundled GTK
 - [ ] **S** `cargo-deny` in CI: security advisories and licence compatibility with MIT OR Apache-2.0
 - [ ] **M** Performance regression checks in CI: tile render times, frame times and peak memory on a few fixed documents (the gtk-canvas spike had a benchmark mode to start from: `spikes/gtk-canvas` at commit f32a26a, the last one with it), compared against stored numbers with a tolerance

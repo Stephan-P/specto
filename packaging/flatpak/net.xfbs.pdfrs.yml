@@ -1,0 +1,39 @@
+# Flatpak manifest for the desktop app. Build and install it locally with
+# packaging/flatpak/build.sh (see packaging/README.md).
+id: net.xfbs.pdfrs
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: pdfrs-gtk
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # No file system access: files come through the file chooser, drag and
+  # drop and "Open With", which hand the app just those files.
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/pdfrs/cargo
+    CARGO_NET_OFFLINE: "true"
+modules:
+  - name: pdfrs
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked -p pdfrs-desktop
+      - install -Dm755 target/release/pdfrs-gtk -t /app/bin
+      - install -Dm644 apps/desktop/data/net.xfbs.pdfrs.desktop -t /app/share/applications
+      - install -Dm644 apps/desktop/data/net.xfbs.pdfrs.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 apps/desktop/data/icons/net.xfbs.pdfrs.svg -t /app/share/icons/hicolor/scalable/apps
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - .git
+          - apps/android
+          - packaging/flatpak/cargo-sources.json
+      - cargo-sources.json

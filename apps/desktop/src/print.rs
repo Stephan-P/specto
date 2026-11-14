@@ -180,7 +180,12 @@ fn draw(
         .chunks_exact(bitmap.width as usize * 4)
         .zip(data.chunks_exact_mut(stride as usize))
     {
-        for (px, o) in row.as_chunks::<4>().0.iter().zip(out.as_chunks_mut::<4>().0) {
+        for (px, o) in row
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(out.as_chunks_mut::<4>().0)
+        {
             let word = u32::from_be_bytes([px[3], px[0], px[1], px[2]]);
             *o = word.to_ne_bytes();
         }
