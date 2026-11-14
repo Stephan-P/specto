@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (`ReaderTest` and `DocumentTest` in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, pinch zoom, dark mode or the camera cutout.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (`ReaderTest` and `DocumentTest` in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode or the camera cutout.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -19,6 +19,13 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Open from another app | In Files or a browser, open a PDF and choose pdfrs | The document opens; if another one was open, it is replaced |
 | Password | Open a protected file | Password dialog; a wrong password shows "That password didn't work." with the field empty again; Cancel leaves an explanation and "Open another PDF" |
 | Broken file | Open something that isn't a PDF (e.g. renamed) | "Couldn't open this file" with "Open another PDF"; no crash |
+
+## Sharing
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Share | With a document open, ⋮ → "Share…", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app |
+| Only for documents | Open the ⋮ menu on the start screen, and after a file failed to open | No "Share…" |
 
 ## Reading, one page at a time (default)
 
@@ -106,4 +113,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Search, text selection and copy, saving and sharing, annotations and form filling, page reordering and printing.
+Search, text selection and copy, saving, annotations and form filling, page reordering and printing.

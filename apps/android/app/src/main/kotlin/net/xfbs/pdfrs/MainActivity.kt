@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -98,6 +99,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -416,6 +418,24 @@ private fun App(
                                 pick()
                             },
                         )
+                        if (ready != null && document != null) {
+                            DropdownMenuItem(
+                                text = { Text("Share…") },
+                                onClick = {
+                                    menu = false
+                                    scope.launch {
+                                        try {
+                                            context.shareDocument(document, ready.name)
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            // Moved or deleted since it was opened.
+                                            Toast.makeText(context, "Couldn't share this file", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                            )
+                        }
                         if (document != null) {
                             // Back to the start screen and its recent documents.
                             DropdownMenuItem(

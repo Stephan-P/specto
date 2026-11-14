@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the app may hand to other apps: copies of documents made for
+     sharing (see Share.kt), and nothing else. -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>

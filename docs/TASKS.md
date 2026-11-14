@@ -130,7 +130,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** Tablet follow-up: the page number in the top bar, as on the desktop
 - [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
 - [x] **M** Reading position and recent documents: page, offset, mode and zoom are saved per document (recognised by a fingerprint of its content, since the same file arrives under different URIs) when the app stops or the document is closed, and restored on open; the start screen lists the last 20 documents that can be reopened (those with a persistable read permission, i.e. picked in the app). "Close" in the ⋮ menu returns to the start screen.
-- [ ] **M** SAF fd-based I/O instead of reading the file into memory, save and share (in the ⋮ menu)
+- [x] **S** Share: "Share…" in the ⋮ menu offers the open document through the system's share sheet. The receiving app reads the document where it is (the app passes its read permission on); where that isn't possible (a plain file path, or a provider that doesn't allow it) it gets a copy from the app's cache, served by a `FileProvider`. Both routes checked by hand against the system's Print; the UI tests cover the copy.
+- [ ] **M** SAF fd-based I/O instead of reading the file into memory, and save (in the ⋮ menu)
 - [ ] **M** Page organizer: drag to reorder, delete and rotate in the thumbnail grid (with M3)
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME

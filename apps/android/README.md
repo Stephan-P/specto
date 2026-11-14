@@ -21,8 +21,9 @@ What it can do today:
 - Full screen, keyboard navigation, light and dark mode
 - Password-protected PDFs
 - Recent documents, and continuing where you left off
+- Sharing the open document with other apps
 
-Coming next: search, text selection, and sharing. After that: annotations, filling in forms, and reordering pages.
+Coming next: search and text selection. After that: annotations, filling in forms, and reordering pages.
 
 The full list of features, with how to check each one, is in [FEATURES.md](FEATURES.md).
 

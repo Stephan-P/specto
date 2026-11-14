@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
     implementation(libs.activity.compose)
+    implementation(libs.androidx.core)
     implementation(libs.jna) { artifact { type = "aar" } }
 
     testImplementation(libs.junit)
