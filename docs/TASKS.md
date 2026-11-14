@@ -33,7 +33,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Keep hayro's `RenderCache` across renders (`self_cell`), reset per worker after 32 pages. Measured 1.4–6× faster tiles.
 
 - [x] **S** `pdfrs-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p pdfrs-render -- --ignored`).
-- [ ] **M** `pdfrs-source`: open file (mmap), page count, page sizes/rotation, outline, metadata, password prompt hook
+- [x] **M** `pdfrs-source`: opening and decryption (`open_pdf`, `OpenError`, now shared with `pdfrs-render`), metadata with text-string decoding (UTF-16BE, UTF-8, PDFDocEncoding), outline, links (destinations, URIs, named actions), named destinations via `/Dests` and the `/Names` tree. Every walk is bounded (cycles, depth, item caps). Corpus: 1,077 files, no panics, 0.2 s; 153 with an outline, 49 with links. `pdfrs info --outline` prints both. (No mmap: files are read into memory, as both apps already do.)
+- [ ] **S** Page labels (`/PageLabels`, e.g. "iv" or "A-3") for the page entry and thumbnails
 - [x] **M** `pdfrs-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
 - [x] **M** Render scheduler (`pdfrs_render::scheduler`): worker pool, multiple documents, a priority queue that's replaced every frame, panics isolated per tile. `TileCache<T>` (`pdfrs_render::tile`) has an LRU byte budget, protects tiles used this frame, and is generic over the frontend's texture type.
 - [x] **S** HiDPI fix, part 1: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike)
@@ -46,12 +47,13 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **M** `pdfrs-view`: viewport, zoom (fit width/page, fixed) anchored at the pointer, scrolling, paging, hit-testing, device-pixel-snapped `Frame` with placeholder and neighbouring-level fallback tiles and prioritized requests. The gtk-canvas spike runs on it at 59.5 fps (headless, quiet machine).
 - [x] **M** Desktop (`apps/desktop`, binary `pdfrs-gtk`): canvas widget drawing `pdfrs-view` frames, implementing `GtkScrollable` (native scrollbars, kinetic scrolling), with ctrl+scroll and pinch zoom
 - [x] **M** Desktop: thumbnail sidebar (`GtkListView`, shares placeholder tiles with the canvas, follows the current page), page number entry, layout and zoom menus, keyboard navigation and shortcuts
-- [ ] **S** Desktop: outline (table of contents) sidebar, which needs `pdfrs-source`
+- [x] **S** Desktop: outline sidebar ("Contents" tab next to Thumbnails, shown when the document has an outline; `GtkTreeListModel` with expanders; `win.sidebar-page` action)
 - [x] **S** Desktop: open via dialog, drag-and-drop or command line (one window per document), password prompt, start page
 - [ ] **S** Desktop: recent files, remember per-file view state (page, zoom, layout)
 - [ ] **S** Desktop: one shared scheduler per app instead of per window (needs per-document request groups in `Scheduler`)
 - [x] **S** Headless GUI smoke test: `tools/headless/run.sh tools/headless/smoke.sh file.pdf out/` (screenshots via a debug-only `app.screenshot` action). Could run in CI.
-- [ ] **S** Links: internal (goto) and external URI annotations clickable
+- [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
+- [ ] **S** Android: outline and links through `pdfrs-ffi`
 
 ## M2: Text
 

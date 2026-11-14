@@ -24,6 +24,9 @@ enum Command {
         file: PathBuf,
         #[arg(long)]
         password: Option<String>,
+        /// Also print the outline (table of contents) and links.
+        #[arg(long)]
+        outline: bool,
     },
     /// Render pages to PNG.
     Render(RenderArgs),
@@ -36,7 +39,11 @@ enum Command {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
-        Command::Info { file, password } => info(&file, password.as_deref()),
+        Command::Info {
+            file,
+            password,
+            outline,
+        } => info(&file, password.as_deref(), outline),
         Command::Render(args) => render(&args),
         Command::Check(args) => check::run(&args),
         Command::Corpus(args) => corpus::run(&args),
@@ -54,11 +61,32 @@ pub(crate) fn open(file: &Path, password: Option<&str>) -> Result<HayroDocument>
     }
 }
 
-fn info(file: &Path, password: Option<&str>) -> Result<()> {
+fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
     let doc = open(file, password)?;
     let pdf = doc.pdf();
     println!("version:  {:?}", pdf.version());
     println!("pages:    {}", doc.page_count());
+    if outline {
+        let data = std::fs::read(file)?;
+        let source = pdfrs_source::SourceDocument::open(data, password)?;
+        let m = source.metadata();
+        for (k, v) in [
+            ("title", &m.title),
+            ("author", &m.author),
+            ("producer", &m.producer),
+        ] {
+            if let Some(v) = v {
+                println!("{k:<9} {v}");
+            }
+        }
+        println!("outline:");
+        print_outline(&source.outline(), 1);
+        for page in 0..source.page_count() {
+            for link in source.links(page) {
+                println!("link p{} {:?} → {:?}", page + 1, link.rect, link.target);
+            }
+        }
+    }
     if let Some(title) = &pdf.metadata().title {
         println!("title:    {}", String::from_utf8_lossy(title));
     }
@@ -155,6 +183,18 @@ fn parse_region(spec: &str) -> Result<pdfrs_render::DeviceIntRect> {
         (x, y).into(),
         (x + w, y + h).into(),
     ))
+}
+
+fn print_outline(items: &[pdfrs_source::OutlineItem], depth: usize) {
+    for item in items {
+        let target = match &item.target {
+            Some(pdfrs_source::Target::Destination(d)) => format!("p{}", d.page + 1),
+            Some(t) => format!("{t:?}"),
+            None => "-".into(),
+        };
+        println!("{}{} → {target}", "  ".repeat(depth), item.title);
+        print_outline(&item.children, depth + 1);
+    }
 }
 
 /// Parses "1,3,5-7" (1-based, inclusive) into zero-based indices.

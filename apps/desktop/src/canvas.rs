@@ -8,9 +8,13 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, glib, graphene, gsk};
 use pdfrs_geom::{DeviceRect, LayoutVector, ViewPoint, ViewSize, ViewVector};
+use pdfrs_source::{NamedAction, Target};
 use pdfrs_view::Viewer;
 
 use crate::document::SharedDocument;
+
+/// Handles a clicked link's URI (the window decides whether to open it).
+type UriHandler = Box<dyn Fn(&str)>;
 
 mod imp {
     use super::*;
@@ -32,6 +36,10 @@ mod imp {
         /// value-changed handlers don't feed it back.
         pub syncing: Cell<bool>,
         pub on_view_changed: RefCell<Option<Box<dyn Fn()>>>,
+        /// Called with a link's URI; the window decides whether to open it.
+        pub on_open_uri: RefCell<Option<UriHandler>>,
+        /// Whether the pointer is over a link (cursor already set).
+        pub over_link: Cell<bool>,
         pub pointer: Cell<(f64, f64)>,
         /// Pending redraw for when the view settles (switches to exact tiles).
         pub settle_timer: RefCell<Option<glib::SourceId>>,
@@ -47,6 +55,8 @@ mod imp {
                 document: RefCell::default(),
                 syncing: Cell::default(),
                 on_view_changed: RefCell::default(),
+                on_open_uri: RefCell::default(),
+                over_link: Cell::default(),
                 pointer: Cell::default(),
                 settle_timer: RefCell::default(),
             }
@@ -192,6 +202,37 @@ impl Canvas {
     }
 
     /// Called after anything changes the view (scroll, zoom, page, mode).
+    /// Called when a link to a URI is clicked.
+    pub fn connect_open_uri(&self, f: impl Fn(&str) + 'static) {
+        self.imp().on_open_uri.replace(Some(Box::new(f)));
+    }
+
+    /// Follows a link or outline target.
+    pub fn follow(&self, target: &Target) {
+        match target {
+            Target::Destination(d) => {
+                self.update_viewer(|v| v.go_to_pdf_position(d.page, d.left, d.top))
+            }
+            Target::Named(NamedAction::NextPage) => self.update_viewer(Viewer::next_page),
+            Target::Named(NamedAction::PrevPage) => self.update_viewer(Viewer::previous_page),
+            Target::Named(NamedAction::FirstPage) => self.update_viewer(|v| v.go_to_page(0)),
+            Target::Named(NamedAction::LastPage) => {
+                self.update_viewer(|v| v.go_to_page(v.page_count().saturating_sub(1)))
+            }
+            Target::Uri(uri) => {
+                if let Some(f) = self.imp().on_open_uri.borrow().as_ref() {
+                    f(uri);
+                }
+            }
+        }
+    }
+
+    fn link_at(&self, x: f64, y: f64) -> Option<Target> {
+        let doc = self.imp().document.borrow().clone()?;
+        let mut d = doc.borrow_mut();
+        d.link_at(ViewPoint::new(x, y))
+    }
+
     pub fn connect_view_changed(&self, f: impl Fn() + 'static) {
         self.imp().on_view_changed.replace(Some(Box::new(f)));
     }
@@ -272,9 +313,32 @@ impl Canvas {
         motion.connect_motion(move |_, x, y| {
             if let Some(c) = this.upgrade() {
                 c.imp().pointer.set((x, y));
+                // A pointer cursor over links, like a browser.
+                let over = c.link_at(x, y).is_some();
+                if over != c.imp().over_link.replace(over) {
+                    c.set_cursor_from_name(over.then_some("pointer"));
+                }
             }
         });
         self.add_controller(motion);
+
+        // Clicking a link follows it. Only a click without movement counts,
+        // so selecting text later won't trigger links.
+        let click = gtk::GestureClick::new();
+        click.set_button(gdk::BUTTON_PRIMARY);
+        let this = self.downgrade();
+        click.connect_released(move |g, n_press, x, y| {
+            let Some(c) = this.upgrade() else { return };
+            c.grab_focus();
+            if n_press != 1 {
+                return;
+            }
+            if let Some(target) = c.link_at(x, y) {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                c.follow(&target);
+            }
+        });
+        self.add_controller(click);
 
         // Ctrl+scroll zooms. Plain scrolling bubbles up to the GtkScrolledWindow.
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);

@@ -2,14 +2,17 @@
 //! canvas and the thumbnail sidebar of one window.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
+use pdfrs_geom::ViewPoint;
 use pdfrs_render::OpenError;
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::tile::{TileCache, TileKey};
+use pdfrs_source::{Link, SourceDocument, Target};
 use pdfrs_view::{Settings, ViewPage, Viewer, placeholder_level};
 
 const CACHE_BUDGET: usize = 384 << 20;
@@ -18,6 +21,10 @@ pub type SharedDocument = Rc<RefCell<Document>>;
 
 pub struct Document {
     pub name: String,
+    /// Structure (outline, links, metadata), separate from rendering.
+    pub source: SourceDocument,
+    /// Links per page, parsed on first use.
+    links: HashMap<usize, Vec<Link>>,
     pub viewer: Viewer,
     pub cache: TileCache<gdk::Texture>,
     scheduler: Scheduler,
@@ -41,7 +48,9 @@ impl Document {
     ) -> Result<Self, OpenError> {
         let threads = std::thread::available_parallelism().map_or(2, |n| n.get());
         let scheduler = Scheduler::new(threads, wake);
-        let opened = scheduler.open(data, password)?;
+        let data: Arc<[u8]> = data.into();
+        let opened = scheduler.open(data.clone(), password)?;
+        let source = SourceDocument::open(data, password)?;
         let pages: Vec<ViewPage> = opened
             .pages
             .iter()
@@ -60,6 +69,8 @@ impl Document {
             .collect();
         Ok(Self {
             name,
+            source,
+            links: HashMap::new(),
             viewer: Viewer::new(pages, Settings::default()),
             cache: TileCache::new(CACHE_BUDGET)
                 .with_evict_last(move |k| k.scale.level().is_some_and(|l| levels.contains(&l))),
@@ -68,6 +79,24 @@ impl Document {
             thumbnails_shown: BTreeSet::new(),
             failed: HashSet::new(),
         })
+    }
+
+    /// The target of the link under `p` (viewport coordinates), if any.
+    pub fn link_at(&mut self, p: ViewPoint) -> Option<Target> {
+        let (page, at) = self.viewer.hit_test(p)?;
+        let view_page = self.viewer.pages().get(page)?;
+        let pdf = view_page.displayed().page_to_pdf().transform_point(at);
+        let source_page = view_page.page as usize;
+        let source = &self.source;
+        let links = self
+            .links
+            .entry(source_page)
+            .or_insert_with(|| source.links(source_page));
+        links
+            .iter()
+            .rev()
+            .find(|l| l.contains(pdf))
+            .map(|l| l.target.clone())
     }
 
     pub fn set_canvas_requests(&mut self, requests: Vec<TileKey>) {

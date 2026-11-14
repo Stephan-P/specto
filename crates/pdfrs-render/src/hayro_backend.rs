@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use hayro::hayro_interpret::{InterpreterSettings, RenderContent};
+use hayro::hayro_syntax::Pdf;
 use hayro::hayro_syntax::object::Rect as HayroRect;
 use hayro::hayro_syntax::object::dict::keys::{HEIGHT, RESOURCES, SUBTYPE, WIDTH, XOBJECT};
 use hayro::hayro_syntax::object::{Dict, Name, Stream};
 use hayro::hayro_syntax::page::{Page, Rotation as HayroRotation};
-use hayro::hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use hayro::kurbo::Affine;
 use hayro::vello_cpu::color::AlphaColor;
 use hayro::vello_cpu::color::palette::css::TRANSPARENT;
@@ -27,15 +27,6 @@ self_cell::self_cell!(
     }
 );
 
-/// Lets hayro read from an `Arc<[u8]>` shared between threads without copying.
-struct SharedBytes(Arc<[u8]>);
-
-impl AsRef<[u8]> for SharedBytes {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
 /// A PDF opened with the pure-Rust hayro renderer.
 ///
 /// Keeps hayro's font/glyph/image cache across renders, which makes tiles of
@@ -50,18 +41,7 @@ pub struct HayroDocument {
 
 impl HayroDocument {
     pub fn open(data: impl Into<Arc<[u8]>>, password: Option<&str>) -> Result<Self, OpenError> {
-        let data: Arc<[u8]> = data.into();
-        let pdf = Pdf::new_with_password(Arc::new(SharedBytes(data)), password.unwrap_or(""))
-            .map_err(|e| match e {
-                LoadPdfError::Decryption(DecryptionError::PasswordProtected) => {
-                    OpenError::PasswordRequired
-                }
-                LoadPdfError::Decryption(DecryptionError::UnsupportedAlgorithm) => {
-                    OpenError::UnsupportedEncryption
-                }
-                LoadPdfError::Decryption(_) => OpenError::InvalidEncryption,
-                LoadPdfError::Invalid => OpenError::Invalid,
-            })?;
+        let pdf = pdfrs_source::open_pdf(data.into(), password)?;
         let geometries = pdf.pages().iter().map(geometry_of).collect();
         Ok(Self {
             inner: PdfWithCache::new(pdf, |_| RenderCache::new()),

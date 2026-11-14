@@ -4,6 +4,7 @@
 
 mod canvas;
 mod document;
+mod outline;
 mod thumbnails;
 mod window;
 

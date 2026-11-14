@@ -13,7 +13,7 @@
 pdfrs/
 ├── crates/
 │   ├── pdfrs-geom      # typed coordinate spaces (euclid), PageGeometry: CropBox, /Rotate
-│   ├── pdfrs-source    # parsing + read access to source PDFs (wraps parser backend)
+│   ├── pdfrs-source    # opening/decryption, metadata, outline, links (hayro-syntax)
 │   ├── pdfrs-render    # Document trait, hayro backend, TileCache<T>, render scheduler
 │   ├── pdfrs-text      # text extraction with glyph quads → selection, search, highlight targets
 │   ├── pdfrs-doc       # edit model: page list, annotations, form values, undo/redo, commands

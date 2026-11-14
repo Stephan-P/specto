@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 hayro.workspace = true
 pdfrs-geom.workspace = true
+pdfrs-source.workspace = true
 self_cell = "1"
 thiserror.workspace = true
 

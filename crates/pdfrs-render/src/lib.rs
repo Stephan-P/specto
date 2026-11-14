@@ -65,17 +65,7 @@ pub struct Bitmap {
     pub data: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum OpenError {
-    #[error("the document is password protected")]
-    PasswordRequired,
-    #[error("the document uses an unsupported encryption scheme")]
-    UnsupportedEncryption,
-    #[error("the document's encryption dictionary is invalid")]
-    InvalidEncryption,
-    #[error("not a valid PDF file")]
-    Invalid,
-}
+pub use pdfrs_source::OpenError;
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum RenderError {

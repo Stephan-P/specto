@@ -381,3 +381,32 @@ fn placeholder_fits_one_tile() {
         Some(-2)
     );
 }
+
+#[test]
+fn go_to_pdf_position_puts_the_target_at_the_top() {
+    let mut v = viewer(letters(5));
+    v.set_zoom(1.0, ViewPoint::origin());
+    // Page 3 (index 2), 200 pt below its top edge (PDF y = 792 - 200).
+    v.go_to_pdf_position(2, None, Some(592.0));
+    let r = v.page_rect(2).unwrap();
+    assert!(close(r.origin.y + 200.0, 10.0), "{r:?}"); // margin 10
+    assert_eq!(v.current_page(), 2);
+    // No coordinates: the page top.
+    v.go_to_pdf_position(3, None, None);
+    assert!(close(v.page_rect(3).unwrap().origin.y, 10.0));
+    // Out-of-page positions are clamped; the last page clamps the scroll.
+    v.go_to_pdf_position(4, None, Some(-5000.0));
+    assert_eq!(v.current_page(), 4);
+}
+
+#[test]
+fn go_to_pdf_position_respects_rotation() {
+    let mut pages = letters(4);
+    pages[1].rotation = Rotation::Cw90; // displayed 792 × 612, not the last page
+    let mut v = viewer(pages);
+    v.set_zoom(1.0, ViewPoint::origin());
+    // PDF x = 300 on a page turned clockwise becomes a page-space y of 300.
+    v.go_to_pdf_position(1, Some(300.0), Some(792.0));
+    let r = v.page_rect(1).unwrap();
+    assert!(close(r.origin.y + 300.0, 10.0), "{r:?}");
+}

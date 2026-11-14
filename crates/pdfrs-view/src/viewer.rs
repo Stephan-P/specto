@@ -425,6 +425,36 @@ impl Viewer {
         self.clamp_scroll();
     }
 
+    /// Goes to a position given in PDF user space of page `i`, as link and
+    /// outline destinations specify it: `top` ends up at the top of the
+    /// viewport (below the margin), and `left` at the left edge if the page is
+    /// wider than the viewport. Missing coordinates keep the page top / the
+    /// current horizontal scroll.
+    pub fn go_to_pdf_position(&mut self, i: usize, left: Option<f64>, top: Option<f64>) {
+        self.go_to_page(i);
+        if left.is_none() && top.is_none() {
+            return;
+        }
+        let (Some(page), Some(Some(r))) = (self.pages.get(i), self.layout.page_rects.get(i)) else {
+            return;
+        };
+        let g = page.displayed();
+        let visible = g.visible_box();
+        let size = g.size();
+        let p = g.pdf_to_page().transform_point(pdfrs_geom::PdfPoint::new(
+            left.unwrap_or(visible.min.x),
+            top.unwrap_or(visible.max.y),
+        ));
+        // Destinations outside the page (it happens) are clamped to it.
+        let (x, y) = (p.x.clamp(0.0, size.width), p.y.clamp(0.0, size.height));
+        let margin = self.settings.margin;
+        self.scroll.y = r.origin.y + y * self.zoom - margin;
+        if left.is_some() {
+            self.scroll.x = r.origin.x + x * self.zoom - margin;
+        }
+        self.clamp_scroll();
+    }
+
     pub fn next_page(&mut self) {
         let spread = self
             .page_spread

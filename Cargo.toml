@@ -11,6 +11,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 pdfrs-geom = { path = "crates/pdfrs-geom" }
+pdfrs-source = { path = "crates/pdfrs-source" }
 pdfrs-render = { path = "crates/pdfrs-render" }
 pdfrs-view = { path = "crates/pdfrs-view" }
 hayro = "0.9"

@@ -11,6 +11,7 @@ use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
 use crate::document::{Document, SharedDocument};
+use crate::outline::OutlineView;
 use crate::thumbnails::Sidebar;
 
 /// Actions that need an open document.
@@ -42,6 +43,8 @@ pub struct Inner {
     document_widgets: Vec<gtk::Widget>,
     document: RefCell<Option<SharedDocument>>,
     sidebar: RefCell<Option<Sidebar>>,
+    /// Thumbnails / Contents, if the document has an outline.
+    sidebar_stack: RefCell<Option<adw::ViewStack>>,
     last_page: Cell<usize>,
 }
 
@@ -58,7 +61,7 @@ impl Window {
             .content(&scrolled)
             .show_sidebar(true)
             .min_sidebar_width(170.0)
-            .max_sidebar_width(200.0)
+            .max_sidebar_width(260.0)
             .build();
 
         let empty = adw::StatusPage::builder()
@@ -189,6 +192,7 @@ impl Window {
             zoom_button,
             document: RefCell::default(),
             sidebar: RefCell::default(),
+            sidebar_stack: RefCell::default(),
             last_page: Cell::new(usize::MAX),
         }));
         this.setup_actions();
@@ -198,6 +202,12 @@ impl Window {
         this.0.canvas.connect_view_changed(move || {
             if let Some(inner) = weak.upgrade() {
                 Window(inner).view_changed();
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_open_uri(move |uri| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).open_uri(uri);
             }
         });
         this.set_document_actions_enabled(false);
@@ -315,7 +325,44 @@ impl Window {
                 inner.canvas.update_viewer(|v| v.go_to_page(page));
             }
         });
-        inner.split.set_sidebar(Some(&sidebar.widget));
+        let outline = document.borrow().source.outline();
+        if outline.is_empty() {
+            inner.split.set_sidebar(Some(&sidebar.widget));
+        } else {
+            let weak = Rc::downgrade(&self.0);
+            let outline = OutlineView::new(&outline, move |target| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.canvas.follow(target);
+                }
+            });
+            let stack = adw::ViewStack::new();
+            stack.add_titled_with_icon(
+                &sidebar.widget,
+                Some("thumbnails"),
+                "Thumbnails",
+                "view-grid-symbolic",
+            );
+            stack.add_titled_with_icon(
+                &outline.widget,
+                Some("outline"),
+                "Contents",
+                "view-list-symbolic",
+            );
+            let switcher = adw::ViewSwitcher::builder()
+                .stack(&stack)
+                .policy(adw::ViewSwitcherPolicy::Narrow)
+                .margin_start(6)
+                .margin_end(6)
+                .margin_top(6)
+                .margin_bottom(6)
+                .build();
+            let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            column.append(&switcher);
+            column.append(&stack);
+            stack.set_vexpand(true);
+            inner.split.set_sidebar(Some(&column));
+            inner.sidebar_stack.replace(Some(stack));
+        }
         inner.sidebar.replace(Some(sidebar));
         inner.document.replace(Some(document.clone()));
         inner.canvas.set_document(Some(document.clone()));
@@ -379,6 +426,22 @@ impl Window {
         };
         set_state("layout", layout_name(mode).to_variant());
         set_state("cover-alone", cover.to_variant());
+    }
+
+    /// Opens a link from the document. Only web and mail links: a PDF
+    /// shouldn't be able to launch local files or other URI handlers.
+    fn open_uri(&self, uri: &str) {
+        let scheme = uri.split(':').next().unwrap_or("").to_ascii_lowercase();
+        if !matches!(scheme.as_str(), "http" | "https" | "mailto") {
+            return self.toast(&format!("Links of this kind aren't opened: {uri}"));
+        }
+        let launcher = gtk::UriLauncher::new(uri);
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            if let Err(e) = launcher.launch_future(Some(&this.0.window)).await {
+                this.toast(&format!("Couldn't open link: {}", e.message()));
+            }
+        });
     }
 
     fn toast(&self, message: &str) {
@@ -479,6 +542,27 @@ impl Window {
                     .unwrap_or(false);
                 action.set_state(&on.to_variant());
                 inner.canvas.update_viewer(|v| v.set_cover_alone(on));
+            })
+            .build()]);
+
+        // Which sidebar page to show: "thumbnails" or "outline".
+        let weak = Rc::downgrade(&self.0);
+        window.add_action_entries([gio::ActionEntry::builder("sidebar-page")
+            .parameter_type(Some(&String::static_variant_type()))
+            .state("thumbnails".to_variant())
+            .activate(move |_, action, param| {
+                let (Some(inner), Some(page)) =
+                    (weak.upgrade(), param.and_then(|p| p.get::<String>()))
+                else {
+                    return;
+                };
+                if let Some(stack) = inner.sidebar_stack.borrow().as_ref()
+                    && stack.child_by_name(&page).is_some()
+                {
+                    stack.set_visible_child_name(&page);
+                    inner.split.set_show_sidebar(true);
+                    action.set_state(&page.to_variant());
+                }
             })
             .build()]);
 

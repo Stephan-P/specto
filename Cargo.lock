@@ -1620,6 +1620,7 @@ dependencies = [
  "clap",
  "image",
  "pdfrs-render",
+ "pdfrs-source",
  "wait-timeout",
 ]
 
@@ -1632,6 +1633,7 @@ dependencies = [
  "libadwaita",
  "pdfrs-geom",
  "pdfrs-render",
+ "pdfrs-source",
  "pdfrs-view",
 ]
 
@@ -1661,7 +1663,17 @@ version = "0.1.0"
 dependencies = [
  "hayro",
  "pdfrs-geom",
+ "pdfrs-source",
  "self_cell",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pdfrs-source"
+version = "0.1.0"
+dependencies = [
+ "hayro-syntax",
+ "pdfrs-geom",
  "thiserror 2.0.21",
 ]
 

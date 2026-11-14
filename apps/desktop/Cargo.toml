@@ -16,6 +16,7 @@ adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 async-channel = "2"
 pdfrs-geom.workspace = true
 pdfrs-render.workspace = true
+pdfrs-source.workspace = true
 pdfrs-view.workspace = true
 
 [lints]
