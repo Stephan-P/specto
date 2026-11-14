@@ -56,6 +56,7 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
     private val sessionId = session.id().toLong()
     private val bitmaps = HashMap<ULong, Bitmap>()
     private var motion: Job? = null
+    private val settle = Runnable { refresh() }
     private var fitWidthZoom = 1.0
 
     val pageCount: Int = session.pageCount().toInt()
@@ -78,6 +79,19 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
 
     fun zoomBy(factor: Float, anchor: Offset) {
         session.zoomBy(factor.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
+        refresh()
+    }
+
+    /**
+     * Brackets a pinch. In between, pages are drawn from a few fixed zoom
+     * levels; exact-scale tiles are only rendered once the zoom has come to rest.
+     */
+    fun beginZoomGesture() {
+        session.beginZoomGesture()
+    }
+
+    fun endZoomGesture() {
+        session.endZoomGesture()
         refresh()
     }
 
@@ -106,16 +120,19 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
         val ratio = (if (zoomIn) fitWidthZoom * DOUBLE_TAP_ZOOM else fitWidthZoom) / current.zoom
         stopMotion()
         motion = scope.launch {
-            var applied = 1.0
-            animate(0f, 1f, animationSpec = tween(220)) { t, _ ->
-                val target = ratio.pow(t.toDouble())
-                zoomBy((target / applied).toFloat(), anchor)
-                applied = target
-            }
-            if (!zoomIn) {
+            beginZoomGesture()
+            try {
+                var applied = 1.0
+                animate(0f, 1f, animationSpec = tween(220)) { t, _ ->
+                    val target = ratio.pow(t.toDouble())
+                    zoomBy((target / applied).toFloat(), anchor)
+                    applied = target
+                }
                 // Back to following the window width (e.g. on rotation).
-                session.setZoomMode(ZoomMode.FIT_WIDTH)
-                refresh()
+                if (!zoomIn) session.setZoomMode(ZoomMode.FIT_WIDTH)
+            } finally {
+                // Also when a touch interrupts the animation.
+                if (!closed) endZoomGesture()
             }
         }
     }
@@ -151,11 +168,16 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
         for (id in next.evicted) bitmaps.remove(id)?.recycle()
         if (next.zoomMode == ZoomMode.FIT_WIDTH) fitWidthZoom = next.zoom
         frame = next
+        // After zooming, the view sharpens (switches to exact-scale tiles)
+        // only when a frame is planned once the zoom has been still for a while.
+        main.removeCallbacks(settle)
+        next.settlesInMs?.let { main.postDelayed(settle, it.toLong() + 1) }
     }
 
     override fun close() {
-        closed = true
         stopMotion()
+        closed = true
+        main.removeCallbacks(settle)
         frame = null
         bitmaps.values.forEach(Bitmap::recycle)
         bitmaps.clear()

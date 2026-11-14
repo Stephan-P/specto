@@ -2,6 +2,7 @@ package net.xfbs.pdfrs
 
 import android.graphics.Paint
 import android.graphics.RectF
+import android.util.Log
 import androidx.compose.animation.splineBasedDecay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -11,6 +12,10 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -24,7 +29,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.abs
 
@@ -39,10 +46,27 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
     val exactPaint = remember { Paint().apply { isFilterBitmap = false } }
     val scaledPaint = remember { Paint().apply { isFilterBitmap = true } }
     val dest = remember { RectF() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+
+    // Sharpness probe, off unless `adb shell setprop log.tag.pdfrs DEBUG`:
+    // a screenshot's page area should then match
+    // `pdfrs render file.pdf -p <page> -s <device scale>` pixel for pixel.
+    val frame = state.frame
+    if (frame != null && frame.settled && frame.complete && Log.isLoggable("pdfrs", Log.DEBUG)) {
+        LaunchedEffect(frame) {
+            val page = frame.pages.firstOrNull() ?: return@LaunchedEffect
+            Log.d(
+                "pdfrs",
+                "settled: device scale ${frame.deviceScale}, canvas origin (${origin.x}, ${origin.y}) px, " +
+                    "page ${page.page.toInt() + 1} at (${page.rect.x}, ${page.rect.y}) ${page.rect.width}x${page.rect.height}",
+            )
+        }
+    }
 
     Canvas(
         modifier
             .clipToBounds()
+            .onGloballyPositioned { origin = it.positionInWindow() }
             .onSizeChanged { state.setViewport(it.width / density, it.height / density, density) }
             .pointerInput(state) {
                 detectTapGestures(onDoubleTap = { state.doubleTap(scope, it / density) })
@@ -56,6 +80,7 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                     var moved = Offset.Zero
                     var zoomed = 1f
                     var dragging = false
+                    var zooming = false
                     do {
                         val event = awaitPointerEvent()
                         val pan = event.calculatePan()
@@ -69,6 +94,10 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                         }
                         if (dragging) {
                             if (zoom != 1f) {
+                                if (!zooming) {
+                                    zooming = true
+                                    state.beginZoomGesture()
+                                }
                                 state.zoomBy(zoom, event.calculateCentroid(useCurrent = false) / density)
                             }
                             if (pan != Offset.Zero) state.scrollBy(-pan / density)
@@ -83,6 +112,7 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                             velocity.resetTracking()
                         }
                     } while (pressed.isNotEmpty())
+                    if (zooming) state.endZoomGesture()
                     if (dragging) {
                         val v = velocity.calculateVelocity()
                         state.fling(scope, Offset(-v.x, -v.y), density, decay)
@@ -90,8 +120,7 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                 }
             },
     ) {
-        val frame = state.frame ?: return@Canvas
-        for (page in frame.pages) {
+        for (page in state.frame?.pages.orEmpty()) {
             val r = page.rect
             drawRect(Color.White, Offset(r.x, r.y), Size(r.width, r.height))
             clipRect(r.x, r.y, r.x + r.width, r.y + r.height) {

@@ -15,6 +15,15 @@ struct Cached {
     id: u64,
     bytes: usize,
     last_used: u64,
+    /// A page's low-resolution placeholder: evicted last, because it is
+    /// what makes scrolling back instant (and thumbnails will reuse it).
+    placeholder: bool,
+}
+
+struct Pending {
+    key: TileKey,
+    bitmap: Bitmap,
+    placeholder: bool,
 }
 
 pub(crate) struct TileBook {
@@ -24,7 +33,7 @@ pub(crate) struct TileBook {
     next_id: u64,
     cached: HashMap<TileKey, Cached>,
     /// Rendered, but not yet copied into a bitmap.
-    pending: HashMap<u64, (TileKey, Bitmap)>,
+    pending: HashMap<u64, Pending>,
     /// Tiles that failed to render. Treated as present so they aren't
     /// requested again on every frame; they just draw nothing.
     failed: HashSet<TileKey>,
@@ -65,7 +74,11 @@ impl TileBook {
         std::mem::take(&mut self.evicted)
     }
 
-    pub(crate) fn add_finished(&mut self, finished: Vec<Finished>) -> Vec<FinishedTile> {
+    pub(crate) fn add_finished(
+        &mut self,
+        finished: Vec<Finished>,
+        is_placeholder: impl Fn(&TileKey) -> bool,
+    ) -> Vec<FinishedTile> {
         self.pending.clear();
         let mut out = Vec::new();
         // A tile can be rendered twice: it stays requested until the frontend
@@ -82,7 +95,15 @@ impl TileBook {
                         width: bitmap.width,
                         height: bitmap.height,
                     });
-                    self.pending.insert(id, (f.key, bitmap));
+                    let placeholder = is_placeholder(&f.key);
+                    self.pending.insert(
+                        id,
+                        Pending {
+                            key: f.key,
+                            bitmap,
+                            placeholder,
+                        },
+                    );
                 }
                 Ok(_) => {}
                 Err(_) => {
@@ -94,20 +115,21 @@ impl TileBook {
     }
 
     pub(crate) fn claim(&mut self, id: u64, write: impl FnOnce(&Bitmap) -> bool) -> bool {
-        let Some((key, bitmap)) = self.pending.remove(&id) else {
+        let Some(tile) = self.pending.remove(&id) else {
             return false;
         };
-        if self.cached.contains_key(&key) || !write(&bitmap) {
+        if self.cached.contains_key(&tile.key) || !write(&tile.bitmap) {
             return false;
         }
-        let bytes = bitmap.data.len();
+        let bytes = tile.bitmap.data.len();
         self.bytes += bytes;
         self.cached.insert(
-            key,
+            tile.key,
             Cached {
                 id,
                 bytes,
                 last_used: self.frame,
+                placeholder: tile.placeholder,
             },
         );
         if self.bytes > self.budget {
@@ -121,16 +143,18 @@ impl TileBook {
     }
 
     /// Evicts least recently used tiles until at most `target` bytes remain,
-    /// sparing those used in the current frame.
+    /// sparing those used in the current frame. Placeholders go last: unlike
+    /// on desktop they can't simply stay forever, since at up to 0.5 MB per
+    /// page a long document would exceed the whole budget.
     fn evict_to(&mut self, target: usize) {
-        let mut candidates: Vec<(u64, TileKey)> = self
+        let mut candidates: Vec<(bool, u64, TileKey)> = self
             .cached
             .iter()
             .filter(|(_, t)| t.last_used < self.frame)
-            .map(|(k, t)| (t.last_used, *k))
+            .map(|(k, t)| (t.placeholder, t.last_used, *k))
             .collect();
         candidates.sort_unstable();
-        for (_, key) in candidates {
+        for (_, _, key) in candidates {
             if self.bytes <= target {
                 break;
             }
@@ -148,7 +172,7 @@ mod tests {
 
     use pdfrs_geom::Rotation;
     use pdfrs_render::Content;
-    use pdfrs_render::tile::DocId;
+    use pdfrs_render::tile::{DocId, TileScale};
 
     use super::*;
 
@@ -159,7 +183,7 @@ mod tests {
                 page,
                 rotation: Rotation::None,
                 content: Content::PageOnly,
-                level: 0,
+                scale: TileScale::from_level(0),
                 tx: 0,
                 ty: 0,
             },
@@ -176,13 +200,13 @@ mod tests {
     fn a_tile_rendered_twice_is_handed_out_once() {
         let mut book = TileBook::new(1 << 20);
         // Twice in one batch.
-        let batch = book.add_finished(vec![finished(0), finished(0), finished(1)]);
+        let batch = book.add_finished(vec![finished(0), finished(0), finished(1)], |_| false);
         assert_eq!(batch.len(), 2);
         for tile in &batch {
             assert!(book.claim(tile.id, |_| true));
         }
         // And again after it is cached.
-        assert!(book.add_finished(vec![finished(0)]).is_empty());
+        assert!(book.add_finished(vec![finished(0)], |_| false).is_empty());
 
         // Every id handed out is either still drawable or reported as evicted.
         book.begin_frame();
@@ -196,15 +220,36 @@ mod tests {
     }
 
     #[test]
+    fn placeholders_are_evicted_last() {
+        // Room for four 4-byte tiles.
+        let mut book = TileBook::new(16);
+        book.begin_frame();
+        let placeholder = book.add_finished(vec![finished(0)], |_| true);
+        assert!(book.claim(placeholder[0].id, |_| true));
+        for page in 1..=4 {
+            book.begin_frame();
+            let tile = book.add_finished(vec![finished(page)], |_| false);
+            assert!(book.claim(tile[0].id, |_| true));
+        }
+        // The oldest tile is the placeholder, yet it survived the evictions.
+        assert!(book.knows(&finished(0).key));
+        assert!(!book.take_evicted().is_empty());
+        // It still goes when memory has to be given back.
+        book.begin_frame();
+        book.trim();
+        assert!(!book.knows(&finished(0).key));
+    }
+
+    #[test]
     fn unclaimed_tiles_are_dropped_and_rendered_again() {
         let mut book = TileBook::new(1 << 20);
-        let first = book.add_finished(vec![finished(0)]);
+        let first = book.add_finished(vec![finished(0)], |_| false);
         // The frontend never claimed it; the next batch supersedes it.
-        let second = book.add_finished(vec![finished(0)]);
+        let second = book.add_finished(vec![finished(0)], |_| false);
         assert!(!book.claim(first[0].id, |_| true));
         assert!(book.claim(second[0].id, |_| true));
         // A failed copy leaves the tile uncached, so it gets requested again.
-        let third = book.add_finished(vec![finished(1)]);
+        let third = book.add_finished(vec![finished(1)], |_| false);
         assert!(!book.claim(third[0].id, |_| false));
         assert!(!book.knows(&finished(1).key));
     }

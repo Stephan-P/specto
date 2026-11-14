@@ -141,6 +141,20 @@ Two ways to get pixels into a `Bitmap`, measured warm on the same document objec
 
 **Caveats:** measured on the arm64 emulator on an Apple Silicon host, not a phone, and on a simple page where the copy overhead dominates. `rawHandle()` relies on Kotlin keeping the document open during the call, which the real `pdfrs-ffi` surface should make safe by construction. The file picker path is untested.
 
+**Viewer follow-up (M6, emulator, density 2.625):** the real viewer (`ViewSession` in `pdfrs-ffi`, Compose canvas) settles to exact-scale tiles like the desktop. With `adb shell setprop log.tag.pdfrs DEBUG` it logs the device scale, canvas origin and page rectangle of each settled frame; the page area of an `adb exec-out screencap` was compared against `pdfrs render -p N -s <device scale>` on a 40-page text PDF:
+
+| State | Device px/pt | Result |
+|---|---|---|
+| Fit width | 1.7445 (no √2 level) | pixel-identical |
+| Fit width, scrolled | 1.7445 | pixel-identical |
+| After double-tap zoom | 4.3613 | pixel-identical |
+| Zoomed and scrolled to page 2 | 4.3613 | pixel-identical |
+
+- The canvas origin is a whole pixel ((0, 310) here), so no fractional-offset correction is needed in Compose.
+- Memory: about 40 MB native heap after opening, about 100 MB after heavy scrolling with a 96 MB tile budget, back to about 44 MB after `onTrimMemory`.
+- Placeholders are evicted last rather than pinned: at up to 0.5 MB per page, pinning them all would exceed the whole budget on a long document.
+- Not covered: pinch (adb can't send multi-touch) and a physical device.
+
 ## Not done yet
 
 - Verify Preview's encryption behavior on a Mac (D9).

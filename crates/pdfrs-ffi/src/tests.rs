@@ -39,18 +39,24 @@ fn open(pages: usize, cache_bytes: u64) -> (Arc<ViewSession>, mpsc::Receiver<()>
     (session, rx)
 }
 
-/// Plays the frontend: copies finished tiles until the view is sharp.
-/// Returns the final frame and all tile ids that were evicted on the way.
+/// Plays the frontend: copies finished tiles until the view is settled and
+/// sharp. Returns the final frame and all tile ids evicted on the way.
 fn settle(session: &ViewSession, rx: &mpsc::Receiver<()>) -> (Frame, Vec<u64>) {
     let mut evicted = Vec::new();
     loop {
         let frame = session.frame();
         evicted.extend(&frame.evicted);
-        if frame.complete {
+        if frame.complete && frame.settled {
             return (frame, evicted);
         }
-        rx.recv_timeout(Duration::from_secs(10))
-            .expect("tiles should arrive");
+        // Wake up for new tiles, or when the view is due to settle.
+        let wait = match frame.settles_in_ms {
+            Some(ms) => Duration::from_millis(u64::from(ms) + 1),
+            None => Duration::from_secs(10),
+        };
+        if rx.recv_timeout(wait).is_err() {
+            assert!(frame.settles_in_ms.is_some(), "tiles should arrive");
+        }
         for tile in session.take_finished() {
             let copied = claim_tile(session.id(), tile.id, |b| {
                 assert_eq!((b.width, b.height), (tile.width, tile.height));
@@ -117,6 +123,54 @@ fn scrolling_and_zooming_move_the_view() {
     assert_eq!(frame.zoom_mode, ZoomMode::Fixed);
     session.set_zoom_mode(ZoomMode::FitWidth);
     assert!((session.frame().zoom - before).abs() < 1e-9);
+}
+
+#[test]
+fn settles_to_exact_tiles_after_a_zoom() {
+    let (session, rx) = open(2, 64 << 20);
+    // Density 2.625, as on many phones: fit width lands on no zoom level.
+    session.set_viewport(200.0, 300.0, 2.625);
+    let (frame, _) = settle(&session, &rx);
+    assert_eq!(covered_exactly(&frame.pages[0]), 1.0);
+
+    // During a pinch the view never settles, however long it pauses.
+    session.begin_zoom_gesture();
+    session.zoom_by(1.3, 100.0, 150.0);
+    let zooming = session.frame();
+    assert!(!zooming.settled);
+    assert_eq!(zooming.settles_in_ms, None);
+
+    // Afterwards it asks to be redrawn, and then sharpens.
+    session.end_zoom_gesture();
+    let ended = session.frame();
+    assert!(!ended.settled);
+    assert!(ended.settles_in_ms.is_some());
+    let (frame, _) = settle(&session, &rx);
+    assert_eq!(covered_exactly(&frame.pages[0]), 1.0);
+}
+
+/// Share of the page's on-screen area covered by 1:1 tiles (which sit on
+/// whole device pixels). The viewport in these tests is 525 × 787.5 px.
+fn covered_exactly(page: &PageDraw) -> f32 {
+    let visible = |r: &Rect| {
+        let w = (r.x + r.width).min(525.0) - r.x.max(0.0);
+        let h = (r.y + r.height).min(787.5) - r.y.max(0.0);
+        w.max(0.0) * h.max(0.0)
+    };
+    let mut exact = 0.0;
+    for t in page.tiles.iter().filter(|t| t.exact) {
+        assert_eq!((t.dest.x.fract(), t.dest.y.fract()), (0.0, 0.0));
+        let clipped = Rect {
+            x: t.dest.x.max(page.rect.x),
+            y: t.dest.y.max(page.rect.y),
+            width: (t.dest.x + t.dest.width).min(page.rect.x + page.rect.width)
+                - t.dest.x.max(page.rect.x),
+            height: (t.dest.y + t.dest.height).min(page.rect.y + page.rect.height)
+                - t.dest.y.max(page.rect.y),
+        };
+        exact += visible(&clipped);
+    }
+    exact / visible(&page.rect)
 }
 
 #[test]

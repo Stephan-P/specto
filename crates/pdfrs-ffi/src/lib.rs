@@ -18,6 +18,7 @@ mod tiles;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, Weak};
+use std::time::Instant;
 
 use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewSize, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
@@ -119,6 +120,15 @@ pub struct Frame {
     pub evicted: Vec<u64>,
     /// Every visible tile is sharp. If not, more tiles are on their way.
     pub complete: bool,
+    /// The zoom has been still long enough that pages are drawn from tiles
+    /// at the exact device scale, 1:1. While zooming they come from a few
+    /// fixed zoom levels and are scaled.
+    pub settled: bool,
+    /// Call [`ViewSession::frame`] again after this many milliseconds even if
+    /// nothing else happens: that is when the view settles and sharpens.
+    pub settles_in_ms: Option<u32>,
+    /// Device pixels per PDF point that pages are drawn at.
+    pub device_scale: f64,
     /// Zero-based index of the page the user is looking at.
     pub current_page: u32,
     /// Logical pixels (dp) per PDF point.
@@ -261,6 +271,16 @@ impl ViewSession {
             .zoom_by(factor, ViewPoint::new(x, y));
     }
 
+    /// A pinch (or zoom animation) starts. Until [`end_zoom_gesture`](Self::end_zoom_gesture),
+    /// no exact-scale tiles are rendered for the zooms passed through.
+    pub fn begin_zoom_gesture(&self) {
+        self.shared.lock().viewer.begin_zoom_gesture();
+    }
+
+    pub fn end_zoom_gesture(&self) {
+        self.shared.lock().viewer.end_zoom_gesture();
+    }
+
     pub fn set_zoom_mode(&self, mode: ZoomMode) {
         self.shared.lock().viewer.set_zoom_mode(match mode {
             ZoomMode::Fixed => pdfrs_view::ZoomMode::Fixed,
@@ -289,7 +309,8 @@ impl ViewSession {
         let mut state = self.shared.lock();
         let State { viewer, tiles } = &mut *state;
         tiles.begin_frame();
-        let planned = viewer.frame(|key| tiles.knows(key));
+        let now = Instant::now();
+        let planned = viewer.frame(now, |key| tiles.knows(key));
         let pages = planned
             .pages
             .iter()
@@ -314,6 +335,11 @@ impl ViewSession {
             pages,
             evicted: tiles.take_evicted(),
             complete: planned.complete,
+            settled: viewer.is_settled(now),
+            settles_in_ms: planned
+                .settles_at
+                .map(|at| at.saturating_duration_since(now).as_millis() as u32),
+            device_scale: viewer.device_scale().get(),
             current_page: viewer.current_page() as u32,
             zoom: viewer.zoom(),
             zoom_mode: match viewer.zoom_mode() {
@@ -329,7 +355,11 @@ impl ViewSession {
     /// Tiles not copied before the next call are discarded.
     pub fn take_finished(&self) -> Vec<FinishedTile> {
         let finished = self.shared.scheduler.take_finished();
-        self.shared.lock().tiles.add_finished(finished)
+        let mut state = self.shared.lock();
+        let State { viewer, tiles } = &mut *state;
+        tiles.add_finished(finished, |key| {
+            viewer.placeholder_key(key.page as usize) == Some(*key)
+        })
     }
 
     /// Drops every tile the last frame didn't use (`onTrimMemory`). Their ids
