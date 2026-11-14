@@ -97,6 +97,14 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      # A failure on one shape says nothing about the other.
+      fail-fast: false
+      matrix:
+        # A phone, and a tablet for the sidebar and two-page layouts (some
+        # tests only apply to one of them).
+        profile: [pixel_7, pixel_tablet]
+    name: android-ui (${{ matrix.profile }})
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -125,12 +133,11 @@ jobs:
       - name: UI tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # A released Android version (development uses newer ones), in a
-          # phone's shape.
+          # A released Android version (development uses newer ones).
           api-level: 35
           target: google_apis
           arch: x86_64
-          profile: pixel_7
+          profile: ${{ matrix.profile }}
           # The app's own animations are part of what is tested.
           disable-animations: false
           working-directory: apps/android
@@ -139,6 +146,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-ui-test-report
+          name: android-ui-test-report-${{ matrix.profile }}
           path: apps/android/app/build/reports/androidTests/connected/
 
