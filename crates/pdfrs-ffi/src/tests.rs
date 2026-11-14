@@ -540,6 +540,39 @@ fn two_pages_side_by_side() {
 }
 
 #[test]
+fn turning_pages_without_gestures() {
+    let (session, _rx) = open(5, 1 << 20);
+    session.set_viewport(424.0, 316.0, 2.0);
+    let page = |s: &ViewSession| s.frame().current_page;
+
+    // Continuous: page by page, stopping at both ends.
+    session.turn_page(false);
+    assert_eq!(page(&session), 0);
+    session.turn_page(true);
+    session.turn_page(true);
+    assert_eq!(page(&session), 2);
+
+    // Paged, also while zoomed in (where a swipe would only pan).
+    session.set_view_mode(ViewMode::Paged);
+    session.zoom_by(3.0, 100.0, 100.0);
+    session.turn_page(true);
+    assert_eq!(page(&session), 3);
+    assert_eq!(session.snap_delta(0.0, 0.0), None);
+    session.turn_page(true);
+    session.turn_page(true);
+    assert_eq!(page(&session), 4);
+
+    // Two pages: pair by pair.
+    session.fit();
+    session.set_spread(true, false);
+    session.go_to_page(0);
+    session.turn_page(true);
+    assert_eq!(page(&session), 2);
+    session.turn_page(false);
+    assert_eq!(page(&session), 0);
+}
+
+#[test]
 fn closed_sessions_are_not_found() {
     let (session, _rx) = open(1, 1 << 20);
     let id = session.id();

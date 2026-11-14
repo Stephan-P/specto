@@ -39,6 +39,15 @@ private fun newBuffer(bytes: Int): ByteBuffer =
 /** How far a double tap zooms in, relative to the fitted view. */
 private const val DOUBLE_TAP_ZOOM = 2.5
 
+/** How much of the view's height Page Down scrolls. */
+private const val SCREENFUL = 0.9f
+
+/** How far an arrow key scrolls, in dp. */
+private const val LINE_DP = 60f
+
+/** Zoom factor of one Ctrl and plus. */
+private const val ZOOM_STEP = 1.25f
+
 /** Duration of the slide that brings a swiped page to rest. */
 private const val SLIDE_MS = 260
 
@@ -87,6 +96,9 @@ class PdfViewState(
     private val settle = Runnable { refresh() }
     private var thumbnailOwner: Any? = null
     private var pendingRestore: SavedView? = restore
+
+    /** Width and height of the view in dp. */
+    private var viewport = Offset.Zero
 
     val pageCount: Int = session.pageCount().toInt()
 
@@ -160,6 +172,7 @@ class PdfViewState(
         // Through JNI: the bars around the view are animated, which resizes
         // it on every frame.
         Native.setViewport(sessionId, widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
+        viewport = Offset(widthDp, heightDp)
         // A position only means something once the view has a size.
         pendingRestore?.let { session.restoreView(it.copy(twoPages = it.twoPages && wideWindow)) }
         pendingRestore = null
@@ -199,6 +212,55 @@ class PdfViewState(
         }
         return activated
     }
+
+    // --- keyboard -----------------------------------------------------------
+
+    /** The next or previous page; with two pages, the next or previous pair. */
+    fun turnPage(forward: Boolean) {
+        stopMotion()
+        session.turnPage(forward)
+        refresh()
+    }
+
+    /**
+     * Page Down and Page Up: a page turn when paged, most of a screenful when
+     * scrolling continuously.
+     */
+    fun pageBy(scope: CoroutineScope, forward: Boolean) {
+        if (paged) return turnPage(forward)
+        stopMotion()
+        val distance = viewport.y * SCREENFUL * (if (forward) 1 else -1)
+        motion = scope.launch { slideBy(Offset(0f, distance)) }
+    }
+
+    /**
+     * Arrow up and down: a small scroll, or, on a fitted page that has
+     * nowhere to scroll to, a page turn.
+     */
+    fun lineBy(forward: Boolean) {
+        val current = frame ?: return
+        if (current.paged && current.zoomFactor < 1.01) return turnPage(forward)
+        stopMotion()
+        Native.scrollInPageBy(sessionId, 0.0, (if (forward) LINE_DP else -LINE_DP).toDouble())
+        refresh()
+    }
+
+    /** Zooms around the middle of the view. */
+    fun zoomStep(zoomIn: Boolean) {
+        stopMotion()
+        zoomBy(if (zoomIn) ZOOM_STEP else 1 / ZOOM_STEP, viewport / 2f)
+        // Not part of a gesture: let the view sharpen.
+        endZoomGesture()
+    }
+
+    /** Back to the fitted view. */
+    fun fit() {
+        stopMotion()
+        session.fit()
+        refresh()
+    }
+
+    // ------------------------------------------------------------------------
 
     /** Shows [page] (zero-based) at the top of the view. */
     fun goToPage(page: Int) {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,12 +21,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -35,13 +48,47 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
 import uniffi.pdfrs_ffi.Activated
+
+/**
+ * What keys do while the page has the focus, as on the desktop: arrows left
+ * and right, Page Up and Down, Space and Backspace turn pages; arrows up and
+ * down scroll; Home and End go to the first and last page; Ctrl with plus,
+ * minus and zero zooms. Returns whether the key was used.
+ */
+private fun PdfViewState.handleKey(scope: CoroutineScope, event: KeyEvent): Boolean {
+    if (event.isCtrlPressed) {
+        when (event.key) {
+            Key.Equals, Key.Plus, Key.NumPadAdd -> zoomStep(zoomIn = true)
+            Key.Minus, Key.NumPadSubtract -> zoomStep(zoomIn = false)
+            Key.Zero, Key.NumPad0 -> fit()
+            else -> return false
+        }
+        return true
+    }
+    if (event.isAltPressed || event.isMetaPressed) return false
+    when (event.key) {
+        Key.DirectionRight -> turnPage(forward = true)
+        Key.DirectionLeft, Key.Backspace -> turnPage(forward = false)
+        Key.PageDown -> pageBy(scope, forward = true)
+        Key.PageUp -> pageBy(scope, forward = false)
+        Key.Spacebar -> pageBy(scope, forward = !event.isShiftPressed)
+        Key.DirectionDown -> lineBy(forward = true)
+        Key.DirectionUp -> lineBy(forward = false)
+        Key.MoveHome -> goToPage(0)
+        Key.MoveEnd -> goToPage(pageCount - 1)
+        else -> return false
+    }
+    return true
+}
 
 /**
  * Draws the frames planned by [state] and turns touches into scrolling or
  * swiping between pages, pinch zoom and double-tap zoom. A tap follows a
  * link; links leaving the document are passed to [onExternalLink], and taps
- * that hit no link to [onTap]. No layout maths happens here.
+ * that hit no link to [onTap]. With a keyboard attached, keys turn pages,
+ * scroll and zoom. No layout maths happens here.
  */
 @Composable
 fun PdfView(
@@ -73,9 +120,16 @@ fun PdfView(
         }
     }
 
+    // Keys go to whatever has the focus, so the page takes it when it appears.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(state) { focus.requestFocus() }
+
     Canvas(
         modifier
             .clipToBounds()
+            .focusRequester(focus)
+            .focusable()
+            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it) }
             .onGloballyPositioned { origin = it.positionInWindow() }
             .onSizeChanged { state.setViewport(it.width / density, it.height / density, density) }
             .pointerInput(state) {

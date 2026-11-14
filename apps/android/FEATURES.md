@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-A handful of these are also checked automatically (`ReaderTest`: opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off, the sidebar or full-screen Pages depending on the window, and two pages on wide windows), but automated tests can't judge how anything looks or feels.
+A handful of these are also checked automatically (`ReaderTest`: opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off, the sidebar or full-screen Pages depending on the window, two pages on wide windows, and turning pages with keys), but automated tests can't judge how anything looks or feels.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -81,6 +81,17 @@ Applies when the app's window is at least 840 dp wide: a tablet in landscape, bu
 | First page alone | With two pages on, ⋮ → "First page alone" | The first page stands by itself and the pairs shift by one (2–3, 4–5, …), so a book's left and right pages land left and right |
 | Remembered | Turn on two pages, leave the app, open the document again | Still two pages, on the same pair; other documents are unaffected |
 | Falls back | Rotate to portrait, or put the app in split screen | The phone layout: Pages and Contents full screen on request, the strip at the bottom, one page at a time even if two pages are on (they return with the room); same document and page throughout |
+
+## Keyboard
+
+With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page takes the keyboard focus when a document opens.
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Turn pages | → and ←, Page Down and Page Up, Space and Shift+Space, Backspace | Next or previous page; with two pages, the next or previous pair; nothing at either end. In continuous scrolling, → and ← go to the top of the next or previous page, while Page Down, Page Up and Space scroll most of a screenful |
+| Scroll | ↓ and ↑ | A small scroll; on a fitted page in paged mode, where there is nothing to scroll, they turn the page instead |
+| Ends | Home and End | First and last page |
+| Zoom | Ctrl with +, − and 0 | Zoom in and out around the middle of the view, and back to the fitted view |
 
 ## Behaviour of the app as a whole
 

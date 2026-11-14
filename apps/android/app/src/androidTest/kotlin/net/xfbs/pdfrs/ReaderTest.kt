@@ -3,6 +3,7 @@ package net.xfbs.pdfrs
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -143,6 +146,33 @@ class ReaderTest {
             up()
         }
         waitForText("2 / 12")
+    }
+
+    @Test
+    fun keysTurnPages() {
+        open("pages.pdf")
+        // The page has the focus from the start; no tap needed first.
+        page.performKeyInput { pressKey(Key.DirectionRight) }
+        waitForText("2 / 12")
+        page.performKeyInput { pressKey(Key.PageDown) }
+        waitForText("3 / 12")
+        page.performKeyInput { pressKey(Key.Spacebar) }
+        waitForText("4 / 12")
+        // On a fitted page there is nothing to scroll: down turns the page too.
+        page.performKeyInput { pressKey(Key.DirectionDown) }
+        waitForText("5 / 12")
+        page.performKeyInput { pressKey(Key.DirectionLeft) }
+        waitForText("4 / 12")
+        page.performKeyInput { pressKey(Key.Backspace) }
+        waitForText("3 / 12")
+        page.performKeyInput { pressKey(Key.MoveEnd) }
+        waitForText("12 / 12")
+        // Nothing beyond the last page.
+        page.performKeyInput { pressKey(Key.DirectionRight) }
+        compose.waitForIdle()
+        compose.onNodeWithText("12 / 12").assertIsDisplayed()
+        page.performKeyInput { pressKey(Key.MoveHome) }
+        waitForText("1 / 12")
     }
 
     @Test

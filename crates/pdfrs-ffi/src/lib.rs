@@ -733,6 +733,18 @@ impl ViewSession {
         self.shared.lock().viewer.go_to_page(page as usize);
     }
 
+    /// Goes to the next or previous page: the next pair with two pages, and
+    /// the top of the neighbouring page when scrolling continuously. Nothing
+    /// happens at either end of the document.
+    pub fn turn_page(&self, forward: bool) {
+        let mut state = self.shared.lock();
+        if forward {
+            state.viewer.next_page();
+        } else {
+            state.viewer.previous_page();
+        }
+    }
+
     /// Plans what to draw now and queues the tiles that are still missing.
     /// Call after anything changed: input, a new viewport, or new tiles.
     pub fn frame(&self) -> Frame {
