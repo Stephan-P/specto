@@ -26,23 +26,7 @@ enum Command {
         password: Option<String>,
     },
     /// Render pages to PNG.
-    Render {
-        file: PathBuf,
-        /// Output directory.
-        #[arg(short, long, default_value = "out")]
-        output: PathBuf,
-        /// Pages to render, 1-based, e.g. "1,3,5-7". Default: all.
-        #[arg(short, long)]
-        pages: Option<String>,
-        /// Device pixels per PDF point (2.0 = 144 dpi).
-        #[arg(short, long, default_value_t = 2.0)]
-        scale: f64,
-        /// Don't draw annotations stored in the file.
-        #[arg(long)]
-        no_annotations: bool,
-        #[arg(long)]
-        password: Option<String>,
-    },
+    Render(RenderArgs),
     /// Render a single file and print per-page results (used by `corpus`).
     #[command(hide = true)]
     Check(check::CheckArgs),
@@ -53,21 +37,7 @@ enum Command {
 fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Info { file, password } => info(&file, password.as_deref()),
-        Command::Render {
-            file,
-            output,
-            pages,
-            scale,
-            no_annotations,
-            password,
-        } => render(
-            &file,
-            &output,
-            pages.as_deref(),
-            scale,
-            no_annotations,
-            password.as_deref(),
-        ),
+        Command::Render(args) => render(&args),
         Command::Check(args) => check::run(&args),
         Command::Corpus(args) => corpus::run(&args),
     }
@@ -99,8 +69,12 @@ fn info(file: &Path, password: Option<&str>) -> Result<()> {
             0 => String::new(),
             d => format!(" (rotated {d}°)"),
         };
+        let images = match doc.page_image_pixels(i) {
+            0 => String::new(),
+            px => format!(", images {:.1} MP", px as f64 / 1e6),
+        };
         println!(
-            "page {:>3}: {:.1} × {:.1} pt{rot}",
+            "page {:>3}: {:.1} × {:.1} pt{rot}{images}",
             i + 1,
             s.width,
             s.height
@@ -112,30 +86,48 @@ fn info(file: &Path, password: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn render(
-    file: &Path,
-    output: &Path,
-    pages: Option<&str>,
+#[derive(clap::Args)]
+struct RenderArgs {
+    file: PathBuf,
+    /// Output directory.
+    #[arg(short, long, default_value = "out")]
+    output: PathBuf,
+    /// Pages to render, 1-based, e.g. "1,3,5-7". Default: all.
+    #[arg(short, long)]
+    pages: Option<String>,
+    /// Device pixels per PDF point (2.0 = 144 dpi).
+    #[arg(short, long, default_value_t = 2.0)]
     scale: f64,
+    /// Only render this part of the page bitmap, "x,y,width,height" in
+    /// pixels at `--scale`, like a viewer tile.
+    #[arg(long)]
+    region: Option<String>,
+    /// Don't draw annotations stored in the file.
+    #[arg(long)]
     no_annotations: bool,
-    password: Option<&str>,
-) -> Result<()> {
-    let doc = open(file, password)?;
-    let pages = match pages {
+    #[arg(long)]
+    password: Option<String>,
+}
+
+fn render(args: &RenderArgs) -> Result<()> {
+    let doc = open(&args.file, args.password.as_deref())?;
+    let pages = match &args.pages {
         Some(spec) => parse_pages(spec, doc.page_count())?,
         None => (0..doc.page_count()).collect(),
     };
-    std::fs::create_dir_all(output)?;
-    let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+    let region = args.region.as_deref().map(parse_region).transpose()?;
+    std::fs::create_dir_all(&args.output)?;
+    let stem = args.file.file_stem().unwrap_or_default().to_string_lossy();
     for page in pages {
-        let mut req = RenderRequest::page(page, scale);
-        if no_annotations {
+        let mut req = RenderRequest::page(page, args.scale);
+        req.region = region;
+        if args.no_annotations {
             req.content = Content::PageOnly;
         }
         let start = Instant::now();
         let bitmap = doc.render(&req)?;
         let elapsed = start.elapsed();
-        let path = output.join(format!("{stem}-{}.png", page + 1));
+        let path = args.output.join(format!("{stem}-{}.png", page + 1));
         save_png(&bitmap, &path)?;
         println!(
             "page {:>3}: {}×{} px in {:>7.1} ms → {}",
@@ -147,6 +139,22 @@ fn render(
         );
     }
     Ok(())
+}
+
+/// Parses "x,y,width,height".
+fn parse_region(spec: &str) -> Result<pdfrs_render::DeviceIntRect> {
+    let v: Vec<u32> = spec
+        .split(',')
+        .map(|p| p.trim().parse())
+        .collect::<Result<_, _>>()
+        .with_context(|| format!("invalid region {spec:?}"))?;
+    let [x, y, w, h] = v[..] else {
+        bail!("region must be x,y,width,height, got {spec:?}");
+    };
+    Ok(pdfrs_render::DeviceIntRect::new(
+        (x, y).into(),
+        (x + w, y + h).into(),
+    ))
 }
 
 /// Parses "1,3,5-7" (1-based, inclusive) into zero-based indices.

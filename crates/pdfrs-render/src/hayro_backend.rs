@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use hayro::hayro_interpret::{InterpreterSettings, RenderContent};
 use hayro::hayro_syntax::object::Rect as HayroRect;
+use hayro::hayro_syntax::object::dict::keys::{HEIGHT, RESOURCES, SUBTYPE, WIDTH, XOBJECT};
+use hayro::hayro_syntax::object::{Dict, Name, Stream};
 use hayro::hayro_syntax::page::{Page, Rotation as HayroRotation};
 use hayro::hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use hayro::kurbo::Affine;
@@ -73,6 +75,55 @@ impl HayroDocument {
     pub fn pdf(&self) -> &Pdf {
         self.inner.borrow_owner()
     }
+
+    /// Total pixels of the images page `page` draws through XObjects, looking
+    /// into form XObjects a few levels deep (inline images are ignored).
+    ///
+    /// Reads dictionaries only, so it's cheap. hayro decodes images whole,
+    /// and at high zoom a big scan costs gigabytes per render (M1: 4.5 GB for
+    /// one tile of a 4.4 × 5.9 m JPEG 2000 page), so the scheduler treats
+    /// pages above a threshold specially.
+    pub fn page_image_pixels(&self, page: usize) -> u64 {
+        let Some(p) = self.pdf().pages().get(page) else {
+            return 0;
+        };
+        let mut budget = 10_000; // XObjects visited, against pathological trees
+        image_pixels(&p.resources().x_objects, 0, &mut budget)
+    }
+}
+
+fn image_pixels(xobjects: &Dict<'_>, depth: u32, budget: &mut u32) -> u64 {
+    if depth > 4 {
+        return 0;
+    }
+    let mut total = 0u64;
+    for name in xobjects.keys() {
+        if *budget == 0 {
+            break;
+        }
+        *budget -= 1;
+        let Some(stream) = xobjects.get::<Stream<'_>>(&name) else {
+            continue;
+        };
+        let dict = stream.dict();
+        match dict.get::<Name<'_>>(SUBTYPE).as_deref() {
+            Some(b"Image") => {
+                let w = dict.get::<u32>(WIDTH).unwrap_or(0) as u64;
+                let h = dict.get::<u32>(HEIGHT).unwrap_or(0) as u64;
+                total = total.saturating_add(w.saturating_mul(h));
+            }
+            Some(b"Form") => {
+                if let Some(inner) = dict
+                    .get::<Dict<'_>>(RESOURCES)
+                    .and_then(|r| r.get::<Dict<'_>>(XOBJECT))
+                {
+                    total = total.saturating_add(image_pixels(&inner, depth + 1, budget));
+                }
+            }
+            _ => {}
+        }
+    }
+    total
 }
 
 fn geometry_of(page: &Page<'_>) -> PageGeometry {

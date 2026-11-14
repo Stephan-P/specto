@@ -27,7 +27,9 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M1: Core viewer (desktop)
 
-- [ ] **M** Render guards. hayro interprets the whole page for every tile, so a huge or complex page (e.g. `issue19517`, 41 s at 2×) blocks a worker. Needed: a deadline after which the page shows "too complex", spare workers so one stuck page can't starve the rest, and a memory cap for huge images.
+- [x] **M** Render guards (`pdfrs_render::scheduler::Limits`): pages with > 100 MP of images (checked at open) or a render > 500 ms are *expensive* and render one tile at a time; workers drop their document copy after a heavy page (frees decoded images); a watchdog starts up to 4 extra workers while renders are stalled > 1 s and other work waits. Giant JPEG 2000 page at fit width: peak memory 1.14 → 0.66 GB at the same speed (M0-FINDINGS.md)
+- [ ] **S** Frontends: show "rendering complex page…" on pages where `Scheduler::is_expensive` and sharp tiles are still missing
+- [ ] **M** Upstream (hayro): decode images only for the region and resolution being drawn. One tile of a 212 MP JPEG 2000 page still costs 4.5 GB and 10 s at 100%, which no scheduling can fix
 - [x] **S** Keep hayro's `RenderCache` across renders (`self_cell`), reset per worker after 32 pages. Measured 1.4–6× faster tiles.
 
 - [x] **S** `pdfrs-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p pdfrs-render -- --ignored`).

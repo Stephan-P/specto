@@ -58,7 +58,18 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| n.get()));
     // Workers wake the main loop; the main loop then collects finished tiles.
-    let scheduler = Scheduler::new(threads, move || {
+    // PDFRS_NO_GUARDS=1: disable the render guards, for comparisons.
+    let limits = if std::env::var_os("PDFRS_NO_GUARDS").is_some() {
+        pdfrs_render::scheduler::Limits {
+            slow_after: std::time::Duration::MAX,
+            stall_after: std::time::Duration::MAX,
+            heavy_image_pixels: u64::MAX,
+            max_extra_workers: 0,
+        }
+    } else {
+        pdfrs_render::scheduler::Limits::default()
+    };
+    let scheduler = Scheduler::with_limits(threads, limits, move || {
         let _ = tx.try_send(());
     });
     let opened = scheduler.open(data, None).expect("open pdf");

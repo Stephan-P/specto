@@ -166,6 +166,21 @@ Two ways to get pixels into a `Bitmap`, measured warm on the same document objec
 - These are debug-build numbers; a release build has not been measured.
 - Memory after the fling run: about 360 MB PSS, of which about 117 MB is Android's GPU texture cache and about 98 MB native heap (tile bitmaps within a 64 MB budget, plus render caches). The tile budget is now a quarter of `memoryClass` because every drawn bitmap also has a GPU copy.
 
+## Render guards (M1)
+
+Peak memory and time per corpus file (first 3 pages at 2×, each file in its own process): median 20 MB, p95 39 MB, p99 110 MB. The only outlier, `issue19517` (4.4 GB), is a 4.4 × 5.9 m page made of one 212-megapixel JPEG 2000 image. Most of that came from the CLI rendering the page as a single 25216 × 33612 bitmap, which the viewer never does. But even single tiles are expensive, because hayro decodes the image at a resolution that grows with the zoom, whatever the tile size:
+
+| One 256 px tile of `issue19517` at scale | 0.05 | 0.25 | 1 | 2 |
+|---|---|---|---|---|
+| Time | 0.15 s | 1.4 s | 9.9 s | 8.2 s |
+| Peak memory | 245 MB | 2.2 GB | 4.5 GB | 4.6 GB |
+
+Ordinary pages stay flat: 512 px tiles of pages with 20–55 MP of images cost 8–107 MB and at most 160 ms at scales from 2 to 16 (`pdfrs render --region`, `pdfrs info` now shows image megapixels per page). So the image size only predicts trouble at the extreme end, and runtime slowness is the more general signal.
+
+hayro can't be cancelled, so the scheduler limits the damage instead (`Limits`, see the `scheduler` module docs): expensive pages (> 100 MP of images, or a render > 500 ms) render one tile at a time, workers drop their document copy after a heavy page, and a watchdog adds workers while renders are stalled. On `issue19517` at fit width in the GTK spike (probe, 4 workers, `PDFRS_NO_GUARDS=1` for the baseline): peak memory 1.14 GB without guards, 0.66 GB with them, fully rendered in 2.0 s vs 2.35 s. At 100% the difference would be 4 × 4.5 GB against 4.5 GB; that wasn't run on this 5 GB machine.
+
+What this doesn't fix: one tile at 100% still needs 4.5 GB and 10 s. That needs region- and resolution-aware image decoding in hayro (TASKS.md).
+
 ## Not done yet
 
 - Verify Preview's encryption behavior on a Mac (D9).

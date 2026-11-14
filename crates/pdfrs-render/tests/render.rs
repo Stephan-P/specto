@@ -240,6 +240,80 @@ fn scheduler_does_not_rerender_uncollected_tiles() {
     assert!(sched.pending() <= 1);
 }
 
+/// A 200 × 400 pt page with `n` tiny filled squares: slow to render.
+fn slow_pdf(n: usize) -> Vec<u8> {
+    let mut content = String::from("0 0 1 rg\n");
+    for i in 0..n {
+        let (x, y) = ((i % 400) as f64 * 0.5, ((i / 400) % 800) as f64 * 0.5);
+        content.push_str(&format!("{x} {y} 0.4 0.4 re f\n"));
+    }
+    format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 200 400] >> endobj\n\
+         3 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+         trailer << /Root 1 0 R /Size 5 >>\n%%EOF\n",
+        content.len()
+    )
+    .into_bytes()
+}
+
+#[test]
+fn slow_pages_get_an_extra_worker_and_render_one_tile_at_a_time() {
+    use pdfrs_render::scheduler::Limits;
+    let sched = Scheduler::with_limits(
+        1,
+        Limits {
+            slow_after: Duration::from_millis(10),
+            stall_after: Duration::from_millis(20),
+            heavy_image_pixels: u64::MAX,
+            max_extra_workers: 2,
+        },
+        || {},
+    );
+    let slow = sched.open(slow_pdf(400_000), None).unwrap();
+    let fast = sched.open(sample_pdf(""), None).unwrap();
+    let key = |doc, scale: f64, tx, ty| TileKey {
+        doc,
+        page: 0,
+        rotation: Rotation::None,
+        content: Content::PageOnly,
+        scale: TileScale::exact(scale),
+        tx,
+        ty,
+    };
+    // Four slow tiles queued ahead of a fast one, with one regular worker.
+    let slow_tiles: Vec<_> = (0..4).map(|ty| key(slow.id, 4.0, 0, ty)).collect();
+    let fast_tile = key(fast.id, 1.0, 0, 0);
+    sched.request(slow_tiles.iter().copied().chain([fast_tile]));
+
+    let start = std::time::Instant::now();
+    let (mut order, mut max_workers) = (Vec::new(), 1);
+    while order.len() < 5 {
+        assert!(start.elapsed() < Duration::from_secs(30), "timed out");
+        max_workers = max_workers.max(sched.workers());
+        order.extend(sched.take_finished().into_iter().map(|f| f.key));
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(sched.is_expensive(slow.id, 0));
+    assert!(!sched.is_expensive(fast.id, 0));
+    assert!(max_workers >= 2, "no extra worker started");
+    // The fast tile didn't wait for the whole slow page.
+    let pos = |k| order.iter().position(|o| *o == k).unwrap();
+    assert!(pos(fast_tile) < pos(slow_tiles[1]), "{order:?}");
+    // Extra workers retire once nothing is stalled.
+    let start = std::time::Instant::now();
+    while sched.workers() > 1 {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "extra worker didn't retire"
+        );
+        sched.request([]); // wakes idle workers
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
 fn scheduler_drops_closed_documents() {
     let sched = Scheduler::new(1, || {});
