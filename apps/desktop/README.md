@@ -2,7 +2,7 @@
 
 A fast, responsive PDF viewer with light editing capabilities. Built with Rust and GTK 4, designed to fit in well on Linux with the GNOME desktop, but it also runs on macOS.
 
-![pdfrs showing two pages side by side, with the table of contents in the sidebar](screenshot.png)
+<img src="screenshot.png" width="50%" alt="pdfrs showing two pages side by side, with the table of contents in the sidebar">
 
 There are several PDF readers for Linux, but few support basic editing, such as merging PDFs, rotating pages, adding annotations or filling in forms. The editors that do support these are often not pleasant to use. pdfrs is meant to fill that gap: not a full-fledged PDF editor, but enough to do the common things quickly.
 

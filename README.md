@@ -5,8 +5,6 @@ A PDF viewer and light editor written in Rust, with a shared core and two apps:
 - [Desktop](apps/desktop/README.md): GTK 4 and libadwaita, for Linux (also runs on macOS)
 - [Android](apps/android/README.md): Kotlin and Jetpack Compose
 
-![The desktop app showing two pages side by side, with the table of contents in the sidebar](apps/desktop/screenshot.png)
-
 ## Why?
 
 I enjoy working with Preview on macOS. When I want to read a PDF, or do some light editing (reorder or delete pages, highlight something, fill in a form), it's what I reach for: it's fast, it stays out of the way, and it does the common things well. On Linux I haven't found anything equivalent, so this is my attempt at one.
@@ -17,12 +15,10 @@ I also miss a decent open-source PDF viewer for Android that is pleasant to use.
 
 Rough feature parity with Preview, not Adobe Acrobat:
 
-| Area | Scope |
-|---|---|
-| Viewing | HiDPI-sharp rendering, zoom, single page / continuous / two pages side by side, thumbnails, table of contents, search, text selection |
-| Page editing | Delete, reorder, rotate, insert pages from another PDF, merge documents |
-| Markup | Highlight / underline / strike-through, freehand ink, shapes, text boxes, sticky notes |
-| Forms | Fill in form fields (text, checkbox, radio, dropdown/list), save the filled values |
+- **Viewing**: sharp rendering on HiDPI screens, zoom, single page, continuous and two pages side by side, thumbnails, table of contents, search, text selection
+- **Page editing**: delete, reorder and rotate pages, insert pages from another PDF, merge documents
+- **Markup**: highlight, underline and strike through text, freehand drawing, shapes, text boxes, sticky notes
+- **Forms**: fill in form fields (text, checkboxes, radio buttons, dropdowns and lists) and save the filled values
 
 Not planned, at least for now: editing existing page content (reflowing text), XFA forms, creating digital signatures, JavaScript, OCR, PDF/A conversion.
 
