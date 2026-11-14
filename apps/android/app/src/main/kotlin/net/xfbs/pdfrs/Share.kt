@@ -49,6 +49,18 @@ private fun shareSheet(document: Uri, name: String): Intent {
     return Intent.createChooser(send, null)
 }
 
+/**
+ * Offers [text], selected in a document, to other apps through the system's
+ * share sheet. Throws a `RuntimeException` if it is more than the system
+ * passes on.
+ */
+fun Context.shareText(text: String) {
+    val send = Intent(Intent.ACTION_SEND)
+        .setType("text/plain")
+        .putExtra(Intent.EXTRA_TEXT, text)
+    startActivity(Intent.createChooser(send, null))
+}
+
 /** Copies [document] into the cache under its own name, replacing the copy shared before. */
 private fun Context.copyForSharing(document: Uri, name: String): File {
     val dir = File(cacheDir, SHARED_DIR)

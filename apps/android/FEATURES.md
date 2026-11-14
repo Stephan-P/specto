@@ -105,7 +105,7 @@ Needs a document with real text; a scan without a text layer has nothing to sele
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Select a word | Long-press a word | A short vibration; the word is highlighted, with a round handle below each end, and the system's menu with "Copy" and "Select all" appears beside it |
+| Select a word | Long-press a word | A short vibration; the word is highlighted, with a round handle below each end, and the system's menu with "Copy", "Share" and "Select all" appears beside it |
 | Not on blank paper | Long-press a margin or a picture | Nothing is selected, and the bars stay as they are |
 | Word by word | Long-press a word and, without lifting the finger, move along the line or down the page | The selection grows and shrinks by whole words; the menu appears when the finger lifts |
 | Handles | Drag the handle at either end | That end follows the finger letter by letter, also on to other lines; the other end stays. The ends can't be dragged past each other into nothing |
@@ -113,6 +113,7 @@ Needs a document with real text; a scan without a text layer has nothing to sele
 | Across pages | With "Continuous", drag a handle (or the long press) to the top or bottom edge | The view scrolls on while the finger stays there, faster the nearer the edge, and the selection grows with it over as many pages as you like |
 | Copy | "Copy" in the menu | The text is on the clipboard, lines and pages separated by line breaks (paste it somewhere to check), and the selection is gone. Android 13 and later show what was copied; earlier versions say "Copied" |
 | Select all | "Select all" in the menu | The whole document is selected; "Copy" then copies all of it. A very long document can be more than the clipboard takes: then a message says so |
+| Share the text | "Share" in the menu, then pick an app (notes, mail, a messenger) | The system's share sheet with the text; the app picked receives it as plain text, lines and pages separated by line breaks, and the selection is gone. More than about a hundred thousand characters (some thirty full pages) is more than can be handed over: then a message says so, and "Copy" still works for up to three times as much |
 | Let go | Tap the page, or press Back | The selection and the menu go; nothing else happens (no full screen, no link followed, and Back doesn't leave) |
 
 ## Full screen
@@ -177,4 +178,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Sharing selected text, saving, annotations and form filling, page reordering and printing.
+Saving, annotations and form filling, page reordering and printing.

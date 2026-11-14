@@ -3,6 +3,8 @@ package net.xfbs.pdfrs
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.ActionMode
+import android.view.Window
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.TouchInjectionScope
 import androidx.compose.ui.test.hasContentDescription
@@ -17,6 +19,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Proxy
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -40,6 +44,10 @@ abstract class AppTest {
 
     protected val instrumentation = InstrumentationRegistry.getInstrumentation()
     protected var scenario: ActivityScenario<MainActivity>? = null
+
+    /** The floating menu beside selected text, while one is showing. */
+    @Volatile
+    private var floatingMenu: ActionMode? = null
 
     /** Whether the window is wide enough for the sidebar layout. */
     protected val wide: Boolean
@@ -79,12 +87,31 @@ abstract class AppTest {
 
     private fun launch(asset: String) {
         scenario?.close()
+        floatingMenu = null
         val target = instrumentation.targetContext
-        scenario = ActivityScenario.launch(
+        scenario = ActivityScenario.launch<MainActivity>(
             Intent(target, MainActivity::class.java)
                 .setAction(Intent.ACTION_VIEW)
                 .setDataAndType(Uri.fromFile(File(target.cacheDir, asset)), "application/pdf"),
-        )
+        ).onActivity { activity ->
+            // Listens in on what the window is told, to learn of floating menus.
+            val window = activity.window
+            val told = window.callback
+            window.callback = Proxy.newProxyInstance(
+                Window.Callback::class.java.classLoader,
+                arrayOf(Window.Callback::class.java),
+            ) { _, method, arguments ->
+                when (method.name) {
+                    "onActionModeStarted" -> floatingMenu = arguments[0] as ActionMode
+                    "onActionModeFinished" -> if (floatingMenu === arguments[0]) floatingMenu = null
+                }
+                try {
+                    method.invoke(told, *(arguments ?: emptyArray()))
+                } catch (e: InvocationTargetException) {
+                    throw e.targetException
+                }
+            } as Window.Callback
+        }
     }
 
     protected fun waitForText(text: String) {
@@ -122,6 +149,25 @@ abstract class AppTest {
         compose.onNodeWithContentDescription("More").performClick()
         compose.onNodeWithText(item).performClick()
         compose.waitForIdle()
+    }
+
+    /**
+     * Picks an item of the floating menu beside selected text. That menu is
+     * a window of the system's, outside Compose and out of a test's reach,
+     * so the item is chosen in the menu behind it, which the activity's
+     * window is told about (see [launch]).
+     */
+    protected fun textMenu(item: String) {
+        compose.waitUntil(WAIT_MS) {
+            var chosen = false
+            instrumentation.runOnMainSync {
+                val menu = floatingMenu?.menu ?: return@runOnMainSync
+                val entry = (0 until menu.size()).map(menu::getItem).firstOrNull { it.title.toString() == item }
+                checkNotNull(entry) { "the text menu has no \"$item\"" }
+                chosen = menu.performIdentifierAction(entry.itemId, 0)
+            }
+            chosen
+        }
     }
 
     /** Picks an item of the view menu (layout and fit), behind the button left of ⋮. */

@@ -5,7 +5,10 @@ import android.app.Instrumentation
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasStateDescription
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -80,4 +83,26 @@ class ShareTest : AppTest() {
         assertEquals(null, sheets.last)
         compose.onNodeWithText("1 / 12").assertIsDisplayed()
     }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun selectedTextCanBeShared() {
+        open("pages.pdf", shows = "1 / 12")
+        // "Page", in the heading "Page 1 of 12".
+        page.performTouchInput { longClick(pagePoint(85f, fromTop = 62f)) }
+        compose.waitUntil(WAIT_MS) { selected() }
+        textMenu("Share")
+        compose.waitUntil(WAIT_MS) { sheets.last != null }
+
+        val send = sheets.last!!.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_SEND, send.action)
+        assertEquals("text/plain", send.type)
+        assertEquals("Page", send.getStringExtra(Intent.EXTRA_TEXT))
+        assertEquals("only the text", null, send.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        // Sharing lets go of the selection, as copying does.
+        compose.waitUntil(WAIT_MS) { !selected() }
+    }
+
+    private fun selected(): Boolean =
+        compose.onAllNodes(hasStateDescription("Text selected")).fetchSemanticsNodes().isNotEmpty()
 }

@@ -29,10 +29,10 @@ import org.junit.runner.RunWith
  * 160, the line ends at about 190); nothing is printed in the lowest part
  * of a page.
  *
- * The highlight and the handles are drawn on the canvas and the copy menu
- * is the system's, so the tests see none of them: they go by whether the
- * page says that text is selected, and by what lands on the clipboard
- * (copied with Ctrl+C, which does what the menu's "Copy" does).
+ * The highlight and the handles are drawn on the canvas, so the tests see
+ * neither: they go by whether the page says that text is selected, and by
+ * what lands on the clipboard (copied with Ctrl+C, or with the "Copy" of
+ * the floating menu). "Share" in that menu is in `ShareTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class SelectionTest : AppTest() {
@@ -175,6 +175,26 @@ class SelectionTest : AppTest() {
         waitForSelection(false)
         // Still reading.
         compose.onNodeWithText("1 / 12").assertIsDisplayed()
+    }
+
+    @Test
+    fun theMenuBesideTheSelectionCopiesAndSelectsAll() {
+        openPages()
+        page.performTouchInput { longClick(heading(85f)) }
+        waitForSelection()
+        textMenu("Copy")
+        waitForSelection(false)
+        compose.waitUntil(WAIT_MS) { copied().isNotEmpty() }
+        assertEquals("Page", copied())
+
+        page.performTouchInput { longClick(heading(85f)) }
+        waitForSelection()
+        // The selection stays, grown to the whole document, and so does the menu.
+        textMenu("Select all")
+        textMenu("Copy")
+        waitForSelection(false)
+        compose.waitUntil(WAIT_MS) { copied().length > 4 }
+        assertEquals(12 * 41, copied().lines().size)
     }
 
     @Test

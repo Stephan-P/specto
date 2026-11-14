@@ -63,7 +63,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.IntSize
@@ -91,6 +91,14 @@ private const val MENU_DELAY_MS = 150L
 
 /** Beyond this many characters the system can't take a text onto the clipboard. */
 private const val CLIPBOARD_MAX_CHARS = 300_000
+
+/**
+ * The most text offered to other apps at once. Less than fits on the
+ * clipboard: a shared text travels inside the request to the share sheet and
+ * again inside the one to the app chosen, and those have a size limit that
+ * everything else on its way at that moment counts towards.
+ */
+internal const val SHARE_MAX_CHARS = 100_000
 
 /** What the search found, as on the desktop: yellow, and orange for the match being looked at. */
 private val MATCH_COLOUR = Color(0xFFFFD600)
@@ -157,7 +165,7 @@ private fun PdfViewState.handleKey(
  *
  * A long press selects the word under the finger; moving on before lifting
  * it selects further words. The selection then has a handle at each end to
- * drag, and the system's text menu with "Copy" and "Select all". A tap or
+ * drag, and the system's text menu with "Copy", "Share" and "Select all". A tap or
  * Back drops it.
  *
  * What a search found is highlighted too. The search itself is run from
@@ -184,7 +192,8 @@ fun PdfView(
     // --- text selection -----------------------------------------------------
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val menu = LocalTextToolbar.current
+    val view = LocalView.current
+    val menu = remember(view) { TextMenu(view) }
     // Pages are white whatever the theme: take the darker of the two accents.
     val accent = MaterialTheme.colorScheme.run { if (primary.luminance() > 0.5f) inversePrimary else primary }
     val handleRadius = HANDLE_RADIUS.value * density
@@ -215,6 +224,25 @@ fun PdfView(
                 Toast.makeText(context, "That is too much text to copy at once", Toast.LENGTH_LONG).show()
             } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun share() {
+        scope.launch {
+            val text = state.selectedText()
+            // As in a text field, sharing ends the selection.
+            state.clearSelection()
+            if (text.isNullOrEmpty()) return@launch
+            val shared = text.length <= SHARE_MAX_CHARS && try {
+                context.shareText(text)
+                true
+            } catch (e: RuntimeException) {
+                // Still too large, or nothing on this device takes text.
+                false
+            }
+            if (!shared) {
+                Toast.makeText(context, "That is too much text to share at once", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -256,8 +284,7 @@ fun PdfView(
         }
     }
 
-    // The system's floating text menu, beside the selected text that is on
-    // screen. It goes away while the view or the selection is moving and
+    // The floating text menu, beside the selected text that is on screen. It goes away while the view or the selection is moving and
     // comes back once they rest.
     val selected = if (state.hasSelection) {
         state.frame?.selectionBounds()?.let { Rect(it[0], it[1], it[2], it[3]) }
@@ -268,10 +295,14 @@ fun PdfView(
         menu.hide()
         if (selected == null || selecting) return@LaunchedEffect
         delay(MENU_DELAY_MS)
-        menu.showMenu(
-            rect = selected.translate(originInRoot),
-            onCopyRequested = { copy() },
-            onSelectAllRequested = { state.selectAll() },
+        val beside = selected.translate(originInRoot)
+        menu.show(
+            beside.left, beside.top, beside.right, beside.bottom,
+            listOf(
+                TextMenu.Item("Copy", ::copy),
+                TextMenu.Item("Share", ::share),
+                TextMenu.Item("Select all") { state.selectAll() },
+            ),
         )
     }
     DisposableEffect(state) {
