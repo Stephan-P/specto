@@ -267,6 +267,11 @@ pub struct PageDraw {
     /// Fill this white, then draw `tiles` in order, clipped to it.
     pub rect: Rect,
     pub tiles: Vec<TileDraw>,
+    /// The page takes long to render (it has huge images, or a render of it
+    /// was slow) and what is visible of it isn't sharp yet: show that it is
+    /// being worked on. Other pages are sharp within milliseconds and never
+    /// say so.
+    pub busy: bool,
 }
 
 /// Everything needed to draw the view once.
@@ -493,12 +498,17 @@ impl Shared {
         tiles.begin_frame();
         let now = Instant::now();
         let mut planned = viewer.frame(now, |key| tiles.knows(key));
+        let expensive = |i: usize| {
+            let page = viewer.pages().get(i);
+            page.is_some_and(|p| self.scheduler.is_expensive(p.doc, p.page))
+        };
         let pages = planned
             .pages
             .iter()
             .map(|page| PageDraw {
                 page: page.page as u32,
                 rect: page.rect.into(),
+                busy: !page.complete && expensive(page.page),
                 tiles: page
                     .layers
                     .iter()

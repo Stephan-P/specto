@@ -22,6 +22,8 @@
 //! evicted_count × { u64 id }
 //! page_count × {
 //!     u32 page, u32 tile_count, f32 x, y, width, height
+//!     u32 flags        bit 0: busy (slow to render and not sharp yet)
+//!     u32 unused
 //!     tile_count × { u64 id, f32 x, y, width, height, u32 exact, u32 unused }
 //! }
 //! u32 thumbnail_first
@@ -215,6 +217,8 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
         put_u32(buf, page.page);
         put_u32(buf, page.tiles.len() as u32);
         put_rect(buf, &page.rect);
+        put_u32(buf, u32::from(page.busy));
+        put_u32(buf, 0);
         for tile in &page.tiles {
             buf.extend_from_slice(&tile.id.to_ne_bytes());
             put_rect(buf, &tile.dest);

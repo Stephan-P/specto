@@ -39,6 +39,7 @@ class ViewFrame private constructor(
     val pageCount: Int,
     private val pageIndex: IntArray,
     private val pageRects: FloatArray,
+    private val pageBusy: BooleanArray,
     private val tileStart: IntArray,
     private val tileIds: LongArray,
     private val tileRects: FloatArray,
@@ -107,6 +108,13 @@ class ViewFrame private constructor(
     fun pageWidth(i: Int): Float = pageRects[4 * i + 2]
     fun pageHeight(i: Int): Float = pageRects[4 * i + 3]
 
+    /**
+     * Whether the [i]th visible page takes long to render (huge images,
+     * mostly) and isn't sharp yet: it gets a spinner. Other pages are sharp
+     * within milliseconds and never say so.
+     */
+    fun pageIsBusy(i: Int): Boolean = pageBusy[i]
+
     /** Whether [i] is one of the pages being looked at ([currentPage] to [lastPage]). */
     private fun isCurrent(i: Int): Boolean = pageIndex[i] in currentPage..lastPage
 
@@ -144,7 +152,7 @@ class ViewFrame private constructor(
         const val HIGHLIGHT_MATCH = 1
         const val HIGHLIGHT_CURRENT_MATCH = 2
 
-        private const val PAGE_BYTES = 24
+        private const val PAGE_BYTES = 32
         private const val TILE_BYTES = 32
 
         /** Reads the layout documented in crates/pdfrs-ffi/src/hot.rs ([b] in native byte order). */
@@ -167,6 +175,7 @@ class ViewFrame private constructor(
             val maxTiles = (length - b.position() - pages * PAGE_BYTES) / TILE_BYTES + 1
             val pageIndex = IntArray(pages)
             val pageRects = FloatArray(4 * pages)
+            val pageBusy = BooleanArray(pages)
             val tileStart = IntArray(pages + 1)
             val tileIds = LongArray(maxTiles)
             val tileRects = FloatArray(4 * maxTiles)
@@ -176,6 +185,8 @@ class ViewFrame private constructor(
                 pageIndex[p] = b.getInt()
                 val tiles = b.getInt()
                 for (k in 0 until 4) pageRects[4 * p + k] = b.getFloat()
+                pageBusy[p] = b.getInt() and 1 != 0
+                b.getInt()
                 tileStart[p] = t
                 repeat(tiles) {
                     tileIds[t] = b.getLong()
@@ -221,6 +232,7 @@ class ViewFrame private constructor(
                 pageCount = pages,
                 pageIndex = pageIndex,
                 pageRects = pageRects,
+                pageBusy = pageBusy,
                 tileStart = tileStart,
                 tileIds = tileIds,
                 tileRects = tileRects,

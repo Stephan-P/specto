@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -172,6 +174,9 @@ private fun PdfViewState.handleKey(
  * outside (see [PdfViewState.search]); [onSearch] is called for Ctrl+F. The
  * page takes the keyboard focus when it appears, and again whenever
  * [refocus] changes.
+ *
+ * A page that takes long to draw has a spinner on it until it is sharp (see
+ * [BusyPages]).
  */
 @Composable
 fun PdfView(
@@ -181,6 +186,22 @@ fun PdfView(
     onTap: () -> Unit = {},
     onSearch: () -> Unit = {},
     refocus: Any? = null,
+) {
+    Box(modifier) {
+        PageCanvas(state, Modifier.fillMaxSize(), onExternalLink, onTap, onSearch, refocus)
+        BusyPages(state)
+    }
+}
+
+/** The pages themselves, and everything touches and keys do: see [PdfView]. */
+@Composable
+private fun PageCanvas(
+    state: PdfViewState,
+    modifier: Modifier,
+    onExternalLink: (String) -> Unit,
+    onTap: () -> Unit,
+    onSearch: () -> Unit,
+    refocus: Any?,
 ) {
     val density = LocalDensity.current.density
     val scope = rememberCoroutineScope()

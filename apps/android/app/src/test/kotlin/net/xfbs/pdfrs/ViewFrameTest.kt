@@ -61,10 +61,13 @@ class ViewFrameTest {
         assertEquals(996.5f, frame.tileRight(1))
         assertEquals(163.25f, frame.tileBottom(1))
 
-        // A page without tiles yet.
+        assertFalse(frame.pageIsBusy(0))
+
+        // A page without tiles yet, and slow to draw.
         assertEquals(5, frame.page(1))
         assertEquals(1190f, frame.pageTop(1))
         assertTrue(frame.tiles(1).isEmpty())
+        assertTrue(frame.pageIsBusy(1))
     }
 
     @Test

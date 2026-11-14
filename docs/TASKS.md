@@ -29,7 +29,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 - [x] **M** Render guards (`pdfrs_render::scheduler::Limits`): pages with > 100 MP of images (checked at open) or a render > 500 ms are *expensive* and render one tile at a time; workers drop their document copy after a heavy page (frees decoded images); a watchdog starts up to 4 extra workers while renders are stalled > 1 s and other work waits. Giant JPEG 2000 page at fit width: peak memory 1.14 → 0.66 GB at the same speed (M0-FINDINGS.md)
 - [x] **S** Desktop: a spinner (`AdwSpinnerPaintable`) over visible pages that are expensive (`Scheduler::is_expensive`) and not sharp yet (`PageDraw::complete`). The paintable only exists while a spinner shows, so there are no idle redraws (0 ms CPU in 3 s once the page is done)
-- [ ] **S** Android: the same spinner (needs `PageDraw::complete` and `is_expensive` through `pdfrs-ffi`)
+- [x] **S** Android: the same spinner. A frame's pages say whether they are `busy` (expensive and not sharp yet), and `BusyPages` puts a Material spinner on each, composed only while there is one. The UI tests have `slow.pdf` for it: a page of 768,000 curves whose resources name a 120 MP image that nothing draws, so it is expensive from the start without costing memory
 - [ ] **M** Upstream (hayro): decode images only for the region and resolution being drawn. One tile of a 212 MP JPEG 2000 page still costs 4.5 GB and 10 s at 100%, which no scheduling can fix
 - [x] **S** Keep hayro's `RenderCache` across renders (`self_cell`), reset per worker after 32 pages. Measured 1.4–6× faster tiles.
 

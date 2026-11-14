@@ -175,6 +175,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Background | Switch to another app and back | Same place; pages may re-render briefly |
 | Large documents | Scroll quickly through several hundred pages | Pages appear blurry first, then sharp; the app stays responsive |
 | Large files | Open a file of a few hundred megabytes (a long scan), from the file picker and from another app | It opens about as quickly as a small one and reads on normally; reopened later, it continues where it was left. Files from 64 MB are not loaded into memory but read piece by piece as pages are shown |
+| Slow pages | Open a huge scan (a page with more than 100 megapixels of images) or a page with a great many drawing operations | While such a page isn't sharp yet, a spinner on a small plate turns in the middle of what is visible of it; it goes once the page is sharp and comes back while new parts are drawn after zooming in. Ordinary pages never show one, and scrolling, zooming and long presses work as usual under it |
 
 ## Not there yet
 

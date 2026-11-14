@@ -12,6 +12,10 @@ book.pdf   14 pages with a nested outline, a linked table of contents on
            printed page numbers i-iii, 1-9, A-1, A-2, and a title, an author
            and a creation date.
 locked.pdf 3 pages, encrypted (RC4, 40 bit) with the password "secret".
+slow.pdf   2 pages. The first takes long to draw (about a quarter of a second
+           for each part of it on a fast machine): 768,000 small curves, and
+           its resources name a 120 megapixel image, which marks it as a page
+           to be patient with from the start. Nothing draws the image.
 """
 
 import hashlib
@@ -186,6 +190,42 @@ def book_pdf(count=14):
     write("book.pdf", objects, trailer_extra=f"/Info {info} 0 R")
 
 
+def slow_pdf(curves=400, cells=48, rows=40):
+    def form(extra, content):
+        data = content.encode()
+        head = "<< /Type /XObject /Subtype /Form %s /Length %d >>\nstream\n" % (extra, len(data))
+        return head.encode() + data + b"endstream"
+
+    # A cell of curves, a row of cells, and a page of rows: a small file
+    # with a lot to draw.
+    cell = "0.2 w\n" + "".join(
+        f"{i % 20} {i * 7 % 20} m {i * 3 % 20} {i * 11 % 20} "
+        f"{i * 5 % 20} {i * 13 % 20} {i * 17 % 20} {i * 19 % 20} c S\n"
+        for i in range(curves)
+    )
+    row = "".join(f"q 1 0 0 1 {50 + j % 24 * 20} 0 cm /Cell Do Q\n" for j in range(cells))
+    page = "0.3 0.3 0.6 RG\n" + "".join(
+        f"q 1 0 0 1 0 {30 + r % 36 * 20} cm /Row Do Q\n" for r in range(rows)
+    )
+    objects = dict(FONTS)
+    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[2] = b"<< /Type /Pages /Kids [10 0 R 12 0 R] /Count 2 /MediaBox [0 0 595 842] >>"
+    objects[7] = form("/BBox [0 0 20 20]", cell)
+    objects[8] = form("/BBox [0 0 595 20] /Resources << /XObject << /Cell 7 0 R >> >>", row)
+    objects[9] = (
+        b"<< /Type /XObject /Subtype /Image /Width 12000 /Height 10000"
+        b" /ColorSpace /DeviceGray /BitsPerComponent 1 /Length 0 >>\nstream\n\nendstream"
+    )
+    objects[10] = (
+        b"<< /Type /Page /Parent 2 0 R /Contents 11 0 R /Resources <<"
+        b" /Font << /F1 5 0 R /F2 6 0 R >> /XObject << /Row 8 0 R /Big 9 0 R >> >> >>"
+    )
+    objects[11] = stream(page + heading(1, 2))
+    objects[12] = f"<< /Type /Page /Parent 2 0 R {RESOURCES} /Contents 13 0 R >>".encode()
+    objects[13] = stream(heading(2, 2) + body())
+    write("slow.pdf", objects)
+
+
 def rc4(key, data):
     box = list(range(256))
     j = 0
@@ -247,3 +287,4 @@ if __name__ == "__main__":
     pages_pdf()
     book_pdf()
     locked_pdf()
+    slow_pdf()

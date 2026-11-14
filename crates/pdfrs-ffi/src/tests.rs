@@ -138,6 +138,54 @@ fn frame_becomes_sharp_and_covers_the_page() {
     assert!((right - (page.rect.x + page.rect.width)).abs() < 1.0);
 }
 
+/// One page like [`sample_pdf`]'s, whose resources also name an image of
+/// 120 megapixels. Nothing draws the image, so the page renders as quickly
+/// as any, but the scheduler goes by what a page could draw and treats it
+/// as expensive.
+fn heavy_pdf() -> Vec<u8> {
+    let content = "1 0 0 rg 0 0 m 200 0 l 200 300 l f";
+    format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 200 300] >> endobj\n\
+         3 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R \
+         /Resources << /XObject << /Big 5 0 R >> >> >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+         5 0 obj << /Type /XObject /Subtype /Image /Width 12000 /Height 10000 \
+         /ColorSpace /DeviceGray /BitsPerComponent 1 /Length 0 >> stream\n\nendstream endobj\n\
+         trailer << /Root 1 0 R /Size 6 >>\n%%EOF\n",
+        content.len(),
+    )
+    .into_bytes()
+}
+
+#[test]
+fn expensive_pages_are_busy_until_sharp() {
+    let (tx, rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(heavy_pdf(), None, 64 << 20, listener).unwrap();
+    session.set_viewport(400.0, 600.0, 2.0);
+    let first = session.frame();
+    assert!(!first.complete);
+    assert!(first.pages[0].busy, "nothing of it is rendered yet");
+    let (sharp, _) = settle(&session, &rx);
+    assert!(sharp.pages.iter().all(|p| !p.busy));
+    // Zoomed in, it has new tiles to wait for.
+    session.zoom_by(3.0, 200.0, 300.0);
+    assert!(session.frame().pages[0].busy);
+    let (sharp, _) = settle(&session, &rx);
+    assert!(sharp.pages.iter().all(|p| !p.busy));
+
+    // An ordinary page never says so, sharp or not.
+    let (session, rx) = open(1, 64 << 20);
+    session.set_viewport(400.0, 600.0, 2.0);
+    let first = session.frame();
+    assert!(!first.complete);
+    assert!(first.pages.iter().all(|p| !p.busy));
+    let (sharp, _) = settle(&session, &rx);
+    assert!(sharp.pages.iter().all(|p| !p.busy));
+}
+
 #[test]
 fn scrolling_and_zooming_move_the_view() {
     let (session, rx) = open(5, 64 << 20);
@@ -964,6 +1012,8 @@ fn decode_frame(mut b: &[u8]) -> Frame {
             let page = u32_(&mut b);
             let tile_count = u32_(&mut b);
             let page_rect = rect(&mut b);
+            let busy = u32_(&mut b) & 1 != 0;
+            u32_(&mut b);
             let tiles = (0..tile_count)
                 .map(|_| {
                     let id = u64::from_ne_bytes(take(&mut b));
@@ -977,6 +1027,7 @@ fn decode_frame(mut b: &[u8]) -> Frame {
                 page,
                 rect: page_rect,
                 tiles,
+                busy,
             }
         })
         .collect();
@@ -1068,11 +1119,13 @@ fn fixture_frame() -> Frame {
                         exact: false,
                     },
                 ],
+                busy: false,
             },
             PageDraw {
                 page: 5,
                 rect: rect(21.0, 1190.0, 1038.0, 734.0),
                 tiles: vec![],
+                busy: true,
             },
         ],
         evicted: vec![3, 9_000_000_000],
