@@ -718,20 +718,15 @@ impl Document {
         Some(range)
     }
 
-    /// Inserts pages `pages` of source `source` (from
-    /// [`add_source`](Self::add_source)) before position `at`. Returns
-    /// where they ended up.
-    pub fn insert(
-        &mut self,
-        at: usize,
-        source: SourceId,
-        pages: Range<u32>,
-    ) -> Option<Range<usize>> {
-        let count = self.sources.get(source.0 as usize)?.geometries.len() as u32;
-        let refs = pages
-            .filter(|&p| p < count)
-            .map(|p| PageRef::new(source, p))
-            .collect();
+    /// Inserts all pages of each of `sources` (from
+    /// [`add_source`](Self::add_source)), in order, before position `at`,
+    /// as one edit. Returns where they ended up.
+    pub fn insert(&mut self, at: usize, sources: &[SourceId]) -> Option<Range<usize>> {
+        let mut refs = Vec::new();
+        for &source in sources {
+            let count = self.sources.get(source.0 as usize)?.geometries.len() as u32;
+            refs.extend((0..count).map(|p| PageRef::new(source, p)));
+        }
         let range = self.edit.insert(at, refs)?;
         self.pages_changed();
         Some(range)

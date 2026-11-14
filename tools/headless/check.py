@@ -44,6 +44,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - move_pages: thumbnails dropped (through a test hook) on the lower or
   upper half of another go after or before it; the view stays on the page
   it showed; a drop in place does nothing
+- drop_files_and_export: two PDFs dropped (through a test hook) on the
+  sidebar are inserted where dropped, as one edit; Export Selected Pages
+  writes those pages as a new file and leaves the document as it was
 - insert_file: pages of another file inserted after the current page, shown
   and searched; undo; saved, they're in the file
 
@@ -1247,6 +1250,31 @@ def test_move_pages(ctx):
     # Undone, the order is as before the second move.
     w.action("undo")
     w.wait("the move undone", lambda s: file_pages(s)[:4] == [1, 2, 0, 3])
+
+
+def test_drop_files_and_export(ctx):
+    path = copy_of_pages(ctx)
+    w = ctx.app([path]).window()
+    w.settled()
+    w.maximize()
+    s = w.settled("maximized")
+    # Two copies of the three-page text PDF, dropped below page 1.
+    rect = next(t[1:] for t in s["thumbnails"] if t[0] == 0)
+    at = rect[1] + rect[3] * 0.6
+    w.action("debug-drop-files", gvariant_str(f"{ctx.text}|{ctx.text}@{at}"))
+    s = w.wait("the files inserted", lambda s: len(s["edit_pages"]) == PAGES + 6)
+    check([p[2] for p in s["edit_pages"][:8]] == [0, 1, 1, 1, 2, 2, 2, 0], s["edit_pages"])
+    check(s["undo"] == "Insert 6 Pages", s)
+    s = w.settled("the first inserted page", lambda s: s["page"] == 1)
+    check(s["thumbnails_selected"] == list(range(1, 7)), s)
+    # The selected pages exported: a new file with just those.
+    out = os.path.join(ctx.home, "export.pdf")
+    w.action("debug-export", gvariant_str(out))
+    s = w.wait("the export", lambda s: s["toast"] == "Exported 6 pages to “export.pdf”")
+    check(s["title"] == "doc.pdf" and s["modified"], s)
+    # pdfinfo (poppler-utils) reads it independently of pdfrs.
+    info = subprocess.run(["pdfinfo", out], capture_output=True, text=True)
+    check("Pages:           6" in info.stdout, f"pdfinfo: {info.stdout}{info.stderr}")
 
 
 def test_insert_file(ctx):

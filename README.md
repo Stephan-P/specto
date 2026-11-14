@@ -24,7 +24,7 @@ Not planned, at least for now: editing existing page content (reflowing text), X
 
 ## Status
 
-Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and rotate pages and save the result; Android gets text selection and search next. The rest of the editing (deleting, moving and inserting pages, annotations, forms) comes after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
+Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and edit pages: rotate, delete, reorder them by dragging thumbnails, insert pages from other PDFs, export a selection of pages, and save the result. Android gets text selection and search next, then page editing. Annotations and forms come after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 ## Building
 

@@ -124,7 +124,11 @@ fn menubar() -> gio::Menu {
 
     let file = submenu(&[
         section(&[("Open…", "win.open")]),
-        section(&[("Save", "win.save"), ("Save As…", "win.save-as")]),
+        section(&[
+            ("Save", "win.save"),
+            ("Save As…", "win.save-as"),
+            ("Export Selected Pages…", "win.export-pages"),
+        ]),
         section(&[("Close Window", "window.close")]),
         section(&[("Quit pdfrs", "app.quit")]),
     ]);

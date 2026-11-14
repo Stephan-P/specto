@@ -98,7 +98,7 @@ Frontend turns the tile into a GdkTexture (GTK) / Bitmap (Android)
 - **Zoom:** while zooming, tiles come from √2 levels (rendered at or above the device scale and downsampled), so continuous zooming reuses a few cached levels instead of rendering every intermediate zoom. Once the zoom has been still for `settle_delay` (250 ms) and no pinch is in progress, the viewer switches to exact-scale tiles, with level tiles as fallback until they arrive. This is the "blurry → sharp" behavior Preview has.
 - **Toolkit pitfalls (GTK):** draw tiles with `append_texture`, not `append_scaled_texture` (GSK renders the latter at logical resolution on HiDPI surfaces), and translate the canvas so its own origin lands on a whole device pixel of the surface (CSD shadows put it at e.g. 31.25 px at scale 1.25).
 - **Tiling:** 512×512 physical-pixel tiles, so a 400% zoom on a poster PDF doesn't allocate a 100 MP bitmap.
-- **Thumbnails** draw the viewer's placeholder tiles (one small tile per page) from the shared cache, so each page is rendered once for both the sidebar and the canvas. The page organizer will reuse them.
+- **Thumbnails** draw the viewer's placeholder tiles (one small tile per page) from the shared cache, so each page is rendered once for both the sidebar and the canvas. On the desktop the sidebar is also the page organizer: a multi-selection, thumbnails dragged within it (the move is made once the drag has ended), and PDFs dropped on it to insert.
 - **Annotations and form widgets** are rendered as a separate overlay pass per page. That pass is cheap to redo when the user edits, so we never re-render page content for annotation changes.
 
 ## Text layer
@@ -180,7 +180,7 @@ How the full rewrite works (`pdfrs_write::write`):
 
 ### Desktop
 
-GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew's GTK. Links `pdfrs-view` directly as a Rust crate. A custom `GtkWidget` subclass (implementing `GtkScrollable`) draws each frame's `PageDraw`s in `snapshot()`, turning tiles into `GdkMemoryTexture`s. The surrounding chrome uses stock widgets: `AdwOverlaySplitView` with a `GtkListView` of thumbnails and a `GtkTreeListModel` outline, `GtkFileDialog`, and `GtkGestureZoom` for touchpad pinch. Planned: `GtkPrintOperation`, `GtkGestureStylus` for pen input, a page organizer, and Flatpak packaging (file access through the portal).
+GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew's GTK. Links `pdfrs-view` directly as a Rust crate. A custom `GtkWidget` subclass (implementing `GtkScrollable`) draws each frame's `PageDraw`s in `snapshot()`, turning tiles into `GdkMemoryTexture`s. The surrounding chrome uses stock widgets: `AdwOverlaySplitView` with a `GtkListView` of thumbnails and a `GtkTreeListModel` outline, `GtkFileDialog`, and `GtkGestureZoom` for touchpad pinch. Planned: `GtkPrintOperation`, `GtkGestureStylus` for pen input, and Flatpak packaging (file access through the portal).
 
 ### Android
 

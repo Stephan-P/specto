@@ -5,14 +5,14 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
-use pdfrs_doc::{Edit, Rotation};
+use pdfrs_doc::{Edit, Rotation, SourceId};
 use pdfrs_geom::ViewPoint;
 use pdfrs_render::{OpenError, PdfData};
 use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
 use crate::debug;
-use crate::document::{Document, Indexed, MAIN, SharedDocument};
+use crate::document::{Document, Indexed, MAIN, SaveJob, SharedDocument};
 use crate::outline::OutlineView;
 use crate::state;
 use crate::thumbnails::Sidebar;
@@ -42,6 +42,7 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "save-as",
     "insert-file",
     "delete-pages",
+    "export-pages",
 ];
 
 #[derive(Clone)]
@@ -166,6 +167,7 @@ impl Window {
             let m = gio::Menu::new();
             m.append(Some("Save"), Some("win.save"));
             m.append(Some("Save As…"), Some("win.save-as"));
+            m.append(Some("Export Selected Pages…"), Some("win.export-pages"));
             m
         });
         main_menu.append_section(None, &undo_section);
@@ -575,6 +577,7 @@ impl Window {
 
         let weak = Rc::downgrade(&self.0);
         let weak_move = Rc::downgrade(&self.0);
+        let weak_files = Rc::downgrade(&self.0);
         let sidebar = Sidebar::new(
             document.clone(),
             move |page| {
@@ -585,6 +588,12 @@ impl Window {
             move |pages, to| {
                 if let Some(inner) = weak_move.upgrade() {
                     Window(inner).move_pages(&pages, to);
+                }
+            },
+            move |files, to| {
+                if let Some(inner) = weak_files.upgrade() {
+                    let w = Window(inner);
+                    glib::spawn_future_local(async move { w.insert_files(files, Some(to)).await });
                 }
             },
         );
@@ -972,6 +981,25 @@ impl Window {
                     s.drop_at(pages, &w.0.window, y);
                 }
             }),
+            // Drops files on the sidebar without dragging: "a.pdf|b.pdf@450"
+            // drops two files at window height 450.
+            action("debug-drop-files", |w, arg| {
+                let Some((paths, y)) = arg.rsplit_once('@') else {
+                    return;
+                };
+                let files = paths.split('|').map(gio::File::for_path).collect();
+                if let (Some(s), Ok(y)) = (w.0.sidebar.borrow().as_ref(), y.parse()) {
+                    s.drop_files_at(files, &w.0.window, y);
+                }
+            }),
+            // Export Selected Pages without the file dialog.
+            action("debug-export", |w, path| {
+                let (w, file) = (w.clone(), gio::File::for_path(path));
+                glib::spawn_future_local(async move {
+                    let pages = w.pages_to_export();
+                    w.export_to(&pages, file).await;
+                });
+            }),
             // Insert Pages from File without the file dialog.
             action("debug-insert", |w, path| {
                 let (w, file) = (w.clone(), gio::File::for_path(path));
@@ -1256,54 +1284,153 @@ impl Window {
     /// Inserts all pages of `file` after the current page (or spread) and
     /// goes to the first of them.
     async fn insert_file(&self, file: gio::File) {
+        self.insert_files(vec![file], None).await;
+    }
+
+    /// Inserts all pages of `files`, in order and as one edit, before
+    /// position `at` (by default after the current page or spread), and
+    /// goes to the first of them. A file that can't be opened is left out,
+    /// with a message.
+    async fn insert_files(&self, files: Vec<gio::File>, at: Option<usize>) {
         let Some(doc) = self.0.document.borrow().clone() else {
             return;
         };
-        let name = display_name(&file).await;
-        let data = match read_pdf(&file).await {
-            Ok(data) => data,
-            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
-        };
-        let mut password: Option<String> = None;
-        let (source, count) = loop {
-            let opened = doc
-                .borrow_mut()
-                .add_source(data.clone(), password.as_deref());
-            match opened {
-                Ok(s) => break s,
-                Err(OpenError::PasswordRequired) => {
-                    match self.ask_password(&name, password.is_some()).await {
-                        Some(p) => password = Some(p),
-                        None => return,
-                    }
-                }
-                Err(e) => return self.toast(&format!("Couldn't open “{name}”: {e}")),
+        let mut sources = Vec::new();
+        for file in files {
+            if let Some(source) = self.open_source(&doc, &file).await {
+                sources.push(source);
             }
-        };
+        }
         // The window may have moved on to another document meanwhile.
-        if !self
-            .0
-            .document
-            .borrow()
-            .as_ref()
-            .is_some_and(|d| Rc::ptr_eq(d, &doc))
+        if sources.is_empty()
+            || !self
+                .0
+                .document
+                .borrow()
+                .as_ref()
+                .is_some_and(|d| Rc::ptr_eq(d, &doc))
         {
             return;
         }
-        let at = self
-            .0
-            .canvas
-            .with_viewer(|v| v.current_spread().last().map_or(0, |&p| p + 1))
-            .unwrap_or(0);
+        let at = at.unwrap_or_else(|| {
+            self.0
+                .canvas
+                .with_viewer(|v| v.current_spread().last().map_or(0, |&p| p + 1))
+                .unwrap_or(0)
+        });
         // The new pages are selected, ready to be moved or turned.
         self.edit(|d| {
-            let inserted = d.insert(at, source, 0..count)?;
+            let inserted = d.insert(at, &sources)?;
             Some(Edited {
                 go_to: Some(inserted.start),
                 select: inserted.collect(),
             })
         });
         self.index_for_search();
+    }
+
+    /// Reads and opens `file` as a source of `doc`, asking for its password
+    /// if it has one. `None` if it couldn't be opened (with a message) or
+    /// the password was cancelled.
+    async fn open_source(&self, doc: &SharedDocument, file: &gio::File) -> Option<SourceId> {
+        let name = display_name(file).await;
+        let data = match read_pdf(file).await {
+            Ok(data) => data,
+            Err(e) => {
+                self.toast(&format!("Couldn't read “{name}”: {e}"));
+                return None;
+            }
+        };
+        let mut password: Option<String> = None;
+        loop {
+            let opened = doc
+                .borrow_mut()
+                .add_source(data.clone(), password.as_deref());
+            match opened {
+                Ok((source, _)) => return Some(source),
+                Err(OpenError::PasswordRequired) => {
+                    password = Some(self.ask_password(&name, password.is_some()).await?);
+                }
+                Err(e) => {
+                    self.toast(&format!("Couldn't open “{name}”: {e}"));
+                    return None;
+                }
+            }
+        }
+    }
+
+    /// The pages "Export Selected Pages" writes: those selected in the
+    /// sidebar, else the current page.
+    fn pages_to_export(&self) -> Vec<usize> {
+        let selected = self
+            .0
+            .sidebar
+            .borrow()
+            .as_ref()
+            .map(Sidebar::selected)
+            .unwrap_or_default();
+        if !selected.is_empty() {
+            return selected;
+        }
+        self.0
+            .canvas
+            .with_viewer(|v| vec![v.current_page()])
+            .unwrap_or_default()
+    }
+
+    /// Asks where to save the selected pages, and saves them there as a
+    /// new PDF.
+    async fn export_pages(&self) {
+        let inner = &self.0;
+        let Some(name) = inner
+            .document
+            .borrow()
+            .as_ref()
+            .map(|d| d.borrow().name.clone())
+        else {
+            return;
+        };
+        let pages = self.pages_to_export();
+        let dialog = gtk::FileDialog::builder()
+            .title("Export Selected Pages")
+            .initial_name(export_name(&name, &pages))
+            .build();
+        if let Some(folder) = inner
+            .uri
+            .borrow()
+            .as_ref()
+            .and_then(|u| gio::File::for_uri(u).parent())
+        {
+            dialog.set_initial_folder(Some(&folder));
+        }
+        if let Ok(file) = dialog.save_future(Some(&inner.window)).await {
+            self.export_to(&pages, file).await;
+        }
+    }
+
+    /// Saves the pages at `pages` as a new PDF in `file`. The document and
+    /// its file stay as they are.
+    async fn export_to(&self, pages: &[usize], file: gio::File) {
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        let job = {
+            let d = doc.borrow();
+            let refs = pages
+                .iter()
+                .filter_map(|&i| d.edit.pages().get(i).copied())
+                .collect();
+            d.save_pages(refs)
+        };
+        let n = pages.len();
+        match write_job(job, &file).await {
+            Ok(()) => self.toast(&format!(
+                "Exported {n} page{} to “{}”",
+                if n == 1 { "" } else { "s" },
+                file_name(&file)
+            )),
+            Err(e) => self.toast(&format!("Couldn't save “{}”: {e}", file_name(&file))),
+        }
     }
 
     fn is_modified(&self) -> bool {
@@ -1390,24 +1517,7 @@ impl Window {
         }
         let job = doc.borrow().save_job();
         let version = job.version;
-        let result = match file.path() {
-            Some(path) => gio::spawn_blocking(move || job.save(&path).map_err(save_error))
-                .await
-                .unwrap_or_else(|_| Err("saving failed".to_owned())),
-            None => {
-                match gio::spawn_blocking(move || job.write().map_err(save_error))
-                    .await
-                    .unwrap_or_else(|_| Err("saving failed".to_owned()))
-                {
-                    Ok(bytes) => file
-                        .replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
-                        .await
-                        .map(|_| ())
-                        .map_err(|(_, e)| e.message().to_owned()),
-                    Err(e) => Err(e),
-                }
-            }
-        };
+        let result = write_job(job, &file).await;
         inner.saving.set(false);
         match result {
             Ok(()) => {
@@ -1416,10 +1526,7 @@ impl Window {
                 true
             }
             Err(e) => {
-                let name = file
-                    .basename()
-                    .map_or_else(String::new, |b| b.to_string_lossy().into_owned());
-                self.toast(&format!("Couldn't save “{name}”: {e}"));
+                self.toast(&format!("Couldn't save “{}”: {e}", file_name(&file)));
                 false
             }
         }
@@ -1664,6 +1771,12 @@ impl Window {
                 .activate(with(|w| {
                     let w = w.clone();
                     glib::spawn_future_local(async move { w.choose_insert_file().await });
+                }))
+                .build(),
+            gio::ActionEntry::builder("export-pages")
+                .activate(with(|w| {
+                    let w = w.clone();
+                    glib::spawn_future_local(async move { w.export_pages().await });
                 }))
                 .build(),
             gio::ActionEntry::builder("delete-pages")
@@ -1960,6 +2073,65 @@ fn edit_name(edit: Edit) -> String {
     }
 }
 
+/// Writes `job` to `file` in the background: through a temporary file
+/// renamed into place if it's local, else through GIO.
+async fn write_job(job: SaveJob, file: &gio::File) -> Result<(), String> {
+    match file.path() {
+        Some(path) => gio::spawn_blocking(move || job.save(&path).map_err(save_error))
+            .await
+            .unwrap_or_else(|_| Err("saving failed".to_owned())),
+        None => {
+            let bytes = gio::spawn_blocking(move || job.write().map_err(save_error))
+                .await
+                .unwrap_or_else(|_| Err("saving failed".to_owned()))?;
+            file.replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
+                .await
+                .map(|_| ())
+                .map_err(|(_, e)| e.message().to_owned())
+        }
+    }
+}
+
+/// The last part of `file`'s name, for messages.
+fn file_name(file: &gio::File) -> String {
+    file.basename()
+        .map_or_else(String::new, |b| b.to_string_lossy().into_owned())
+}
+
+/// The name Export Selected Pages suggests: "Report (pages 2-4, 7).pdf"
+/// for positions 1, 2, 3 and 6 of "Report.pdf".
+fn export_name(name: &str, pages: &[usize]) -> String {
+    let stem = name
+        .strip_suffix(".pdf")
+        .or_else(|| name.strip_suffix(".PDF"))
+        .unwrap_or(name);
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    for &p in pages {
+        match ranges.last_mut() {
+            Some((_, end)) if *end + 1 == p => *end = p,
+            _ => ranges.push((p, p)),
+        }
+    }
+    let what = match ranges.as_slice() {
+        [(a, b)] if a == b => format!("page {}", a + 1),
+        r if r.len() <= 3 => {
+            let parts: Vec<String> = r
+                .iter()
+                .map(|&(a, b)| {
+                    if a == b {
+                        (a + 1).to_string()
+                    } else {
+                        format!("{}-{}", a + 1, b + 1)
+                    }
+                })
+                .collect();
+            format!("pages {}", parts.join(", "))
+        }
+        _ => format!("{} pages", pages.len()),
+    };
+    format!("{stem} ({what}).pdf")
+}
+
 /// Why saving failed, for a message.
 fn save_error(e: pdfrs_write::WriteError) -> String {
     use pdfrs_write::WriteError as E;
@@ -1976,7 +2148,18 @@ fn save_error(e: pdfrs_write::WriteError) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::position_after_move;
+    use super::{export_name, position_after_move};
+
+    #[test]
+    fn export_names() {
+        assert_eq!(export_name("Report.pdf", &[4]), "Report (page 5).pdf");
+        assert_eq!(
+            export_name("Report.pdf", &[1, 2, 3, 6]),
+            "Report (pages 2-4, 7).pdf"
+        );
+        assert_eq!(export_name("a.PDF", &[0, 2, 4, 6]), "a (4 pages).pdf");
+        assert_eq!(export_name("notes", &[0, 1]), "notes (pages 1-2).pdf");
+    }
 
     /// Checks `position_after_move` against moving the pages of a list.
     #[test]

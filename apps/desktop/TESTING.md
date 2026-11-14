@@ -116,6 +116,7 @@ Resetting saved state:
 - LONG: Delete on page 3 removes it and shows the next page; the menu says "Undo Delete Page". Select three thumbnails and press Backspace: all three go ("Undo Delete 3 Pages"). With every thumbnail selected, Delete only beeps.
 - LONG: drag thumbnail 2 below thumbnail 4. While dragging, a line in the accent colour shows the place between thumbnails; after the drop the page is fourth, still selected, and the view hasn't moved. "Undo Move Page" puts it back.
 - Select thumbnails 2 and 3, drag one of them down past the bottom of the sidebar: the sidebar scrolls; dropping moves both ("Move 2 Pages").
+- Drag two PDFs from the file manager onto the thumbnails, between pages 3 and 4: a line shows the place, then their pages are inserted there, in order, and selected; one Undo ("Undo Insert N Pages") removes them all. Dropped on the page view instead, they open in new windows. A non-PDF file dropped on the thumbnails gives "Couldn't open … not a valid PDF file" and inserts nothing.
 - Dropping a thumbnail where it already is changes nothing (no "Edited"). Dragging a thumbnail into another window's sidebar is refused.
 - Typing in the page entry or the search field, Delete and Backspace edit the text and delete no pages.
 - LONG with pages deleted, saved and reopened: the pages are gone; Contents entries that pointed at them do nothing, the others still work.
@@ -137,6 +138,7 @@ Work on copies of the test files.
 - LONG: rotate a few pages, *Primary*+S. "Edited" goes away; reopened, the pages are rotated, and the Contents, links and printed page numbers still work. The file opens in other viewers too (Evince or Papers on Linux, Preview on macOS).
 - ENCRYPTED: rotate a page and save: reopening asks for the password again, and `secret` still works.
 - Save As into another folder: the window shows the new name; the original file is unchanged.
+- LONG: select thumbnails 2–4 and 7, Export Selected Pages: the suggested name is "long (pages 2-4, 7).pdf". The exported file has those four pages (rotated if they were), opens in other viewers, and the window still shows LONG, with its edits. With one page selected, only that page is exported.
 - With changes, close the window (*Primary*+W) or quit (*Primary*+Q): "Save Changes?" appears. Cancel keeps the window; Discard closes without saving; Save saves, then closes. With several edited windows, quitting asks for each one.
 - Saving into a folder you can't write to: a message "Couldn't save … Permission denied", and the document stays "Edited".
 - A file that is a symbolic link: after saving, the link is still a link, pointing at the updated file.

@@ -88,9 +88,10 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** `pdfrs-write`: page labels after deleting or moving pages: write labels that keep each remaining page's label instead of dropping them; the same in the viewer
 - [ ] **S** `pdfrs-write`: deduplicate resources shared between sources (fonts embedded in both of two merged files)
 - [x] **S** Desktop: several thumbnails selected (Shift+click, *Primary*+click, *Primary*+A in the sidebar); a selection of several stays while the view moves; rotating turns the selection. Headless check `thumbnail_selection`
-- [ ] **M** Desktop: page organizer: drop a PDF on the sidebar to insert it there; drag pages between windows (copy)
+- [x] **S** Desktop: PDFs dropped on the thumbnails are inserted there, as one edit (several files in order)
+- [ ] **M** Desktop: drag pages between windows (copy pages from one document into another)
 - [x] **S** Desktop: Save (*Primary*+S) and Save As (Shift+*Primary*+S) in the main menu and the macOS File menu; written in the background to a temporary file renamed into place; edits made meanwhile stay unsaved; "Save Changes?" when closing or quitting with changes. Headless checks `save`, `close_prompt`
-- [ ] **S** "Export selected pages" (with the page organizer)
+- [x] **S** "Export Selected Pages" (main menu, macOS File menu): the sidebar selection or the current page, written as a new PDF with the main file's catalog; a suggested name with the page numbers. Headless check `drop_files_and_export`
 - [x] **S** Property test: random edit sequence followed by undo-all restores the original state, and redo-all every state after it
 - [x] **M** Round-trip harness: `crates/pdfrs-write/tests/write.rs` writes edited fixtures (inherited attributes, labels, outline, links, encryption, two sources), reopens them, compares every page's render with its source page, and runs `qpdf --check` (installed in CI). The corpus run is an ignored test
 - [ ] **S** File changed on disk while open: notice it (file monitor), and never save over a file that changed since it was read without asking; the unedited case can simply reload

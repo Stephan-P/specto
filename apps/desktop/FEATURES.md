@@ -64,6 +64,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 - Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main menu) turn the pages selected in the sidebar if there are several, otherwise the current page, or both pages of a two-page spread
 - Dragging thumbnails moves pages: dragging a selected thumbnail moves all the selected pages. A line between thumbnails shows where they'll go, and the sidebar scrolls when dragging near its top or bottom. The moved pages stay selected, and the view stays on the page it showed
+- Dropping PDFs (from the file manager) on the thumbnails inserts all their pages there, as one edit; dropping them on the page view opens them in new windows as before
 - Delete Pages (Delete or Backspace on the document or in the sidebar, or the main menu) deletes the pages selected in the sidebar if there are several, otherwise the current page. The last page can't be deleted. In text fields the keys edit the text
 - Insert Pages from File (main menu): all pages of another PDF go after the current page (or spread), and the view goes to the first of them, with the new pages selected in the sidebar. Encrypted files ask for their password
 - Undo and Redo (*Primary*+Z, Shift+*Primary*+Z, or the main menu, which names the edit: "Undo Rotate Page")
@@ -75,6 +76,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 ## Saving
 
 - Save (*Primary*+S) and Save As (Shift+*Primary*+S), in the main menu
+- Export Selected Pages (main menu): saves the pages selected in the sidebar (or the current page) as a new PDF, suggesting a name like "Report (pages 2-4, 7).pdf"; the document stays as it was
 - The new file is written next to the old one and then takes its place, so the old file is intact until the new one is complete
 - Encrypted documents stay encrypted, with the same password
 - Saved files keep the outline, links, metadata and page labels (labels only while all pages are there, in their order)
@@ -84,7 +86,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
 - Shortcuts with Cmd
 
 ## Remembering state

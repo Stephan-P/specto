@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{gdk, glib, graphene, gsk};
+use gtk::{gdk, gio, glib, graphene, gsk};
 
 use crate::document::SharedDocument;
 
@@ -140,11 +140,13 @@ pub struct Sidebar {
 impl Sidebar {
     /// `on_activate` is called with a page index when the user picks a
     /// thumbnail; `on_move` with the pages dragged and the position they
-    /// were dropped before (counted before the move).
+    /// were dropped before (counted before the move); `on_files` with files
+    /// dropped and the position they were dropped before.
     pub fn new(
         document: SharedDocument,
         on_activate: impl Fn(usize) + 'static,
         on_move: impl Fn(Vec<usize>, usize) + 'static,
+        on_files: impl Fn(Vec<gio::File>, usize) + 'static,
     ) -> Self {
         let count = document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
@@ -155,6 +157,7 @@ impl Sidebar {
         let drops = Drops {
             pending: Rc::default(),
             on_move: Rc::new(on_move),
+            on_files: Rc::new(on_files),
         };
 
         let factory = gtk::SignalListItemFactory::new();
@@ -258,6 +261,16 @@ impl Sidebar {
         if let Some((to, _)) = drop_place(&self.list, y) {
             let on_move = self.drops.on_move.clone();
             glib::idle_add_local_once(move || on_move(pages, to));
+        }
+    }
+
+    /// Does what dropping `files` at window height `y` does, for tests.
+    pub fn drop_files_at(&self, files: Vec<gio::File>, window: &impl IsA<gtk::Widget>, y: f64) {
+        let y = window
+            .compute_point(&self.list, &graphene::Point::new(0.0, y as f32))
+            .map(|p| f64::from(p.y()));
+        if let Some((to, _)) = y.and_then(|y| drop_place(&self.list, y)) {
+            (self.drops.on_files)(files, to);
         }
     }
 
@@ -375,6 +388,8 @@ type Move = (Vec<usize>, usize);
 struct Drops {
     pending: Rc<Cell<Option<Move>>>,
     on_move: Rc<dyn Fn(Vec<usize>, usize)>,
+    /// Files dropped, inserted at once.
+    on_files: Rc<dyn Fn(Vec<gio::File>, usize)>,
 }
 
 /// Dragging a thumbnail drags the selected pages if it's one of them,
@@ -537,8 +552,14 @@ fn drop_place(list: &gtk::ListView, y: f64) -> Option<(usize, f64)> {
     }
 }
 
-/// Takes thumbnails dropped on the list: shows where they'd go while
-/// dragging, scrolls near the edges, and reports the move.
+/// Whether `drop` brings files (from a file manager), not thumbnails.
+fn has_files(drop: &gdk::Drop) -> bool {
+    drop.formats().contains_type(gdk::FileList::static_type())
+}
+
+/// Takes thumbnails or files dropped on the list: shows where they'd go
+/// while dragging, scrolls near the edges, and reports the move or the
+/// files.
 fn drop_target(
     list: &gtk::ListView,
     scrolled: &gtk::ScrolledWindow,
@@ -546,19 +567,33 @@ fn drop_target(
     document: usize,
     drops: Drops,
 ) -> gtk::DropTarget {
-    let target = gtk::DropTarget::new(glib::BoxedAnyObject::static_type(), gdk::DragAction::MOVE);
-    // Only drags of this document's thumbnails.
+    let target = gtk::DropTarget::new(
+        glib::Type::INVALID,
+        gdk::DragAction::MOVE | gdk::DragAction::COPY,
+    );
+    target.set_types(&[
+        glib::BoxedAnyObject::static_type(),
+        gdk::FileList::static_type(),
+    ]);
+    // Files, or drags of this document's thumbnails.
     target.connect_accept(move |_, drop| {
-        drop.drag()
-            .and_then(|d| d.content().value(glib::BoxedAnyObject::static_type()).ok())
-            .and_then(|v| v.get::<glib::BoxedAnyObject>().ok())
-            .is_some_and(|b| b.borrow::<DraggedPages>().document == document)
+        has_files(drop)
+            || drop
+                .drag()
+                .and_then(|d| d.content().value(glib::BoxedAnyObject::static_type()).ok())
+                .and_then(|v| v.get::<glib::BoxedAnyObject>().ok())
+                .is_some_and(|b| b.borrow::<DraggedPages>().document == document)
     });
     let autoscroll = Autoscroll::new(scrolled);
     let (l, ind, auto) = (list.downgrade(), indicator.clone(), autoscroll.clone());
-    target.connect_motion(move |_, _, y| {
+    target.connect_motion(move |target, _, y| {
         let Some(list) = l.upgrade() else {
             return gdk::DragAction::empty();
+        };
+        let action = if target.current_drop().is_some_and(|d| has_files(&d)) {
+            gdk::DragAction::COPY
+        } else {
+            gdk::DragAction::MOVE
         };
         auto.set_speed(edge_speed(y, f64::from(list.height())));
         match drop_place(&list, y) {
@@ -570,7 +605,7 @@ fn drop_target(
                     )
                     .map_or(at, |p| f64::from(p.y()));
                 ind.show_at(at);
-                gdk::DragAction::MOVE
+                action
             }
             None => {
                 ind.hide();
@@ -587,10 +622,17 @@ fn drop_target(
     target.connect_drop(move |_, value, _, y| {
         indicator.hide();
         autoscroll.set_speed(0.0);
-        let (Some(list), Ok(b)) = (l.upgrade(), value.get::<glib::BoxedAnyObject>()) else {
+        let Some(list) = l.upgrade() else {
             return false;
         };
         let Some((to, _)) = drop_place(&list, y) else {
+            return false;
+        };
+        if let Ok(files) = value.get::<gdk::FileList>() {
+            (drops.on_files)(files.files(), to);
+            return true;
+        }
+        let Ok(b) = value.get::<glib::BoxedAnyObject>() else {
             return false;
         };
         let pages = b.borrow::<DraggedPages>().pages.clone();
