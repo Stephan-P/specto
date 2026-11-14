@@ -69,7 +69,7 @@ Resetting saved state:
 - LABELS: typing "4" goes to the page labelled 4 (the 10th page), not the 4th page. Typing "IV" goes to "iv" (case doesn't matter).
 - Typing 999 or "abc": an error bell, and the entry goes back to the current page.
 - LONG has Contents and Thumbnails tabs; SIZES (no outline) has thumbnails only.
-- Contents entries in LONG jump to the exact place, often mid-page.
+- Contents entries in LONG jump to the exact place, often mid-page. Long titles wrap to up to three lines, then end in "…"; page numbers match the printed ones (on Linux, `/usr/share/doc/hwloc/hwloc-a4.pdf` starts its numbering after roman front matter).
 - LINKS: in-document links jump to their target. LONG: web links open in the browser.
 - Pressing on a link, moving a few pixels and releasing still follows it. A longer drag doesn't (GTK's drag threshold; later it will start a text selection).
 

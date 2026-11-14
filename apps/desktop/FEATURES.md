@@ -34,7 +34,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Page labels (e.g. "iv", "A-3") in the page entry and thumbnails; labels can be typed too
 - Keyboard: Page Up/Down, Space, Backspace, arrow keys, Home, End
 - Thumbnail sidebar (F9); the current page is highlighted and kept in view
-- Contents tab with the document's outline, when it has one; entries jump to the exact position
+- Contents tab with the document's outline, when it has one: titles wrap to up to three lines, with the page number (or label) right-aligned in grey; entries jump to the exact position
 - Links: in-document links and named actions (next page, …) are followed; web and mail links open in the default app; other kinds are refused
 
 ## macOS

@@ -470,7 +470,14 @@ impl Window {
             inner.split.set_sidebar(Some(&sidebar.widget));
         } else {
             let weak = Rc::downgrade(&self.0);
-            let outline = OutlineView::new(&outline, move |target| {
+            let labels = Rc::downgrade(&document);
+            let page_label = move |page: usize| {
+                labels
+                    .upgrade()
+                    .map(|d| d.borrow().page_label(page))
+                    .unwrap_or_default()
+            };
+            let outline = OutlineView::new(&outline, page_label, move |target| {
                 if let Some(inner) = weak.upgrade() {
                     inner.canvas.follow(target);
                 }
