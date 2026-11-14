@@ -41,6 +41,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - delete_pages: Delete on the document deletes the current page, Backspace
   in the sidebar the selected ones; not in the page entry; never the last
   page; undo brings them back
+- move_pages: thumbnails dropped (through a test hook) on the lower or
+  upper half of another go after or before it; the view stays on the page
+  it showed; a drop in place does nothing
 - insert_file: pages of another file inserted after the current page, shown
   and searched; undo; saved, they're in the file
 
@@ -1198,6 +1201,52 @@ def test_delete_pages(ctx):
     w.action("undo")
     s = w.wait("both undone", lambda s: len(s["edit_pages"]) == PAGES)
     check(not s["modified"], s)
+
+
+def drop_thumbnails(w, pages, onto, lower=True):
+    """Drops `pages` on the lower (or upper) half of `onto`'s thumbnail.
+    Through a test hook that does what a drop does: Mutter refuses about
+    one drag in three from the virtual pointer (GTK cancels it at once),
+    so real drags would make the check flaky."""
+    s = w.state()
+    rect = next((t[1:] for t in s["thumbnails"] if t[0] == onto), None)
+    check(rect is not None, f"no thumbnail of page {onto} on screen: {s['thumbnails']}")
+    _, y, _, height = rect
+    # Just off the middle: the lower part may be below the window's edge.
+    at = y + height * (0.6 if lower else 0.4)
+    check(at < s["height"], f"page {onto}'s thumbnail is too far down: {rect}")
+    w.action("debug-drop-thumbnails", gvariant_str(f"{','.join(map(str, pages))}@{at}"))
+
+
+def test_move_pages(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    w.maximize()
+    w.settled("maximized")
+    # Page 1 dropped on the lower half of page 3: it goes after it (only
+    # three thumbnails fit at scale 2).
+    drop_thumbnails(w, [0], 2)
+    w.wait("page 1 moved", lambda s: file_pages(s)[:4] == [1, 2, 0, 3])
+    # The view stays on the page it showed, now the third.
+    s = w.settled("page 1 in its new place", lambda s: s["page"] == 2)
+    check(s["undo"] == "Move Page" and s["modified"], s)
+    check(s["thumbnails_selected"] == [2], s)
+    w.showing(0, "moved")
+    # Two pages (2 and 3, now first) dropped on the lower half of the
+    # third: they go after page 1, where they were.
+    w.action("first-page")
+    w.settled("the first page", lambda s: s["page"] == 0 and s["thumbnails"][0][0] == 0)
+    drop_thumbnails(w, [0, 1], 2)
+    w.wait("both moved", lambda s: file_pages(s) == list(range(PAGES)))
+    s = w.settled()
+    check(s["undo"] == "Move 2 Pages" and s["thumbnails_selected"] == [1, 2], s)
+    # Dropped where they are: nothing changes.
+    drop_thumbnails(w, [1, 2], 1, lower=False)
+    time.sleep(0.5)
+    check(w.state()["undo"] == "Move 2 Pages", "a drop in place was an edit")
+    # Undone, the order is as before the second move.
+    w.action("undo")
+    w.wait("the move undone", lambda s: file_pages(s)[:4] == [1, 2, 0, 3])
 
 
 def test_insert_file(ctx):

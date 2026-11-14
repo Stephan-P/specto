@@ -13,7 +13,7 @@ PDFRS_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py   # also 
 tools/headless/run.sh python3 -I tools/headless/check.py zoom layouts    # some tests only
 ```
 
-The app runs in a headless compositor with its own saved state, so yours isn't touched; the pointer and keyboard tests use a virtual pointer and keyboard in that compositor, never your own. What's covered is listed at the top of `tools/headless/check.py`. Not covered: pinch, dialogs, how sharp the text looks, how the selection feels with a real mouse or touchpad, and macOS. Those still need the manual pass.
+The app runs in a headless compositor with its own saved state, so yours isn't touched; the pointer and keyboard tests use a virtual pointer and keyboard in that compositor, never your own. What's covered is listed at the top of `tools/headless/check.py`. Not covered: pinch, dialogs, dragging thumbnails (the checks drop them through a test hook), how sharp the text looks, how the selection feels with a real mouse or touchpad, and macOS. Those still need the manual pass.
 
 ## Setup
 
@@ -114,6 +114,9 @@ Resetting saved state:
 - In Two Pages, rotating turns both pages of the spread.
 - LONG: click thumbnail 3, Shift+click thumbnail 6, *Primary*+click thumbnail 4: pages 3, 5 and 6 are selected and the view stays on page 3. *Primary*+Right turns those three; scrolling the document keeps them selected. A plain click on a thumbnail selects just that page again.
 - LONG: Delete on page 3 removes it and shows the next page; the menu says "Undo Delete Page". Select three thumbnails and press Backspace: all three go ("Undo Delete 3 Pages"). With every thumbnail selected, Delete only beeps.
+- LONG: drag thumbnail 2 below thumbnail 4. While dragging, a line in the accent colour shows the place between thumbnails; after the drop the page is fourth, still selected, and the view hasn't moved. "Undo Move Page" puts it back.
+- Select thumbnails 2 and 3, drag one of them down past the bottom of the sidebar: the sidebar scrolls; dropping moves both ("Move 2 Pages").
+- Dropping a thumbnail where it already is changes nothing (no "Edited"). Dragging a thumbnail into another window's sidebar is refused.
 - Typing in the page entry or the search field, Delete and Backspace edit the text and delete no pages.
 - LONG with pages deleted, saved and reopened: the pages are gone; Contents entries that pointed at them do nothing, the others still work.
 - With the sidebar focused, *Primary*+A selects every thumbnail, not the page text; with the document focused, it selects the text.

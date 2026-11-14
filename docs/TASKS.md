@@ -81,14 +81,14 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Edits in the model: delete pages, move pages, rotate pages, insert pages
 - [x] **S** Desktop: rotate left and right (current page or spread), undo and redo with the edit's name in the main menu, "Edited" in the title; text, search and links keyed by page of the file so they survive edits. Headless checks `rotate_and_undo`, `select_after_rotating`
 - [x] **S** Desktop: Delete Pages (Delete or Backspace on the canvas or in the sidebar, main menu, macOS Edit menu): the selected thumbnails if several, else the current page; never the last page. Headless check `delete_pages`
-- [ ] **S** Desktop: move pages (with the page organizer below)
+- [x] **S** Desktop: move pages by dragging thumbnails (the selection, if the thumbnail dragged is in it), with a drop line and autoscroll; the view stays on the page it showed. Headless check `move_pages` (drops through a test hook: Mutter refuses about one in three drags from the virtual pointer)
 - [x] **M** Desktop: documents with pages from several files (a `Source` per file: scheduler document, parsed file, geometries, links, search text); Insert Pages from File after the current page or spread, with a password prompt; text, links and search keyed by file and page; the search indexer covers inserted pages. Headless check `insert_file`
 - [x] **L** `pdfrs-write`: full rewrite save: flat page tree, rotation, deleted pages removed with what only they used, pages copied in from other sources, object and xref streams, encryption kept. Streams repaired from hayro where lopdf reads them wrong; the result is read back and checked page by page before it's used. Corpus: 1,066 of 1,077 files identical when rendered, 11 refused, none damaged
 - [ ] **M** `pdfrs-write`: save the 11 corpus files it refuses (lopdf can't read damaged cross-reference tables or page trees that hayro recovers; one has an encryption dictionary lopdf re-encrypts wrongly), e.g. by building the objects from hayro's reading of the file
 - [ ] **S** `pdfrs-write`: page labels after deleting or moving pages: write labels that keep each remaining page's label instead of dropping them; the same in the viewer
 - [ ] **S** `pdfrs-write`: deduplicate resources shared between sources (fonts embedded in both of two merged files)
 - [x] **S** Desktop: several thumbnails selected (Shift+click, *Primary*+click, *Primary*+A in the sidebar); a selection of several stays while the view moves; rotating turns the selection. Headless check `thumbnail_selection`
-- [ ] **M** Desktop: page organizer (drag to reorder, drop PDF to insert, delete key)
+- [ ] **M** Desktop: page organizer: drop a PDF on the sidebar to insert it there; drag pages between windows (copy)
 - [x] **S** Desktop: Save (*Primary*+S) and Save As (Shift+*Primary*+S) in the main menu and the macOS File menu; written in the background to a temporary file renamed into place; edits made meanwhile stay unsaved; "Save Changes?" when closing or quitting with changes. Headless checks `save`, `close_prompt`
 - [ ] **S** "Export selected pages" (with the page organizer)
 - [x] **S** Property test: random edit sequence followed by undo-all restores the original state, and redo-all every state after it

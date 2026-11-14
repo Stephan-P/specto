@@ -574,11 +574,20 @@ impl Window {
         inner.title.set_title(&name);
 
         let weak = Rc::downgrade(&self.0);
-        let sidebar = Sidebar::new(document.clone(), move |page| {
-            if let Some(inner) = weak.upgrade() {
-                inner.canvas.update_viewer(|v| v.go_to_page(page));
-            }
-        });
+        let weak_move = Rc::downgrade(&self.0);
+        let sidebar = Sidebar::new(
+            document.clone(),
+            move |page| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.canvas.update_viewer(|v| v.go_to_page(page));
+                }
+            },
+            move |pages, to| {
+                if let Some(inner) = weak_move.upgrade() {
+                    Window(inner).move_pages(&pages, to);
+                }
+            },
+        );
         sidebar.widget.add_controller(delete_keys());
         let outline = document.borrow().outline();
         if outline.is_empty() {
@@ -952,6 +961,17 @@ impl Window {
                     w.save_as_file(file).await;
                 });
             }),
+            // Drops thumbnails without dragging: "0,1@450" drops pages 0
+            // and 1 at window height 450.
+            action("debug-drop-thumbnails", |w, arg| {
+                let Some((pages, y)) = arg.split_once('@') else {
+                    return;
+                };
+                let pages = pages.split(',').filter_map(|p| p.parse().ok()).collect();
+                if let (Some(s), Ok(y)) = (w.0.sidebar.borrow().as_ref(), y.parse()) {
+                    s.drop_at(pages, &w.0.window, y);
+                }
+            }),
             // Insert Pages from File without the file dialog.
             action("debug-insert", |w, path| {
                 let (w, file) = (w.clone(), gio::File::for_path(path));
@@ -1164,11 +1184,26 @@ impl Window {
         let mut deleted = false;
         self.edit(|d| {
             deleted = d.delete(&pages);
-            deleted.then(Vec::new)
+            deleted.then(Edited::default)
         });
         if !deleted {
             self.0.window.error_bell();
         }
+    }
+
+    /// Moves the pages at `pages` before position `to`; they stay
+    /// selected, and the view stays on the page it showed.
+    fn move_pages(&self, pages: &[usize], to: usize) {
+        let Some(current) = self.0.canvas.with_viewer(|v| v.current_page()) else {
+            return;
+        };
+        self.edit(|d| {
+            let moved = d.move_pages(pages, to)?;
+            Some(Edited {
+                go_to: Some(position_after_move(pages, moved.start, current)),
+                select: moved.collect(),
+            })
+        });
     }
 
     /// Whether the sidebar has the keyboard focus.
@@ -1193,7 +1228,12 @@ impl Window {
         }
         let pages = self.pages_to_edit();
         // The pages stay selected, so they can be turned again.
-        self.edit(|d| d.rotate(&pages, by).then_some(pages.clone()));
+        self.edit(|d| {
+            d.rotate(&pages, by).then(|| Edited {
+                select: pages.clone(),
+                go_to: None,
+            })
+        });
     }
 
     /// Asks for a PDF and inserts its pages.
@@ -1255,15 +1295,14 @@ impl Window {
             .canvas
             .with_viewer(|v| v.current_spread().last().map_or(0, |&p| p + 1))
             .unwrap_or(0);
-        let mut inserted = None;
         // The new pages are selected, ready to be moved or turned.
         self.edit(|d| {
-            inserted = d.insert(at, source, 0..count);
-            inserted.clone().map(Iterator::collect)
+            let inserted = d.insert(at, source, 0..count)?;
+            Some(Edited {
+                go_to: Some(inserted.start),
+                select: inserted.collect(),
+            })
         });
-        if let Some(range) = inserted {
-            self.0.canvas.update_viewer(|v| v.go_to_page(range.start));
-        }
         self.index_for_search();
     }
 
@@ -1429,21 +1468,26 @@ impl Window {
 
     /// Applies an edit to the document, then updates the view, the sidebar
     /// and the menus if it changed anything. `f` returns `None` if nothing
-    /// changed, else the pages to select in the sidebar.
-    fn edit(&self, f: impl FnOnce(&mut Document) -> Option<Vec<usize>>) {
+    /// changed.
+    fn edit(&self, f: impl FnOnce(&mut Document) -> Option<Edited>) {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return;
         };
-        let Some(selected) = f(&mut doc.borrow_mut()) else {
+        let Some(edited) = f(&mut doc.borrow_mut()) else {
             return;
         };
         if let Some(s) = inner.sidebar.borrow().as_ref() {
-            s.pages_changed(&selected);
+            s.pages_changed(&edited.select);
         }
         inner.last_page.set(usize::MAX);
-        // Scrollbars, redraw, page number.
-        inner.canvas.update_viewer(|_| {});
+        // Scrollbars, redraw, page number; in one update with going to a
+        // page, so the sidebar doesn't follow a page in between.
+        inner.canvas.update_viewer(|v| {
+            if let Some(page) = edited.go_to {
+                v.go_to_page(page);
+            }
+        });
         self.update_edit_state();
         self.update_search_status();
     }
@@ -1634,14 +1678,14 @@ impl Window {
             gio::ActionEntry::builder("undo")
                 .activate(with(|w| {
                     if !w.forward_to_entry("text.undo") {
-                        w.edit(|d| d.undo().map(|_| Vec::new()));
+                        w.edit(|d| d.undo().map(|_| Edited::default()));
                     }
                 }))
                 .build(),
             gio::ActionEntry::builder("redo")
                 .activate(with(|w| {
                     if !w.forward_to_entry("text.redo") {
-                        w.edit(|d| d.redo().map(|_| Vec::new()));
+                        w.edit(|d| d.redo().map(|_| Edited::default()));
                     }
                 }))
                 .build(),
@@ -1815,6 +1859,32 @@ fn centre(v: &Viewer) -> ViewPoint {
     ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0)
 }
 
+/// What an edit changed, for [`Window::edit`].
+#[derive(Default)]
+struct Edited {
+    /// Pages to select in the sidebar (none: the current page).
+    select: Vec<usize>,
+    /// The page to show.
+    go_to: Option<usize>,
+}
+
+/// Where the page at `page` is after moving those at `moved` so that they
+/// start at `start`.
+fn position_after_move(moved: &[usize], start: usize, page: usize) -> usize {
+    let mut moved = moved.to_vec();
+    moved.sort_unstable();
+    moved.dedup();
+    if let Some(i) = moved.iter().position(|&m| m == page) {
+        return start + i;
+    }
+    let rest = page - moved.iter().filter(|&&m| m < page).count();
+    if rest >= start {
+        rest + moved.len()
+    } else {
+        rest
+    }
+}
+
 /// Delete and Backspace delete pages, on the canvas and in the sidebar.
 /// Not shortcuts for the whole window, which would take the keys from text
 /// fields.
@@ -1901,5 +1971,27 @@ fn save_error(e: pdfrs_write::WriteError) -> String {
         }
         E::PasswordRequired => "the document's password is needed".to_owned(),
         _ => "pdfrs can't save this document correctly yet".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::position_after_move;
+
+    /// Checks `position_after_move` against moving the pages of a list.
+    #[test]
+    fn pages_keep_their_place_after_a_move() {
+        for (moved, to) in [(vec![0], 3), (vec![4, 1], 0), (vec![2, 3], 6), (vec![5], 2)] {
+            let mut doc = pdfrs_doc::EditDoc::from_source(pdfrs_doc::SourceId(0), 6);
+            let range = doc.move_pages(&moved, to).expect("moved");
+            for page in 0..6u32 {
+                let now = doc.pages().iter().position(|p| p.page == page).unwrap();
+                assert_eq!(
+                    position_after_move(&moved, range.start, page as usize),
+                    now,
+                    "page {page}, moving {moved:?} to {to}"
+                );
+            }
+        }
     }
 }

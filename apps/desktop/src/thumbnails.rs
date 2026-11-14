@@ -9,6 +9,7 @@
 //! each page is rendered once for both the sidebar and the canvas.
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -111,28 +112,54 @@ impl Thumbnail {
     }
 }
 
+/// What a thumbnail drag carries: the document it's from (as an address,
+/// only compared) and the positions of the pages dragged.
+struct DraggedPages {
+    document: usize,
+    pages: Vec<usize>,
+}
+
+/// Distance from the top or bottom edge, in pixels, within which a drag
+/// scrolls the sidebar.
+const AUTOSCROLL_EDGE: f64 = 40.0;
+
 /// The sidebar for one document.
 pub struct Sidebar {
-    pub widget: gtk::ScrolledWindow,
+    pub widget: gtk::Overlay,
+    scrolled: gtk::ScrolledWindow,
     list: gtk::ListView,
     /// One item per page; the items only stand for positions.
     model: gtk::StringList,
     document: SharedDocument,
     selection: gtk::MultiSelection,
     /// Set while the selection follows the canvas, so it doesn't jump back.
-    following: std::rc::Rc<Cell<bool>>,
+    following: Rc<Cell<bool>>,
+    drops: Drops,
 }
 
 impl Sidebar {
-    /// `on_activate` is called with a page index when the user picks a thumbnail.
-    pub fn new(document: SharedDocument, on_activate: impl Fn(usize) + 'static) -> Self {
+    /// `on_activate` is called with a page index when the user picks a
+    /// thumbnail; `on_move` with the pages dragged and the position they
+    /// were dropped before (counted before the move).
+    pub fn new(
+        document: SharedDocument,
+        on_activate: impl Fn(usize) + 'static,
+        on_move: impl Fn(Vec<usize>, usize) + 'static,
+    ) -> Self {
         let count = document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
         let model = gtk::StringList::new(&labels.iter().map(String::as_str).collect::<Vec<_>>());
         let selection = gtk::MultiSelection::new(Some(model.clone()));
+        let following = Rc::new(Cell::new(false));
+        let doc_address = Rc::as_ptr(&document) as usize;
+        let drops = Drops {
+            pending: Rc::default(),
+            on_move: Rc::new(on_move),
+        };
 
         let factory = gtk::SignalListItemFactory::new();
         let doc = document.clone();
+        let (sel, f, d) = (selection.clone(), following.clone(), drops.clone());
         factory.connect_setup(move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().expect("ListItem");
             let thumbnail = Thumbnail::new(doc.clone());
@@ -147,6 +174,7 @@ impl Sidebar {
                 .build();
             column.append(&thumbnail);
             column.append(&label);
+            column.add_controller(drag_source(item, &thumbnail, &sel, &f, doc_address, &d));
             item.set_child(Some(&column));
         });
         let doc = document.clone();
@@ -185,7 +213,6 @@ impl Sidebar {
         list.add_css_class("navigation-sidebar");
         list.set_single_click_activate(false);
 
-        let following = std::rc::Rc::new(Cell::new(false));
         let f = following.clone();
         selection.connect_selection_changed(move |s, _, _| {
             let selected = s.selection();
@@ -194,17 +221,43 @@ impl Sidebar {
             }
         });
 
-        let widget = gtk::ScrolledWindow::builder()
+        let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .child(&list)
             .build();
+        let widget = gtk::Overlay::builder().child(&scrolled).build();
+        let indicator = DropIndicator::new(&widget);
+        list.add_controller(drop_target(
+            &list,
+            &scrolled,
+            indicator,
+            doc_address,
+            drops.clone(),
+        ));
         Self {
             widget,
+            scrolled,
             list,
             model,
             document,
             selection,
             following,
+            drops,
+        }
+    }
+
+    /// Does what dropping `pages` at window height `y` does, for tests:
+    /// the virtual pointer of the headless checks can't drag reliably.
+    pub fn drop_at(&self, pages: Vec<usize>, window: &impl IsA<gtk::Widget>, y: f64) {
+        let Some(y) = window
+            .compute_point(&self.list, &graphene::Point::new(0.0, y as f32))
+            .map(|p| f64::from(p.y()))
+        else {
+            return;
+        };
+        if let Some((to, _)) = drop_place(&self.list, y) {
+            let on_move = self.drops.on_move.clone();
+            glib::idle_add_local_once(move || on_move(pages, to));
         }
     }
 
@@ -216,12 +269,12 @@ impl Sidebar {
         let count = self.document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
-        let scroll = self.widget.vadjustment().value();
+        let scroll = self.scrolled.vadjustment().value();
         self.following.set(true);
         self.model.splice(0, self.model.n_items(), &labels);
         self.set_selected(selected);
         self.following.set(false);
-        self.widget.vadjustment().set_value(scroll);
+        self.scrolled.vadjustment().set_value(scroll);
     }
 
     /// The selected pages, in order.
@@ -266,7 +319,7 @@ impl Sidebar {
             return;
         }
         self.select(&[page]);
-        if self.widget.is_mapped() {
+        if self.list.is_mapped() {
             self.list
                 .scroll_to(page as u32, gtk::ListScrollFlags::NONE, None);
         }
@@ -306,5 +359,297 @@ impl Sidebar {
             }
             child = row.next_sibling();
         }
+    }
+}
+
+/// Pages to move, and the position to move them before.
+type Move = (Vec<usize>, usize);
+
+/// A drop of thumbnails waiting to be carried out, and what does it.
+///
+/// The drop target only records the move; the drag source makes it once
+/// the drag has ended. Moving rebuilds the list, and doing that while the
+/// compositor was still finishing the drag made the next drag fail to
+/// start (seen with Mutter).
+#[derive(Clone)]
+struct Drops {
+    pending: Rc<Cell<Option<Move>>>,
+    on_move: Rc<dyn Fn(Vec<usize>, usize)>,
+}
+
+/// Dragging a thumbnail drags the selected pages if it's one of them,
+/// else just its page (which becomes the selection).
+fn drag_source(
+    item: &gtk::ListItem,
+    thumbnail: &Thumbnail,
+    selection: &gtk::MultiSelection,
+    following: &Rc<Cell<bool>>,
+    document: usize,
+    drops: &Drops,
+) -> gtk::DragSource {
+    let source = gtk::DragSource::new();
+    source.set_actions(gdk::DragAction::MOVE);
+    let drops = drops.clone();
+    source.connect_drag_end(move |_, _, _| {
+        if let Some((pages, to)) = drops.pending.take() {
+            let on_move = drops.on_move.clone();
+            glib::idle_add_local_once(move || on_move(pages, to));
+        }
+    });
+    let item = item.downgrade();
+    let (thumbnail, selection, following) = (
+        thumbnail.downgrade(),
+        selection.downgrade(),
+        following.clone(),
+    );
+    source.connect_prepare(move |source, x, y| {
+        let (item, selection) = (item.upgrade()?, selection.upgrade()?);
+        let position = item.position();
+        if position == gtk::INVALID_LIST_POSITION {
+            return None;
+        }
+        if !selection.is_selected(position) {
+            // Without going to the page: dragging doesn't move the view.
+            following.set(true);
+            selection.select_item(position, true);
+            following.set(false);
+        }
+        let set = selection.selection();
+        let pages = (0..set.size())
+            .map(|i| set.nth(i as u32) as usize)
+            .collect();
+        if let Some(t) = thumbnail.upgrade() {
+            let icon = gtk::WidgetPaintable::new(Some(&t));
+            source.set_icon(Some(&icon), x as i32, y as i32);
+        }
+        let value = glib::BoxedAnyObject::new(DraggedPages { document, pages });
+        Some(gdk::ContentProvider::for_value(&value.to_value()))
+    });
+    source
+}
+
+/// The line between thumbnails showing where a drop would put the pages.
+#[derive(Clone)]
+struct DropIndicator {
+    line: gtk::DrawingArea,
+    /// Its middle, in the overlay's coordinates.
+    y: Rc<Cell<f64>>,
+}
+
+impl DropIndicator {
+    fn new(overlay: &gtk::Overlay) -> Self {
+        let line = gtk::DrawingArea::builder()
+            .can_target(false)
+            .visible(false)
+            .build();
+        // Drawn in the accent colour (the "accent" class sets it as the
+        // widget's colour).
+        line.add_css_class("accent");
+        line.set_draw_func(|area, cr, w, h| {
+            let c = area.color();
+            cr.set_source_rgba(
+                c.red().into(),
+                c.green().into(),
+                c.blue().into(),
+                c.alpha().into(),
+            );
+            let r = f64::from(h) / 2.0;
+            cr.new_sub_path();
+            cr.arc(
+                r,
+                r,
+                r,
+                std::f64::consts::FRAC_PI_2,
+                3.0 * std::f64::consts::FRAC_PI_2,
+            );
+            cr.arc(
+                f64::from(w) - r,
+                r,
+                r,
+                -std::f64::consts::FRAC_PI_2,
+                std::f64::consts::FRAC_PI_2,
+            );
+            cr.close_path();
+            let _ = cr.fill();
+        });
+        overlay.add_overlay(&line);
+        let y = Rc::new(Cell::new(0.0_f64));
+        let at = y.clone();
+        overlay.connect_get_child_position(move |overlay, child| {
+            const THICKNESS: i32 = 4;
+            let width = (WIDTH as i32 + 24).min(overlay.width());
+            Some(gdk::Rectangle::new(
+                (overlay.width() - width) / 2,
+                at.get().round() as i32 - THICKNESS / 2,
+                width.max(child.width()),
+                THICKNESS,
+            ))
+        });
+        Self { line, y }
+    }
+
+    fn show_at(&self, y: f64) {
+        self.y.set(y);
+        self.line.set_visible(true);
+        if let Some(parent) = self.line.parent() {
+            parent.queue_allocate();
+        }
+    }
+
+    fn hide(&self) {
+        self.line.set_visible(false);
+    }
+}
+
+/// The rows on screen: page and bounds relative to `list`.
+fn rows(list: &gtk::ListView) -> Vec<(usize, graphene::Rect)> {
+    let mut out = Vec::new();
+    let mut child = list.first_child();
+    while let Some(row) = child {
+        if let Some(t) = row
+            .first_child()
+            .and_then(|col| col.first_child())
+            .and_downcast::<Thumbnail>()
+            && let Some(page) = t.imp().page.get()
+            // Rows kept off screen aren't laid out (no size).
+            && row.is_mapped()
+            && row.height() > 0
+            && let Some(bounds) = row.compute_bounds(list)
+        {
+            out.push((page, bounds));
+        }
+        child = row.next_sibling();
+    }
+    out.sort_by_key(|(p, _)| *p);
+    out
+}
+
+/// Where a drop at `y` (in the list) would put pages: before which
+/// position, and the boundary between rows to show it at.
+fn drop_place(list: &gtk::ListView, y: f64) -> Option<(usize, f64)> {
+    let rows = rows(list);
+    let y = y as f32;
+    match rows.iter().find(|(_, r)| y < r.y() + r.height() / 2.0) {
+        Some((page, r)) => Some((*page, f64::from(r.y()))),
+        None => rows
+            .last()
+            .map(|(page, r)| (page + 1, f64::from(r.y() + r.height()))),
+    }
+}
+
+/// Takes thumbnails dropped on the list: shows where they'd go while
+/// dragging, scrolls near the edges, and reports the move.
+fn drop_target(
+    list: &gtk::ListView,
+    scrolled: &gtk::ScrolledWindow,
+    indicator: DropIndicator,
+    document: usize,
+    drops: Drops,
+) -> gtk::DropTarget {
+    let target = gtk::DropTarget::new(glib::BoxedAnyObject::static_type(), gdk::DragAction::MOVE);
+    // Only drags of this document's thumbnails.
+    target.connect_accept(move |_, drop| {
+        drop.drag()
+            .and_then(|d| d.content().value(glib::BoxedAnyObject::static_type()).ok())
+            .and_then(|v| v.get::<glib::BoxedAnyObject>().ok())
+            .is_some_and(|b| b.borrow::<DraggedPages>().document == document)
+    });
+    let autoscroll = Autoscroll::new(scrolled);
+    let (l, ind, auto) = (list.downgrade(), indicator.clone(), autoscroll.clone());
+    target.connect_motion(move |_, _, y| {
+        let Some(list) = l.upgrade() else {
+            return gdk::DragAction::empty();
+        };
+        auto.set_speed(edge_speed(y, f64::from(list.height())));
+        match drop_place(&list, y) {
+            Some((_, at)) => {
+                let at = list
+                    .compute_point(
+                        &ind.line.parent().expect("in the overlay"),
+                        &graphene::Point::new(0.0, at as f32),
+                    )
+                    .map_or(at, |p| f64::from(p.y()));
+                ind.show_at(at);
+                gdk::DragAction::MOVE
+            }
+            None => {
+                ind.hide();
+                gdk::DragAction::empty()
+            }
+        }
+    });
+    let (ind, auto) = (indicator.clone(), autoscroll.clone());
+    target.connect_leave(move |_| {
+        ind.hide();
+        auto.set_speed(0.0);
+    });
+    let l = list.downgrade();
+    target.connect_drop(move |_, value, _, y| {
+        indicator.hide();
+        autoscroll.set_speed(0.0);
+        let (Some(list), Ok(b)) = (l.upgrade(), value.get::<glib::BoxedAnyObject>()) else {
+            return false;
+        };
+        let Some((to, _)) = drop_place(&list, y) else {
+            return false;
+        };
+        let pages = b.borrow::<DraggedPages>().pages.clone();
+        drops.pending.set(Some((pages, to)));
+        true
+    });
+    target
+}
+
+/// How fast to scroll (pixels per frame, negative up) with the pointer at
+/// `y` in a view `height` high.
+fn edge_speed(y: f64, height: f64) -> f64 {
+    let from_bottom = height - y;
+    if y < AUTOSCROLL_EDGE {
+        -(AUTOSCROLL_EDGE - y.max(0.0)) / 2.0
+    } else if from_bottom < AUTOSCROLL_EDGE {
+        (AUTOSCROLL_EDGE - from_bottom.max(0.0)) / 2.0
+    } else {
+        0.0
+    }
+}
+
+/// Scrolls a scrolled window every frame while a speed is set.
+#[derive(Clone)]
+struct Autoscroll {
+    scrolled: glib::WeakRef<gtk::ScrolledWindow>,
+    speed: Rc<Cell<f64>>,
+    tick: Rc<RefCell<Option<gtk::TickCallbackId>>>,
+}
+
+impl Autoscroll {
+    fn new(scrolled: &gtk::ScrolledWindow) -> Self {
+        Self {
+            scrolled: scrolled.downgrade(),
+            speed: Rc::new(Cell::new(0.0)),
+            tick: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    fn set_speed(&self, speed: f64) {
+        self.speed.set(speed);
+        if speed == 0.0 {
+            if let Some(id) = self.tick.borrow_mut().take() {
+                id.remove();
+            }
+            return;
+        }
+        if self.tick.borrow().is_some() {
+            return;
+        }
+        let Some(scrolled) = self.scrolled.upgrade() else {
+            return;
+        };
+        let speed = self.speed.clone();
+        let id = scrolled.add_tick_callback(move |s, _| {
+            let adj = s.vadjustment();
+            adj.set_value(adj.value() + speed.get());
+            glib::ControlFlow::Continue
+        });
+        self.tick.replace(Some(id));
     }
 }
