@@ -147,6 +147,16 @@ Work on copies of the test files.
 - A file that is a symbolic link: after saving, the link is still a link, pointing at the updated file.
 - GIANT: saving takes a few seconds and the window stays responsive meanwhile.
 
+### Changes by other programs
+
+Use a copy of LONG, and another program that saves PDFs (`qpdf`, a PDF editor, or just `cp`).
+
+- LONG open on page 50, unedited: replace the file (`qpdf --rotate=+90:50 long.pdf --replace-input`). The window shows the new version at once, still on page 50 at the same zoom, page 50 now turned; no "Edited".
+- With an edit, the same: a banner "“long.pdf” was changed by another program…" with Reload; the edit stays. Save asks "File Changed on Disk": Cancel leaves the other program's version (check in another viewer), Save Anyway replaces it. Reload shows the other version and drops the edit.
+- Saving in pdfrs itself, then waiting a few seconds: no banner, no reload, Undo still there.
+- Delete or move the file: a banner says so. Save writes it back where it was.
+- ENCRYPTED, replaced by another encrypted copy with the same password: reloaded without asking; with a different password, the password dialog comes up.
+
 ### Remembering state
 
 - LONG: go to page 200, switch to Two Pages, zoom to 150%, open the Contents tab, close, reopen. All of it is restored, at the same spot on page 200.

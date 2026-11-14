@@ -37,6 +37,8 @@ Crates marked (M3)–(M5) don't exist yet. Planned dependency direction: `apps (
 
 `pdfrs-source::PdfData` holds a file's bytes, shared between threads (hayro needs the whole file as one slice). Files under 64 MB are read into memory; larger ones are memory-mapped, so they open at once and only the parts in use take memory. A mapped file must not be truncated while open (reading the missing part is a `SIGBUS`), so saving always writes a new file and renames it into place, never over the open file. On Android, `PdfFile.fromFd` takes a file descriptor from the Storage Access Framework; a pipe (as some document providers hand out) is read instead.
 
+The desktop app watches the open file (a GIO file monitor) and keeps a fingerprint of it, its entity tag and size, from when it was read or last saved. A change that doesn't match the fingerprint came from another program: an unedited document is reloaded in place, an edited one gets a banner offering to reload, and saving checks the fingerprint once more and asks before overwriting. Another program truncating a mapped file in place, instead of replacing it, can still crash the app (see TASKS.md).
+
 ## Data model
 
 ```

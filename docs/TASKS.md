@@ -94,7 +94,9 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** "Export Selected Pages" (main menu, macOS File menu): the sidebar selection or the current page, written as a new PDF with the main file's catalog; a suggested name with the page numbers. Headless check `drop_files_and_export`
 - [x] **S** Property test: random edit sequence followed by undo-all restores the original state, and redo-all every state after it
 - [x] **M** Round-trip harness: `crates/pdfrs-write/tests/write.rs` writes edited fixtures (inherited attributes, labels, outline, links, encryption, two sources), reopens them, compares every page's render with its source page, and runs `qpdf --check` (installed in CI). The corpus run is an ignored test
-- [ ] **S** File changed on disk while open: notice it (file monitor), and never save over a file that changed since it was read without asking; the unedited case can simply reload
+- [x] **S** File changed on disk while open (desktop): a GIO file monitor plus a fingerprint (entity tag and size) taken when the file is read and after each save, so our own saves don't count. Unedited, the file is reloaded in place (view kept); with edits, a banner offers Reload; Save checks the fingerprint again and asks before overwriting; a deleted file gets a banner and Save writes it again. Headless check `file_changed`
+- [ ] **S** Android: notice a changed file (on resume, compare the fingerprint) and reload or ask, like the desktop
+- [ ] **S** A memory-mapped file (64 MB and up) truncated in place by another program makes reading it fault (`SIGBUS`); programs that save by renaming, as most do, are safe. Catch it, or copy files that live on removable or network storage
 
 ## M4: Markup
 

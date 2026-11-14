@@ -43,6 +43,7 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "insert-file",
     "delete-pages",
     "export-pages",
+    "reload",
 ];
 
 #[derive(Clone)]
@@ -83,6 +84,17 @@ pub struct Inner {
     close_confirmed: Cell<bool>,
     /// The "Save changes?" dialog while it's open (for tests).
     alert: RefCell<Option<adw::AlertDialog>>,
+    /// The file as it was when read or last saved, to tell changes by other
+    /// programs from our own.
+    known: RefCell<Option<Fingerprint>>,
+    /// Watches the file for changes by other programs.
+    monitor: RefCell<Option<gio::FileMonitor>>,
+    /// A look at the file is scheduled (changes come in bursts).
+    check_pending: Cell<bool>,
+    /// The password the file was opened with, for reloading it.
+    password: RefCell<Option<String>>,
+    /// Says that the file changed on disk while there are edits, or is gone.
+    banner: adw::Banner,
 }
 
 impl Window {
@@ -303,9 +315,11 @@ impl Window {
             .build();
         header.pack_end(&search_toggle);
 
+        let banner = adw::Banner::builder().action_name("win.reload").build();
         let view = adw::ToolbarView::new();
         view.add_top_bar(&header);
         view.add_top_bar(&search_bar);
+        view.add_top_bar(&banner);
         view.set_content(Some(&toasts));
 
         let window = adw::ApplicationWindow::builder()
@@ -349,6 +363,11 @@ impl Window {
             saving: Cell::new(false),
             close_confirmed: Cell::new(false),
             alert: RefCell::default(),
+            known: RefCell::default(),
+            monitor: RefCell::default(),
+            check_pending: Cell::new(false),
+            password: RefCell::default(),
+            banner,
         }));
         this.setup_actions();
         this.setup_page_entry();
@@ -439,35 +458,225 @@ impl Window {
 
     async fn load(&self, file: gio::File) {
         let name = display_name(&file).await;
+        // Before reading: a change made meanwhile then shows as one.
+        let known = fingerprint(&file).await;
         let data = match read_pdf(&file).await {
             Ok(data) => data,
             Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
         };
-
-        let (tx, rx) = async_channel::unbounded::<()>();
-        let mut password: Option<String> = None;
-        let document = loop {
-            let tx = tx.clone();
-            let wake = move || {
-                let _ = tx.try_send(());
-            };
-            match Document::open(name.clone(), data.clone(), password.as_deref(), wake) {
-                Ok(d) => break d,
-                Err(OpenError::PasswordRequired) => {
-                    match self.ask_password(&name, password.is_some()).await {
-                        Some(p) => password = Some(p),
-                        None => return,
-                    }
-                }
-                Err(e) => return self.toast(&format!("Couldn't open “{name}”: {e}")),
-            }
+        let Some((document, tiles, password)) = self.open_document(&name, data, None).await else {
+            return;
         };
-        drop(tx);
-        self.set_document(Rc::new(RefCell::new(document)), rx);
+        self.set_document(Rc::new(RefCell::new(document)), tiles);
         let uri = file.uri().to_string();
         self.restore_state(&uri);
         gtk::RecentManager::default().add_item(&uri);
         self.0.uri.replace(Some(uri));
+        self.0.password.replace(password);
+        self.watch(&file, known);
+    }
+
+    /// Opens `data` as a document, asking for a password if it needs one
+    /// (`password` is tried first). Returns the document, its tile
+    /// notifications and the password that worked; `None` if it couldn't
+    /// be opened (with a message) or the password was cancelled.
+    async fn open_document(
+        &self,
+        name: &str,
+        data: PdfData,
+        mut password: Option<String>,
+    ) -> Option<(Document, async_channel::Receiver<()>, Option<String>)> {
+        let (tx, rx) = async_channel::unbounded::<()>();
+        let mut asked = false;
+        loop {
+            let tx = tx.clone();
+            let wake = move || {
+                let _ = tx.try_send(());
+            };
+            match Document::open(name.to_owned(), data.clone(), password.as_deref(), wake) {
+                Ok(d) => return Some((d, rx, password)),
+                Err(OpenError::PasswordRequired) => {
+                    password = Some(self.ask_password(name, asked).await?);
+                    asked = true;
+                }
+                Err(e) => {
+                    self.toast(&format!("Couldn't open “{name}”: {e}"));
+                    return None;
+                }
+            }
+        }
+    }
+
+    // --- the file on disk ---------------------------------------------------
+
+    /// Starts watching `file`, as it was when read (`known`), for changes
+    /// by other programs.
+    fn watch(&self, file: &gio::File, known: Option<Fingerprint>) {
+        let inner = &self.0;
+        inner.known.replace(known);
+        inner.banner.set_revealed(false);
+        let monitor = file
+            .monitor_file(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+            .ok();
+        if let Some(m) = &monitor {
+            let weak = Rc::downgrade(&self.0);
+            m.connect_changed(move |_, _, _, _| {
+                if let Some(inner) = weak.upgrade() {
+                    Window(inner).schedule_check();
+                }
+            });
+        }
+        if let Some(old) = inner.monitor.replace(monitor) {
+            old.cancel();
+        }
+    }
+
+    /// Looks at the file shortly: a save by another program comes as
+    /// several events.
+    fn schedule_check(&self) {
+        if self.0.check_pending.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(&self.0);
+        glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+            if let Some(inner) = weak.upgrade() {
+                let w = Window(inner);
+                glib::spawn_future_local(async move { w.check_disk().await });
+            }
+        });
+    }
+
+    /// Compares the file with what was read or saved: unchanged, nothing
+    /// happens; changed, it's reloaded, or with edits a banner offers to;
+    /// gone, a banner says so.
+    async fn check_disk(&self) {
+        let inner = &self.0;
+        inner.check_pending.set(false);
+        if inner.saving.get() {
+            // Our own save: looked at once it's done.
+            return self.schedule_check();
+        }
+        let (Some(uri), Some(name)) = (
+            inner.uri.borrow().clone(),
+            inner
+                .document
+                .borrow()
+                .as_ref()
+                .map(|d| d.borrow().name.clone()),
+        ) else {
+            return;
+        };
+        let now = fingerprint(&gio::File::for_uri(&uri)).await;
+        if now == *inner.known.borrow() {
+            inner.banner.set_revealed(false);
+            return;
+        }
+        let banner = &inner.banner;
+        match now {
+            None => {
+                banner.set_title(&format!(
+                    "“{name}” was moved or deleted. Saving writes it again."
+                ));
+                banner.set_button_label(None);
+                banner.set_revealed(true);
+            }
+            Some(_) if !self.is_modified() => self.reload().await,
+            Some(_) => {
+                banner.set_title(&format!(
+                    "“{name}” was changed by another program. Reloading discards your edits."
+                ));
+                banner.set_button_label(Some("_Reload"));
+                banner.set_revealed(true);
+            }
+        }
+    }
+
+    /// Whether the file changed on disk since it was read or saved (and is
+    /// still there).
+    async fn changed_on_disk(&self) -> bool {
+        let Some(uri) = self.0.uri.borrow().clone() else {
+            return false;
+        };
+        let now = fingerprint(&gio::File::for_uri(&uri)).await;
+        now.is_some() && now != *self.0.known.borrow()
+    }
+
+    /// Reads the file again and shows it in place of the document, edits
+    /// discarded, at the same place.
+    async fn reload(&self) {
+        let inner = &self.0;
+        let (Some(uri), Some(doc)) = (inner.uri.borrow().clone(), inner.document.borrow().clone())
+        else {
+            return;
+        };
+        let file = gio::File::for_uri(&uri);
+        let name = doc.borrow().name.clone();
+        let known = fingerprint(&file).await;
+        let data = match read_pdf(&file).await {
+            Ok(data) => data,
+            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
+        };
+        let password = inner.password.borrow().clone();
+        let Some((document, tiles, password)) = self.open_document(&name, data, password).await
+        else {
+            return;
+        };
+        // The window may have moved on meanwhile.
+        if !inner
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| Rc::ptr_eq(d, &doc))
+        {
+            return;
+        }
+        let view = doc.borrow().viewer.view_state();
+        let sidebar_page = inner
+            .sidebar_stack
+            .borrow()
+            .as_ref()
+            .and_then(|s| s.visible_child_name());
+        drop(doc);
+        self.set_document(Rc::new(RefCell::new(document)), tiles);
+        inner.canvas.update_viewer(|v| v.restore_view_state(&view));
+        if let Some(page) = sidebar_page
+            && inner.sidebar_stack.borrow().is_some()
+        {
+            gio::prelude::ActionGroupExt::activate_action(
+                &inner.window,
+                "sidebar-page",
+                Some(&page.to_variant()),
+            );
+        }
+        inner.password.replace(password);
+        inner.known.replace(known);
+        inner.banner.set_revealed(false);
+        self.update_edit_state();
+        if inner.search_bar.is_search_mode() {
+            self.run_search();
+        } else {
+            self.update_search_status();
+        }
+    }
+
+    /// Asks whether to save over a file another program changed. Returns
+    /// whether to go ahead.
+    async fn confirm_overwrite(&self, name: &str) -> bool {
+        let inner = &self.0;
+        let alert = adw::AlertDialog::new(
+            Some("File Changed on Disk"),
+            Some(&format!(
+                "“{name}” was changed by another program after it was opened. Saving replaces those changes with this document."
+            )),
+        );
+        alert.add_responses(&[("cancel", "_Cancel"), ("save", "_Save Anyway")]);
+        alert.set_response_appearance("save", adw::ResponseAppearance::Destructive);
+        alert.set_default_response(Some("cancel"));
+        alert.set_close_response("cancel");
+        inner.alert.replace(Some(alert.clone()));
+        let response = alert.choose_future(Some(&inner.window)).await;
+        inner.alert.replace(None);
+        response == "save"
     }
 
     /// Applies the view state saved for `uri`, if any.
@@ -608,6 +817,7 @@ impl Window {
         let outline = document.borrow().outline();
         if outline.is_empty() {
             inner.split.set_sidebar(Some(&sidebar.widget));
+            inner.sidebar_stack.replace(None);
         } else {
             let weak = Rc::downgrade(&self.0);
             let labels = Rc::downgrade(&document);
@@ -662,11 +872,16 @@ impl Window {
         inner.canvas.grab_focus();
         self.view_changed();
 
-        // Finished tiles → cache → redraw.
+        // Finished tiles → cache → redraw. Not holding on to the document:
+        // once it's replaced (reloaded) and dropped, its channel closes.
         let weak = Rc::downgrade(&self.0);
+        let weak_doc = Rc::downgrade(&document);
+        drop(document);
         glib::spawn_future_local(async move {
             while tiles.recv().await.is_ok() {
-                let Some(inner) = weak.upgrade() else { break };
+                let (Some(inner), Some(document)) = (weak.upgrade(), weak_doc.upgrade()) else {
+                    break;
+                };
                 {
                     let mut d = document.borrow_mut();
                     if !d.receive_tiles() {
@@ -857,8 +1072,13 @@ impl Window {
     }
 
     /// Takes in the indexer's pages as they come, updating the search.
+    /// The pages are for the document shown now: if it's replaced (reloaded)
+    /// meanwhile, the rest are dropped.
     fn receive_index(&self, rx: async_channel::Receiver<Indexed>) {
         let weak = Rc::downgrade(&self.0);
+        let Some(for_doc) = self.0.document.borrow().as_ref().map(Rc::downgrade) else {
+            return;
+        };
         glib::spawn_future_local(async move {
             while let Ok(page) = rx.recv().await {
                 let Some(inner) = weak.upgrade() else { break };
@@ -866,6 +1086,9 @@ impl Window {
                 let Some(doc) = w.0.document.borrow().clone() else {
                     break;
                 };
+                if !std::ptr::eq(Rc::as_ptr(&doc), for_doc.as_ptr()) {
+                    break;
+                }
                 let before = doc.borrow().search_status();
                 let new_current = doc.borrow_mut().indexed(page);
                 if new_current {
@@ -1186,6 +1409,14 @@ impl Window {
                 )
                 .str("subtitle", &inner.title.subtitle())
                 .str(
+                    "banner",
+                    &if inner.banner.is_revealed() {
+                        inner.banner.title().to_string()
+                    } else {
+                        String::new()
+                    },
+                )
+                .str(
                     "undo",
                     &d.edit().undo_edit().map(edit_name).unwrap_or_default(),
                 )
@@ -1500,13 +1731,18 @@ impl Window {
     /// Saves the document to its file, if it has changes. Returns whether
     /// it's saved now.
     async fn save(&self) -> bool {
-        if !self.is_modified() {
-            return true;
-        }
         let Some(uri) = self.0.uri.borrow().clone() else {
             return false;
         };
-        self.save_to(gio::File::for_uri(&uri)).await
+        let file = gio::File::for_uri(&uri);
+        // Unchanged, unless the file is gone: then it's written again.
+        if !self.is_modified() && fingerprint(&file).await.is_some() {
+            return true;
+        }
+        if self.changed_on_disk().await && !self.confirm_overwrite(&file_name(&file)).await {
+            return false;
+        }
+        self.save_to(file).await
     }
 
     /// Asks where to save a copy, saves it there, and from then on shows
@@ -1557,6 +1793,8 @@ impl Window {
         inner.uri.replace(Some(uri.clone()));
         gtk::RecentManager::default().add_item(&uri);
         self.save_state();
+        let known = fingerprint(&file).await;
+        self.watch(&file, known);
         true
     }
 
@@ -1574,6 +1812,11 @@ impl Window {
         let job = doc.borrow().save_job();
         let version = job.version;
         let result = write_job(job, &file).await;
+        if result.is_ok() {
+            // What's on disk now is ours.
+            inner.known.replace(fingerprint(&file).await);
+            inner.banner.set_revealed(false);
+        }
         inner.saving.set(false);
         match result {
             Ok(()) => {
@@ -1827,6 +2070,12 @@ impl Window {
                 .activate(with(|w| {
                     let w = w.clone();
                     glib::spawn_future_local(async move { w.choose_insert_file().await });
+                }))
+                .build(),
+            gio::ActionEntry::builder("reload")
+                .activate(with(|w| {
+                    let w = w.clone();
+                    glib::spawn_future_local(async move { w.reload().await });
                 }))
                 .build(),
             gio::ActionEntry::builder("export-pages")
@@ -2133,6 +2382,30 @@ fn edit_name(edit: Edit) -> String {
     } else {
         format!("{verb} {n} Pages")
     }
+}
+
+/// What tells whether a file changed: its entity tag (for local files,
+/// the modification time to the microsecond) and size.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Fingerprint {
+    etag: String,
+    size: i64,
+}
+
+/// `file`'s fingerprint, or `None` if it isn't there.
+async fn fingerprint(file: &gio::File) -> Option<Fingerprint> {
+    let info = file
+        .query_info_future(
+            "etag::value,standard::size",
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await
+        .ok()?;
+    Some(Fingerprint {
+        etag: info.etag().map(|e| e.to_string()).unwrap_or_default(),
+        size: info.size(),
+    })
 }
 
 /// Writes `job` to `file` in the background: through a temporary file

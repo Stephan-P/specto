@@ -50,6 +50,10 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - pages_between_windows: pages of one window dropped (through a test
   hook) on another's thumbnails are copied there, rotation included; the
   first window keeps them; saved, they're in the second file
+- file_changed: the file replaced by another program is reloaded in place
+  if there are no edits; with edits, a banner offers to, and Save asks
+  before overwriting; our own saves don't count; a deleted file gets a
+  banner
 - insert_file: pages of another file inserted after the current page, shown
   and searched; the pages keep their labels, the inserted ones numbered by
   position; undo; saved, they're in the file
@@ -1323,6 +1327,56 @@ def test_pages_between_windows(ctx):
     two.wait("the save", lambda s: not s["modified"] and not s["saving"])
     info = subprocess.run(["pdfinfo", path], capture_output=True, text=True)
     check("Pages:           5" in info.stdout, f"pdfinfo: {info.stdout}{info.stderr}")
+
+
+def replace_file(src, dst):
+    """Replaces `dst` with a copy of `src` the way editors do: written
+    next to it, then renamed over it."""
+    tmp = dst + ".tmp"
+    shutil.copy(src, tmp)
+    os.replace(tmp, dst)
+
+
+def test_file_changed(ctx):
+    path = copy_of_pages(ctx)
+    w = ctx.app([path]).window()
+    w.settled()
+    w.action("debug-go-to", gvariant_str(LABELS[2]))
+    w.settled("page 3", lambda s: s["page"] == 2)
+    # No edits: the new file is shown, at the same place.
+    replace_file(ctx.text, path)
+    s = w.wait("the reload", lambda s: len(s["edit_pages"]) == 3)
+    check(s["title"] == "doc.pdf" and not s["modified"] and s["banner"] == "", s)
+    w.wait("the same page", lambda s: s["page"] == 2)
+    # Our own save doesn't count as a change: the edit history stays.
+    w.action("rotate-right")
+    w.wait("a page rotated", lambda s: s["modified"])
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    time.sleep(1)
+    s = w.state()
+    check(s["undo"] == "Rotate Page" and s["banner"] == "", f"reloaded after saving: {s}")
+    # With edits: a banner, and the edits stay.
+    w.action("rotate-right")
+    w.wait("another rotation", lambda s: s["modified"])
+    replace_file(ctx.pages, path)
+    s = w.wait("the banner", lambda s: "changed by another program" in s["banner"])
+    check(len(s["edit_pages"]) == 3 and s["modified"], s)
+    # Saving asks first; Cancel leaves the other program's file.
+    w.action("save")
+    w.wait("the question", lambda s: s["alert"] == "File Changed on Disk")
+    w.action("debug-alert-response", gvariant_str("cancel"))
+    w.wait("the question to go", lambda s: s["alert"] == "")
+    check(open(path, "rb").read() == open(ctx.pages, "rb").read(), "the file was overwritten")
+    # Reload: the other program's version, edits gone.
+    w.action("reload")
+    s = w.wait("the reload", lambda s: len(s["edit_pages"]) == PAGES)
+    check(not s["modified"] and s["banner"] == "" and s["undo"] == "", s)
+    # Deleted: a banner; Save writes the file again.
+    os.remove(path)
+    w.wait("the banner", lambda s: "moved or deleted" in s["banner"])
+    w.action("save")
+    w.wait("the file written again", lambda s: os.path.exists(path) and s["banner"] == "")
 
 
 def test_insert_file(ctx):
