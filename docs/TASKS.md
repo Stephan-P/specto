@@ -36,7 +36,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** `pdfrs-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p pdfrs-render -- --ignored`).
 - [x] **M** `pdfrs-source`: opening and decryption (`open_pdf`, `OpenError`, now shared with `pdfrs-render`), metadata with text-string decoding (UTF-16BE, UTF-8, PDFDocEncoding), outline, links (destinations, URIs, named actions), named destinations via `/Dests` and the `/Names` tree. Every walk is bounded (cycles, depth, item caps). Corpus: 1,077 files, no panics, 0.2 s; 153 with an outline, 49 with links. `pdfrs info --outline` prints both. (No mmap: files are read into memory, as both apps already do.)
 - [x] **S** Page labels (`pdfrs_source::PageLabels`: all five styles, prefixes, start numbers, number trees split over kids; reverse lookup). Desktop: the page entry shows the label with "(3 of 120)" and accepts labels ("iv") or numbers; thumbnail captions show labels. Documents whose labels are just 1, 2, 3 are treated as unlabelled
-- [ ] **S** Android: page labels through `pdfrs-ffi`
+- [x] **S** Android: page labels through `pdfrs-ffi` (`ViewSession::page_labels`; the indicator, grid and Contents show them, and "Go to page…" accepts them)
 - [x] **M** `pdfrs-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
 - [x] **M** Render scheduler (`pdfrs_render::scheduler`): worker pool, multiple documents, a priority queue that's replaced every frame, panics isolated per tile. `TileCache<T>` (`pdfrs_render::tile`) has an LRU byte budget, protects tiles used this frame, and is generic over the frontend's texture type.
 - [x] **S** HiDPI fix, part 1: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike)
@@ -57,7 +57,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Headless desktop checks in CI: `tools/headless/check.py` drives the app over D-Bus (window actions plus debug-only `debug-state`, `debug-screenshot`, `debug-go-to`), with generated PDFs whose pages each have their own colour, so screenshots show which page is on screen. Opening, start page, broken files, navigation, page labels, layouts, zoom and its limits, sidebar, saved state, two windows; at scales 1, 1.25 and 2.
 - [ ] **S** Headless checks with pointer input (link clicks, drags, later text selection): needs synthetic input, e.g. mutter's RemoteDesktop D-Bus API
 - [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
-- [ ] **S** Android: outline and links through `pdfrs-ffi`
+- [x] **S** Android: outline and links through `pdfrs-ffi` (flattened outline with targets; in-document, web and mail links)
 
 ## M2: Text
 
@@ -134,7 +134,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 ## M7: Polish & hardening
 
 - [ ] **M** Printing (desktop; Android via `PrintManager`)
-- [ ] **S** Encrypted PDFs: password prompt on open (desktop + Android)
+- [x] **S** Encrypted PDFs: password prompt on open (desktop + Android)
 - [ ] **L** Encrypted save: keep the original security handler on incremental + full-rewrite saves, and encrypt merged-in objects with the target key (D9)
 - [ ] **M** Permission flags: honor owner-password restrictions (edit/annotate/print), with an "unlock" prompt for the owner password
 - [ ] **S** Document security dialog (like Preview's, from the File menu): add / change / remove user and owner passwords (AES-256), saved with the document

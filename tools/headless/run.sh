@@ -3,6 +3,7 @@
 #
 #   tools/headless/run.sh <command…>
 #   PDFRS_SCALE=1.25 tools/headless/run.sh <command…>   # HiDPI / fractional scale
+#   PDFRS_MONITOR=2400x1800 tools/headless/run.sh …     # monitor size (device px)
 #
 # Fractional scales use mutter's scale-monitor-framebuffer feature, enabled
 # through a throwaway GSettings keyfile, so the user's settings are untouched.
@@ -27,7 +28,7 @@ mkdir -p "$config/glib-2.0/settings"
 printf '[org/gnome/mutter]\nexperimental-features=["scale-monitor-framebuffer"]\n' \
   >"$config/glib-2.0/settings/keyfile"
 GSETTINGS_BACKEND=keyfile XDG_CONFIG_HOME=$config mutter --headless --wayland --no-x11 --wayland-display="$display" \
-  --virtual-monitor 1920x1200 >"$log" 2>&1 &
+  --virtual-monitor "${PDFRS_MONITOR:-1920x1200}" >"$log" 2>&1 &
 mutter=$!
 for _ in $(seq 100); do [ -S "$XDG_RUNTIME_DIR/$display" ] && break; sleep 0.1; done
 if [ ! -S "$XDG_RUNTIME_DIR/$display" ]; then

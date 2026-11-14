@@ -16,20 +16,21 @@ pdfrs/
 │   ├── pdfrs-source    # opening/decryption, metadata, outline, links (hayro-syntax)
 │   ├── pdfrs-render    # Document trait, hayro backend, TileCache<T>, render scheduler
 │   ├── pdfrs-text      # text layer via hayro's Device: char quads (PDF space), words, lines
-│   ├── pdfrs-doc       # edit model: page list, annotations, form values, undo/redo, commands
-│   ├── pdfrs-annot     # annotation types + appearance-stream generation
-│   ├── pdfrs-forms     # AcroForm model, field values, appearance regeneration
-│   ├── pdfrs-write     # serialization: full rewrite + incremental update
+│   ├── pdfrs-doc       # (M3) edit model: page list, annotations, form values, undo/redo, commands
+│   ├── pdfrs-annot     # (M4) annotation types + appearance-stream generation
+│   ├── pdfrs-forms     # (M5) AcroForm model, field values, appearance regeneration
+│   ├── pdfrs-write     # (M3) serialization: full rewrite + incremental update
 │   ├── pdfrs-view      # UI-agnostic viewer: layout modes, viewport, zoom, hit-test, tools
-│   └── pdfrs-ffi       # UniFFI bindings (Kotlin) over pdfrs-view/pdfrs-doc
+│   └── pdfrs-ffi       # Android bindings: UniFFI (Kotlin), plus JNI for the per-frame path
 ├── apps/
-│   ├── desktop/        # GTK4 + libadwaita (gtk4-rs), Linux
+│   ├── desktop/        # GTK4 + libadwaita (gtk4-rs), Linux (also runs on macOS)
 │   └── android/        # Gradle project, Kotlin + Jetpack Compose, loads libpdfrs_ffi.so
 └── tools/
-    └── pdfrs-cli       # headless: render to PNG, dump text, apply ops, used heavily in tests
+    ├── pdfrs-cli       # the `pdfrs` dev tool: info, render to PNG, text, corpus runs
+    └── headless/       # the desktop app in a headless compositor: end-to-end checks (CI)
 ```
 
-Dependency direction: `apps → pdfrs-view / pdfrs-ffi → pdfrs-doc → {pdfrs-annot, pdfrs-forms, pdfrs-text, pdfrs-render} → pdfrs-source → pdfrs-geom`. `pdfrs-write` depends on `pdfrs-doc` + `pdfrs-source`.
+Crates marked (M3)–(M5) don't exist yet. Dependency direction: `apps → pdfrs-view / pdfrs-ffi → pdfrs-doc → {pdfrs-annot, pdfrs-forms, pdfrs-text, pdfrs-render} → pdfrs-source → pdfrs-geom`. `pdfrs-write` depends on `pdfrs-doc` + `pdfrs-source`.
 
 ## Data model
 
@@ -76,27 +77,27 @@ pdfrs-view (visible pages, zoom, device scale)
    │  requests TileKey { page, zoom_bucket, scale_factor, tile_x, tile_y, content_version }
    ▼
 Scheduler (one per app; a Client per view with its own priority queue, replaced every frame; clients served round-robin; guards for expensive pages)
-   │  worker thread pool (rayon or dedicated threads)
+   │  dedicated worker threads (extra ones start when renders stall)
    ▼
-Renderer trait ──► HayroRenderer (default)   | PdfiumRenderer (tests / optional fallback)
+Document trait ──► HayroDocument           | PDFium (planned, for reference renders)
    │  RGBA8 premultiplied tile
    ▼
 TileCache (LRU, memory budget; lower budget on Android)
    │
    ▼
-Frontend uploads tile to a GPU texture (gpui) / GdkTexture (GTK) / Bitmap (Android)
+Frontend turns the tile into a GdkTexture (GTK) / Bitmap (Android)
 ```
 
 - **HiDPI:** the device scale factor (`1.0`, `1.25`, `2.0` ...) gets multiplied into the render scale, and tiles are rendered at physical pixels. A settled view is drawn from tiles at the *exact* device scale, 1:1, so it is pixel-identical to a direct render at that scale (measured on macOS at scale 2 and on Linux at 1.25, 1.5 and 2, see M0-FINDINGS.md).
 - **Zoom:** while zooming, tiles come from √2 levels (rendered at or above the device scale and downsampled), so continuous zooming reuses a few cached levels instead of rendering every intermediate zoom. Once the zoom has been still for `settle_delay` (250 ms) and no pinch is in progress, the viewer switches to exact-scale tiles, with level tiles as fallback until they arrive. This is the "blurry → sharp" behavior Preview has.
 - **Toolkit pitfalls (GTK):** draw tiles with `append_texture`, not `append_scaled_texture` (GSK renders the latter at logical resolution on HiDPI surfaces), and translate the canvas so its own origin lands on a whole device pixel of the surface (CSD shadows put it at e.g. 31.25 px at scale 1.25).
-- **Tiling:** 256×256 or 512×512 physical-pixel tiles, so a 400% zoom on a poster PDF doesn't allocate a 100 MP bitmap.
-- **Thumbnails:** a separate low-priority queue at a fixed small scale. They're cached and reused by the page-organizer UI.
+- **Tiling:** 512×512 physical-pixel tiles, so a 400% zoom on a poster PDF doesn't allocate a 100 MP bitmap.
+- **Thumbnails** draw the viewer's placeholder tiles (one small tile per page) from the shared cache, so each page is rendered once for both the sidebar and the canvas. The page organizer will reuse them.
 - **Annotations and form widgets** are rendered as a separate overlay pass per page. That pass is cheap to redo when the user edits, so we never re-render page content for annotation changes.
 
 ## Text layer
 
-`pdfrs-text` implements the interpreter's device callback (e.g. hayro-interpret's `Device`) to collect glyphs with unicode mapping and quads. It then groups them into words, lines, and blocks in reading order. This powers:
+`pdfrs-text` implements the interpreter's device callback (e.g. hayro-interpret's `Device`) to collect glyphs with unicode mapping and quads. It then groups them into words and lines, in content-stream order (layout-based reading order for the files that need it is still to do). This powers:
 
 - text selection (hit-test → glyph index → selection range → quads)
 - copy to clipboard
@@ -166,20 +167,23 @@ Always write to a temp file and rename atomically. Never overwrite the file a `S
 
 ### Desktop
 
-GTK4 + libadwaita via gtk4-rs, Linux only. Links `pdfrs-view` directly as a Rust crate. A custom `GtkWidget` subclass draws `DrawItem`s in `snapshot()`, turning tiles into `GdkMemoryTexture`s. The surrounding chrome uses stock widgets: `AdwNavigationSplitView` with a `GtkGridView` for the thumbnail sidebar and page organizer, `GtkFileDialog`, `GtkPrintOperation`, and `GtkGestureZoom` / `GtkGestureStylus` for touchpad pinch and pen input. It's packaged as a Flatpak, so file access goes through the portal.
+GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew's GTK. Links `pdfrs-view` directly as a Rust crate. A custom `GtkWidget` subclass (implementing `GtkScrollable`) draws each frame's `PageDraw`s in `snapshot()`, turning tiles into `GdkMemoryTexture`s. The surrounding chrome uses stock widgets: `AdwOverlaySplitView` with a `GtkListView` of thumbnails and a `GtkTreeListModel` outline, `GtkFileDialog`, and `GtkGestureZoom` for touchpad pinch. Planned: `GtkPrintOperation`, `GtkGestureStylus` for pen input, a page organizer, and Flatpak packaging (file access through the portal).
 
 ### Android
 
 - Kotlin + Jetpack Compose for UI chrome.
-- `pdfrs-ffi` exposes a coarse API via **UniFFI** (`Session`, `Viewer`, commands, events). Avoid chatty per-glyph calls across the FFI boundary.
-- Tiles go into an `android.graphics.Bitmap` via `AndroidBitmap_lockPixels` (NDK) from Rust. That's zero-copy into the bitmap, and Compose draws them on a `Canvas`.
-- File access via the Storage Access Framework: Kotlin opens a `ParcelFileDescriptor`, and Rust reads from the fd. Saving uses the same mechanism.
+- `pdfrs-ffi` exposes a coarse API via **UniFFI** (`ViewSession`: viewport, zoom, layout, outline, labels, links). Avoid chatty per-glyph calls across the FFI boundary.
+- The per-frame path (frame layout, tile copies) uses hand-written JNI instead, because UniFFI's per-call overhead was too high (M0-FINDINGS.md).
+- Tiles are copied from Rust into an `android.graphics.Bitmap` through the NDK bitmap API, and Compose draws them on a `Canvas`.
+- File access via the Storage Access Framework. Today Kotlin reads the file into memory; planned: Kotlin opens a `ParcelFileDescriptor` and Rust reads from the fd, with saving through the same mechanism.
 - Build with `cargo-ndk` for `arm64-v8a` (+ `x86_64` for the emulator).
 
 ## Testing strategy
 
 - **Corpus:** pdf.js test PDFs, PDFium test corpus, and our own fixtures (forms, rotated pages, odd CropBoxes, encrypted files).
-- **Render regression:** `pdfrs-cli render` → PNG, diffed against stored goldens, with PDFium output as the reference where licensing allows.
+- **Render regression:** `pdfrs corpus` renders the corpus and compares with Poppler (corpus/README.md). Planned: PDFium as the reference, since Poppler is often the one that's wrong.
+- **Desktop end to end:** `tools/headless/check.py` drives the app in a headless compositor over D-Bus, at several scales, in CI.
+- **Android:** Kotlin unit tests in CI; Compose UI tests on an emulator.
 - **Round-trip:** open → op → save → reopen with our parser *and* with an external validator (qpdf `--check`, and pdf.js/PDFium render).
 - **Fuzzing:** `cargo-fuzz` on parsing and on the save path.
 - **Property tests:** command sequences followed by full undo should return the original `EditDoc`.

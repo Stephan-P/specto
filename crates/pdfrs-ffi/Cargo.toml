@@ -18,7 +18,7 @@ thiserror.workspace = true
 uniffi.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
-# Direct `Bitmap` access for the JNI tile path (see src/android_bitmap.rs).
+# Direct `Bitmap` access for the JNI tile path (see src/jni.rs).
 ndk = { version = "0.9", features = ["bitmap"] }
 jni-sys = "0.3"
 
