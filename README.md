@@ -49,6 +49,7 @@ The desktop app needs the GTK 4 and libadwaita development packages; see [apps/d
 - `crates/pdfrs-write`: saving (a full rewrite with lopdf, checked against the original)
 - `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
 - `crates/pdfrs-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
+- `crates/pdfrs-session`: an open document as both apps hold it (its files, the pages as edited, viewer, text, selection, search, saving)
 - `crates/pdfrs-ffi`: bindings for Android (UniFFI, plus JNI for the per-frame path)
 - `apps/desktop`: GTK 4 + libadwaita app (`pdfrs-gtk`)
 - `apps/android`: Android app (Kotlin + Compose)

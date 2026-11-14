@@ -89,6 +89,14 @@ fn book(pages: usize, word: &str) -> Vec<u8> {
     out.into_bytes()
 }
 
+/// The Android app keeps its session behind a mutex and calls it from
+/// several threads.
+#[test]
+fn a_session_can_move_between_threads() {
+    fn is_send<T: Send>() {}
+    is_send::<Session>();
+}
+
 fn open(scheduler: &Scheduler, data: Vec<u8>) -> Session {
     let mut session = Session::open(scheduler, data.into(), None, Options::default()).unwrap();
     session

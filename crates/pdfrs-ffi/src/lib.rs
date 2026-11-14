@@ -1,9 +1,10 @@
 //! UniFFI surface for the Android app.
 //!
-//! A [`ViewSession`] is one open document on screen: it owns the
-//! `pdfrs_view::Viewer` (layout, zoom, scrolling, tile planning) and the
-//! render scheduler. Kotlin forwards gestures, asks for a [`Frame`] and draws
-//! it. See `docs/ARCHITECTURE.md` ("Android").
+//! A [`ViewSession`] is one open document on screen: it owns the document
+//! itself (a `pdfrs_session::Session`, the same as in the desktop app: the
+//! file, its pages, the viewer, text, selection and search), the render
+//! scheduler and the bookkeeping for tiles. Kotlin forwards gestures, asks
+//! for a [`Frame`] and draws it. See `docs/ARCHITECTURE.md` ("Android").
 //!
 //! UniFFI is used for everything that happens occasionally (opening, modes,
 //! viewport changes). Its Kotlin bindings go through JNA, and a single call

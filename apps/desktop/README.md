@@ -31,6 +31,7 @@ The full list of features is in [FEATURES.md](FEATURES.md).
 
 The core of pdfrs is implemented in Rust and shared with the Android app. The GTK app is a thin layer over these shared crates:
 
+- `pdfrs-session`: an open document: its files, the pages as edited, the text selection and the search, and saving
 - `pdfrs-view`: page layout, zoom, scrolling, which parts of which pages to render, text selection, and search results
 - `pdfrs-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
 - `pdfrs-source`: reading the table of contents, links and page labels
@@ -65,7 +66,7 @@ target/release/pdfrs-gtk file.pdf        # open a file
 - `src/main.rs`: application, shortcuts, the macOS menu bar
 - `src/window.rs`: a document window: header bar, start page, actions, opening files
 - `src/canvas.rs`: the page view, a `GtkScrollable` widget that draws `pdfrs-view` frames
-- `src/document.rs`: an open document: its view, edits, tile cache and render client
+- `src/document.rs`: an open document: the shared session plus what belongs to GTK (tile cache of textures, render client)
 - `src/thumbnails.rs`, `src/outline.rs`: the two sidebar tabs
 - `src/state.rs`: saved view state per file
 - `src/debug.rs`: test hooks, only enabled with `PDFRS_DEBUG=1`

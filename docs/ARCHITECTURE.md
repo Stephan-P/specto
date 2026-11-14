@@ -21,6 +21,7 @@ pdfrs/
 │   ├── pdfrs-forms     # (M5) AcroForm model, field values, appearance regeneration
 │   ├── pdfrs-write     # saving: full rewrite (lopdf), checked against hayro; incremental update later
 │   ├── pdfrs-view      # UI-agnostic viewer: layout modes, viewport, zoom, hit-test, tools
+│   ├── pdfrs-session   # an open document as both apps hold it: files, edited pages, viewer, text, selection, search, saving
 │   └── pdfrs-ffi       # Android bindings: UniFFI (Kotlin), plus JNI for the per-frame path
 ├── apps/
 │   ├── desktop/        # GTK4 + libadwaita (gtk4-rs), Linux (also runs on macOS)
@@ -30,7 +31,7 @@ pdfrs/
     └── headless/       # the desktop app in a headless compositor: end-to-end checks (CI)
 ```
 
-Crates marked (M3)–(M5) don't exist yet. Planned dependency direction: `apps → pdfrs-view / pdfrs-ffi → pdfrs-doc → {pdfrs-annot, pdfrs-forms, pdfrs-text, pdfrs-render} → pdfrs-source → pdfrs-geom`. `pdfrs-write` depends on `pdfrs-doc` + `pdfrs-source`. For now `pdfrs-doc` only holds the page list and depends on `pdfrs-geom` alone; the desktop app turns its pages into the viewer's `ViewPage`s.
+Crates marked (M3)–(M5) don't exist yet. Planned dependency direction: `apps (desktop, pdfrs-ffi) → pdfrs-session → pdfrs-view / pdfrs-doc → {pdfrs-annot, pdfrs-forms, pdfrs-text, pdfrs-render} → pdfrs-source → pdfrs-geom`. `pdfrs-write` depends on `pdfrs-doc` + `pdfrs-source`. For now `pdfrs-doc` only holds the page list and depends on `pdfrs-geom` alone; `pdfrs-session` turns its pages into the viewer's `ViewPage`s.
 
 ### File data
 
@@ -39,7 +40,7 @@ Crates marked (M3)–(M5) don't exist yet. Planned dependency direction: `apps �
 ## Data model
 
 ```
-Session (in the frontend for now: the desktop's Document)
+Session (pdfrs-session; the desktop's Document and the Android ViewSession each hold one)
  ├── sources                          # immutable, parsed PDFs, one per opened/merged file
  └── EditDoc                          # pdfrs-doc
       ├── pages: Vec<PageRef>         # ordered; this is what the user sees
@@ -110,9 +111,22 @@ Frontend turns the tile into a GdkTexture (GTK) / Bitmap (Android)
 - search (with match quads for highlighting results)
 - text-markup annotations (highlight/underline/strike need quads)
 
+## pdfrs-session: the open document
+
+What both apps mean by an open document (`crates/pdfrs-session`, `Session`): the files its pages come from (the one opened, and any that pages were inserted from), the `EditDoc`, the `Viewer`, the text layer with its cache, the selection, the search with its background indexer, links, page labels, and what saving needs (`SaveJob`). Edits go through the session, which then updates everything that holds page positions: the viewer's pages, the labels (kept only while the pages are the file's, in order), the selection (dropped) and the search (run again). What doesn't change with editing (text, search text, links) is cached by page of the file, not by position.
+
+No toolkit, no pixels and no threads of its own apart from the search indexer. A frontend adds what differs between them:
+
+- **Tiles.** The desktop keeps `GdkTexture`s in a `TileCache`; Android keeps ids of Kotlin `Bitmap`s in its `TileBook`. Each asks the viewer for a frame and requests the tiles itself.
+- **The scheduler.** The desktop shares one between its windows; Android has one per document. So the session doesn't own it: `Session::open`, `add_source` and `close` take it as an argument.
+- **Getting called back.** The indexer hands each page's search text to a closure the frontend supplies (`start_indexing`), on the indexer's thread; the frontend gets it to wherever it holds the session and calls `indexed`. The desktop sends it through a channel to the main loop; Android locks the session where it is.
+- **Threads.** The desktop holds its session in an `Rc<RefCell<…>>` on the main thread; Android holds it in a mutex, since Kotlin calls from several threads. A `Session` is `Send`.
+
+Tests: `crates/pdfrs-session/tests/session.rs` (text, labels, links and search across edits, pages of a second file, saving and reopening, starting and stopping the indexer).
+
 ## pdfrs-view: the shared viewer core
 
-UI-agnostic state that both frontends drive. **Implemented in M1** (`crates/pdfrs-view`) for layout, zoom, scrolling and tile planning. Text selection (`selection.rs`: a `Selection` between two page-and-character positions, growing by characters, words or lines, with highlight quads in view coordinates) came in M2; text pages are supplied by the frontend through the `TextPages` trait, so they can be cached however suits it. Search results (`search.rs`: `SearchResults`, matches in document order with a current one, filled page by page as a background indexer delivers `pdfrs_text::SearchText`s) and `Viewer::reveal` came with it. Tools come in M4.
+UI-agnostic state that both frontends drive. **Implemented in M1** (`crates/pdfrs-view`) for layout, zoom, scrolling and tile planning. Text selection (`selection.rs`: a `Selection` between two page-and-character positions, growing by characters, words or lines, with highlight quads in view coordinates) came in M2; text pages are supplied through the `TextPages` trait, so the viewer doesn't decide how they are cached (`pdfrs-session` does: by page of the file, the least recently used going first). Search results (`search.rs`: `SearchResults`, matches in document order with a current one, filled page by page as a background indexer delivers `pdfrs_text::SearchText`s) and `Viewer::reveal` came with it. Tools come in M4.
 
 ```rust
 struct ViewPage { doc: DocId, page: u32, geometry: PageGeometry, rotation: Rotation }
