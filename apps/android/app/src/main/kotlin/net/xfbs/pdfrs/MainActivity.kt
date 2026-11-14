@@ -6,7 +6,9 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
@@ -15,12 +17,19 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -51,6 +60,10 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +72,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -72,6 +86,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.view.WindowCompat
@@ -90,7 +107,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         document = intent.viewedDocument()
         setContent {
-            MaterialTheme {
+            AppTheme {
                 App(
                     document = document,
                     onPicked = { document = it },
@@ -98,6 +115,13 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // The activity isn't recreated when dark mode is switched, so the
+        // system bar icons have to be told about the new background.
+        enableEdgeToEdge()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -114,6 +138,29 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun Intent.viewedDocument(): Uri? = data.takeIf { action == Intent.ACTION_VIEW }
+
+/**
+ * Follows the system: dark or light, and on Android 12+ the colours derived
+ * from the wallpaper. Pages themselves stay as the document defines them.
+ */
+@Composable
+private fun AppTheme(content: @Composable () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val colours = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        dark -> darkColorScheme()
+        else -> lightColorScheme()
+    }
+    MaterialTheme(colorScheme = colours, content = content)
+}
+
+/** Keeps content that isn't the page itself clear of the camera cutout and the navigation bar. */
+private val besideAndBelow = WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+
+/** How long the page number stays after a page turn in full screen. */
+private const val INDICATOR_MS = 1500L
 
 /**
  * Budget for tile bitmaps: a share of what the system considers normal for an
@@ -205,17 +252,19 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
     BackHandler(enabled = immersive) { fullScreen = false }
     StatusBar(hidden = immersive)
 
+    val hasStrip = ready != null && !showPages && !immersive && ready.state.pageCount > 1
+
     Scaffold(
-        // Full screen: the page may extend under the navigation handle, but
-        // not under the camera cutout.
-        contentWindowInsets = if (immersive) WindowInsets.displayCutout else WindowInsets.safeDrawing,
+        // The page view goes edge to edge: under the camera cutout (in
+        // landscape, beside it) and under the navigation handle. Everything
+        // else keeps clear of them by itself.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            if (ready != null && !showPages && !immersive && ready.state.pageCount > 1) {
-                ThumbnailStrip(ready.state)
-            }
+            if (hasStrip && ready != null) ThumbnailStrip(ready.state)
         },
         topBar = {
             if (!immersive) TopAppBar(
+                windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 navigationIcon = {
                     if (ready != null) {
                         IconButton(onClick = { showPages = !showPages }) {
@@ -280,12 +329,13 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center,
         ) {
+            val safe = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(besideAndBelow))
             when (val l = loaded) {
-                null -> Button(onClick = pick) { Text("Open PDF") }
-                Loaded.Loading -> CircularProgressIndicator()
-                is Loaded.Failed -> Message("Couldn't open this file", l.message, "Open another PDF", pick)
+                null -> Button(onClick = pick, modifier = safe) { Text("Open PDF") }
+                Loaded.Loading -> CircularProgressIndicator(safe)
+                is Loaded.Failed -> Message("Couldn't open this file", l.message, "Open another PDF", pick, safe)
                 is Loaded.Locked -> {
-                    Message("${l.name} is password protected", "", "Open another PDF", pick)
+                    Message("${l.name} is password protected", "", "Open another PDF", pick, safe)
                     PasswordDialog(
                         name = l.name,
                         wrongPassword = l.wrongPassword,
@@ -320,8 +370,28 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                             onExternalLink = { externalLink = it },
                             onTap = { fullScreen = !fullScreen },
                         )
-                        if (!immersive) {
-                            PageIndicator(l.state, Modifier.align(Alignment.BottomCenter).padding(12.dp))
+                        // Always there in the normal view; in full screen it
+                        // shows up on a page turn and leaves again.
+                        var turned by remember(l.state) { mutableStateOf(false) }
+                        LaunchedEffect(l.state, immersive) {
+                            turned = false
+                            snapshotFlow { l.state.currentPage }.drop(1).collectLatest {
+                                turned = true
+                                delay(INDICATOR_MS)
+                                turned = false
+                            }
+                        }
+                        AnimatedVisibility(
+                            visible = !immersive || turned,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                // Above the strip if there is one, else above the navigation bar.
+                                .then(if (hasStrip) Modifier else Modifier.navigationBarsPadding())
+                                .padding(12.dp),
+                            enter = fadeIn(),
+                            exit = fadeOut(),
+                        ) {
+                            PageIndicator(l.state)
                         }
                     }
             }
@@ -346,7 +416,7 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
 }
 
 /**
- * Hides or shows the status bar. The navigation bar stays: hiding it makes
+ * Hides or shows the status bar, for full screen. The navigation bar stays: hiding it makes
  * Android show its "viewing full screen" explanation and turns going home
  * into two swipes, for the sake of a thin handle.
  */
@@ -366,9 +436,15 @@ private fun StatusBar(hidden: Boolean) {
 }
 
 @Composable
-private fun Message(title: String, detail: String, action: String, onAction: () -> Unit) {
+private fun Message(
+    title: String,
+    detail: String,
+    action: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
-        Modifier.padding(24.dp),
+        modifier.padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -391,7 +467,10 @@ private fun Navigator(
     onPage: (Int) -> Unit,
     onOutlineEntry: (Int) -> Unit,
 ) {
-    val background = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
+    val background = Modifier
+        .fillMaxSize()
+        .background(MaterialTheme.colorScheme.surface)
+        .windowInsetsPadding(WindowInsets.safeDrawing.only(besideAndBelow))
     if (state.outline.isEmpty()) {
         PagesGrid(state, onPage, background)
         return
