@@ -106,7 +106,7 @@ Frontend turns the tile into a GdkTexture (GTK) / Bitmap (Android)
 
 ## pdfrs-view: the shared viewer core
 
-UI-agnostic state that both frontends drive. **Implemented in M1** (`crates/pdfrs-view`) for layout, zoom, scrolling and tile planning. Text selection (`selection.rs`: a `Selection` between two page-and-character positions, growing by characters, words or lines, with highlight quads in view coordinates) came in M2; text pages are supplied by the frontend through the `TextPages` trait, so they can be cached however suits it. Tools come in M4.
+UI-agnostic state that both frontends drive. **Implemented in M1** (`crates/pdfrs-view`) for layout, zoom, scrolling and tile planning. Text selection (`selection.rs`: a `Selection` between two page-and-character positions, growing by characters, words or lines, with highlight quads in view coordinates) came in M2; text pages are supplied by the frontend through the `TextPages` trait, so they can be cached however suits it. Search results (`search.rs`: `SearchResults`, matches in document order with a current one, filled page by page as a background indexer delivers `pdfrs_text::SearchText`s) and `Viewer::reveal` came with it. Tools come in M4.
 
 ```rust
 struct ViewPage { doc: DocId, page: u32, geometry: PageGeometry, rotation: Rotation }

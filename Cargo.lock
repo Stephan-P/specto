@@ -1687,6 +1687,7 @@ dependencies = [
  "hayro",
  "pdfrs-geom",
  "pdfrs-source",
+ "unicode-normalization",
 ]
 
 [[package]]

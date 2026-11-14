@@ -32,6 +32,9 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "last-page",
     "copy",
     "select-all",
+    "find",
+    "find-next",
+    "find-previous",
 ];
 
 #[derive(Clone)]
@@ -60,6 +63,10 @@ pub struct Inner {
     last_page: Cell<usize>,
     /// The last message shown as a toast, for tests.
     last_toast: RefCell<String>,
+    search_bar: gtk::SearchBar,
+    search_entry: gtk::SearchEntry,
+    /// "3 of 17", "No matches", …
+    search_status: gtk::Label,
 }
 
 impl Window {
@@ -194,8 +201,60 @@ impl Window {
         page_box.append(&page_total);
         header.pack_end(&page_box);
 
+        // Search: a bar under the header bar.
+        let search_entry = gtk::SearchEntry::builder()
+            .placeholder_text("Search")
+            .hexpand(true)
+            .build();
+        let search_status = gtk::Label::builder()
+            .css_classes(["dim-label", "numeric"])
+            .width_chars(10)
+            .xalign(1.0)
+            .build();
+        let step_buttons = gtk::Box::builder().css_classes(["linked"]).build();
+        step_buttons.append(
+            &gtk::Button::builder()
+                .icon_name("go-up-symbolic")
+                .tooltip_text("Previous Match (Shift+Enter)")
+                .action_name("win.find-previous")
+                .build(),
+        );
+        step_buttons.append(
+            &gtk::Button::builder()
+                .icon_name("go-down-symbolic")
+                .tooltip_text("Next Match (Enter)")
+                .action_name("win.find-next")
+                .build(),
+        );
+        let search_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        search_row.append(&search_entry);
+        search_row.append(&search_status);
+        search_row.append(&step_buttons);
+        let search_bar = gtk::SearchBar::builder()
+            .child(
+                &adw::Clamp::builder()
+                    .maximum_size(560)
+                    .child(&search_row)
+                    .build(),
+            )
+            .build();
+        // Not `connect_entry`: then the bar focuses the entry again once
+        // it has slid in, which selects what was typed meanwhile, and the
+        // next key replaces it. The find action focuses it right away.
+        let search_toggle = gtk::ToggleButton::builder()
+            .icon_name("system-search-symbolic")
+            .tooltip_text(format!("Search ({}F)", primary_key()))
+            .build();
+        search_bar
+            .bind_property("search-mode-enabled", &search_toggle, "active")
+            .bidirectional()
+            .sync_create()
+            .build();
+        header.pack_end(&search_toggle);
+
         let view = adw::ToolbarView::new();
         view.add_top_bar(&header);
+        view.add_top_bar(&search_bar);
         view.set_content(Some(&toasts));
 
         let window = adw::ApplicationWindow::builder()
@@ -217,6 +276,7 @@ impl Window {
             page_total,
             document_widgets: vec![
                 sidebar_toggle.upcast(),
+                search_toggle.upcast(),
                 layout_button.upcast(),
                 zoom_button.clone().upcast(),
                 page_box.upcast(),
@@ -230,9 +290,13 @@ impl Window {
             sidebar_stack: RefCell::default(),
             last_page: Cell::new(usize::MAX),
             last_toast: RefCell::default(),
+            search_bar,
+            search_entry,
+            search_status,
         }));
         this.setup_actions();
         this.setup_page_entry();
+        this.setup_search();
         this.setup_drop();
         if debug::enabled() {
             this.setup_debug_actions();
@@ -605,6 +669,175 @@ impl Window {
         self.0.toasts.add_toast(adw::Toast::new(message));
     }
 
+    // --- search -------------------------------------------------------
+
+    fn setup_search(&self) {
+        let inner = &self.0;
+        let weak = Rc::downgrade(&self.0);
+        inner.search_entry.connect_search_changed(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).run_search();
+            }
+        });
+        // Enter: next match. Ctrl+G and Shift+Ctrl+G come with the entry.
+        let weak = Rc::downgrade(&self.0);
+        inner.search_entry.connect_activate(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).search_step(true);
+            }
+        });
+        let weak = Rc::downgrade(&self.0);
+        inner.search_entry.connect_next_match(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).search_step(true);
+            }
+        });
+        let weak = Rc::downgrade(&self.0);
+        inner.search_entry.connect_previous_match(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).search_step(false);
+            }
+        });
+        // Escape closes the bar.
+        let weak = Rc::downgrade(&self.0);
+        inner.search_entry.connect_stop_search(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                inner.search_bar.set_search_mode(false);
+            }
+        });
+        // Shift+Enter: previous match.
+        let keys = gtk::EventControllerKey::new();
+        let weak = Rc::downgrade(&self.0);
+        keys.connect_key_pressed(move |_, key, _, state| {
+            let enter = matches!(key, gdk::Key::Return | gdk::Key::KP_Enter);
+            if enter && state.contains(gdk::ModifierType::SHIFT_MASK) {
+                if let Some(inner) = weak.upgrade() {
+                    Window(inner).search_step(false);
+                }
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        inner.search_entry.add_controller(keys);
+        // Closing the bar (Escape, the button) ends the search; opening it
+        // again searches for what's still in the entry.
+        let weak = Rc::downgrade(&self.0);
+        inner
+            .search_bar
+            .connect_search_mode_enabled_notify(move |bar| {
+                let Some(inner) = weak.upgrade() else { return };
+                let w = Window(inner);
+                if bar.is_search_mode() {
+                    w.run_search();
+                } else {
+                    if let Some(doc) = w.0.document.borrow().as_ref() {
+                        doc.borrow_mut().end_search();
+                    }
+                    w.update_search_status();
+                    w.0.canvas.queue_draw();
+                    w.0.canvas.grab_focus();
+                }
+            });
+    }
+
+    /// Searches for the entry's text, goes to the first match from the
+    /// current page on, and indexes the rest of the document if needed.
+    fn run_search(&self) {
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        let text = self.0.search_entry.text();
+        let (found, indexer) = {
+            let mut d = doc.borrow_mut();
+            let found = d.search(&text);
+            let from = d.viewer.current_page();
+            let indexer = (!text.trim().is_empty())
+                .then(|| d.start_indexing(from))
+                .flatten();
+            (found, indexer)
+        };
+        if found {
+            self.reveal_match();
+        }
+        if let Some(rx) = indexer {
+            let weak = Rc::downgrade(&self.0);
+            glib::spawn_future_local(async move {
+                while let Ok(page) = rx.recv().await {
+                    let Some(inner) = weak.upgrade() else { break };
+                    let w = Window(inner);
+                    let Some(doc) = w.0.document.borrow().clone() else {
+                        break;
+                    };
+                    let before = doc.borrow().search_status();
+                    let new_current = doc.borrow_mut().indexed(page);
+                    if new_current {
+                        w.reveal_match();
+                    } else if doc.borrow().search_status() != before {
+                        w.update_search_status();
+                        w.0.canvas.queue_draw();
+                    }
+                }
+            });
+        }
+        self.update_search_status();
+        self.0.canvas.queue_draw();
+    }
+
+    fn search_step(&self, forward: bool) {
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        if !self.0.search_bar.is_search_mode() {
+            self.0.search_bar.set_search_mode(true);
+            return;
+        }
+        if doc.borrow_mut().search_step(forward) {
+            self.reveal_match();
+        } else {
+            self.0.window.error_bell();
+        }
+    }
+
+    /// Scrolls the current match into view and updates the status.
+    fn reveal_match(&self) {
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        doc.borrow_mut().reveal_match();
+        self.0.canvas.update_viewer(|_| {});
+        self.update_search_status();
+    }
+
+    fn update_search_status(&self) {
+        let inner = &self.0;
+        let status = inner
+            .document
+            .borrow()
+            .as_ref()
+            .and_then(|d| d.borrow().search_status());
+        let (text, none_found) = match status {
+            None => (String::new(), false),
+            Some(s) => {
+                let done = s.pages_indexed == s.pages;
+                match (s.matches, s.current) {
+                    (0, _) if done => ("No matches".to_owned(), true),
+                    (0, _) => ("Searching…".to_owned(), false),
+                    (n, Some(c)) => (
+                        format!("{} of {n}{}", c + 1, if done { "" } else { "…" }),
+                        false,
+                    ),
+                    (n, None) => (format!("{n}{}", if done { "" } else { "…" }), false),
+                }
+            }
+        };
+        inner.search_status.set_label(&text);
+        if none_found {
+            inner.search_entry.add_css_class("error");
+        } else {
+            inner.search_entry.remove_css_class("error");
+        }
+    }
+
     /// Activates `action` on the focused text field, if one has the focus.
     fn forward_to_entry(&self, action: &str) -> bool {
         let Some(focus) = gtk::prelude::GtkWindowExt::focus(&self.0.window) else {
@@ -686,7 +919,31 @@ impl Window {
         .str(
             "selection",
             &inner.canvas.selected_text().unwrap_or_default(),
-        );
+        )
+        .bool("search_bar", inner.search_bar.is_search_mode())
+        // Mapped once the bar has started sliding in; keys before that are
+        // dropped (GTK doesn't deliver them to unmapped widgets).
+        .bool("search_ready", inner.search_entry.is_mapped())
+        .str("search_query", &inner.search_entry.text())
+        .str("search_status", &inner.search_status.label());
+        if let Some(s) = inner
+            .document
+            .borrow()
+            .as_ref()
+            .and_then(|d| d.borrow().search_status())
+        {
+            json.num("matches", s.matches as f64)
+                .num("match", s.current.map_or(-1.0, |c| c as f64))
+                .num("indexed", s.pages_indexed as f64);
+        }
+        if let Some(m) = inner
+            .document
+            .borrow()
+            .as_ref()
+            .and_then(|d| d.borrow().current_match())
+        {
+            json.num("match_page", m.page as f64);
+        }
         // Where the canvas is in the window, and for the pages around the
         // current one, the affine map from PDF points to window coordinates:
         // [page, a, b, c, d, e, f] with x' = a x + c y + e, y' = b x + d y + f.
@@ -811,6 +1068,20 @@ impl Window {
                         w.0.canvas.select_all();
                     }
                 }))
+                .build(),
+            gio::ActionEntry::builder("find")
+                .activate(with(|w| {
+                    let inner = &w.0;
+                    inner.search_bar.set_search_mode(true);
+                    inner.search_entry.grab_focus();
+                    inner.search_entry.select_region(0, -1);
+                }))
+                .build(),
+            gio::ActionEntry::builder("find-next")
+                .activate(with(|w| w.search_step(true)))
+                .build(),
+            gio::ActionEntry::builder("find-previous")
+                .activate(with(|w| w.search_step(false)))
                 .build(),
             gio::ActionEntry::builder("next-page")
                 .activate(with(|w| w.0.canvas.update_viewer(Viewer::next_page)))

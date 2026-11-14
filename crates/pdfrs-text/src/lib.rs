@@ -13,6 +13,9 @@
 
 mod bidi;
 mod group;
+mod search;
+
+pub use search::{Query, SearchText};
 
 use std::ops::Range;
 

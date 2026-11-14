@@ -96,6 +96,16 @@ Resetting saved state:
 - macOS: Edit → Copy and Edit → Select All in the menu bar work, and so do Cmd+C and Cmd+A.
 - In dark mode the highlight is still readable on the white page.
 
+### Search
+
+- LONG: search for "copyright". Matches appear on the current page or the next ones first; the count grows with "…" until it settles (a second or so), and Enter steps through them, scrolling only when the match is off screen.
+- LONG: a phrase that wraps onto the next line in the book is found as one match, highlighted on both lines.
+- A document with accented text (French, German): searching without the accents finds the words.
+- Opening the bar with *Primary*+F and typing straight away: nothing typed is lost.
+- With matches on screen, zooming and switching layouts: the highlights stay on the words.
+- GIANT: searching doesn't freeze the window (the page has no text: "No matches").
+- macOS: Edit → Find, Find Next, Find Previous work, and so do Cmd+F, Cmd+G and Shift+Cmd+G.
+
 ### Remembering state
 
 - LONG: go to page 200, switch to Two Pages, zoom to 150%, open the Contents tab, close, reopen. All of it is restored, at the same spot on page 200.

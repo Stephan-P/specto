@@ -1,6 +1,6 @@
 use pdfrs_geom::PdfPoint;
 use pdfrs_source::SourceDocument;
-use pdfrs_text::{Extractor, TextPage};
+use pdfrs_text::{Extractor, Query, SearchText, TextPage};
 
 /// A one-page PDF (600 × 800 pt) with Helvetica as /F1 and `content`.
 fn pdf(content: &str) -> Vec<u8> {
@@ -169,6 +169,35 @@ fn selection_follows_rotated_text() {
     let x = q.center().x;
     assert_eq!(page.position_at(PdfPoint::new(x, 90.0)), 0);
     assert_eq!(page.position_at(PdfPoint::new(x, q.max.y + 10.0)), 8);
+}
+
+#[test]
+fn search_within_and_across_lines() {
+    // "Café" in WinAnsi: \351 is é.
+    let page = text_page(
+        "BT /F1 12 Tf 72 700 Td (The quick brown fox) Tj 0 -14 Td (jumps over the) Tj \
+         0 -14 Td (lazy dog in a hyphen-) Tj 0 -14 Td (ated Caf\\351 line) Tj ET",
+    );
+    let search = SearchText::new(&page);
+    assert_eq!(
+        search.as_str(),
+        "the quick brown fox jumps over the lazy dog in a hyphenated cafe line"
+    );
+    let find = |q: &str| search.find(&Query::new(q).unwrap());
+    // Case doesn't matter; both "The" and "the", as character ranges.
+    let the = find("THE");
+    assert_eq!(the.len(), 2);
+    assert_eq!(page.text_range(the[0].clone()), "The");
+    assert_eq!(page.text_range(the[1].clone()), "the");
+    // Across a line break, and across the hyphen.
+    let across = find("the lazy");
+    assert_eq!(page.text_range(across[0].clone()), "the\nlazy");
+    let joined = find("hyphenated");
+    assert_eq!(page.text_range(joined[0].clone()), "hyphen-\nated");
+    // Accents don't matter either way round.
+    assert_eq!(find("cafe").len(), 1);
+    assert_eq!(find("café").len(), 1);
+    assert!(find("cats").is_empty());
 }
 
 #[test]

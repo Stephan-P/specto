@@ -1032,3 +1032,66 @@ mod selection {
         assert!((back.x - pdf.x).abs() < 1e-6 && (back.y - pdf.y).abs() < 1e-6);
     }
 }
+
+// --- search ---------------------------------------------------------------
+
+mod search {
+    use pdfrs_geom::{PdfBox, PdfPoint, ViewPoint};
+
+    use super::{letters, viewer};
+    use crate::{LayoutMode, SearchResults};
+
+    #[test]
+    fn results_in_order_while_pages_arrive() {
+        let mut r = SearchResults::new();
+        // Indexing starts at the current page (5), then wraps around.
+        r.add_page(5, vec![3..6, 10..13]);
+        assert_eq!(
+            r.select_from(5).map(|m| (m.page, m.chars.clone())),
+            Some((5, 3..6))
+        );
+        let one = |r: std::ops::Range<usize>| vec![r];
+        r.add_page(8, one(0..3));
+        r.add_page(1, one(7..9));
+        // The earlier page went in front; the current match stayed.
+        let (i, m) = r.current().unwrap();
+        assert_eq!((i, m.page), (1, 5));
+        assert_eq!(r.len(), 4);
+        assert_eq!(r.select_next().map(|m| m.page), Some(5));
+        assert_eq!(r.select_next().map(|m| m.page), Some(8));
+        assert_eq!(
+            r.select_next().map(|m| m.page),
+            Some(1),
+            "wraps to the start"
+        );
+        assert_eq!(r.select_previous().map(|m| m.page), Some(8), "and back");
+        let on_5: Vec<bool> = r.on_page(5).map(|(_, current)| current).collect();
+        assert_eq!(on_5, [false, false]);
+        assert_eq!(r.on_page(2).count(), 0);
+        // After the last page with matches, select_from wraps to the first.
+        assert_eq!(r.select_from(9).map(|m| m.page), Some(1));
+        assert!(SearchResults::new().select_next().is_none());
+    }
+
+    #[test]
+    fn reveal_scrolls_only_when_needed() {
+        let mut v = viewer(letters(10));
+        v.set_zoom(1.0, ViewPoint::origin());
+        let near_top = PdfBox::new(PdfPoint::new(72.0, 700.0), PdfPoint::new(140.0, 712.0));
+        // Already visible on page 0: nothing moves.
+        let before = v.scroll_offset();
+        v.reveal(0, near_top);
+        assert_eq!(v.scroll_offset(), before);
+        // Page 6: scrolled there, the match a third of the way down.
+        v.reveal(6, near_top);
+        let at = v.pdf_to_view(6, PdfPoint::new(72.0, 712.0)).unwrap();
+        assert!((at.y - 800.0 / 3.0).abs() < 1.0, "{at:?}");
+        assert_eq!(v.current_page(), 6);
+        // Single-page mode goes to the page first.
+        v.set_layout_mode(LayoutMode::SinglePage);
+        v.reveal(2, near_top);
+        assert_eq!(v.current_page(), 2);
+        let at = v.pdf_to_view(2, PdfPoint::new(72.0, 712.0)).unwrap();
+        assert!(at.y >= 0.0 && at.y <= 800.0, "{at:?}");
+    }
+}

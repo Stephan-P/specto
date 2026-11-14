@@ -1,6 +1,6 @@
 use pdfrs_geom::{
     DeviceIntRect, DevicePoint, DeviceRect, LayoutPoint, LayoutRect, LayoutVector, PageGeometry,
-    PagePoint, PageSize, PdfPoint, Rotation, ViewPoint, ViewRect, ViewSize, ViewVector,
+    PagePoint, PageSize, PdfBox, PdfPoint, Rotation, ViewPoint, ViewRect, ViewSize, ViewVector,
 };
 use pdfrs_render::Content;
 use std::time::{Duration, Instant};
@@ -418,6 +418,58 @@ impl Viewer {
             .pdf_to_page()
             .transform_point(p);
         self.page_to_view(i, page)
+    }
+
+    /// Scrolls so that `area` (PDF points of page `i`) is on screen, unless
+    /// it already is: for search results. It ends up a third of the way
+    /// down the view, and horizontally only moves if it has to.
+    pub fn reveal(&mut self, i: usize, area: PdfBox) {
+        if i >= self.pages.len() {
+            return;
+        }
+        let corners = [
+            area.min,
+            PdfPoint::new(area.max.x, area.min.y),
+            area.max,
+            PdfPoint::new(area.min.x, area.max.y),
+        ];
+        let rect = |v: &Self| {
+            let points: Option<Vec<ViewPoint>> =
+                corners.iter().map(|&p| v.pdf_to_view(i, p)).collect();
+            Some(pdfrs_geom::euclid::Box2D::from_points(points?))
+        };
+        // Pages of other spreads aren't laid out in the paged modes, and
+        // while swiping only the current spread scrolls.
+        let shown = self.page_rect(i).is_some()
+            && (!self.is_strip() || self.page_spread[i] == self.current);
+        if !shown {
+            self.go_to_page(i);
+        }
+        let Some(r) = rect(self) else {
+            return;
+        };
+        let (w, h) = (self.viewport.width, self.viewport.height);
+        const MARGIN: f64 = 16.0;
+        let dx = if r.min.x >= MARGIN && r.max.x <= w - MARGIN {
+            0.0
+        } else if r.width() > w - 2.0 * MARGIN {
+            r.min.x - MARGIN
+        } else {
+            r.center().x - w / 2.0
+        };
+        let dy = if r.min.y >= MARGIN && r.max.y <= h - MARGIN {
+            0.0
+        } else {
+            r.min.y - h / 3.0
+        };
+        if dx != 0.0 || dy != 0.0 {
+            let delta = ViewVector::new(dx, dy);
+            if self.is_strip() {
+                self.scroll_in_page_by(delta);
+            } else {
+                self.scroll_by(delta);
+            }
+        }
     }
 
     /// The visible page nearest to `p`, and `p` in that page's PDF user

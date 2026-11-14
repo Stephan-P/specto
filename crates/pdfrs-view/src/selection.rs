@@ -179,14 +179,26 @@ impl Selection {
         let Some(range) = self.page_range(page, text.chars.len()) else {
             return Vec::new();
         };
-        text.selection_quads(range)
-            .iter()
-            .filter_map(|q| {
-                let p = |i: usize| viewer.pdf_to_view(page, q.points[i]);
-                Some([p(0)?, p(1)?, p(2)?, p(3)?])
-            })
-            .collect()
+        text_quads(viewer, &text, page, range)
     }
+}
+
+/// The highlight for characters `range` of page `page` on screen: one
+/// quadrilateral per line, as four corners in view coordinates. For
+/// selections and search matches.
+pub fn text_quads(
+    viewer: &Viewer,
+    text: &TextPage,
+    page: usize,
+    range: Range<usize>,
+) -> Vec<[ViewPoint; 4]> {
+    text.selection_quads(range)
+        .iter()
+        .filter_map(|q| {
+            let p = |i: usize| viewer.pdf_to_view(page, q.points[i]);
+            Some([p(0)?, p(1)?, p(2)?, p(3)?])
+        })
+        .collect()
 }
 
 /// The word or line around character `at` (clamped to the page).

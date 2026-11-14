@@ -41,6 +41,11 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - select_across_pages: holding a drag at the bottom edge scrolls, and the
   selection continues onto the next page
 - select_rotated_page: selecting on a page rotated by 90°
+- search: Ctrl+F and typing; case, a line break, a hyphenated word and
+  accents don't stop a match; Enter, Shift+Enter and wrapping around; the
+  view follows; "No matches"; Escape ends the search
+- search_indexes_in_background: the first match after the current page,
+  found while the pages are indexed in the background
 
 Saved state and recent files go to a temporary directory, not the user's.
 Screenshots of failed tests are kept in $PDFRS_CHECK_OUT (default: a
@@ -143,7 +148,8 @@ def pages_pdf(path):
 # positions are easy to compute. Page 3 is rotated by 90°.
 TEXT = [
     ["The quick brown fox", "jumps over the lazy dog", "Link to page two"],
-    ["Second page", "and its last line"],
+    ["Second page", "and its last line", "Search across a line", "break and a hyphen-",
+     "ated word, Café"],
     ["Rotated text"],
 ]
 FONT, CHAR, LEFT, TOP, LEADING = 20, 12, 72, 700, 30
@@ -183,7 +189,8 @@ def text_pdf(path):
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]{extra}"
             f" /Resources << /Font << /F1 3 0 R >> >> /Contents {page_ids[i] + 1} 0 R >>".encode()
         )
-        objects.append(stream(ops.encode()))
+        # WinAnsi: "é" is one byte.
+        objects.append(stream(ops.encode("cp1252")))
     write_pdf(path, objects)
 
 
@@ -292,7 +299,15 @@ class Input:
     BUTTON_LEFT = 0x110  # BTN_LEFT
     # Keys as Linux input key codes (linux/input-event-codes.h), which
     # don't depend on the keyboard layout.
-    ESCAPE, CONTROL, SHIFT, KEY_A, KEY_C = 1, 29, 42, 30, 46
+    ESCAPE, CONTROL, SHIFT, ENTER, KEY_A, KEY_C, KEY_F = 1, 29, 42, 28, 30, 46, 33
+    # Key codes for typing, on a US layout (mutter's default).
+    TYPING = {
+        **{c: 16 + i for i, c in enumerate("qwertyuiop")},
+        **{c: 30 + i for i, c in enumerate("asdfghjkl")},
+        **{c: 44 + i for i, c in enumerate("zxcvbnm")},
+        **{c: 2 + i for i, c in enumerate("1234567890")},
+        " ": 57, "-": 12, ",": 51, ".": 52,
+    }
     # GTK counts clicks within this many seconds as one sequence (double-
     # and triple-clicks); wait this long before clicking somewhere new.
     CLICK_GAP = 0.6
@@ -423,6 +438,15 @@ class Input:
             self.key_down(k)
         for k in reversed(codes):
             self.key_up(k)
+
+    def type(self, text):
+        """Types `text` (letters, digits, spaces, a little punctuation)."""
+        for c in text:
+            code = self.TYPING[c.lower()]
+            if c.isupper():
+                self.keys(self.SHIFT, code)
+            else:
+                self.keys(code)
 
     def clipboard(self):
         """The clipboard's text."""
@@ -824,6 +848,68 @@ def test_select_rotated_page(ctx):
     # The text runs downwards on screen; drag along it.
     inp.drag(w.char(2, 0, 0, state=s), w.char(2, 0, 6, before=False, state=s))
     selected(w, "Rotated")
+
+
+def search_for(w, inp, text):
+    """Opens the search bar (or selects its text) and types `text`."""
+    inp.keys(Input.CONTROL, Input.KEY_F)
+    # Keys are only delivered once the bar has started sliding in.
+    w.wait("the search bar", lambda s: s["search_ready"] and s["focus"] == "GtkText")
+    inp.type(text)
+    return w.wait(f"a search for {text!r}", lambda s: s["search_query"] == text)
+
+
+def status(w, text):
+    return w.wait(f"search status {text!r}", lambda s: s["search_status"] == text)
+
+
+def test_search(ctx):
+    w, inp = selection_window(ctx)
+    search_for(w, inp, "the")
+    # "The" and "the": case doesn't matter. The first is current.
+    s = status(w, "1 of 2")
+    check(s["match_page"] == 0, s)
+    w.screenshot("the")
+    # Enter goes on, wrapping around; Shift+Enter goes back.
+    inp.keys(Input.ENTER)
+    status(w, "2 of 2")
+    inp.keys(Input.ENTER)
+    status(w, "1 of 2")
+    inp.keys(Input.SHIFT, Input.ENTER)
+    status(w, "2 of 2")
+    # Across a line break, on page 2: the view goes there.
+    search_for(w, inp, "line break")
+    s = status(w, "1 of 1")
+    w.wait("page 2", lambda s: s["match_page"] == 1 and s["page"] == 1)
+    # A word broken with a hyphen, and one with an accent.
+    search_for(w, inp, "hyphenated")
+    status(w, "1 of 1")
+    search_for(w, inp, "cafe")
+    status(w, "1 of 1")
+    search_for(w, inp, "zebra")
+    status(w, "No matches")
+    # Escape closes the bar and ends the search.
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the search to end", lambda s: not s["search_bar"])
+    check("matches" not in s and s["focus"] == "PdfrsCanvas", s)
+
+
+def test_search_indexes_in_background(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    w.action("debug-go-to", gvariant_str(LABELS[5]))
+    w.settled("page 6", lambda s: s["page"] == 5)
+    # "Page 1", "Page 10", "Page 11", "Page 12": the first after page 6
+    # is current, found as the pages are indexed from there.
+    search_for(w, inp, "page 1")
+    s = status(w, "2 of 4")
+    check(s["match_page"] == 9 and s["indexed"] == PAGES, s)
+    w.wait("page 10", lambda s: s["page"] == 9)
+    inp.keys(Input.SHIFT, Input.ENTER)
+    status(w, "1 of 4")
+    w.wait("page 1", lambda s: s["page"] == 0)
 
 
 TESTS = [v for k, v in list(globals().items()) if k.startswith("test_")]

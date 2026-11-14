@@ -37,6 +37,9 @@ fn main() -> glib::ExitCode {
             ("win.go-to-page", &["<Primary>l"]),
             ("win.copy", &["<Primary>c"]),
             ("win.select-all", &["<Primary>a"]),
+            ("win.find", &["<Primary>f"]),
+            ("win.find-next", &["<Primary>g"]),
+            ("win.find-previous", &["<Shift><Primary>g"]),
             ("win.layout::single", &["<Primary>1"]),
             ("win.layout::continuous", &["<Primary>2"]),
             ("win.layout::two-page", &["<Primary>3"]),
@@ -88,8 +91,8 @@ fn platform_accels(accels: &[&str]) -> Vec<String> {
     }
     let mut out: Vec<String> = accels
         .iter()
-        .filter_map(|a| a.strip_prefix("<Primary>"))
-        .map(|key| format!("<Meta>{key}"))
+        .filter(|a| a.contains("<Primary>"))
+        .map(|a| a.replace("<Primary>", "<Meta>"))
         .collect();
     out.extend(primary);
     out
@@ -117,10 +120,14 @@ fn menubar() -> gio::Menu {
         section(&[("Close Window", "window.close")]),
         section(&[("Quit pdfrs", "app.quit")]),
     ]);
-    let edit = submenu(&[section(&[
-        ("Copy", "win.copy"),
-        ("Select All", "win.select-all"),
-    ])]);
+    let edit = submenu(&[
+        section(&[("Copy", "win.copy"), ("Select All", "win.select-all")]),
+        section(&[
+            ("Find…", "win.find"),
+            ("Find Next", "win.find-next"),
+            ("Find Previous", "win.find-previous"),
+        ]),
+    ]);
     let view = submenu(&[
         section(&[
             ("Single Page", "win.layout::single"),

@@ -48,9 +48,19 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - On Linux the selection is also the primary selection, for middle-click paste
 - Works on rotated pages and rotated text
 
+## Search
+
+- *Primary*+F or the search button opens a search bar under the header bar
+- Finds text regardless of case and accents ("cafe" finds "Café"), across line breaks, and words hyphenated at the end of a line
+- Shows "3 of 17"; Enter and Shift+Enter (or *Primary*+G and Shift+*Primary*+G, or the arrow buttons) go to the next and previous match, wrapping around at the ends
+- The first match is the first one from the current page on; the view only scrolls when the match isn't already visible
+- All matches are highlighted in yellow, the current one in orange
+- Long documents are searched in the background: the first matches show up at once, and the count grows ("17…") until every page is done
+- Escape closes the bar and removes the highlights
+
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Close Window, Quit), Edit (Copy, Select All), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page)
+- Menu bar in the system menu bar: File (Open, Close Window, Quit), Edit (Copy, Select All, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -66,7 +76,6 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Not yet
 
-- Search (next)
 - Printing, saving, page editing, annotations, form filling
 - Rotating pages from the app
 - Highlighting the current outline entry

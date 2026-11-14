@@ -9,7 +9,7 @@ use gtk::subclass::prelude::*;
 use gtk::{gdk, glib, graphene, gsk};
 use pdfrs_geom::{DeviceRect, LayoutVector, ViewPoint, ViewSize, ViewVector};
 use pdfrs_source::{NamedAction, Target};
-use pdfrs_view::{Granularity, Selection, Viewer, over_text, text_char, text_position};
+use pdfrs_view::{Granularity, Selection, Viewer, over_text, text_char, text_position, text_quads};
 
 use crate::document::SharedDocument;
 
@@ -185,6 +185,7 @@ mod imp {
                 }
                 snapshot.pop();
             }
+            obj.draw_matches(snapshot, d, &frame.pages, scale);
             obj.draw_selection(snapshot, d, &frame.pages, scale);
             // A spinner over expensive pages (huge images, or renders that
             // already took > 500 ms) that aren't sharp yet. Cheap pages
@@ -307,6 +308,35 @@ impl Canvas {
 
     // --- text selection ---------------------------------------------------
 
+    /// Highlights search matches on the visible pages: all in yellow, the
+    /// current one in orange (Adwaita's palette).
+    fn draw_matches(
+        &self,
+        snapshot: &gtk::Snapshot,
+        d: &mut crate::document::Document,
+        pages: &[pdfrs_view::PageDraw],
+        scale: f64,
+    ) {
+        let yellow = gdk::RGBA::new(0.965, 0.827, 0.176, 0.5);
+        let orange = gdk::RGBA::new(1.0, 0.471, 0.0, 0.55);
+        for page in pages {
+            let matches = d.matches_on(page.page);
+            if matches.is_empty() {
+                continue;
+            }
+            let (viewer, mut texts, _) = d.text();
+            let Some(text) = pdfrs_view::TextPages::text_page(&mut texts, page.page) else {
+                continue;
+            };
+            snapshot.push_clip(&logical(page.rect, scale));
+            for (m, current) in matches {
+                let quads = text_quads(viewer, &text, page.page, m.chars);
+                fill_quads(snapshot, &quads, if current { &orange } else { &yellow });
+            }
+            snapshot.pop();
+        }
+    }
+
     /// Fills the selected text of the visible pages with the accent colour.
     fn draw_selection(
         &self,
@@ -326,16 +356,8 @@ impl Canvas {
             if quads.is_empty() {
                 continue;
             }
-            let builder = gsk::PathBuilder::new();
-            for q in &quads {
-                builder.move_to(q[0].x as f32, q[0].y as f32);
-                for p in &q[1..] {
-                    builder.line_to(p.x as f32, p.y as f32);
-                }
-                builder.close();
-            }
             snapshot.push_clip(&logical(page.rect, scale));
-            snapshot.append_fill(&builder.to_path(), gsk::FillRule::Winding, &colour);
+            fill_quads(snapshot, &quads, &colour);
             snapshot.pop();
         }
     }
@@ -819,6 +841,22 @@ impl Canvas {
         });
         self.add_controller(keys);
     }
+}
+
+/// Fills quadrilaterals (view coordinates) with `colour`.
+fn fill_quads(snapshot: &gtk::Snapshot, quads: &[[ViewPoint; 4]], colour: &gdk::RGBA) {
+    if quads.is_empty() {
+        return;
+    }
+    let builder = gsk::PathBuilder::new();
+    for q in quads {
+        builder.move_to(q[0].x as f32, q[0].y as f32);
+        for p in &q[1..] {
+            builder.line_to(p.x as f32, p.y as f32);
+        }
+        builder.close();
+    }
+    snapshot.append_fill(&builder.to_path(), gsk::FillRule::Winding, colour);
 }
 
 /// Device-pixel rectangle → the logical coordinates GTK snapshots use.
