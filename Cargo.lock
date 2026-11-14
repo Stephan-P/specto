@@ -1645,6 +1645,7 @@ dependencies = [
  "ndk",
  "pdfrs-geom",
  "pdfrs-render",
+ "pdfrs-source",
  "pdfrs-view",
  "thiserror 2.0.21",
  "uniffi",

@@ -328,6 +328,82 @@ fn paged_mode_swipes_one_fitted_page_at_a_time() {
     );
 }
 
+/// Four 200 × 300 pt pages with an outline (Chapter 1 › Section 1.1,
+/// Chapter 2) and, on page 1, a link to page 3 and a link to a web page.
+fn linked_pdf() -> Vec<u8> {
+    let content = "1 0 0 rg 0 0 m 200 0 l 200 300 l f";
+    format!(
+        "%PDF-1.7\n\
+         1 0 obj << /Type /Catalog /Pages 2 0 R /Outlines 20 0 R >> endobj\n\
+         2 0 obj << /Type /Pages /Kids [10 0 R 11 0 R 12 0 R 13 0 R] /Count 4 /MediaBox [0 0 200 300] >> endobj\n\
+         4 0 obj << /Length {} >> stream\n{content}\nendstream endobj\n\
+         10 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R /Annots [30 0 R 31 0 R] >> endobj\n\
+         11 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj\n\
+         12 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj\n\
+         13 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj\n\
+         20 0 obj << /Type /Outlines /First 21 0 R /Last 23 0 R /Count 3 >> endobj\n\
+         21 0 obj << /Title (Chapter 1) /Parent 20 0 R /Next 23 0 R /First 22 0 R /Last 22 0 R /Count 1 /Dest [10 0 R /XYZ 0 300 0] >> endobj\n\
+         22 0 obj << /Title (Section 1.1) /Parent 21 0 R /Dest [11 0 R /Fit] >> endobj\n\
+         23 0 obj << /Title (Chapter 2) /Parent 20 0 R /Prev 21 0 R /Dest [13 0 R /XYZ 0 150 0] >> endobj\n\
+         30 0 obj << /Type /Annot /Subtype /Link /Rect [20 200 180 240] /Dest [12 0 R /Fit] >> endobj\n\
+         31 0 obj << /Type /Annot /Subtype /Link /Rect [20 100 180 140] /A << /S /URI /URI (https://example.com/) >> >> endobj\n\
+         trailer << /Root 1 0 R /Size 99 >>\n%%EOF\n",
+        content.len(),
+    )
+    .into_bytes()
+}
+
+#[test]
+fn outline_and_links() {
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(linked_pdf(), None, 64 << 20, listener).unwrap();
+    // Fit width: 1 dp per point, page 1 at (8, 8).
+    session.set_viewport(216.0, 316.0, 2.0);
+
+    let outline = session.outline();
+    let summary: Vec<(&str, u32, Option<u32>, bool)> = outline
+        .iter()
+        .map(|e| (e.title.as_str(), e.depth, e.page, e.has_children))
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            ("Chapter 1", 0, Some(0), true),
+            ("Section 1.1", 1, Some(1), false),
+            ("Chapter 2", 0, Some(3), false),
+        ]
+    );
+    assert_eq!(session.activate_outline(2), Activated::Moved);
+    assert_eq!(session.frame().current_page, 3);
+    assert_eq!(session.activate_outline(1), Activated::Moved);
+    assert_eq!(session.frame().current_page, 1);
+    assert_eq!(session.activate_outline(7), Activated::Nothing);
+
+    // The links on page 1: PDF y 200–240 is 60–100 pt from the page's top.
+    session.go_to_page(0);
+    assert_eq!(session.tap(108.0, 8.0 + 20.0), Activated::Nothing);
+    assert_eq!(
+        session.tap(108.0, 8.0 + 180.0),
+        Activated::Uri {
+            uri: "https://example.com/".into()
+        }
+    );
+    assert_eq!(session.frame().current_page, 0);
+    assert_eq!(session.tap(108.0, 8.0 + 80.0), Activated::Moved);
+    assert_eq!(session.frame().current_page, 2);
+
+    // The same in paged mode, where the page is centred and fitted.
+    session.set_view_mode(ViewMode::Paged);
+    session.go_to_page(0);
+    assert_eq!(session.tap(108.0, 8.0 + 80.0), Activated::Moved);
+    let frame = session.frame();
+    assert_eq!((frame.current_page, frame.pages.len()), (2, 1));
+    assert_eq!(session.snap_delta(0.0, 0.0), None);
+    // In the margin beside the page there is nothing to tap.
+    assert_eq!(session.tap(2.0, 150.0), Activated::Nothing);
+}
+
 #[test]
 fn closed_sessions_are_not_found() {
     let (session, _rx) = open(1, 1 << 20);

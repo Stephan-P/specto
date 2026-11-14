@@ -29,6 +29,7 @@ use std::time::Instant;
 use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewSize, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::{Bitmap, OpenError};
+use pdfrs_source::{Link, NamedAction, OutlineItem, SourceDocument, Target};
 use pdfrs_view::{Settings, ViewPage, Viewer};
 
 use tiles::TileBook;
@@ -80,6 +81,30 @@ pub enum ViewMode {
     Paged,
     /// All pages in one column fitted to the width; scroll up and down.
     Continuous,
+}
+
+/// One line of the outline (table of contents), which is a tree flattened
+/// in reading order.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct OutlineEntry {
+    pub title: String,
+    /// Nesting level, 0 for top-level items.
+    pub depth: u32,
+    /// Zero-based page the item leads to, if it leads into this document.
+    pub page: Option<u32>,
+    /// Whether deeper entries follow that belong to this one.
+    pub has_children: bool,
+}
+
+/// What activating a link or outline entry did.
+#[derive(Clone, Debug, PartialEq, uniffi::Enum)]
+pub enum Activated {
+    /// There was nothing to activate (or nothing we support).
+    Nothing,
+    /// The view went somewhere else in the document: plan a new frame.
+    Moved,
+    /// An external link. Opening it, after asking the user, is up to the app.
+    Uri { uri: String },
 }
 
 /// A distance in logical pixels (dp).
@@ -191,11 +216,59 @@ struct State {
     encoded: Vec<u8>,
     /// Pages whose thumbnails the frontend is showing (first, count).
     thumbnails: (u32, u32),
+    /// Structure (links), separate from rendering.
+    source: SourceDocument,
+    /// Links per page, parsed on first use.
+    links: HashMap<usize, Vec<Link>>,
+}
+
+impl State {
+    /// Does what a link or outline entry asks for.
+    fn follow(&mut self, target: &Target) -> Activated {
+        let viewer = &mut self.viewer;
+        match target {
+            Target::Destination(d) => viewer.go_to_pdf_position(d.page, d.left, d.top),
+            Target::Named(NamedAction::NextPage) => viewer.next_page(),
+            Target::Named(NamedAction::PrevPage) => viewer.previous_page(),
+            Target::Named(NamedAction::FirstPage) => viewer.go_to_page(0),
+            Target::Named(NamedAction::LastPage) => {
+                viewer.go_to_page(viewer.page_count().saturating_sub(1));
+            }
+            Target::Uri(uri) => return Activated::Uri { uri: uri.clone() },
+        }
+        Activated::Moved
+    }
+}
+
+/// Flattens the outline tree in reading order.
+fn flatten_outline(
+    items: Vec<OutlineItem>,
+    depth: u32,
+    out: &mut Vec<(OutlineEntry, Option<Target>)>,
+) {
+    for item in items {
+        let page = match &item.target {
+            Some(Target::Destination(d)) => Some(d.page as u32),
+            _ => None,
+        };
+        out.push((
+            OutlineEntry {
+                title: item.title,
+                depth,
+                page,
+                has_children: !item.children.is_empty(),
+            },
+            item.target,
+        ));
+        flatten_outline(item.children, depth + 1, out);
+    }
 }
 
 struct Shared {
     scheduler: Scheduler,
     state: Mutex<State>,
+    /// The outline with what each entry does, read once at open.
+    outline: Vec<(OutlineEntry, Option<Target>)>,
 }
 
 impl Shared {
@@ -336,7 +409,11 @@ impl ViewSession {
     ) -> Result<Arc<Self>, PdfError> {
         let threads = std::thread::available_parallelism().map_or(2, |n| n.get().clamp(2, 4));
         let scheduler = Scheduler::new(threads, move || listener.tiles_ready());
-        let opened = scheduler.open(data, password.as_deref())?;
+        let data: Arc<[u8]> = data.into();
+        let opened = scheduler.open(data.clone(), password.as_deref())?;
+        let source = SourceDocument::open(data, password.as_deref())?;
+        let mut outline = Vec::new();
+        flatten_outline(source.outline(), 0, &mut outline);
         let pages: Vec<ViewPage> = opened
             .pages
             .iter()
@@ -361,7 +438,10 @@ impl ViewSession {
                 tiles: TileBook::new(cache_bytes as usize),
                 encoded: Vec::new(),
                 thumbnails: (0, 0),
+                source,
+                links: HashMap::new(),
             }),
+            outline,
         });
         let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
         SESSIONS
@@ -382,6 +462,47 @@ impl ViewSession {
 
     pub fn page_count(&self) -> u32 {
         self.page_count
+    }
+
+    /// The outline (table of contents), flattened in reading order. Empty if
+    /// the document has none.
+    pub fn outline(&self) -> Vec<OutlineEntry> {
+        self.shared.outline.iter().map(|(e, _)| e.clone()).collect()
+    }
+
+    /// Goes where outline entry `index` (into [`outline`](Self::outline)) leads.
+    pub fn activate_outline(&self, index: u32) -> Activated {
+        match self.shared.outline.get(index as usize) {
+            Some((_, Some(target))) => self.shared.lock().follow(target),
+            _ => Activated::Nothing,
+        }
+    }
+
+    /// A tap at (`x`, `y`) in logical pixels from the view's top-left: follows
+    /// the link there, if there is one.
+    pub fn tap(&self, x: f64, y: f64) -> Activated {
+        let mut state = self.shared.lock();
+        let Some((page, at)) = state.viewer.hit_test(ViewPoint::new(x, y)) else {
+            return Activated::Nothing;
+        };
+        let Some(view_page) = state.viewer.pages().get(page) else {
+            return Activated::Nothing;
+        };
+        let pdf = view_page.displayed().page_to_pdf().transform_point(at);
+        let source_page = view_page.page as usize;
+        let State { source, links, .. } = &mut *state;
+        let target = links
+            .entry(source_page)
+            .or_insert_with(|| source.links(source_page))
+            .iter()
+            // The topmost link is the last one drawn.
+            .rev()
+            .find(|l| l.contains(pdf))
+            .map(|l| l.target.clone());
+        match target {
+            Some(target) => state.follow(&target),
+            None => Activated::Nothing,
+        }
     }
 
     /// Sizes of all pages as displayed, e.g. for the thumbnail grid's cells.

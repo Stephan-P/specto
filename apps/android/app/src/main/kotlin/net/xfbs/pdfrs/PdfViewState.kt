@@ -23,6 +23,8 @@ import kotlin.math.pow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import uniffi.pdfrs_ffi.Activated
+import uniffi.pdfrs_ffi.OutlineEntry
 import uniffi.pdfrs_ffi.ViewListener
 import uniffi.pdfrs_ffi.ViewSession
 import uniffi.pdfrs_ffi.ViewMode
@@ -83,6 +85,9 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
 
     fun pageAspect(page: Int): Float = aspects[page]
 
+    /** The outline (table of contents) in reading order; empty if there is none. */
+    val outline: List<OutlineEntry> = session.outline()
+
     init {
         // On a phone, swiping through fitted pages is the default.
         session.setViewMode(ViewMode.PAGED)
@@ -119,6 +124,28 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     fun zoomBy(factor: Float, anchor: Offset) {
         Native.zoomBy(sessionId, factor.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
         refresh()
+    }
+
+    /**
+     * A tap at [at]: follows a link there, if any. Links within the document
+     * are followed right away; for an external one its URI is returned, and
+     * opening it (after asking) is up to the caller.
+     */
+    fun tap(at: Offset): String? = finish(session.tap(at.x.toDouble(), at.y.toDouble()))
+
+    /** Goes where entry [index] of [outline] leads; see [tap] for the result. */
+    fun openOutlineEntry(index: Int): String? = finish(session.activateOutline(index.toUInt()))
+
+    private fun finish(activated: Activated): String? {
+        when (activated) {
+            Activated.Nothing -> {}
+            Activated.Moved -> {
+                stopMotion()
+                refresh()
+            }
+            is Activated.Uri -> return activated.uri
+        }
+        return null
     }
 
     /** Shows [page] (zero-based) at the top of the view. */

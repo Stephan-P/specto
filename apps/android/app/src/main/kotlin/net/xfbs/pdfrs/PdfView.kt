@@ -38,11 +38,12 @@ import kotlin.math.abs
 
 /**
  * Draws the frames planned by [state] and turns touches into scrolling or
- * swiping between pages, pinch zoom and double-tap zoom. No layout maths
- * happens here.
+ * swiping between pages, pinch zoom and double-tap zoom. A tap follows a
+ * link; links leaving the document are passed to [onExternalLink]. No layout
+ * maths happens here.
  */
 @Composable
-fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
+fun PdfView(state: PdfViewState, modifier: Modifier = Modifier, onExternalLink: (String) -> Unit = {}) {
     val density = LocalDensity.current.density
     val scope = rememberCoroutineScope()
     val exactPaint = remember { Paint().apply { isFilterBitmap = false } }
@@ -72,7 +73,10 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
             .onGloballyPositioned { origin = it.positionInWindow() }
             .onSizeChanged { state.setViewport(it.width / density, it.height / density, density) }
             .pointerInput(state) {
-                detectTapGestures(onDoubleTap = { state.doubleTap(scope, it / density) })
+                detectTapGestures(
+                    onTap = { state.tap(it / density)?.let(onExternalLink) },
+                    onDoubleTap = { state.doubleTap(scope, it / density) },
+                )
             }
             .pointerInput(state) {
                 val decay = splineBasedDecay<Offset>(this)

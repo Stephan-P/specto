@@ -104,7 +104,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** `Viewer::current_page` in continuous modes is the last page once scrolled to the very end (before, the page above could keep the larger share of the viewport forever)
 - [ ] **S** Paged mode follow-ups: reset the zoom when turning the page (today a zoomed-in page stays zoomed on the next one), rubber-band at the first and last page, two-page swipe on tablets (the core supports it; untested)
 - [ ] **M** Thumbnail strip along the bottom as the scrubber for paged mode (like Preview on iOS)
-- [ ] **S** Outline in the pages screen (second tab), once `pdfrs-source` extracts it
+- [x] **S** Outline: the top-left button opens "Contents" (a collapsible tree from `pdfrs-source`, the reader's position highlighted) next to "Pages"; documents without an outline show only the page grid
+- [x] **S** Links: a tap follows internal links and named actions (`Viewer::go_to_pdf_position`, which now stays on the target page in swipe mode); external links show their address and open only after confirmation, and only http, https and mailto
 - [ ] **M** Tablet layout: permanent or collapsible sidebar (thumbnails, outline) and the two-page modes, which make no sense on a phone
 - [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
 - [ ] **M** SAF fd-based I/O instead of reading the file into memory, save and share (in the ⋮ menu), recent documents

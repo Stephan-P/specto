@@ -731,6 +731,29 @@ fn swipe_frames_use_each_pages_own_scale_and_prepare_the_neighbours() {
 }
 
 #[test]
+fn destinations_in_swipe_mode_stay_on_their_page() {
+    let mut v = swiper();
+    // A fitted page has nothing to scroll: the destination is the page.
+    v.go_to_pdf_position(1, Some(100.0), Some(300.0));
+    assert_eq!(v.current_page(), 1);
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+    assert!(close(v.page_rect(1).unwrap().origin.x, 10.0));
+
+    // Zoomed in, the position is honoured within the page: PDF y 300 of a
+    // 612 pt tall page is 312 pt from its top.
+    v.zoom_by(3.0, ViewPoint::new(500.0, 400.0));
+    v.go_to_pdf_position(2, Some(50.0), Some(300.0));
+    assert_eq!(v.current_page(), 2);
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+    let on_page = v.hit_test(ViewPoint::new(10.0, 10.0)).unwrap();
+    assert_eq!(on_page.0, 2);
+    assert!(
+        close(on_page.1.x, 50.0) && close(on_page.1.y, 100.0),
+        "{on_page:?}"
+    );
+}
+
+#[test]
 fn view_state_round_trips_in_swipe_mode() {
     let mut a = swiper();
     a.go_to_page(1);

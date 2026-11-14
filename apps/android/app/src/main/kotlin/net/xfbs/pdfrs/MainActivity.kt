@@ -3,6 +3,7 @@ package net.xfbs.pdfrs
 import android.app.ActivityManager
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -37,8 +38,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -149,6 +152,10 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
 
     var loaded by remember { mutableStateOf<Loaded?>(null) }
     var showPages by remember { mutableStateOf(false) }
+    // Which tab the top-left button opens: the contents if the document has
+    // an outline (until the user picks the other tab), otherwise the pages.
+    var preferContents by remember { mutableStateOf(true) }
+    var externalLink by remember { mutableStateOf<String?>(null) }
     var showGoTo by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
         (loaded as? Loaded.Ready)?.state?.close()
@@ -190,14 +197,14 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                             if (showPages) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to document")
                             } else {
-                                Icon(Icons.Filled.Menu, contentDescription = "Pages")
+                                Icon(Icons.Filled.Menu, contentDescription = "Contents and pages")
                             }
                         }
                     }
                 },
                 title = {
                     Text(
-                        if (showPages) "Pages" else ready?.name ?: "pdfrs",
+                        ready?.name ?: "pdfrs",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -266,20 +273,45 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                 }
                 is Loaded.Ready ->
                     if (showPages) {
-                        PagesGrid(
-                            l.state,
-                            onPick = {
-                                l.state.goToPage(it)
-                                showPages = false
-                            },
-                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
-                        )
+                        val hasOutline = l.state.outline.isNotEmpty()
+                        val contents = hasOutline && preferContents
+                        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                            if (hasOutline) {
+                                PrimaryTabRow(selectedTabIndex = if (contents) 0 else 1) {
+                                    Tab(contents, onClick = { preferContents = true }, text = { Text("Contents") })
+                                    Tab(!contents, onClick = { preferContents = false }, text = { Text("Pages") })
+                                }
+                            }
+                            if (contents) {
+                                OutlineList(
+                                    l.state,
+                                    onPick = {
+                                        externalLink = l.state.openOutlineEntry(it)
+                                        showPages = false
+                                    },
+                                    Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                PagesGrid(
+                                    l.state,
+                                    onPick = {
+                                        l.state.goToPage(it)
+                                        showPages = false
+                                    },
+                                    Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
                     } else {
-                        PdfView(l.state, Modifier.fillMaxSize())
+                        PdfView(l.state, Modifier.fillMaxSize(), onExternalLink = { externalLink = it })
                         PageIndicator(l.state, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                     }
             }
         }
+    }
+
+    externalLink?.let { link ->
+        ExternalLinkDialog(link, onDismiss = { externalLink = null })
     }
 
     if (showGoTo && ready != null) {
@@ -306,6 +338,40 @@ private fun Message(title: String, detail: String, action: String, onAction: () 
         if (detail.isNotEmpty()) Text(detail, textAlign = TextAlign.Center)
         Button(onClick = onAction) { Text(action) }
     }
+}
+
+/** Schemes a link in a document may open, after the user confirmed. */
+private val OPENABLE_SCHEMES = setOf("http", "https", "mailto")
+
+/**
+ * A link leaving the document was tapped. Documents can link anywhere, so
+ * the address is shown and nothing opens without confirmation.
+ */
+@Composable
+private fun ExternalLinkDialog(link: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val uri = remember(link) { Uri.parse(link) }
+    val openable = uri.scheme?.lowercase() in OPENABLE_SCHEMES
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (openable) "Open this link?" else "This link can't be opened") },
+        text = { Text(link, maxLines = 6, overflow = TextOverflow.Ellipsis) },
+        confirmButton = {
+            if (openable) {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                        } catch (e: ActivityNotFoundException) {
+                            // No app for it; nothing to do.
+                        }
+                    },
+                ) { Text("Open") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(if (openable) "Cancel" else "Close") } },
+    )
 }
 
 @Composable

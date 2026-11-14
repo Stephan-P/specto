@@ -1,0 +1,111 @@
+package net.xfbs.pdfrs
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+
+/** Outlines up to this size start fully expanded; longer ones show their top level. */
+private const val EXPAND_ALL_UP_TO = 40
+
+/**
+ * The document's outline (table of contents) as a collapsible list. Tapping
+ * an entry calls [onPick] with its index into [PdfViewState.outline].
+ */
+@Composable
+fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val entries = state.outline
+    var expanded by remember(state) {
+        mutableStateOf(
+            if (entries.size <= EXPAND_ALL_UP_TO) entries.indices.filter { entries[it].hasChildren }.toSet()
+            else emptySet(),
+        )
+    }
+    // An entry is shown unless one of its ancestors is collapsed.
+    val visible = remember(entries, expanded) {
+        buildList {
+            var hiddenBelow = Int.MAX_VALUE
+            for ((i, entry) in entries.withIndex()) {
+                val depth = entry.depth.toInt()
+                if (depth > hiddenBelow) continue
+                hiddenBelow = Int.MAX_VALUE
+                add(i)
+                if (entry.hasChildren && i !in expanded) hiddenBelow = depth
+            }
+        }
+    }
+    // Where the reader is: the last entry at or before the current page.
+    val currentPage = state.frame?.currentPage ?: 0
+    val here = entries.indexOfLast { e -> e.page?.let { it.toInt() <= currentPage } == true }
+    val list = rememberLazyListState(
+        initialFirstVisibleItemIndex = (visible.indexOf(here) - 3).coerceAtLeast(0),
+    )
+
+    LazyColumn(modifier, state = list, contentPadding = PaddingValues(vertical = 8.dp)) {
+        items(visible, key = { it }) { i ->
+            val entry = entries[i]
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onPick(i) }
+                    .heightIn(min = 48.dp)
+                    .padding(start = (4 + 20 * entry.depth.toInt()).dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (entry.hasChildren) {
+                    val open = i in expanded
+                    IconButton(onClick = { expanded = if (open) expanded - i else expanded + i }) {
+                        Icon(
+                            if (open) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = if (open) "Collapse" else "Expand",
+                        )
+                    }
+                } else {
+                    Box(Modifier.size(48.dp))
+                }
+                val colour =
+                    if (i == here) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                Text(
+                    entry.title,
+                    Modifier.weight(1f).padding(vertical = 8.dp),
+                    color = colour,
+                    fontWeight = if (i == here) FontWeight.SemiBold else null,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                entry.page?.let {
+                    Text(
+                        "${it.toInt() + 1}",
+                        Modifier.padding(start = 12.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}

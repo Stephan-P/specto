@@ -712,6 +712,8 @@ impl Viewer {
             self.scroll.x = r.origin.x + x * self.zoom - margin;
         }
         self.clamp_scroll();
+        // While swiping, the target page stays the one on screen.
+        self.confine_to_current();
     }
 
     pub fn next_page(&mut self) {
