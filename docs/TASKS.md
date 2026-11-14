@@ -37,9 +37,13 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** HiDPI, part 2: still slightly blurry on macOS after part 1 (debug on the Mac). Things to check: does `Surface::scale()` report 2? Which GSK renderer is active? At zoom 1.0, does a screenshot pixel match the tile 1:1? GTK's macOS backend may scale the surface itself.
 - [x] **M** `pdfrs-view`: layout for single page / continuous / two-page / two-page continuous, plus "cover page alone"
 - [x] **M** `pdfrs-view`: viewport, zoom (fit width/page, fixed) anchored at the pointer, scrolling, paging, hit-testing, device-pixel-snapped `Frame` with placeholder and neighbouring-level fallback tiles and prioritized requests. The gtk-canvas spike runs on it at 59.5 fps (headless, quiet machine).
-- [ ] **M** Desktop: canvas widget drawing tiles, scaled placeholders while sharp tiles render
-- [ ] **M** Desktop: thumbnail sidebar, outline sidebar, page number entry, keyboard navigation
-- [ ] **S** Desktop: open via dialog / DnD / CLI arg, recent files, remember per-file view state
+- [x] **M** Desktop (`apps/desktop`, binary `pdfrs-gtk`): canvas widget drawing `pdfrs-view` frames, implementing `GtkScrollable` (native scrollbars, kinetic scrolling), with ctrl+scroll and pinch zoom
+- [x] **M** Desktop: thumbnail sidebar (`GtkListView`, shares placeholder tiles with the canvas, follows the current page), page number entry, layout and zoom menus, keyboard navigation and shortcuts
+- [ ] **S** Desktop: outline (table of contents) sidebar, which needs `pdfrs-source`
+- [x] **S** Desktop: open via dialog, drag-and-drop or command line (one window per document), password prompt, start page
+- [ ] **S** Desktop: recent files, remember per-file view state (page, zoom, layout)
+- [ ] **S** Desktop: one shared scheduler per app instead of per window (needs per-document request groups in `Scheduler`)
+- [x] **S** Headless GUI smoke test: `tools/headless/run.sh tools/headless/smoke.sh file.pdf out/` (screenshots via a debug-only `app.screenshot` action). Could run in CI.
 - [ ] **S** Links: internal (goto) and external URI annotations clickable
 
 ## M2: Text

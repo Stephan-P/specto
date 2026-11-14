@@ -322,6 +322,27 @@ impl Viewer {
         self.set_zoom(self.zoom * factor, anchor);
     }
 
+    /// Sets the layout position of the viewport's top-left corner (scrollbars).
+    pub fn set_scroll_offset(&mut self, offset: LayoutVector) {
+        self.scroll = offset;
+        self.clamp_scroll();
+    }
+
+    /// The low-resolution whole-page tile for page `i`, shown while sharp
+    /// tiles load. Also suitable for thumbnails, so both share one render.
+    pub fn placeholder_key(&self, i: usize) -> Option<TileKey> {
+        let page = self.pages.get(i)?;
+        Some(TileKey {
+            doc: page.doc,
+            page: page.page,
+            rotation: page.rotation,
+            content: self.settings.content,
+            level: placeholder_level(&page.displayed())?,
+            tx: 0,
+            ty: 0,
+        })
+    }
+
     pub fn scroll_by(&mut self, delta: ViewVector) {
         self.scroll += LayoutVector::new(delta.x, delta.y);
         self.clamp_scroll();

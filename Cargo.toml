@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "tools/*", "spikes/*"]
+members = ["crates/*", "tools/*", "spikes/*", "apps/desktop"]
+exclude = ["tools/headless"] # shell scripts, not a crate
 
 [workspace.package]
 version = "0.1.0"

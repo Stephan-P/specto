@@ -31,10 +31,11 @@ Explicit **non-goals** (at least initially): editing existing page content (text
 
 ## Status
 
-M0 (spikes) is mostly done. See [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md).
+M0 (spikes) is done; M1 (core viewer) is in progress. See [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md).
 
 ```sh
 cargo build --release
+target/release/pdfrs-gtk file.pdf                         # the desktop app
 target/release/pdfrs info file.pdf
 target/release/pdfrs render file.pdf -o out -s 2          # pages → PNG
 target/release/pdfrs corpus corpus/files/... --reference  # regression run, see corpus/README.md
@@ -44,7 +45,12 @@ target/release/pdfrs corpus corpus/files/... --reference  # regression run, see 
 
 - `crates/pdfrs-geom`: typed coordinate spaces and page geometry (crop box, rotation)
 - `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
+- `crates/pdfrs-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
+- `crates/pdfrs-ffi`: UniFFI bindings for Android
+- `apps/desktop`: GTK4 + libadwaita app (`pdfrs-gtk`)
+- `apps/android`: Android app (Kotlin + Compose)
 - `tools/pdfrs-cli`: the `pdfrs` dev tool
+- `tools/headless`: run the desktop app under a headless compositor and take screenshots
 - `spikes/`: throwaway prototype code from M0 (to be deleted once ported): `lopdf-spike` (editing/saving), `gtk-canvas` (tiled GTK viewer, `cargo run --release -p gtk-canvas -- file.pdf`)
 - `corpus/`: test corpus fetch script (files are git-ignored)
 
