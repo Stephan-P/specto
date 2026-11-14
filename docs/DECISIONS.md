@@ -88,6 +88,28 @@ Implications:
 - ✅ M0: lopdf 0.47 handles all of this. It writes RC4 through AES-256, and `IncrementalDocument` re-encrypts appended objects with the original key. Decrypt → edit → re-encrypt with the original `EncryptionState` works for full rewrites. hayro 0.9 decrypts for viewing.
 - Honoring permission flags is policy: the file is technically readable without the owner password. We honor them anyway, like Preview.
 
+## D10: Other document formats: images on desktop later, PDF only on Android (Decided, 2026-11-14)
+
+Preview and GNOME Papers open more than PDF. We stay PDF-first until the PDF features work well, then aim for Preview parity on desktop, which in practice means PDF plus images.
+
+| Format | Cost | Verdict |
+|---|---|---|
+| **Images** (PNG, JPEG, TIFF, WebP) | Low. A one-page document, and the `image` crate is already in the workspace. | Desktop, after the PDF milestones. Also gives "insert image as page" and "images to PDF". |
+| Comic archives (CBZ) | Low. A zip of images. | Maybe, once images exist. |
+| DjVu, XPS, PostScript | High. Each needs its own engine, and the mature DjVu library (DjVuLibre) is GPL, which conflicts with D6. | Out of scope. |
+| EPUB | Very high. Reflowable, so it doesn't fit the page-and-tile model. | Out of scope. |
+
+**Decision:**
+
+- **Desktop:** add image viewing as a later milestone. Nothing is built for it now.
+- **Android:** PDF only. The system already handles images, and the gap (notably on GrapheneOS) is a good PDF viewer. Each non-PDF backend is a cargo feature that the Android build leaves off, so it adds no size there.
+- Editing (page operations, annotations, forms, saving) stays PDF-specific. Marking up images the way Preview does is a separate feature and not part of this decision.
+
+**What this asks of M1–M5:** keep the door open, at no extra cost.
+
+- `Document`, the scheduler and `pdfrs-view` stay free of PDF-only assumptions. Today's `Document` trait (page count, page geometry, render a region) already is.
+- Text, outline and editing are capabilities a document may or may not have, not things every document is assumed to support.
+
 ## Open questions
 
 1. Do we need to handle signed PDFs specially beyond "use incremental save so signatures stay valid"? (Preview warns that edits invalidate signatures.)
