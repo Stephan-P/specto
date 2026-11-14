@@ -426,9 +426,10 @@ impl Canvas {
             let Some(c) = this.upgrade() else {
                 return glib::Propagation::Proceed;
             };
+            // Ctrl+scroll zooms; on macOS Cmd+scroll too.
             if !ctl
                 .current_event_state()
-                .contains(gdk::ModifierType::CONTROL_MASK)
+                .intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::META_MASK)
             {
                 return glib::Propagation::Proceed;
             }
@@ -485,7 +486,11 @@ impl Canvas {
             let Some(c) = this.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            if state.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK) {
+            if state.intersects(
+                gdk::ModifierType::CONTROL_MASK
+                    | gdk::ModifierType::ALT_MASK
+                    | gdk::ModifierType::META_MASK,
+            ) {
                 return glib::Propagation::Proceed;
             }
             let Some((continuous, height)) =

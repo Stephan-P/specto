@@ -122,7 +122,7 @@ impl Window {
         header.pack_start(
             &gtk::Button::builder()
                 .icon_name("document-open-symbolic")
-                .tooltip_text("Open (Ctrl+O)")
+                .tooltip_text(format!("Open ({}O)", primary_key()))
                 .action_name("win.open")
                 .build(),
         );
@@ -176,7 +176,7 @@ impl Window {
             .max_width_chars(6)
             .xalign(1.0)
             .input_purpose(gtk::InputPurpose::Digits)
-            .tooltip_text("Go to Page (Ctrl+L)")
+            .tooltip_text(format!("Go to Page ({}L)", primary_key()))
             .build();
         let page_total = gtk::Label::new(None);
         page_total.add_css_class("dim-label");
@@ -796,6 +796,16 @@ impl Window {
                 this.open(file);
             }
         });
+    }
+}
+
+/// How the primary shortcut modifier is written in tooltips: Cmd on macOS,
+/// Ctrl elsewhere (shortcuts use GTK's `<Primary>`, which maps the same way).
+fn primary_key() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "⌘"
+    } else {
+        "Ctrl+"
     }
 }
 

@@ -24,19 +24,19 @@ fn main() -> glib::ExitCode {
 
     app.connect_startup(|app| {
         for (action, accels) in [
-            ("win.open", &["<Ctrl>o"][..]),
+            ("win.open", &["<Primary>o"][..]),
             (
                 "win.zoom-in",
-                &["<Ctrl>plus", "<Ctrl>equal", "<Ctrl>KP_Add"],
+                &["<Primary>plus", "<Primary>equal", "<Primary>KP_Add"],
             ),
-            ("win.zoom-out", &["<Ctrl>minus", "<Ctrl>KP_Subtract"]),
-            ("win.zoom-actual", &["<Ctrl>0", "<Ctrl>KP_0"]),
-            ("win.fit-width", &["<Ctrl>8"]),
-            ("win.fit-page", &["<Ctrl>9"]),
-            ("win.go-to-page", &["<Ctrl>l"]),
+            ("win.zoom-out", &["<Primary>minus", "<Primary>KP_Subtract"]),
+            ("win.zoom-actual", &["<Primary>0", "<Primary>KP_0"]),
+            ("win.fit-width", &["<Primary>8"]),
+            ("win.fit-page", &["<Primary>9"]),
+            ("win.go-to-page", &["<Primary>l"]),
             ("win.show-sidebar", &["F9"]),
-            ("window.close", &["<Ctrl>w"]),
-            ("app.quit", &["<Ctrl>q"]),
+            ("window.close", &["<Primary>w"]),
+            ("app.quit", &["<Primary>q"]),
         ] {
             app.set_accels_for_action(action, accels);
         }

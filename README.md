@@ -28,6 +28,8 @@ Explicit **non-goals** (at least initially): editing existing page content (text
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate layout, data model, rendering pipeline, how the frontends plug in
 - [docs/DECISIONS.md](docs/DECISIONS.md): technology choices, the alternatives considered, and open questions
 - [docs/TASKS.md](docs/TASKS.md): milestone-based task list
+- [apps/desktop/FEATURES.md](apps/desktop/FEATURES.md): what the desktop app does
+- [apps/desktop/TESTING.md](apps/desktop/TESTING.md): manual tests for the desktop app on Linux and macOS
 
 ## Status
 
