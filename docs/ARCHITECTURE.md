@@ -87,8 +87,9 @@ TileCache (LRU, memory budget; lower budget on Android)
 Frontend uploads tile to a GPU texture (gpui) / GdkTexture (GTK) / Bitmap (Android)
 ```
 
-- **HiDPI:** the device scale factor (`1.0`, `1.5`, `2.0`, `2.625` ...) gets multiplied into the render scale. Tiles are always rendered at physical pixels.
-- **Zoom:** zoom levels are bucketed (e.g. powers of √2). While zooming, the previous bucket's tiles are scaled on the GPU, and sharp tiles replace them as they finish. This is the "blurry → sharp" behavior Preview has.
+- **HiDPI:** the device scale factor (`1.0`, `1.25`, `2.0` ...) gets multiplied into the render scale, and tiles are rendered at physical pixels. A settled view is drawn from tiles at the *exact* device scale, 1:1, so it is pixel-identical to a direct render at that scale (measured on macOS at scale 2 and on Linux at 1.25, 1.5 and 2, see M0-FINDINGS.md).
+- **Zoom:** while zooming, tiles come from √2 levels (rendered at or above the device scale and downsampled), so continuous zooming reuses a few cached levels instead of rendering every intermediate zoom. Once the zoom has been still for `settle_delay` (250 ms) and no pinch is in progress, the viewer switches to exact-scale tiles, with level tiles as fallback until they arrive. This is the "blurry → sharp" behavior Preview has.
+- **Toolkit pitfalls (GTK):** draw tiles with `append_texture`, not `append_scaled_texture` (GSK renders the latter at logical resolution on HiDPI surfaces), and translate the canvas so its own origin lands on a whole device pixel of the surface (CSD shadows put it at e.g. 31.25 px at scale 1.25).
 - **Tiling:** 256×256 or 512×512 physical-pixel tiles, so a 400% zoom on a poster PDF doesn't allocate a 100 MP bitmap.
 - **Thumbnails:** a separate low-priority queue at a fixed small scale. They're cached and reused by the page-organizer UI.
 - **Annotations and form widgets** are rendered as a separate overlay pass per page. That pass is cheap to redo when the user edits, so we never re-render page content for annotation changes.
@@ -121,13 +122,15 @@ impl Viewer {
     fn go_to_page / next_page / previous_page / current_page;
     fn hit_test(&self, ViewPoint) -> Option<(usize, PagePoint)>;
     fn page_to_view(&self, usize, PagePoint) -> Option<ViewPoint>;
-    fn frame(&self, cached: impl Fn(&TileKey) -> bool) -> Frame;
+    fn begin_zoom_gesture / end_zoom_gesture;            // pinch: never settled while active
+    fn frame(&mut self, now: Instant, cached: impl Fn(&TileKey) -> bool) -> Frame;
 }
 
 struct Frame {
     pages: Vec<PageDraw>,      // per visible page: device rect + layers to draw in order
     requests: Vec<TileKey>,    // for Scheduler::request, highest priority first
     complete: bool,            // everything visible is sharp
+    settles_at: Option<Instant>, // redraw then: the view switches to exact-scale tiles
 }
 ```
 
@@ -135,9 +138,10 @@ Design points:
 
 - **Margins and gaps are constant in logical pixels**, like Preview, so layout is recomputed on zoom changes (microseconds). Zoom anchoring tracks a point within a spread in PDF points, plus any offset into the margin in pixels, so the content under the pointer stays put.
 - **Everything the frontend draws is in device pixels**, snapped so page origins are whole pixels. A tile rendered at exactly the device scale has `exact = true` and is drawn 1:1 without filtering.
-- **Layers per page**: a one-tile placeholder (the largest level where the whole page fits in 512 px), then cached tiles from neighbouring zoom levels (±1, ±2) wherever sharp tiles are missing, then sharp tiles. Zooming shows the previous level's tiles instead of the blurry placeholder.
+- **Layers per page**: a one-tile placeholder (the largest level where the whole page fits in 512 px), then cached tiles from neighbouring zoom levels wherever sharp tiles are missing, then sharp tiles: √2-level tiles while zooming, exact-scale tiles once settled. Zooming shows the previous level's tiles instead of the blurry placeholder.
+- **Settling** is decided in the viewer, driven by the frontend's clock: `frame(now, …)` notes when the device scale last changed, and `Frame::settles_at` tells the frontend when to redraw. Exact tiles are never requested during a pinch or right after a ctrl+scroll step, so intermediate zooms don't churn the cache.
 - **Request order**: visible placeholders, visible sharp tiles, neighbouring pages' placeholders, then a prefetch band of half a viewport above and below.
-- `TileKey` is plain data (`DocId::raw()` is a `u32`), so it can cross the FFI to Kotlin cheaply, with the Android `Bitmap` cache living on the Kotlin side.
+- `TileKey` is plain data: `TileKey::to_raw()` is `[u32; 7]` (doc, page, rotation, content, scale, tx, ty), where the scale is a `TileScale` in fixed point (2^-20 px/pt). √2 levels are particular values (`TileScale::from_level`). Page rectangles are sized from the same quantized scale, so exact tiles always map 1:1. The Android `Bitmap` cache can live on the Kotlin side, keyed by these numbers.
 
 Still to come: a `ViewHost`-style callback for redraws and native text inputs (form fields, M5), and pointer/key handling for tools (ink smoothing, highlight snapping to text, moving and resizing annotations, M4). Those are implemented once here, and frontends only translate native events.
 

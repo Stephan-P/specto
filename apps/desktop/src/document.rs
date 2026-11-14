@@ -61,7 +61,8 @@ impl Document {
         Ok(Self {
             name,
             viewer: Viewer::new(pages, Settings::default()),
-            cache: TileCache::new(CACHE_BUDGET).with_pinned(move |k| levels.contains(&k.level)),
+            cache: TileCache::new(CACHE_BUDGET)
+                .with_pinned(move |k| k.scale.level().is_some_and(|l| levels.contains(&l))),
             scheduler,
             canvas_requests: Vec::new(),
             thumbnails_shown: BTreeSet::new(),

@@ -100,6 +100,23 @@ Run on the 384-page Valgrind manual under a headless `mutter` (1100×854 window,
 - What remains at non-level zooms is the downsampling of √2-level tiles, which is independent of the toolkit (TASKS.md, "HiDPI, part 3").
 - Not covered: the probe reads GSK's output, not the screen, so anything the macOS window server does afterwards is not measured.
 
+**HiDPI part 3 (M1, Linux, headless mutter with fractional scaling, GTK 4.22, `GskVulkanRenderer`):** settled views now render tiles at the exact device scale (see ARCHITECTURE.md). The probe gained `PDFRS_LEVELS_ONLY=1` (never settle, the previous behaviour) and a second screenshot, `<out>-surface.png`, which renders the whole window with its surface transform, i.e. what GTK actually puts on the surface. Page 1 of the Valgrind manual against `pdfrs render -s <device scale>`, same edge-contrast measure (mean luminance step > 16 across horizontal neighbours; exact renders score 116–118):
+
+| Surface scale | Zoom | Device px/pt | Levels only (before) | Settled (after) |
+|---|---|---|---|---|
+| 2 | fit width | 3.0588 (level 4 drawn at 76.5%) | 99.0, 3.3% of pixels off by > 8 | **pixel-identical** |
+| 2 | 1.0 | 2.0 (= level 2) | pixel-identical | pixel-identical |
+| 1.5 | fit width | 3.0784 (level 4 at 77.0%) | 98.6 | **pixel-identical** |
+| 1.5 | 1.0 | 1.5 (level 2 at 75.0%) | 99.9 | **pixel-identical** |
+| 1.25 | fit width | 2.1977 (level 3 at 77.7%) | 99.2 | **pixel-identical** (80.7 before part 4) |
+| 1.25 | 1.0 | 1.25 (level 1 at 88.4%) | 87.0 | **pixel-identical** (74.0 before part 4) |
+
+- **Part 4, fractional window offsets:** at 1.25 the window was not maximized, so GTK placed its content inside a 25 px CSD shadow: the canvas sat at device (31.25, 88.75). The canvas-only screenshot was still exact, but on the surface every tile was resampled a quarter pixel off, scoring 80.7, *worse* than level tiles. Both canvases now translate their content by the fractional part of their device origin; afterwards all cases above are pixel-identical on the surface too. At scales 2 and 1.5 the origins were already whole pixels.
+- `append_texture` (the macOS fix) holds on Linux at 2, 1.5 and 1.25: page origins land on whole device pixels and exact tiles are not resampled.
+- **Frame rate** (benchmark at surface scale 2, two runs each): levels only 46.7 / 47.3 fps, settled 51.6 / 50.1 fps, so settling costs nothing (exact tiles are smaller than the oversized level tiles). Both are below the 59 fps at scale 1 because the headless compositor moves 4× the pixels.
+- Not covered: physical displays. Headless mutter's virtual monitor offers 1.25, 1.33, 1.5, 1.67, 2 and 2.5; 1.33 and 1.67 were not run.
+- Reproduce: `PDFRS_SCALE=1.25 tools/headless/run.sh target/release/gtk-canvas file.pdf --probe out.png` (add `PDFRS_ZOOM=1.0` or `PDFRS_LEVELS_ONLY=1`), then compare the page area of `out-surface.png` (page rect plus the printed device origin) with `pdfrs render file.pdf -p 1 -s <printed device scale>`.
+
 ## Android (D4/D5)
 
 `apps/android` is a Gradle project (AGP 9.2, Kotlin + Compose) with one activity. `crates/pdfrs-ffi` wraps `pdfrs-render` with UniFFI proc macros, and the Gradle build runs `cargo ndk` and `uniffi-bindgen` (`tools/uniffi-bindgen`) as generated-source tasks, so "Run" in Android Studio picks up Rust changes. The app renders page 1 of a bundled sample (or a file from the system picker) at screen width.

@@ -3,7 +3,11 @@ use pdfrs_geom::{
     PagePoint, PageSize, Rotation, ViewPoint, ViewRect, ViewSize, ViewVector,
 };
 use pdfrs_render::Content;
-use pdfrs_render::tile::{DocId, TILE_SIZE, TileKey, level_for_scale, level_scale, tiles_covering};
+use std::time::{Duration, Instant};
+
+use pdfrs_render::tile::{
+    DocId, TILE_SIZE, TileKey, TileScale, level_for_scale, level_scale, tiles_covering,
+};
 
 use crate::layout::{Layout, LayoutMode, LayoutParams, group_spreads, layout, spread_points};
 
@@ -53,6 +57,10 @@ pub struct Settings {
     pub content: Content,
     /// Prefetch tiles this many viewport heights above and below.
     pub prefetch: f64,
+    /// How long the zoom must stay unchanged (and no zoom gesture be active)
+    /// before the view counts as settled and switches from √2-level tiles to
+    /// tiles at the exact device scale.
+    pub settle_delay: Duration,
 }
 
 impl Default for Settings {
@@ -65,6 +73,7 @@ impl Default for Settings {
             cover_alone: false,
             content: Content::PageAndAnnotations,
             prefetch: 0.5,
+            settle_delay: Duration::from_millis(250),
         }
     }
 }
@@ -77,6 +86,10 @@ pub struct Frame {
     pub requests: Vec<TileKey>,
     /// Every visible tile is available at full sharpness.
     pub complete: bool,
+    /// The view is still zooming (or just stopped) and is drawn from √2-level
+    /// tiles. Once settled it switches to exact-scale tiles: redraw at this
+    /// time even if nothing else happens.
+    pub settles_at: Option<Instant>,
 }
 
 /// One visible page.
@@ -128,6 +141,17 @@ pub struct Viewer {
     /// Current spread in paged modes.
     current: usize,
     layout: Layout,
+    /// Device scale of the last frame; a change restarts the settle delay.
+    last_device_scale: Option<TileScale>,
+    /// A zoom gesture ended since the last frame (restarts the settle delay).
+    zoom_dirty: bool,
+    /// When the device scale last changed, as seen by `frame`.
+    zoom_changed_at: Option<Instant>,
+    /// A zoom gesture (pinch) is in progress.
+    gesture: bool,
+    /// Whether `frame` has run yet. The first frame is settled right away:
+    /// nothing is zooming, so there's no reason to render levels first.
+    framed: bool,
 }
 
 impl Viewer {
@@ -146,6 +170,11 @@ impl Viewer {
             page_spread: Vec::new(),
             current: 0,
             layout: Layout::default(),
+            last_device_scale: None,
+            zoom_dirty: false,
+            zoom_changed_at: None,
+            gesture: false,
+            framed: false,
         };
         v.set_pages(pages);
         v
@@ -322,6 +351,37 @@ impl Viewer {
         self.set_zoom(self.zoom * factor, anchor);
     }
 
+    /// A zoom gesture (pinch) started: until [`end_zoom_gesture`](Self::end_zoom_gesture)
+    /// the view never counts as settled, so pausing mid-pinch doesn't
+    /// render (and cache) exact-scale tiles for an intermediate zoom.
+    pub fn begin_zoom_gesture(&mut self) {
+        self.gesture = true;
+    }
+
+    /// The zoom gesture ended; the view settles after `settle_delay`.
+    pub fn end_zoom_gesture(&mut self) {
+        self.gesture = false;
+        self.zoom_dirty = true;
+    }
+
+    /// Whether a frame planned at `now` would use exact-scale tiles.
+    pub fn is_settled(&self, now: Instant) -> bool {
+        !self.gesture
+            && !self.zoom_dirty
+            && self
+                .last_device_scale
+                .is_none_or(|s| s == self.device_scale())
+            && self
+                .zoom_changed_at
+                .is_none_or(|t| now.saturating_duration_since(t) >= self.settings.settle_delay)
+    }
+
+    /// Device pixels per point actually used for drawing: zoom × device
+    /// scale, quantized like tile scales so exact tiles map 1:1.
+    pub fn device_scale(&self) -> TileScale {
+        TileScale::exact(self.zoom * self.scale)
+    }
+
     /// Sets the layout position of the viewport's top-left corner (scrollbars).
     pub fn set_scroll_offset(&mut self, offset: LayoutVector) {
         self.scroll = offset;
@@ -337,7 +397,7 @@ impl Viewer {
             page: page.page,
             rotation: page.rotation,
             content: self.settings.content,
-            level: placeholder_level(&page.displayed())?,
+            scale: TileScale::from_level(placeholder_level(&page.displayed())?),
             tx: 0,
             ty: 0,
         })
@@ -389,10 +449,36 @@ impl Viewer {
 
     // --- drawing ------------------------------------------------------------
 
-    /// Plans a frame. `cached` tells whether the frontend has a tile.
-    pub fn frame(&self, cached: impl Fn(&TileKey) -> bool) -> Frame {
-        let dev_zoom = self.zoom * self.scale;
-        let level = level_for_scale(dev_zoom);
+    /// Plans a frame at time `now`. `cached` tells whether the frontend has a tile.
+    ///
+    /// While zooming, pages are drawn from √2-level tiles (rendered at or
+    /// above the device scale and downsampled), so continuous zooming reuses
+    /// a few cached levels. Once the view is settled (no zoom change for
+    /// `settle_delay` and no gesture in progress), it requests tiles at the
+    /// exact device scale and draws them 1:1, with level tiles as fallback.
+    pub fn frame(&mut self, now: Instant, cached: impl Fn(&TileKey) -> bool) -> Frame {
+        let device = self.device_scale();
+        let rescaled = self.last_device_scale.replace(device) != Some(device);
+        if (std::mem::take(&mut self.zoom_dirty) || rescaled) && self.framed {
+            self.zoom_changed_at = Some(now);
+        }
+        self.framed = true;
+        let settled = self.is_settled(now);
+        let level = level_for_scale(device.get());
+        let level_scale = TileScale::from_level(level);
+        // Exact tiles only when they differ from the level (they're the same
+        // key when the zoom lands on a level, e.g. 100% at scale 2).
+        let target = if settled { device } else { level_scale };
+        let fallbacks: Vec<TileScale> = if target == level_scale {
+            [level - 2, level - 1, level + 1, level + 2]
+                .map(TileScale::from_level)
+                .to_vec()
+        } else {
+            [level - 2, level - 1, level, level + 1]
+                .map(TileScale::from_level)
+                .to_vec()
+        };
+
         let view = self.view_layout_rect();
         let band = self.settings.prefetch * self.viewport.height;
         let viewport_dev = DeviceRect::new(
@@ -406,6 +492,12 @@ impl Viewer {
 
         let mut frame = Frame {
             complete: true,
+            settles_at: match self.zoom_changed_at {
+                Some(t) if !settled && !self.gesture && device != level_scale => {
+                    Some(t + self.settings.settle_delay)
+                }
+                _ => None,
+            },
             ..Frame::default()
         };
         let mut missing_sharp = Vec::new();
@@ -423,21 +515,24 @@ impl Viewer {
                     ((r.origin.x - self.scroll.x) * self.scale).round(),
                     ((r.origin.y - self.scroll.y) * self.scale).round(),
                 );
-                let px = displayed.pixel_size(dev_zoom);
+                // Sized from the quantized device scale, exactly like an
+                // exact-scale page bitmap.
+                let px = displayed.pixel_size(device.get());
                 let rect = DeviceRect::new(origin, (px.width as f64, px.height as f64).into());
-                let placeholder = placeholder_level(&displayed).filter(|&p| p < level);
-                let key = |level: i32, (tx, ty): (u32, u32)| TileKey {
+                let placeholder = placeholder_level(&displayed)
+                    .map(TileScale::from_level)
+                    .filter(|&p| p < target);
+                let key = |scale: TileScale, (tx, ty): (u32, u32)| TileKey {
                     doc: page.doc,
                     page: page.page,
                     rotation: page.rotation,
                     content: self.settings.content,
-                    level,
+                    scale,
                     tx,
                     ty,
                 };
 
-                let on_screen = rect.intersection(&viewport_dev);
-                let Some(on_screen) = on_screen else {
+                let Some(on_screen) = rect.intersection(&viewport_dev) else {
                     // In the prefetch band only.
                     let band_dev = viewport_dev.inflate(0.0, band * self.scale);
                     if let Some(area) = rect.intersection(&band_dev) {
@@ -446,13 +541,10 @@ impl Viewer {
                         {
                             prefetch.insert(0, key(p, (0, 0)));
                         }
-                        for t in tiles_covering(
-                            &displayed,
-                            level,
-                            level_area(rect, area, &displayed, level),
-                        ) {
-                            if !cached(&key(level, t)) {
-                                prefetch.push(key(level, t));
+                        let a = scaled_area(rect, area, &displayed, target);
+                        for t in tiles_covering(&displayed, target, a) {
+                            if !cached(&key(target, t)) {
+                                prefetch.push(key(target, t));
                             }
                         }
                     }
@@ -470,11 +562,11 @@ impl Viewer {
                     }
                 }
 
-                let area = level_area(rect, on_screen, &displayed, level);
+                let area = scaled_area(rect, on_screen, &displayed, target);
                 let mut sharp = Vec::new();
                 let mut missing = false;
-                for t in tiles_covering(&displayed, level, area) {
-                    let k = key(level, t);
+                for t in tiles_covering(&displayed, target, area) {
+                    let k = key(target, t);
                     if cached(&k) {
                         sharp.push(k);
                     } else {
@@ -486,15 +578,13 @@ impl Viewer {
                     frame.complete = false;
                     // Fill gaps with whatever neighbouring levels are cached,
                     // coarser first so finer ones end up on top.
-                    let mut fallback = [level - 2, level - 1, level + 1, level + 2];
-                    fallback.sort_by_key(|&l| l);
-                    for l in fallback {
-                        if placeholder.is_some_and(|p| l <= p) {
+                    for &f in &fallbacks {
+                        if placeholder.is_some_and(|p| f <= p) {
                             continue;
                         }
-                        let a = level_area(rect, on_screen, &displayed, l);
-                        for t in tiles_covering(&displayed, l, a) {
-                            let k = key(l, t);
+                        let a = scaled_area(rect, on_screen, &displayed, f);
+                        for t in tiles_covering(&displayed, f, a) {
+                            let k = key(f, t);
                             if cached(&k) {
                                 layers.extend(tile_draw(k, page, rect));
                             }
@@ -515,20 +605,11 @@ impl Viewer {
         frame.requests.extend(missing_sharp);
         if let (Some(&first), Some(&last)) = (visible_pages.first(), visible_pages.last()) {
             for i in first.saturating_sub(2)..(last + 3).min(self.pages.len()) {
-                let page = &self.pages[i];
-                if let Some(p) = placeholder_level(&page.displayed()).filter(|&p| p < level) {
-                    let k = TileKey {
-                        doc: page.doc,
-                        page: page.page,
-                        rotation: page.rotation,
-                        content: self.settings.content,
-                        level: p,
-                        tx: 0,
-                        ty: 0,
-                    };
-                    if !cached(&k) && !frame.requests.contains(&k) {
-                        frame.requests.push(k);
-                    }
+                if let Some(k) = self.placeholder_key(i).filter(|k| k.scale < target)
+                    && !cached(&k)
+                    && !frame.requests.contains(&k)
+                {
+                    frame.requests.push(k);
                 }
             }
         }
@@ -699,9 +780,14 @@ pub fn placeholder_level(g: &PageGeometry) -> Option<i32> {
 }
 
 /// Converts part of a page's device rectangle into pixels of the page bitmap
-/// at `level`, rounded outwards.
-fn level_area(page: DeviceRect, part: DeviceRect, g: &PageGeometry, level: i32) -> DeviceIntRect {
-    let full = g.pixel_size(level_scale(level));
+/// at `scale`, rounded outwards.
+fn scaled_area(
+    page: DeviceRect,
+    part: DeviceRect,
+    g: &PageGeometry,
+    scale: TileScale,
+) -> DeviceIntRect {
+    let full = g.pixel_size(scale.get());
     let fx = full.width as f64 / page.size.width;
     let fy = full.height as f64 / page.size.height;
     let x0 = ((part.min_x() - page.min_x()) * fx).floor().max(0.0);
@@ -714,7 +800,7 @@ fn level_area(page: DeviceRect, part: DeviceRect, g: &PageGeometry, level: i32) 
 /// Where a tile lands on screen, given the page's device rectangle.
 fn tile_draw(key: TileKey, page: &ViewPage, rect: DeviceRect) -> Option<TileDraw> {
     let region = key.region(&page.geometry)?;
-    let full = page.displayed().pixel_size(level_scale(key.level));
+    let full = page.displayed().pixel_size(key.scale.get());
     let fx = rect.size.width / full.width as f64;
     let fy = rect.size.height / full.height as f64;
     Some(TileDraw {

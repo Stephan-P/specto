@@ -2,7 +2,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use pdfrs_render::scheduler::Scheduler;
-use pdfrs_render::tile::{TileKey, level_for_scale, level_scale, tiles_covering};
+use pdfrs_render::tile::{TileKey, TileScale, level_for_scale, level_scale, tiles_covering};
 use pdfrs_render::{
     Bitmap, Content, DeviceIntRect, Document, HayroDocument, OpenError, RenderRequest, Rotation,
     check_geometry_matches_hayro,
@@ -182,13 +182,14 @@ fn scheduler_renders_requested_tiles() {
 
     let level = level_for_scale(3.0); // → 2^(4/2) = 4 px/pt → 800 × 400 → 2 × 1 tiles
     assert_eq!(level_scale(level), 4.0);
-    let keys: Vec<TileKey> = tiles_covering(&g, level, DeviceIntRect::from_size(g.pixel_size(4.0)))
+    let scale = TileScale::from_level(level);
+    let keys: Vec<TileKey> = tiles_covering(&g, scale, DeviceIntRect::from_size(g.pixel_size(4.0)))
         .map(|(tx, ty)| TileKey {
             doc: opened.id,
             page: 0,
             rotation: Rotation::None,
             content: Content::PageAndAnnotations,
-            level,
+            scale,
             tx,
             ty,
         })
@@ -217,7 +218,7 @@ fn scheduler_drops_closed_documents() {
         page: 0,
         rotation: Rotation::None,
         content: Content::PageOnly,
-        level: 0,
+        scale: TileScale::from_level(0),
         tx: 0,
         ty: 0,
     }]);

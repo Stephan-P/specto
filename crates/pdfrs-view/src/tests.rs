@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use pdfrs_geom::{
     PageGeometry, PagePoint, PdfBox, PdfPoint, Rotation, ViewPoint, ViewSize, ViewVector,
 };
-use pdfrs_render::tile::{DocId, TileKey};
+use std::time::Instant;
+
+use pdfrs_geom::{DevicePoint, DeviceRect};
+use pdfrs_render::tile::{DocId, TileKey, TileScale};
 
 use crate::{LayoutMode, Settings, ViewPage, Viewer, ZoomMode, placeholder_level};
 
@@ -157,32 +160,35 @@ fn all_cached(_: &TileKey) -> bool {
     true
 }
 
+fn level(k: &TileKey) -> Option<i32> {
+    k.scale.level()
+}
+
 #[test]
 fn frame_requests_placeholders_first_then_sharp_tiles() {
     let mut v = viewer(letters(20));
     v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
     v.set_zoom(1.0, ViewPoint::origin());
-    let f = v.frame(|_| false);
+    let f = v.frame(Instant::now(), |_| false);
     assert!(!f.complete);
     // Page 0 spans y 10..802; page 1 starts below the 800 px viewport.
     let visible: Vec<usize> = f.pages.iter().map(|p| p.page).collect();
     assert_eq!(visible, vec![0]);
-    let pl = placeholder_level(&v.pages()[0].displayed()).unwrap();
+    let pl = placeholder_level(&v.pages()[0].displayed());
     // The visible page's placeholder comes first, then its sharp tiles at
-    // zoom 1 × scale 2 → level 2 (1224 × 1584 px → 3 × 4 tiles; the bottom
-    // row is cut off by the viewport → 3 × 4 still, 790 of 792 pt visible).
-    assert_eq!((f.requests[0].page, f.requests[0].level), (0, pl));
+    // zoom 1 × scale 2 → level 2 (1224 × 1584 px → 3 × 4 tiles).
+    assert_eq!((f.requests[0].page, level(&f.requests[0])), (0, pl));
     let sharp = f
         .requests
         .iter()
         .skip(1)
-        .take_while(|k| k.page == 0 && k.level == 2)
+        .take_while(|k| k.page == 0 && level(k) == Some(2))
         .count();
     assert_eq!(sharp, 12);
     // Then neighbours' placeholders, then prefetch (page 1's top tiles).
     let rest = &f.requests[1 + sharp..];
-    assert_eq!((rest[0].page, rest[0].level), (1, pl));
-    assert!(rest.iter().any(|k| k.page == 1 && k.level == 2));
+    assert_eq!((rest[0].page, level(&rest[0])), (1, pl));
+    assert!(rest.iter().any(|k| k.page == 1 && level(k) == Some(2)));
     // No duplicates.
     let unique: HashSet<_> = f.requests.iter().collect();
     assert_eq!(unique.len(), f.requests.len());
@@ -193,13 +199,18 @@ fn frame_with_everything_cached_is_complete_and_exact() {
     let mut v = viewer(letters(3));
     v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
     v.set_zoom(1.0, ViewPoint::origin());
-    let f = v.frame(all_cached);
+    let f = v.frame(Instant::now(), all_cached);
     assert!(f.complete);
+    assert_eq!(f.settles_at, None); // 100% at scale 2 *is* level 2
     for p in &f.pages {
         // Page rects sit on whole device pixels.
         assert_eq!(p.rect.origin.x.fract(), 0.0);
         assert_eq!(p.rect.origin.y.fract(), 0.0);
-        let sharp: Vec<_> = p.layers.iter().filter(|t| t.key.level == 2).collect();
+        let sharp: Vec<_> = p
+            .layers
+            .iter()
+            .filter(|t| level(&t.key) == Some(2))
+            .collect();
         assert!(!sharp.is_empty());
         // Device scale 2 × zoom 1 = level 2 exactly: tiles map 1:1.
         assert!(sharp.iter().all(|t| t.exact));
@@ -212,39 +223,131 @@ fn frame_with_everything_cached_is_complete_and_exact() {
     assert!(f.requests.is_empty());
 }
 
+/// Checks the sharpest layer of every visible page: never upscaled, and
+/// covering the visible part of the page. Returns those layers' scales.
+fn check_coverage(v: &Viewer, f: &crate::Frame, what: &str) -> HashSet<TileScale> {
+    let (vw, vh, scale) = (v.viewport().width, v.viewport().height, v.scale_factor());
+    let viewport = DeviceRect::new(DevicePoint::origin(), (vw * scale, vh * scale).into());
+    let mut scales = HashSet::new();
+    for p in &f.pages {
+        let Some(visible) = p.rect.intersection(&viewport) else {
+            continue;
+        };
+        let best = p.layers.iter().map(|t| t.key.scale).max().unwrap();
+        scales.insert(best);
+        let sharp: Vec<_> = p.layers.iter().filter(|t| t.key.scale == best).collect();
+        for t in &sharp {
+            let r = t.key.region(&v.pages()[p.page].geometry).unwrap();
+            assert!(
+                t.dest.size.width <= r.width() as f64 + 1e-9,
+                "upscaled ({what})"
+            );
+        }
+        let covered: f64 = sharp
+            .iter()
+            .filter_map(|t| t.dest.intersection(&visible))
+            .map(|r| r.area())
+            .sum();
+        assert!(covered + 1e-6 >= visible.area(), "gap ({what})");
+    }
+    scales
+}
+
 #[test]
-fn tiles_never_upscale_and_cover_the_viewport() {
+fn zooming_uses_levels_and_settled_views_use_exact_tiles() {
     let mut v = viewer(letters(3));
-    for (zoom, scale) in [(1.0, 1.0), (1.3, 1.25), (0.77, 2.0), (3.1, 1.5)] {
+    let t0 = Instant::now();
+    let delay = v.settings().settle_delay;
+    v.frame(t0, all_cached); // first frame: settled immediately
+    for (zoom, scale) in [(1.3, 1.25), (0.77, 2.0), (3.1, 1.5), (0.906, 2.0)] {
+        let what = format!("{zoom}×{scale}");
         v.set_viewport(ViewSize::new(1000.0, 800.0), scale);
         v.set_zoom(zoom, ViewPoint::origin());
-        let f = v.frame(all_cached);
+        // Right after the change: level tiles, and a time to settle.
+        let f = v.frame(t0, all_cached);
+        let scales = check_coverage(&v, &f, &what);
+        assert!(
+            scales.iter().all(|s| s.level().is_some()),
+            "{what}: {scales:?}"
+        );
+        assert_eq!(f.settles_at, Some(t0 + delay), "{what}");
+        assert!(!v.is_settled(t0));
+
+        // Settled: exact tiles at the device scale, drawn 1:1.
+        let later = t0 + delay;
+        let f = v.frame(later, all_cached);
+        assert!(v.is_settled(later));
+        assert_eq!(f.settles_at, None);
+        let scales = check_coverage(&v, &f, &what);
+        assert_eq!(scales, HashSet::from([v.device_scale()]), "{what}");
         for p in &f.pages {
-            let viewport = pdfrs_geom::DeviceRect::new(
-                pdfrs_geom::DevicePoint::origin(),
-                (1000.0 * scale, 800.0 * scale).into(),
-            );
-            let Some(visible) = p.rect.intersection(&viewport) else {
-                continue;
-            };
-            let level = p.layers.iter().map(|t| t.key.level).max().unwrap();
-            let sharp: Vec<_> = p.layers.iter().filter(|t| t.key.level == level).collect();
-            for t in &sharp {
-                let r = t.key.region(&v.pages()[p.page].geometry).unwrap();
-                assert!(
-                    t.dest.size.width <= r.width() as f64 + 1e-9,
-                    "upscaled at {zoom}×{scale}"
-                );
+            for t in p.layers.iter().filter(|t| t.key.scale == v.device_scale()) {
+                assert!(t.exact, "{what}: {t:?}");
+                assert_eq!(t.dest.origin.x.fract(), 0.0);
+                assert_eq!(t.dest.origin.y.fract(), 0.0);
             }
-            // Union of sharp tiles covers the visible part (area check).
-            let covered: f64 = sharp
-                .iter()
-                .filter_map(|t| t.dest.intersection(&visible))
-                .map(|r| r.area())
-                .sum();
-            assert!(covered + 1e-6 >= visible.area(), "gap at {zoom}×{scale}");
         }
+        // Reset the clock for the next round.
+        v.set_zoom(1.0, ViewPoint::origin());
+        v.frame(later, all_cached);
     }
+}
+
+#[test]
+fn settled_view_requests_exact_tiles_and_falls_back_to_levels() {
+    let mut v = viewer(letters(1));
+    v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
+    v.set_zoom(0.906, ViewPoint::origin()); // device 1.812 → level 2 drawn at 90.6%
+    let t0 = Instant::now();
+    v.frame(t0, |_| false);
+    let later = t0 + v.settings().settle_delay;
+    // Only level tiles are cached (from while zooming).
+    let f = v.frame(later, |k| level(k).is_some());
+    assert!(!f.complete);
+    let device = v.device_scale();
+    assert_eq!(device.level(), None);
+    assert!(f.pages[0].layers.iter().all(|t| level(&t.key).is_some()));
+    assert!(f.pages[0].layers.iter().any(|t| level(&t.key) == Some(2)));
+    assert!(f.requests.iter().any(|k| k.scale == device));
+    assert!(!f.requests.iter().any(|k| level(k) == Some(2)));
+}
+
+#[test]
+fn no_exact_tiles_during_a_zoom_gesture() {
+    let mut v = viewer(letters(1));
+    v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
+    let t0 = Instant::now();
+    v.frame(t0, |_| false);
+    let delay = v.settings().settle_delay;
+    v.begin_zoom_gesture();
+    v.zoom_by(1.1, ViewPoint::new(500.0, 400.0));
+    v.frame(t0, |_| false);
+    // Paused mid-pinch for a long time: still only level tiles, no deadline.
+    let much_later = t0 + delay * 20;
+    let f = v.frame(much_later, |_| false);
+    assert!(!v.is_settled(much_later));
+    assert_eq!(f.settles_at, None);
+    assert!(f.requests.iter().all(|k| level(k).is_some()));
+    // Released: settles after the delay, measured from the release.
+    v.end_zoom_gesture();
+    let f = v.frame(much_later, |_| false);
+    assert_eq!(f.settles_at, Some(much_later + delay));
+    let f = v.frame(much_later + delay, |_| false);
+    assert!(f.requests.iter().any(|k| k.scale == v.device_scale()));
+}
+
+#[test]
+fn scrolling_does_not_unsettle() {
+    let mut v = viewer(letters(5));
+    v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
+    v.set_zoom(0.906, ViewPoint::origin());
+    let t0 = Instant::now();
+    v.frame(t0, |_| false);
+    let later = t0 + v.settings().settle_delay;
+    v.frame(later, |_| false);
+    v.scroll_by(ViewVector::new(0.0, 300.0));
+    v.go_to_page(3);
+    assert!(v.is_settled(later));
 }
 
 #[test]
@@ -253,11 +356,11 @@ fn missing_tiles_fall_back_to_neighbouring_levels() {
     v.set_viewport(ViewSize::new(1000.0, 800.0), 1.0);
     v.set_zoom(2.0, ViewPoint::origin()); // level 2
     // Only level-1 tiles (the previous zoom) are cached.
-    let f = v.frame(|k| k.level == 1);
+    let f = v.frame(Instant::now(), |k| level(k) == Some(1));
     assert!(!f.complete);
-    let levels: HashSet<i32> = f.pages[0].layers.iter().map(|t| t.key.level).collect();
-    assert_eq!(levels, HashSet::from([1]));
-    assert!(f.requests.iter().any(|k| k.level == 2));
+    let levels: HashSet<Option<i32>> = f.pages[0].layers.iter().map(|t| level(&t.key)).collect();
+    assert_eq!(levels, HashSet::from([Some(1)]));
+    assert!(f.requests.iter().any(|k| level(k) == Some(2)));
 }
 
 #[test]

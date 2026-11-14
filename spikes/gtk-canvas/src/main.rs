@@ -73,7 +73,19 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
             rotation: Rotation::None,
         })
         .collect();
-    let mut viewer = Viewer::new(pages, Settings::default());
+    let levels_only = std::env::var_os("PDFRS_LEVELS_ONLY").is_some();
+    let mut viewer = Viewer::new(
+        pages,
+        Settings {
+            // Baseline for comparisons: never settle, so only √2-level tiles.
+            settle_delay: if levels_only {
+                std::time::Duration::from_secs(1 << 30)
+            } else {
+                Settings::default().settle_delay
+            },
+            ..Settings::default()
+        },
+    );
     match std::env::var("PDFRS_LAYOUT").as_deref() {
         Ok("single") => viewer.set_layout_mode(LayoutMode::SinglePage),
         Ok("two-page") => viewer.set_layout_mode(LayoutMode::TwoPage),
@@ -153,7 +165,16 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         let canvas_ref = canvas.clone();
         let last = Rc::new(RefCell::new(1.0));
         let last_begin = last.clone();
-        pinch.connect_begin(move |_, _| *last_begin.borrow_mut() = 1.0);
+        let s_begin = state.clone();
+        pinch.connect_begin(move |_, _| {
+            *last_begin.borrow_mut() = 1.0;
+            s_begin.borrow_mut().viewer.begin_zoom_gesture();
+        });
+        let (s_end, c_end) = (state.clone(), canvas_ref.clone());
+        pinch.connect_end(move |_, _| {
+            s_end.borrow_mut().viewer.end_zoom_gesture();
+            c_end.queue_draw();
+        });
         pinch.connect_scale_changed(move |g, scale| {
             let (cx, cy) = g.bounding_box_center().unwrap_or((0.0, 0.0));
             let factor = scale / *last.borrow();
@@ -247,9 +268,14 @@ fn run_probe(
                 s.viewer.set_zoom(z, ViewPoint::origin());
             }
         }
-        let s = &*s;
-        let frame = s.viewer.frame(|k| s.cache.contains(k));
-        if start.elapsed().as_secs_f64() < 1.5 || !frame.complete || s.scheduler.pending() > 0 {
+        let s = &mut *s;
+        let now = Instant::now();
+        let frame = s.viewer.frame(now, |k| s.cache.contains(k));
+        if start.elapsed().as_secs_f64() < 1.5
+            || !(s.viewer.is_settled(now) || std::env::var_os("PDFRS_LEVELS_ONLY").is_some())
+            || !frame.complete
+            || s.scheduler.pending() > 0
+        {
             // Not on the last tick: a queued draw drops the render node that
             // the screenshot below reads.
             canvas.queue_draw();
@@ -263,8 +289,6 @@ fn run_probe(
             .compute_point(&native, &gtk::graphene::Point::new(0.0, 0.0))
             .expect("origin");
         let (sx, sy) = native.surface_transform();
-        let dev_zoom = s.viewer.zoom() * s.viewer.scale_factor();
-        let level = pdfrs_render::tile::level_for_scale(dev_zoom);
         println!(
             "renderer {} · surface scale {} (integer scale_factor {}) · surface {}×{} logical",
             native.renderer().map(|r| r.type_().name().to_string()).unwrap_or_default(),
@@ -282,17 +306,29 @@ fn run_probe(
             (origin.x() as f64 + sx) * scale,
             (origin.y() as f64 + sy) * scale,
         );
+        let device = s.viewer.device_scale();
+        let level = pdfrs_render::tile::level_for_scale(device.get());
+        let level_scale = pdfrs_render::tile::TileScale::from_level(level);
         println!(
-            "zoom {:.6} logical px/pt → {:.6} device px/pt → level {level} ({:.6} px/pt, drawn at {:.1}%)",
+            "zoom {:.6} logical px/pt → device scale {:.6} px/pt (quantized) · level {level} = {:.6} px/pt · settled {} → tiles at {}",
             s.viewer.zoom(),
-            dev_zoom,
-            pdfrs_render::tile::level_scale(level),
-            dev_zoom / pdfrs_render::tile::level_scale(level) * 100.0,
+            device.get(),
+            level_scale.get(),
+            s.viewer.is_settled(now),
+            if device == level_scale {
+                "the level (it is exact)".to_string()
+            } else {
+                format!("the exact scale (a level would be drawn at {:.1}%)", device.get() / level_scale.get() * 100.0)
+            },
         );
         for page in &frame.pages {
             println!("page {} rect {:?}", page.page, page.rect);
             for l in &page.layers {
-                println!("  level {} tile ({}, {}) exact {} dest {:?}", l.key.level, l.key.tx, l.key.ty, l.exact, l.dest);
+                let scale = match l.key.scale.level() {
+                    Some(lv) => format!("level {lv}"),
+                    None => format!("exact {:.6}", l.key.scale.get()),
+                };
+                println!("  {scale} tile ({}, {}) exact {} dest {:?}", l.key.tx, l.key.ty, l.exact, l.dest);
             }
         }
 
@@ -305,6 +341,30 @@ fn run_probe(
             let texture = renderer.render_texture(&node, None);
             println!("screenshot {}×{} px → {}", texture.width(), texture.height(), out.display());
             texture.save_to_png(&out).expect("save screenshot");
+        }
+
+        // The whole window as GTK puts it on the surface: including the
+        // surface transform (CSD shadow margin), which at fractional scales
+        // can put the canvas on a fractional device pixel.
+        let paintable = gtk::WidgetPaintable::new(Some(&window));
+        let snap = gtk::Snapshot::new();
+        snap.scale(scale as f32, scale as f32);
+        snap.translate(&gtk::graphene::Point::new(sx as f32, sy as f32));
+        paintable.snapshot(&snap, window.width() as f64, window.height() as f64);
+        if let (Some(node), Some(renderer)) = (snap.to_node(), native.renderer()) {
+            let viewport = gtk::graphene::Rect::new(
+                0.0,
+                0.0,
+                (surface.width() as f64 * scale).ceil() as f32,
+                (surface.height() as f64 * scale).ceil() as f32,
+            );
+            let texture = renderer.render_texture(&node, Some(&viewport));
+            let path = out.with_file_name(format!(
+                "{}-surface.png",
+                out.file_stem().unwrap_or_default().to_string_lossy()
+            ));
+            println!("surface screenshot {}×{} px → {}", texture.width(), texture.height(), path.display());
+            texture.save_to_png(&path).expect("save surface screenshot");
         }
         window.close();
         glib::ControlFlow::Break

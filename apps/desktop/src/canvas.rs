@@ -2,6 +2,7 @@
 //! so a `GtkScrolledWindow` around it provides scrollbars and kinetic scrolling.
 
 use std::cell::{Cell, RefCell};
+use std::time::Instant;
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -32,6 +33,8 @@ mod imp {
         pub syncing: Cell<bool>,
         pub on_view_changed: RefCell<Option<Box<dyn Fn()>>>,
         pub pointer: Cell<(f64, f64)>,
+        /// Pending redraw for when the view settles (switches to exact tiles).
+        pub settle_timer: RefCell<Option<glib::SourceId>>,
     }
 
     impl Default for Canvas {
@@ -45,6 +48,7 @@ mod imp {
                 syncing: Cell::default(),
                 on_view_changed: RefCell::default(),
                 pointer: Cell::default(),
+                settle_timer: RefCell::default(),
             }
         }
     }
@@ -108,14 +112,19 @@ mod imp {
             };
             let obj = self.obj();
             let scale = obj.device_scale();
-            let mut d = doc.borrow_mut();
+            let mut guard = doc.borrow_mut();
+            let d = &mut *guard;
             // The surface scale can change without a new allocation (moving
             // the window to another monitor).
             if d.viewer.scale_factor() != scale {
                 let size = d.viewer.viewport();
                 d.viewer.set_viewport(size, scale);
             }
-            let frame = d.viewer.frame(|k| d.cache.contains(k));
+            let now = Instant::now();
+            let frame = d.viewer.frame(now, |k| d.cache.contains(k));
+            let (dx, dy) = device_pixel_snap(&*obj, scale);
+            snapshot.save();
+            snapshot.translate(&graphene::Point::new(dx, dy));
             d.cache.begin_frame();
             for page in &frame.pages {
                 let rect = logical(page.rect, scale);
@@ -131,21 +140,22 @@ mod imp {
                 snapshot.push_clip(&rect);
                 for layer in &page.layers {
                     if let Some(texture) = d.cache.get(&layer.key) {
-                        let filter = if layer.exact {
-                            gsk::ScalingFilter::Nearest
-                        } else {
-                            gsk::ScalingFilter::Linear
-                        };
-                        snapshot.append_scaled_texture(
-                            texture,
-                            filter,
-                            &logical(layer.dest, scale),
-                        );
+                        // Not `append_scaled_texture`: on a HiDPI surface GSK
+                        // renders that node at logical resolution and scales
+                        // the result up, blurring every tile (measured on
+                        // macOS, see M0-FINDINGS.md). A plain texture node is
+                        // sampled at device resolution, 1:1 when `layer.exact`.
+                        snapshot.append_texture(texture, &logical(layer.dest, scale));
                     }
                 }
                 snapshot.pop();
             }
+            snapshot.restore();
             d.set_canvas_requests(frame.requests);
+            drop(guard);
+            if let Some(at) = frame.settles_at {
+                obj.redraw_at(now, at);
+            }
         }
     }
 }
@@ -204,6 +214,23 @@ impl Canvas {
         let doc = self.imp().document.borrow().clone()?;
         let d = doc.borrow();
         Some(f(&d.viewer))
+    }
+
+    /// Schedules one redraw at `at` (when the view settles), unless one is
+    /// already pending; a redraw then reschedules if the deadline moved.
+    fn redraw_at(&self, now: Instant, at: Instant) {
+        let imp = self.imp();
+        if imp.settle_timer.borrow().is_some() {
+            return;
+        }
+        let this = self.downgrade();
+        let id = glib::timeout_add_local_once(at.saturating_duration_since(now), move || {
+            if let Some(c) = this.upgrade() {
+                c.imp().settle_timer.take();
+                c.queue_draw();
+            }
+        });
+        imp.settle_timer.replace(Some(id));
     }
 
     fn device_scale(&self) -> f64 {
@@ -274,10 +301,30 @@ impl Canvas {
         self.add_controller(scroll);
 
         // Touchpad / touchscreen pinch.
+        // While it lasts the view isn't "settled", so pauses mid-pinch don't
+        // render exact-scale tiles for intermediate zooms.
         let pinch = gtk::GestureZoom::new();
         let last = std::rc::Rc::new(Cell::new(1.0));
         let l = last.clone();
-        pinch.connect_begin(move |_, _| l.set(1.0));
+        let this = self.downgrade();
+        pinch.connect_begin(move |_, _| {
+            l.set(1.0);
+            if let Some(c) = this.upgrade() {
+                c.update_viewer(Viewer::begin_zoom_gesture);
+            }
+        });
+        let this = self.downgrade();
+        pinch.connect_end(move |_, _| {
+            if let Some(c) = this.upgrade() {
+                c.update_viewer(Viewer::end_zoom_gesture);
+            }
+        });
+        let this = self.downgrade();
+        pinch.connect_cancel(move |_, _| {
+            if let Some(c) = this.upgrade() {
+                c.update_viewer(Viewer::end_zoom_gesture);
+            }
+        });
         let this = self.downgrade();
         pinch.connect_scale_changed(move |g, scale| {
             let Some(c) = this.upgrade() else { return };
@@ -339,4 +386,24 @@ fn logical(r: DeviceRect, scale: f64) -> graphene::Rect {
         (r.size.width / scale) as f32,
         (r.size.height / scale) as f32,
     )
+}
+
+/// Logical offset that moves this widget's origin onto a whole device pixel
+/// of its surface. At fractional scales the widget can sit at e.g. 31.25
+/// device px (a 25 px CSD shadow × 1.25), and then every tile is resampled
+/// between pixels. Measured at scale 1.25: edge contrast 80.7 without this,
+/// identical to an exact render with it (M0-FINDINGS.md).
+fn device_pixel_snap(widget: &impl IsA<gtk::Widget>, scale: f64) -> (f32, f32) {
+    let Some(native) = widget.native() else {
+        return (0.0, 0.0);
+    };
+    let Some(p) = widget.compute_point(&native, &graphene::Point::new(0.0, 0.0)) else {
+        return (0.0, 0.0);
+    };
+    let (sx, sy) = native.surface_transform();
+    let snap = |logical: f64| {
+        let device = logical * scale;
+        ((device.round() - device) / scale) as f32
+    };
+    (snap(p.x() as f64 + sx), snap(p.y() as f64 + sy))
 }

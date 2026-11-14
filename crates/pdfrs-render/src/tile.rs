@@ -33,11 +33,58 @@ pub fn level_scale(level: i32) -> f64 {
 
 /// The smallest level whose scale is at least `scale`.
 ///
-/// Rounding *up* means tiles are only ever downsampled when drawn, never
-/// upscaled, which keeps text sharp on HiDPI screens (at most 41% extra pixels).
+/// Rounding *up* means level tiles are only ever downsampled when drawn,
+/// never upscaled. Levels are what the viewer uses while zooming; a settled
+/// view uses tiles at the exact device scale instead.
 pub fn level_for_scale(scale: f64) -> i32 {
-    // The epsilon keeps exact powers (scale 2.0 → level 2) from tipping over.
-    (scale.log2() * 2.0 - 1e-9).ceil() as i32
+    // The tolerance keeps exact powers, including their fixed-point
+    // `TileScale` versions (scale 2.0 → level 2), from tipping over.
+    (scale.log2() * 2.0 - 1e-3).ceil() as i32
+}
+
+/// Device pixels per PDF point, in fixed point (units of 2^-20), so that
+/// tile keys are plain integers: hashable, and cheap to pass across FFI.
+///
+/// The √2 zoom levels are particular values ([`from_level`](Self::from_level));
+/// a settled view uses [`exact`](Self::exact) tiles at its device scale. Page
+/// bitmap sizes are always computed from the quantized value
+/// ([`get`](Self::get)), so an exact tile maps 1:1 onto the page rectangle the
+/// viewer draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TileScale(u32);
+
+impl TileScale {
+    /// 2^20: fine enough at small scales, and up to 4096 px/pt fits in a u32.
+    const ONE: f64 = 1_048_576.0;
+
+    /// The scale of zoom level `level`.
+    pub fn from_level(level: i32) -> Self {
+        Self::exact(level_scale(level))
+    }
+
+    /// `scale` device px per point, quantized to 2^-20.
+    pub fn exact(scale: f64) -> Self {
+        Self((scale * Self::ONE).round().clamp(1.0, u32::MAX as f64) as u32)
+    }
+
+    /// Device pixels per point.
+    pub fn get(self) -> f64 {
+        self.0 as f64 / Self::ONE
+    }
+
+    /// The zoom level this scale is, if it is one.
+    pub fn level(self) -> Option<i32> {
+        let l = (self.get().log2() * 2.0).round() as i32;
+        (Self::from_level(l) == self).then_some(l)
+    }
+
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw.max(1))
+    }
 }
 
 /// One tile of a page bitmap.
@@ -48,18 +95,16 @@ pub struct TileKey {
     /// Extra clockwise rotation on top of the page's `/Rotate`.
     pub rotation: Rotation,
     pub content: Content,
-    pub level: i32,
+    pub scale: TileScale,
     pub tx: u32,
     pub ty: u32,
 }
 
 impl TileKey {
-    /// The tile's pixel rectangle within the full page bitmap at its level, or
+    /// The tile's pixel rectangle within the full page bitmap at its scale, or
     /// `None` if the tile lies outside the page.
     pub fn region(&self, geometry: &PageGeometry) -> Option<DeviceIntRect> {
-        let full = geometry
-            .rotated(self.rotation)
-            .pixel_size(level_scale(self.level));
+        let full = geometry.rotated(self.rotation).pixel_size(self.scale.get());
         let (x, y) = (self.tx * TILE_SIZE, self.ty * TILE_SIZE);
         if x >= full.width || y >= full.height {
             return None;
@@ -73,16 +118,50 @@ impl TileKey {
                 .into(),
         ))
     }
+
+    /// The key as plain numbers, for FFI:
+    /// `[doc, page, rotation (quarter turns), content, scale, tx, ty]`.
+    pub fn to_raw(&self) -> [u32; 7] {
+        [
+            self.doc.raw(),
+            self.page,
+            self.rotation.quarter_turns() as u32,
+            match self.content {
+                Content::PageAndAnnotations => 0,
+                Content::PageOnly => 1,
+            },
+            self.scale.raw(),
+            self.tx,
+            self.ty,
+        ]
+    }
+
+    /// Inverse of [`to_raw`](Self::to_raw). `None` for an unknown content value.
+    pub fn from_raw(raw: [u32; 7]) -> Option<Self> {
+        Some(Self {
+            doc: DocId::from_raw(raw[0]),
+            page: raw[1],
+            rotation: Rotation::from_quarter_turns(raw[2] as i64),
+            content: match raw[3] {
+                0 => Content::PageAndAnnotations,
+                1 => Content::PageOnly,
+                _ => return None,
+            },
+            scale: TileScale::from_raw(raw[4]),
+            tx: raw[5],
+            ty: raw[6],
+        })
+    }
 }
 
 /// Tile indices `(tx, ty)` covering `area` (pixels of the full page bitmap at
-/// `level`), clipped to the page.
+/// `scale`), clipped to the page. `geometry` is the page as displayed.
 pub fn tiles_covering(
     geometry: &PageGeometry,
-    level: i32,
+    scale: TileScale,
     area: DeviceIntRect,
 ) -> impl Iterator<Item = (u32, u32)> {
-    let full = geometry.pixel_size(level_scale(level));
+    let full = geometry.pixel_size(scale.get());
     let x1 = area.max.x.min(full.width);
     let y1 = area.max.y.min(full.height);
     let (x0, y0) = (area.min.x, area.min.y);
@@ -222,12 +301,13 @@ mod tests {
     }
 
     fn key(page: u32, level: i32) -> TileKey {
+        let scale = TileScale::from_level(level);
         TileKey {
             doc: DocId(0),
             page,
             rotation: Rotation::None,
             content: Content::PageOnly,
-            level,
+            scale,
             tx: 0,
             ty: 0,
         }
@@ -248,12 +328,32 @@ mod tests {
     }
 
     #[test]
+    fn tile_scales() {
+        for l in -12..=12 {
+            let s = TileScale::from_level(l);
+            assert_eq!(s.level(), Some(l));
+            assert_eq!(level_for_scale(s.get()), l, "level {l}");
+        }
+        assert_eq!(TileScale::exact(2.0), TileScale::from_level(2));
+        assert_eq!(TileScale::exact(1.81).level(), None);
+        assert!((TileScale::exact(1.81).get() - 1.81).abs() < 1e-5);
+        let k = TileKey {
+            rotation: Rotation::Cw270,
+            content: Content::PageOnly,
+            tx: 3,
+            ty: 9,
+            ..key(7, 3)
+        };
+        assert_eq!(TileKey::from_raw(k.to_raw()), Some(k));
+    }
+
+    #[test]
     fn tile_grid_covers_page() {
         let g = letter();
         // Level 2 → scale 2 → 1224 × 1584 px → 3 × 4 tiles.
         let all: Vec<_> = tiles_covering(
             &g,
-            2,
+            TileScale::from_level(2),
             DeviceIntRect::new((0, 0).into(), (9999, 9999).into()),
         )
         .collect();
@@ -272,20 +372,25 @@ mod tests {
         // A small area in the middle touches exactly the tiles under it.
         let some: Vec<_> = tiles_covering(
             &g,
-            2,
+            TileScale::from_level(2),
             DeviceIntRect::new((500, 500).into(), (530, 1100).into()),
         )
         .collect();
         assert_eq!(some, vec![(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)]);
         assert_eq!(
-            tiles_covering(&g, 2, DeviceIntRect::new((5, 5).into(), (5, 9).into())).count(),
+            tiles_covering(
+                &g,
+                TileScale::from_level(2),
+                DeviceIntRect::new((5, 5).into(), (5, 9).into())
+            )
+            .count(),
             0
         );
     }
 
     #[test]
     fn cache_evicts_lru_but_spares_current_frame_and_pinned() {
-        let mut c = TileCache::new(100).with_pinned(|k| k.level == -4);
+        let mut c = TileCache::new(100).with_pinned(|k| k.scale.level() == Some(-4));
         c.begin_frame();
         c.insert(key(0, -4), "thumb", 40); // pinned
         c.insert(key(1, 0), "old", 40);

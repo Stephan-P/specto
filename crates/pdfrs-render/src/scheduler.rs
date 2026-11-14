@@ -16,7 +16,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::tile::{DocId, TileKey, level_scale};
+use crate::tile::{DocId, TileKey};
 use crate::{Bitmap, Document, HayroDocument, OpenError, PageGeometry, RenderError, RenderRequest};
 
 /// After a worker has rendered this many distinct pages of one document, it
@@ -246,7 +246,7 @@ fn render_tile(
     let region = key
         .region(&geometry)
         .ok_or(RenderError::RegionOutOfBounds)?;
-    let mut request = RenderRequest::page(key.page as usize, level_scale(key.level));
+    let mut request = RenderRequest::page(key.page as usize, key.scale.get());
     request.rotation = key.rotation;
     request.content = key.content;
     request.region = Some(region);
