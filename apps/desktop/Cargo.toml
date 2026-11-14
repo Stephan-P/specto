@@ -17,6 +17,7 @@ async-channel = "2"
 pdfrs-geom.workspace = true
 pdfrs-render.workspace = true
 pdfrs-source.workspace = true
+pdfrs-text.workspace = true
 pdfrs-view.workspace = true
 
 [lints]

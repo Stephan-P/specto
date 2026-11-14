@@ -1635,6 +1635,7 @@ dependencies = [
  "pdfrs-geom",
  "pdfrs-render",
  "pdfrs-source",
+ "pdfrs-text",
  "pdfrs-view",
 ]
 
@@ -1694,6 +1695,7 @@ version = "0.1.0"
 dependencies = [
  "pdfrs-geom",
  "pdfrs-render",
+ "pdfrs-text",
 ]
 
 [[package]]

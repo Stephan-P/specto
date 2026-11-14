@@ -37,9 +37,20 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Contents tab with the document's outline, when it has one: titles wrap to up to three lines, with the page number (or label) right-aligned in grey; entries jump to the exact position
 - Links: in-document links and named actions (next page, …) are followed; web and mail links open in the default app; other kinds are refused
 
+## Text
+
+- Drag over text to select it, across lines and pages; the selection is drawn in the accent colour
+- Double-click selects a word, triple-click a line; dragging afterwards extends by words or lines
+- Shift+click extends the selection
+- An I-beam cursor over text; a hand over links. Clicking a link follows it, dragging from one selects
+- Dragging near the top or bottom edge of the view scrolls
+- *Primary*+C copies the selection, *Primary*+A selects the whole document, Escape or a click clears the selection
+- On Linux the selection is also the primary selection, for middle-click paste
+- Works on rotated pages and rotated text
+
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Close Window, Quit), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page)
+- Menu bar in the system menu bar: File (Open, Close Window, Quit), Edit (Copy, Select All), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -55,7 +66,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Not yet
 
-- Text selection, copying and search (next)
+- Search (next)
 - Printing, saving, page editing, annotations, form filling
 - Rotating pages from the app
 - Highlighting the current outline entry

@@ -888,3 +888,147 @@ fn swiping_through_two_page_spreads() {
     assert_eq!(v.current_page(), 1);
     assert!(close(v.zoom(), 780.0 / 792.0));
 }
+
+// --- text selection -------------------------------------------------------
+
+mod selection {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use pdfrs_geom::{PdfPoint, PdfQuad, Rotation, ViewPoint};
+    use pdfrs_text::{TextChar, TextPage};
+
+    use super::{letters, page, viewer};
+    use crate::{Granularity, Selection, TextPages, TextPos, text_char, text_position};
+
+    /// Characters 6 pt wide and 10 pt tall on baseline `y`, from x = 100.
+    fn line(text: &str, y: f64) -> Vec<TextChar> {
+        text.chars()
+            .enumerate()
+            .map(|(i, c)| {
+                let x = 100.0 + 6.0 * i as f64;
+                let p = |x: f64, y: f64| PdfPoint::new(x, y);
+                TextChar {
+                    text: c.to_string(),
+                    quad: PdfQuad::new([
+                        p(x, y - 2.0),
+                        p(x + 6.0, y - 2.0),
+                        p(x + 6.0, y + 8.0),
+                        p(x, y + 8.0),
+                    ]),
+                    size: 10.0,
+                }
+            })
+            .collect()
+    }
+
+    /// Page `i`: "page i one" on y = 700 and "second line" on y = 680.
+    struct Pages(HashMap<usize, Arc<TextPage>>);
+
+    impl Pages {
+        fn new(n: usize) -> Self {
+            Self(
+                (0..n)
+                    .map(|i| {
+                        let mut chars = line(&format!("page {i} one"), 700.0);
+                        chars.extend(line("second line", 680.0));
+                        (i, Arc::new(TextPage::from_chars(chars)))
+                    })
+                    .collect(),
+            )
+        }
+    }
+
+    impl TextPages for Pages {
+        fn text_page(&mut self, page: usize) -> Option<Arc<TextPage>> {
+            self.0.get(&page).cloned()
+        }
+    }
+
+    #[test]
+    fn drag_by_characters_both_ways() {
+        let mut pages = Pages::new(1);
+        let mut s = Selection::new(&mut pages, TextPos::new(0, 5), Granularity::Char);
+        assert!(s.is_empty());
+        s.extend(&mut pages, TextPos::new(0, 10));
+        assert_eq!(s.text(&mut pages), "0 one");
+        // Back past the anchor: the anchor becomes the end. ("ge " in the
+        // page; a selected trailing space isn't copied.)
+        s.extend(&mut pages, TextPos::new(0, 2));
+        assert_eq!(s.range(), (TextPos::new(0, 2), TextPos::new(0, 5)));
+        assert_eq!(s.text(&mut pages), "ge");
+        // Into the next line.
+        s.extend(&mut pages, TextPos::new(0, 16));
+        assert_eq!(s.text(&mut pages), "0 one\nsecond");
+    }
+
+    #[test]
+    fn words_and_lines() {
+        let mut pages = Pages::new(1);
+        // Double-click on "one" (characters 7..10).
+        let mut s = Selection::new(&mut pages, TextPos::new(0, 8), Granularity::Word);
+        assert_eq!(s.text(&mut pages), "one");
+        // Dragging forwards into "second" takes the whole word.
+        s.extend(&mut pages, TextPos::new(0, 12));
+        assert_eq!(s.text(&mut pages), "one\nsecond");
+        // Backwards into "page" takes it whole, and keeps "one".
+        s.extend(&mut pages, TextPos::new(0, 2));
+        assert_eq!(s.text(&mut pages), "page 0 one");
+        // Triple-click selects the line.
+        let s = Selection::new(&mut pages, TextPos::new(0, 13), Granularity::Line);
+        assert_eq!(s.text(&mut pages), "second line");
+    }
+
+    #[test]
+    fn across_pages_and_all() {
+        let mut pages = Pages::new(3);
+        let mut s = Selection::new(&mut pages, TextPos::new(0, 21), Granularity::Char);
+        s.extend(&mut pages, TextPos::new(2, 4));
+        assert_eq!(
+            s.page_range(0, 21),
+            None,
+            "starts at the very end of page 0"
+        );
+        assert_eq!(s.page_range(1, 21), Some(0..21));
+        assert_eq!(s.page_range(2, 21), Some(0..4));
+        assert_eq!(s.text(&mut pages), "page 1 one\nsecond line\npage");
+        let all = Selection::all(3);
+        assert_eq!(all.page_range(2, 21), Some(0..21));
+        assert_eq!(all.text(&mut pages).lines().count(), 6);
+    }
+
+    #[test]
+    fn positions_from_the_screen() {
+        let mut v = viewer(letters(2));
+        v.set_zoom(1.0, ViewPoint::origin());
+        let mut pages = Pages::new(2);
+        // Page 0's "o" of "one" (character 7, x = 142..148 at y = 700).
+        let at = v.pdf_to_view(0, PdfPoint::new(143.0, 703.0)).unwrap();
+        assert_eq!(text_position(&v, &mut pages, at), Some(TextPos::new(0, 7)));
+        assert_eq!(text_char(&v, &mut pages, at), Some(TextPos::new(0, 7)));
+        // In the gap below page 0: still page 0, at the end of its last line.
+        let r = v.page_rect(0).unwrap();
+        let gap = ViewPoint::new(at.x + 200.0, r.max_y() + 4.0);
+        assert_eq!(text_position(&v, &mut pages, gap).map(|p| p.page), Some(0));
+        // The highlight lands on the characters.
+        let mut s = Selection::new(&mut pages, TextPos::new(0, 7), Granularity::Char);
+        s.extend(&mut pages, TextPos::new(0, 10));
+        let q = s.view_quads(&v, &mut pages, 0);
+        assert_eq!(q.len(), 1);
+        assert!((q[0][0].x - at.x).abs() < 1.5, "{:?} vs {at:?}", q[0][0]);
+        assert!(s.view_quads(&v, &mut pages, 1).is_empty());
+    }
+
+    #[test]
+    fn rotated_page_maps_both_ways() {
+        let mut p = page(0, 612.0, 792.0);
+        p.rotation = Rotation::Cw90;
+        let mut v = viewer(vec![p]);
+        v.set_zoom(1.0, ViewPoint::origin());
+        let pdf = PdfPoint::new(100.0, 700.0);
+        let view = v.pdf_to_view(0, pdf).unwrap();
+        let (i, back) = v.nearest_pdf_point(view).unwrap();
+        assert_eq!(i, 0);
+        assert!((back.x - pdf.x).abs() < 1e-6 && (back.y - pdf.y).abs() < 1e-6);
+    }
+}

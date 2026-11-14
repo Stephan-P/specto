@@ -9,6 +9,7 @@ description = "UI-agnostic viewer core for pdfrs: layout, zoom, scrolling, tile 
 [dependencies]
 pdfrs-geom.workspace = true
 pdfrs-render.workspace = true
+pdfrs-text.workspace = true
 
 [lints]
 workspace = true

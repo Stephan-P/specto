@@ -169,6 +169,141 @@ impl TextPage {
         let i = self.lines.partition_point(|l| l.chars.end <= c);
         self.lines.get(i).filter(|l| l.chars.contains(&c))
     }
+
+    // --- selection ------------------------------------------------------
+
+    /// The position between characters (`0..=chars.len()`) closest to `p`,
+    /// for selecting: on the nearest line, before or after the character
+    /// nearest to `p` along it, whichever half `p` is in. Works for points
+    /// off the text too (margins, between lines), so a drag can go anywhere.
+    pub fn position_at(&self, p: PdfPoint) -> usize {
+        let Some(line) = self
+            .lines
+            .iter()
+            .map(|l| (l, self.line_frame(l).distance(p)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(l, _)| l)
+        else {
+            return 0;
+        };
+        // The character nearest to `p` along the line.
+        let (i, along) = line
+            .chars
+            .clone()
+            .map(|i| {
+                let c = &self.chars[i];
+                let d = c.direction();
+                let start = (c.origin().to_vector()).dot(d);
+                let end = (c.end().to_vector()).dot(d);
+                let at = p.to_vector().dot(d);
+                let dist = if at < start.min(end) {
+                    start.min(end) - at
+                } else if at > start.max(end) {
+                    at - start.max(end)
+                } else {
+                    0.0
+                };
+                (i, dist, (at - start) / (end - start).abs().max(1e-9))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _, along)| (i, along))
+            .unwrap_or((line.chars.start, 0.0));
+        if along < 0.5 { i } else { i + 1 }
+    }
+
+    /// The line whose box contains `p` (for showing a text cursor).
+    pub fn line_at(&self, p: PdfPoint) -> Option<&Line> {
+        self.lines
+            .iter()
+            .find(|l| self.line_frame(l).distance(p) == 0.0)
+    }
+
+    /// Characters of the word containing character `c`, or just `c` if it
+    /// isn't part of a word (a space).
+    pub fn word_range(&self, c: usize) -> Range<usize> {
+        self.word_of(c)
+            .map_or(c..(c + 1).min(self.chars.len()), |w| w.chars.clone())
+    }
+
+    /// Characters of the line containing character `c`.
+    pub fn line_range(&self, c: usize) -> Range<usize> {
+        self.line_of(c)
+            .map_or(c..(c + 1).min(self.chars.len()), |l| l.chars.clone())
+    }
+
+    /// The area to highlight for selected characters `range`: one quad per
+    /// line (rotated with the text), spanning the selected characters along
+    /// the line and the full line height across it.
+    pub fn selection_quads(&self, range: Range<usize>) -> Vec<PdfQuad> {
+        let mut out = Vec::new();
+        for line in &self.lines {
+            let start = line.chars.start.max(range.start);
+            let end = line.chars.end.min(range.end);
+            if start >= end {
+                continue;
+            }
+            let frame = self.line_frame(line);
+            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+            for c in &self.chars[start..end] {
+                for q in c.quad.points {
+                    let a = q.to_vector().dot(frame.dir);
+                    lo = lo.min(a);
+                    hi = hi.max(a);
+                }
+            }
+            out.push(frame.quad(lo, hi));
+        }
+        out
+    }
+
+    /// A line's extent in its own frame: along its direction and across it.
+    fn line_frame(&self, line: &Line) -> LineFrame {
+        let dir = self.chars[line.chars.start].direction();
+        let up = PdfVector::new(-dir.y, dir.x);
+        let mut f = LineFrame {
+            dir,
+            up,
+            along: (f64::INFINITY, f64::NEG_INFINITY),
+            across: (f64::INFINITY, f64::NEG_INFINITY),
+        };
+        for c in &self.chars[line.chars.clone()] {
+            for q in c.quad.points {
+                let (a, b) = (q.to_vector().dot(dir), q.to_vector().dot(up));
+                f.along = (f.along.0.min(a), f.along.1.max(a));
+                f.across = (f.across.0.min(b), f.across.1.max(b));
+            }
+        }
+        f
+    }
+}
+
+/// A line's box in a frame aligned with its text direction.
+struct LineFrame {
+    dir: PdfVector,
+    up: PdfVector,
+    along: (f64, f64),
+    across: (f64, f64),
+}
+
+impl LineFrame {
+    /// How far `p` is from the line, for picking the line a pointer is on:
+    /// the distance across the line counts fully, the distance along it a
+    /// tenth. So in the margin the line at the pointer's height wins over a
+    /// longer line above it, while in two columns the line in the pointer's
+    /// own column still wins.
+    fn distance(&self, p: PdfPoint) -> f64 {
+        let outside = |v: f64, (lo, hi): (f64, f64)| (lo - v).max(v - hi).max(0.0);
+        let along = outside(p.to_vector().dot(self.dir), self.along);
+        let across = outside(p.to_vector().dot(self.up), self.across);
+        across + 0.1 * along
+    }
+
+    /// The quad from `lo` to `hi` along the line, at full line height.
+    fn quad(&self, lo: f64, hi: f64) -> PdfQuad {
+        let at = |a: f64, b: f64| (self.dir * a + self.up * b).to_point();
+        let (bottom, top) = self.across;
+        PdfQuad::new([at(lo, bottom), at(hi, bottom), at(hi, top), at(lo, top)])
+    }
 }
 
 /// Extracts text layers from one document, reusing parsed fonts across pages.

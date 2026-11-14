@@ -30,6 +30,8 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "previous-page",
     "first-page",
     "last-page",
+    "copy",
+    "select-all",
 ];
 
 #[derive(Clone)]
@@ -603,6 +605,17 @@ impl Window {
         self.0.toasts.add_toast(adw::Toast::new(message));
     }
 
+    /// Activates `action` on the focused text field, if one has the focus.
+    fn forward_to_entry(&self, action: &str) -> bool {
+        let Some(focus) = gtk::prelude::GtkWindowExt::focus(&self.0.window) else {
+            return false;
+        };
+        if focus.downcast_ref::<gtk::Text>().is_none() {
+            return false;
+        }
+        focus.activate_action(action, None).is_ok()
+    }
+
     /// The test hooks described in `debug.rs`.
     fn setup_debug_actions(&self) {
         let string = String::static_variant_type();
@@ -628,6 +641,7 @@ impl Window {
             action("debug-screenshot", |w, path| {
                 debug::screenshot(w.0.window.upcast_ref(), path)
             }),
+            action("debug-maximize", |w, _| w.0.window.maximize()),
             action("debug-go-to", |w, text| {
                 let entry = &w.0.page_entry;
                 entry.grab_focus();
@@ -661,7 +675,48 @@ impl Window {
         .str("page_total", &inner.page_total.label())
         .str("zoom_label", &inner.zoom_button.label().unwrap_or_default())
         .num("scale", inner.canvas.device_scale())
-        .bool("complete", inner.canvas.is_complete());
+        .bool("complete", inner.canvas.is_complete())
+        .bool("maximized", inner.window.is_maximized())
+        .str("cursor", inner.canvas.cursor_name().unwrap_or(""))
+        .str(
+            "focus",
+            &gtk::prelude::GtkWindowExt::focus(&inner.window)
+                .map_or_else(String::new, |w| w.type_().name().to_owned()),
+        )
+        .str(
+            "selection",
+            &inner.canvas.selected_text().unwrap_or_default(),
+        );
+        // Where the canvas is in the window, and for the pages around the
+        // current one, the affine map from PDF points to window coordinates:
+        // [page, a, b, c, d, e, f] with x' = a x + c y + e, y' = b x + d y + f.
+        let origin = inner
+            .canvas
+            .compute_point(&inner.window, &gtk::graphene::Point::new(0.0, 0.0))
+            .map_or((0.0, 0.0), |p| (p.x() as f64, p.y() as f64));
+        let (px, py) = inner.canvas.pointer();
+        json.raw("canvas", &format!("[{}, {}]", origin.0, origin.1))
+            .raw("pointer", &format!("[{px}, {py}]"));
+        let maps = inner.canvas.with_viewer(|v| {
+            let current = v.current_page();
+            (current.saturating_sub(2)..(current + 4).min(v.page_count()))
+                .filter_map(|i| {
+                    let at = |x, y| v.pdf_to_view(i, pdfrs_geom::PdfPoint::new(x, y));
+                    let (o, ex, ey) = (at(0.0, 0.0)?, at(1.0, 0.0)?, at(0.0, 1.0)?);
+                    Some(format!(
+                        "[{i}, {}, {}, {}, {}, {}, {}]",
+                        ex.x - o.x,
+                        ex.y - o.y,
+                        ey.x - o.x,
+                        ey.y - o.y,
+                        o.x + origin.0,
+                        o.y + origin.1
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
+        json.raw("pages", &format!("[{}]", maps.unwrap_or_default()));
         let width = inner.window.width();
         json.num("width", width as f64)
             .num("height", inner.window.height() as f64);
@@ -738,6 +793,23 @@ impl Window {
             gio::ActionEntry::builder("go-to-page")
                 .activate(with(|w| {
                     w.0.page_entry.grab_focus();
+                }))
+                .build(),
+            // Copy and Select All act on the page entry when it has the
+            // focus (application shortcuts would otherwise take its Ctrl+C),
+            // and on the document's text otherwise.
+            gio::ActionEntry::builder("copy")
+                .activate(with(|w| {
+                    if !w.forward_to_entry("clipboard.copy") {
+                        w.0.canvas.copy();
+                    }
+                }))
+                .build(),
+            gio::ActionEntry::builder("select-all")
+                .activate(with(|w| {
+                    if !w.forward_to_entry("selection.select-all") {
+                        w.0.canvas.select_all();
+                    }
                 }))
                 .build(),
             gio::ActionEntry::builder("next-page")

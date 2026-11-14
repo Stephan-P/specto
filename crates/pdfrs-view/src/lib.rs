@@ -10,9 +10,13 @@
 //! rectangles. It never does layout maths.
 
 mod layout;
+mod selection;
 mod viewer;
 
 pub use layout::{LayoutMode, group_spreads};
+pub use selection::{
+    Granularity, Selection, TextPages, TextPos, over_text, text_char, text_position,
+};
 pub use viewer::{
     Frame, PageDraw, Settings, TileDraw, ViewPage, ViewState, Viewer, ZoomMode, placeholder_level,
 };

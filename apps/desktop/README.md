@@ -16,11 +16,12 @@ What it can do today:
 - Single page, continuous and two-page layouts, optionally with the cover page on its own
 - Fit width, fit page and free zoom, with touchpad pinch and Ctrl+scroll
 - Thumbnails, the table of contents, links, and printed page numbers ("iv", "A-3")
+- Selecting and copying text: drag, double-click a word, triple-click a line, select all
 - Password-protected PDFs
 - Recent files, and remembering where you were in each file
 - Staying responsive on huge or very complex pages
 
-Coming next: text selection, copying and search. After that, the editing: rotating, reordering and deleting pages, merging documents, annotations (highlights, notes, drawings), filling in forms, and saving.
+Coming next: search. After that, the editing: rotating, reordering and deleting pages, merging documents, annotations (highlights, notes, drawings), filling in forms, and saving.
 
 The full list of features is in [FEATURES.md](FEATURES.md).
 
@@ -28,10 +29,10 @@ The full list of features is in [FEATURES.md](FEATURES.md).
 
 The core of pdfrs is implemented in Rust and shared with the Android app. The GTK app is a thin layer over these shared crates:
 
-- `pdfrs-view`: page layout, zoom, scrolling, and which parts of which pages to render
+- `pdfrs-view`: page layout, zoom, scrolling, which parts of which pages to render, and text selection
 - `pdfrs-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
 - `pdfrs-source`: reading the table of contents, links and page labels
-- `pdfrs-text` (soon): the text on each page, for selection and search
+- `pdfrs-text`: the text on each page, for selection and (soon) search
 
 The app itself draws the rendered tiles, handles input, and provides the windows, menus and sidebar with GTK 4 and libadwaita. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 

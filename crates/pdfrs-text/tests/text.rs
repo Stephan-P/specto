@@ -90,6 +90,88 @@ fn lookups_and_ranges() {
 }
 
 #[test]
+fn positions_for_selection() {
+    // "one two" at y = 700, "three" at y = 686; Helvetica 12 pt.
+    let page = text_page("BT /F1 12 Tf 72 700 Td (one two) Tj 0 -14 Td (three) Tj ET");
+    let mid = |c: usize| page.chars[c].quad.bounds().center();
+    let left_half = |c: usize| {
+        let b = page.chars[c].quad.bounds();
+        PdfPoint::new(b.min.x + b.width() * 0.25, b.center().y)
+    };
+    let right_half = |c: usize| {
+        let b = page.chars[c].quad.bounds();
+        PdfPoint::new(b.max.x - b.width() * 0.25, b.center().y)
+    };
+    // On a character: before or after it, by half.
+    assert_eq!(page.position_at(left_half(4)), 4);
+    assert_eq!(page.position_at(right_half(4)), 5);
+    // Left and right margins: the line's start and end.
+    assert_eq!(page.position_at(PdfPoint::new(20.0, 703.0)), 0);
+    assert_eq!(page.position_at(PdfPoint::new(500.0, 703.0)), 7);
+    assert_eq!(page.position_at(PdfPoint::new(500.0, 689.0)), 12);
+    // Slightly above the first line still counts as that line.
+    let above = PdfPoint::new(mid(1).x, 720.0);
+    assert!((1..=2).contains(&page.position_at(above)));
+    // Nowhere near any text, an empty page has position 0.
+    assert_eq!(text_page("").position_at(PdfPoint::new(1.0, 1.0)), 0);
+
+    assert_eq!(page.word_range(5), 4..7);
+    assert_eq!(page.word_range(3), 3..4, "a space is its own unit");
+    assert_eq!(page.line_range(9), 7..12);
+}
+
+#[test]
+fn positions_in_two_columns() {
+    // Left column at x = 72, right column at x = 320 with its baseline 3 pt
+    // higher. A pointer in the gutter, right of the left column's first
+    // line and just below the right column's line, belongs to the left one.
+    let page = text_page(
+        "BT /F1 12 Tf 72 700 Td (left one) Tj 0 -14 Td (left two) Tj ET \
+         BT /F1 12 Tf 320 703 Td (right one) Tj ET",
+    );
+    let at = page.position_at(PdfPoint::new(150.0, 699.0));
+    let line = page.line_of(at.saturating_sub(1)).unwrap();
+    assert_eq!(
+        page.text_range(line.chars.clone()),
+        "left one",
+        "position {at}"
+    );
+    // Level with the right column and close to it: the right column.
+    let at = page.position_at(PdfPoint::new(310.0, 706.0));
+    assert_eq!(page.text_range(page.line_range(at)), "right one");
+}
+
+#[test]
+fn selection_quads_per_line() {
+    let page = text_page("BT /F1 12 Tf 72 700 Td (one two) Tj 0 -14 Td (three) Tj ET");
+    // "two" and "th": one quad on each line.
+    let quads = page.selection_quads(4..9);
+    assert_eq!(quads.len(), 2);
+    let (a, b) = (quads[0].bounds(), quads[1].bounds());
+    assert!((a.min.x - page.chars[4].origin().x).abs() < 0.01);
+    assert!((a.max.x - page.chars[6].end().x).abs() < 0.01);
+    assert!(
+        a.min.y > b.max.y - 1.0,
+        "the first line is above the second"
+    );
+    assert!((b.min.x - 72.0).abs() < 0.01);
+    // Both lines are as tall as their text.
+    assert!((a.height() - 12.0).abs() < 0.01 && (b.height() - 12.0).abs() < 0.01);
+    assert!(page.selection_quads(3..3).is_empty());
+}
+
+#[test]
+fn selection_follows_rotated_text() {
+    // Reading upwards: the quad is tall and narrow, and positions run along y.
+    let page = text_page("BT /F1 12 Tf 0 1 -1 0 300 100 Tm (Going up) Tj ET");
+    let q = page.selection_quads(0..8)[0].bounds();
+    assert!(q.height() > 3.0 * q.width(), "{q:?}");
+    let x = q.center().x;
+    assert_eq!(page.position_at(PdfPoint::new(x, 90.0)), 0);
+    assert_eq!(page.position_at(PdfPoint::new(x, q.max.y + 10.0)), 8);
+}
+
+#[test]
 fn empty_page() {
     let page = text_page("0 0 1 rg 0 0 100 100 re f");
     assert!(page.chars.is_empty() && page.text().is_empty());

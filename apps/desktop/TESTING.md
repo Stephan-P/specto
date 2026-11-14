@@ -13,7 +13,7 @@ PDFRS_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py   # also 
 tools/headless/run.sh python3 -I tools/headless/check.py zoom layouts    # some tests only
 ```
 
-The app runs in a headless compositor with its own saved state, so yours isn't touched. What's covered is listed at the top of `tools/headless/check.py`. Not covered: anything needing the pointer (links, dragging, pinch), dialogs, how sharp the text looks, and macOS. Those still need the manual pass.
+The app runs in a headless compositor with its own saved state, so yours isn't touched; the pointer and keyboard tests use a virtual pointer and keyboard in that compositor, never your own. What's covered is listed at the top of `tools/headless/check.py`. Not covered: pinch, dialogs, how sharp the text looks, how the selection feels with a real mouse or touchpad, and macOS. Those still need the manual pass.
 
 ## Setup
 
@@ -84,7 +84,17 @@ Resetting saved state:
 - LONG has Contents and Thumbnails tabs; SIZES (no outline) has thumbnails only.
 - Contents entries in LONG jump to the exact place, often mid-page. Long titles wrap to up to three lines, then end in "…"; page numbers match the printed ones (on Linux, `/usr/share/doc/hwloc/hwloc-a4.pdf` starts its numbering after roman front matter).
 - LINKS: in-document links jump to their target. LONG: web links open in the browser.
-- Pressing on a link, moving a few pixels and releasing still follows it. A longer drag doesn't (GTK's drag threshold; later it will start a text selection).
+- Pressing on a link, moving a few pixels and releasing still follows it. A longer drag selects text instead (GTK's drag threshold).
+
+### Text
+
+- LONG: select a paragraph, copy, paste into a text editor: the text matches, with line breaks at the ends of lines and no hyphenation fixes (none are made yet).
+- A two-column paper: dragging within a column stays in that column; dragging from one column into the other selects the rest of the first column and the start of the second (content order).
+- Dragging quickly past the bottom of the window, with the window not maximized: it keeps scrolling while the pointer is outside, faster the further out.
+- Linux: after selecting, middle-click in a text editor pastes the selection (primary selection), without pressing *Primary*+C.
+- Typing in the page entry and pressing *Primary*+A or *Primary*+C acts on the entry's text, not the document.
+- macOS: Edit → Copy and Edit → Select All in the menu bar work, and so do Cmd+C and Cmd+A.
+- In dark mode the highlight is still readable on the white page.
 
 ### Remembering state
 

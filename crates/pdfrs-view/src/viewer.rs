@@ -1,6 +1,6 @@
 use pdfrs_geom::{
     DeviceIntRect, DevicePoint, DeviceRect, LayoutPoint, LayoutRect, LayoutVector, PageGeometry,
-    PagePoint, PageSize, Rotation, ViewPoint, ViewRect, ViewSize, ViewVector,
+    PagePoint, PageSize, PdfPoint, Rotation, ViewPoint, ViewRect, ViewSize, ViewVector,
 };
 use pdfrs_render::Content;
 use std::time::{Duration, Instant};
@@ -407,6 +407,43 @@ impl Viewer {
             r.origin.x + p.x * zoom,
             r.origin.y + p.y * zoom,
         ))
+    }
+
+    /// Where a point in page `i`'s PDF user space is on screen.
+    pub fn pdf_to_view(&self, i: usize, p: PdfPoint) -> Option<ViewPoint> {
+        let page = self
+            .pages
+            .get(i)?
+            .displayed()
+            .pdf_to_page()
+            .transform_point(p);
+        self.page_to_view(i, page)
+    }
+
+    /// The visible page nearest to `p`, and `p` in that page's PDF user
+    /// space, also when `p` is outside the page (a margin, the gap between
+    /// pages, beyond the viewport). For dragging a text selection.
+    pub fn nearest_pdf_point(&self, p: ViewPoint) -> Option<(usize, PdfPoint)> {
+        let (i, page) = self
+            .spreads_near(0.0)
+            .flat_map(|(s, spread)| spread.pages.iter().map(move |&i| (s, i)))
+            .filter_map(|(s, i)| {
+                let r = self.layout.page_rects[i]?;
+                let o = self.offset_of(s);
+                let lp = LayoutPoint::new(p.x + o.x, p.y + o.y);
+                let dx = (r.min_x() - lp.x).max(lp.x - r.max_x()).max(0.0);
+                let dy = (r.min_y() - lp.y).max(lp.y - r.max_y()).max(0.0);
+                let zoom = self.zoom_of(s);
+                let page = PagePoint::new((lp.x - r.origin.x) / zoom, (lp.y - r.origin.y) / zoom);
+                Some((dx.hypot(dy), i, page))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, i, page)| (i, page))?;
+        let pdf = self.pages[i]
+            .displayed()
+            .page_to_pdf()
+            .transform_point(page);
+        Some((i, pdf))
     }
 
     // --- changes ------------------------------------------------------------

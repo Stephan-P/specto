@@ -9,9 +9,13 @@ use gtk::subclass::prelude::*;
 use gtk::{gdk, glib, graphene, gsk};
 use pdfrs_geom::{DeviceRect, LayoutVector, ViewPoint, ViewSize, ViewVector};
 use pdfrs_source::{NamedAction, Target};
-use pdfrs_view::Viewer;
+use pdfrs_view::{Granularity, Selection, Viewer, over_text, text_char, text_position};
 
 use crate::document::SharedDocument;
+
+/// Dragging a selection this close to the top or bottom edge (logical px)
+/// scrolls the view.
+const AUTOSCROLL_EDGE: f64 = 24.0;
 
 /// Handles a clicked link's URI (the window decides whether to open it).
 type UriHandler = Box<dyn Fn(&str)>;
@@ -38,8 +42,17 @@ mod imp {
         pub on_view_changed: RefCell<Option<Box<dyn Fn()>>>,
         /// Called with a link's URI; the window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
-        /// Whether the pointer is over a link (cursor already set).
-        pub over_link: Cell<bool>,
+        /// The cursor currently set: `None` (default), "pointer" over links,
+        /// "text" over text.
+        pub cursor: Cell<Option<&'static str>>,
+        /// Clicks in the current click sequence (1, 2, 3), from the last press.
+        pub presses: Cell<i32>,
+        /// Where the current drag started, and whether it is selecting yet
+        /// (it starts once past the drag threshold, so clicks stay clicks).
+        pub drag_start: Cell<Option<(f64, f64)>>,
+        pub selecting: Cell<bool>,
+        /// Scrolls while a selection drag is outside the view.
+        pub autoscroll: RefCell<Option<glib::SourceId>>,
         pub pointer: Cell<(f64, f64)>,
         /// Pending redraw for when the view settles (switches to exact tiles).
         pub settle_timer: RefCell<Option<glib::SourceId>>,
@@ -62,7 +75,11 @@ mod imp {
                 syncing: Cell::default(),
                 on_view_changed: RefCell::default(),
                 on_open_uri: RefCell::default(),
-                over_link: Cell::default(),
+                cursor: Cell::default(),
+                presses: Cell::default(),
+                drag_start: Cell::default(),
+                selecting: Cell::default(),
+                autoscroll: RefCell::default(),
                 pointer: Cell::default(),
                 settle_timer: RefCell::default(),
                 spinner: RefCell::default(),
@@ -168,6 +185,7 @@ mod imp {
                 }
                 snapshot.pop();
             }
+            obj.draw_selection(snapshot, d, &frame.pages, scale);
             // A spinner over expensive pages (huge images, or renders that
             // already took > 500 ms) that aren't sharp yet. Cheap pages
             // render in milliseconds and never flash one.
@@ -287,6 +305,206 @@ impl Canvas {
         Some(f(&d.viewer))
     }
 
+    // --- text selection ---------------------------------------------------
+
+    /// Fills the selected text of the visible pages with the accent colour.
+    fn draw_selection(
+        &self,
+        snapshot: &gtk::Snapshot,
+        d: &mut crate::document::Document,
+        pages: &[pdfrs_view::PageDraw],
+        scale: f64,
+    ) {
+        let (viewer, mut texts, selection) = d.text();
+        let Some(selection) = selection.as_ref().filter(|s| !s.is_empty()) else {
+            return;
+        };
+        let mut colour = adw::StyleManager::default().accent_color_rgba();
+        colour.set_alpha(0.35);
+        for page in pages {
+            let quads = selection.view_quads(viewer, &mut texts, page.page);
+            if quads.is_empty() {
+                continue;
+            }
+            let builder = gsk::PathBuilder::new();
+            for q in &quads {
+                builder.move_to(q[0].x as f32, q[0].y as f32);
+                for p in &q[1..] {
+                    builder.line_to(p.x as f32, p.y as f32);
+                }
+                builder.close();
+            }
+            snapshot.push_clip(&logical(page.rect, scale));
+            snapshot.append_fill(&builder.to_path(), gsk::FillRule::Winding, &colour);
+            snapshot.pop();
+        }
+    }
+
+    /// Applies `f` to the selection (with the viewer and text layer), then
+    /// redraws.
+    fn edit_selection(
+        &self,
+        f: impl FnOnce(&Viewer, &mut crate::document::TextLayer<'_>, &mut Option<Selection>),
+    ) {
+        let Some(doc) = self.imp().document.borrow().clone() else {
+            return;
+        };
+        {
+            let mut d = doc.borrow_mut();
+            let (viewer, mut texts, selection) = d.text();
+            f(viewer, &mut texts, selection);
+        }
+        self.queue_draw();
+    }
+
+    /// A press: one click starts afresh (or extends with Shift), two select
+    /// a word, three a line.
+    fn press(&self, presses: i32, x: f64, y: f64, extend: bool) {
+        let p = ViewPoint::new(x, y);
+        self.edit_selection(|viewer, texts, selection| match presses {
+            1 if extend && selection.is_some() => {
+                if let (Some(s), Some(to)) = (selection.as_mut(), text_position(viewer, texts, p)) {
+                    s.extend(texts, to);
+                }
+            }
+            1 => *selection = None,
+            n => {
+                let g = if n == 2 {
+                    Granularity::Word
+                } else {
+                    Granularity::Line
+                };
+                *selection = text_char(viewer, texts, p).map(|at| Selection::new(texts, at, g));
+            }
+        });
+    }
+
+    /// Starts a character selection where a drag began.
+    fn begin_selection(&self, x: f64, y: f64) {
+        self.edit_selection(|viewer, texts, selection| {
+            *selection = text_position(viewer, texts, ViewPoint::new(x, y))
+                .map(|at| Selection::new(texts, at, Granularity::Char));
+        });
+    }
+
+    /// Extends the selection to the point under the pointer.
+    fn extend_selection(&self, x: f64, y: f64) {
+        self.edit_selection(|viewer, texts, selection| {
+            if let (Some(s), Some(to)) = (
+                selection.as_mut(),
+                text_position(viewer, texts, ViewPoint::new(x, y)),
+            ) {
+                s.extend(texts, to);
+            }
+        });
+    }
+
+    pub fn select_all(&self) {
+        self.edit_selection(|viewer, _, selection| {
+            *selection = Some(Selection::all(viewer.page_count()));
+        });
+    }
+
+    pub fn clear_selection(&self) -> bool {
+        let mut had = false;
+        self.edit_selection(|_, _, selection| had = selection.take().is_some());
+        had
+    }
+
+    /// The selected text, if any.
+    pub fn selected_text(&self) -> Option<String> {
+        let doc = self.imp().document.borrow().clone()?;
+        doc.borrow_mut().selected_text()
+    }
+
+    /// Copies the selection to the clipboard. False if nothing is selected.
+    pub fn copy(&self) -> bool {
+        let Some(text) = self.selected_text() else {
+            return false;
+        };
+        self.clipboard().set_text(&text);
+        true
+    }
+
+    /// Also offers the selection as the primary selection (middle-click
+    /// paste on Linux), as other apps do.
+    fn offer_primary(&self) {
+        if let Some(text) = self.selected_text() {
+            self.primary_clipboard().set_text(&text);
+        }
+    }
+
+    /// How far the pointer is into the autoscroll zone at the top (negative)
+    /// or bottom (positive) of the view: the last `AUTOSCROLL_EDGE` pixels
+    /// and beyond. A maximized window's edge is the screen's, and the
+    /// pointer can't go past that.
+    fn autoscroll_overshoot(&self, y: f64) -> f64 {
+        let height = self.height() as f64;
+        if y < AUTOSCROLL_EDGE {
+            y - AUTOSCROLL_EDGE
+        } else if y > height - AUTOSCROLL_EDGE {
+            y - (height - AUTOSCROLL_EDGE)
+        } else {
+            0.0
+        }
+    }
+
+    /// While a selection drag is near or beyond the top or bottom of the
+    /// view, scrolls towards the pointer, faster the further out it is.
+    fn autoscroll(&self) {
+        let imp = self.imp();
+        if imp.autoscroll.borrow().is_some() {
+            return;
+        }
+        let this = self.downgrade();
+        let id = glib::timeout_add_local(std::time::Duration::from_millis(30), move || {
+            let Some(c) = this.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let (x, y) = c.imp().pointer.get();
+            let over = c.autoscroll_overshoot(y);
+            if over == 0.0 || !c.imp().selecting.get() {
+                c.imp().autoscroll.take();
+                return glib::ControlFlow::Break;
+            }
+            let step = over.clamp(-80.0, 80.0) / 2.0;
+            c.update_viewer(|v| v.scroll_by(ViewVector::new(0.0, step)));
+            c.extend_selection(x, y);
+            glib::ControlFlow::Continue
+        });
+        imp.autoscroll.replace(Some(id));
+    }
+
+    /// The cursor for the pointer at `(x, y)`: a hand over links, an I-beam
+    /// over text.
+    fn update_cursor(&self, x: f64, y: f64) {
+        let p = ViewPoint::new(x, y);
+        let name = if self.link_at(x, y).is_some() {
+            Some("pointer")
+        } else {
+            let mut over = false;
+            if let Some(doc) = self.imp().document.borrow().clone() {
+                let mut d = doc.borrow_mut();
+                let (viewer, mut texts, _) = d.text();
+                over = over_text(viewer, &mut texts, p);
+            }
+            over.then_some("text")
+        };
+        if name != self.imp().cursor.replace(name) {
+            self.set_cursor_from_name(name);
+        }
+    }
+
+    /// The last pointer position over the canvas (for tests).
+    pub fn pointer(&self) -> (f64, f64) {
+        self.imp().pointer.get()
+    }
+
+    /// The cursor name currently shown (for tests).
+    pub fn cursor_name(&self) -> Option<&'static str> {
+        self.imp().cursor.get()
+    }
+
     /// Draws a spinner in the middle of each rectangle (device pixels), and
     /// creates or drops the animating paintable as needed.
     fn draw_spinners(&self, snapshot: &gtk::Snapshot, at: &[DeviceRect], scale: f64) {
@@ -404,24 +622,32 @@ impl Canvas {
         motion.connect_motion(move |_, x, y| {
             if let Some(c) = this.upgrade() {
                 c.imp().pointer.set((x, y));
-                // A pointer cursor over links, like a browser.
-                let over = c.link_at(x, y).is_some();
-                if over != c.imp().over_link.replace(over) {
-                    c.set_cursor_from_name(over.then_some("pointer"));
+                if !c.imp().selecting.get() {
+                    c.update_cursor(x, y);
                 }
             }
         });
         self.add_controller(motion);
 
-        // Clicking a link follows it. Only a click without movement counts,
-        // so selecting text later won't trigger links.
+        // Presses: one click clears the selection (Shift extends it), two
+        // select a word, three a line. A click without movement on a link
+        // follows it.
         let click = gtk::GestureClick::new();
         click.set_button(gdk::BUTTON_PRIMARY);
         let this = self.downgrade();
-        click.connect_released(move |g, n_press, x, y| {
+        click.connect_pressed(move |g, n_press, x, y| {
             let Some(c) = this.upgrade() else { return };
             c.grab_focus();
-            if n_press != 1 {
+            c.imp().presses.set(n_press);
+            let shift = g
+                .current_event_state()
+                .contains(gdk::ModifierType::SHIFT_MASK);
+            c.press(n_press.min(3), x, y, shift);
+        });
+        let this = self.downgrade();
+        click.connect_released(move |g, n_press, x, y| {
+            let Some(c) = this.upgrade() else { return };
+            if n_press != 1 || c.imp().selecting.get() {
                 return;
             }
             if let Some(target) = c.link_at(x, y) {
@@ -430,6 +656,60 @@ impl Canvas {
             }
         });
         self.add_controller(click);
+
+        // Dragging selects text: by characters after a single press (once
+        // past the drag threshold, so clicks and links still work), by words
+        // or lines after a double or triple one.
+        let drag = gtk::GestureDrag::new();
+        drag.set_button(gdk::BUTTON_PRIMARY);
+        let this = self.downgrade();
+        drag.connect_drag_begin(move |_, x, y| {
+            if let Some(c) = this.upgrade() {
+                c.imp().drag_start.set(Some((x, y)));
+                c.imp().selecting.set(false);
+            }
+        });
+        let this = self.downgrade();
+        drag.connect_drag_update(move |g, dx, dy| {
+            let Some(c) = this.upgrade() else { return };
+            let imp = c.imp();
+            let Some((x0, y0)) = imp.drag_start.get() else {
+                return;
+            };
+            let (x, y) = (x0 + dx, y0 + dy);
+            imp.pointer.set((x, y));
+            if !imp.selecting.get() {
+                let threshold =
+                    gtk::Settings::default().map_or(8, |s| s.gtk_dnd_drag_threshold()) as f64;
+                if imp.presses.get() == 1 && dx.hypot(dy) < threshold {
+                    return;
+                }
+                imp.selecting.set(true);
+                g.set_state(gtk::EventSequenceState::Claimed);
+                if imp.presses.get() == 1 {
+                    c.begin_selection(x0, y0);
+                }
+                c.set_cursor_from_name(Some("text"));
+                imp.cursor.set(Some("text"));
+            }
+            c.extend_selection(x, y);
+            if c.autoscroll_overshoot(y) != 0.0 {
+                c.autoscroll();
+            }
+        });
+        let this = self.downgrade();
+        drag.connect_drag_end(move |_, _, _| {
+            let Some(c) = this.upgrade() else { return };
+            let imp = c.imp();
+            imp.drag_start.set(None);
+            if imp.selecting.replace(false) {
+                c.offer_primary();
+            }
+            if let Some(id) = imp.autoscroll.take() {
+                id.remove();
+            }
+        });
+        self.add_controller(drag);
 
         // Ctrl+scroll zooms. Plain scrolling bubbles up to the GtkScrolledWindow.
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
@@ -504,6 +784,9 @@ impl Canvas {
                     | gdk::ModifierType::META_MASK,
             ) {
                 return glib::Propagation::Proceed;
+            }
+            if key == gdk::Key::Escape && c.clear_selection() {
+                return glib::Propagation::Stop;
             }
             let Some((continuous, height)) =
                 c.with_viewer(|v| (v.layout_mode().is_continuous(), v.viewport().height))

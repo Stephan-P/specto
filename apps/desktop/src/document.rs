@@ -13,7 +13,8 @@ use pdfrs_render::OpenError;
 use pdfrs_render::scheduler::{Client, Scheduler};
 use pdfrs_render::tile::{DocId, TileCache, TileKey};
 use pdfrs_source::{Link, PageLabels, SourceDocument, Target};
-use pdfrs_view::{Settings, ViewPage, Viewer, placeholder_level};
+use pdfrs_text::{Extractor, TextPage};
+use pdfrs_view::{Selection, Settings, TextPages, ViewPage, Viewer, placeholder_level};
 
 const CACHE_BUDGET: usize = 384 << 20;
 
@@ -48,6 +49,29 @@ pub struct Document {
     pub thumbnails_shown: BTreeSet<usize>,
     /// Tiles that failed to render; never requested again.
     failed: HashSet<TileKey>,
+    /// Text layers of the pages, extracted on first use.
+    texts: HashMap<usize, Arc<TextPage>>,
+    /// The text selection, if any.
+    pub selection: Option<Selection>,
+}
+
+/// The document's text pages, extracted on demand (see [`Document::text`]).
+pub struct TextLayer<'a> {
+    source: &'a SourceDocument,
+    cache: &'a mut HashMap<usize, Arc<TextPage>>,
+}
+
+impl TextPages for TextLayer<'_> {
+    fn text_page(&mut self, page: usize) -> Option<Arc<TextPage>> {
+        if let Some(t) = self.cache.get(&page) {
+            return Some(t.clone());
+        }
+        // A fraction of a millisecond for most pages (M0-FINDINGS.md), so
+        // this runs on the main thread when a page is first needed.
+        let text = Arc::new(Extractor::new(self.source.pdf()).page(page)?);
+        self.cache.insert(page, text.clone());
+        Some(text)
+    }
 }
 
 impl Document {
@@ -100,7 +124,29 @@ impl Document {
             canvas_requests: Vec::new(),
             thumbnails_shown: BTreeSet::new(),
             failed: HashSet::new(),
+            texts: HashMap::new(),
+            selection: None,
         })
+    }
+
+    /// The viewer, the text layer and the selection, borrowed together, as
+    /// the selection functions need them all.
+    pub fn text(&mut self) -> (&Viewer, TextLayer<'_>, &mut Option<Selection>) {
+        (
+            &self.viewer,
+            TextLayer {
+                source: &self.source,
+                cache: &mut self.texts,
+            },
+            &mut self.selection,
+        )
+    }
+
+    /// The selected text, if anything is selected.
+    pub fn selected_text(&mut self) -> Option<String> {
+        let (_, mut texts, selection) = self.text();
+        let text = selection.as_ref()?.text(&mut texts);
+        (!text.is_empty()).then_some(text)
     }
 
     /// Whether page `i` is slow to render (huge images, or a render that

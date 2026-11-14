@@ -8,6 +8,9 @@
 //!   as PNG, or as binary PPM if `path` ends in `.ppm` (easy to read in tests)
 //! - `win.debug-go-to(text)`: types `text` into the page entry and presses
 //!   Enter
+//! - `win.debug-maximize("")`: maximizes the window, which puts it at the
+//!   screen's top-left corner, so window coordinates are screen coordinates
+//!   (for the virtual pointer in tests)
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -100,6 +103,12 @@ impl Json {
 
     pub fn num(&mut self, key: &str, value: f64) -> &mut Self {
         self.0.push(format!("{}: {value}", quote(key)));
+        self
+    }
+
+    /// A value that is already JSON (an array, say).
+    pub fn raw(&mut self, key: &str, json: &str) -> &mut Self {
+        self.0.push(format!("{}: {json}", quote(key)));
         self
     }
 

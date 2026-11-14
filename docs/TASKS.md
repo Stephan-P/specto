@@ -55,7 +55,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Desktop: one scheduler for the whole app. `Scheduler::client` gives each view its own queue, results and wake-up callback; workers serve clients round-robin. Three windows now share 4 workers instead of starting 4 each.
 - [x] **S** Headless GUI smoke test: `tools/headless/run.sh tools/headless/smoke.sh file.pdf out/` (screenshots via a debug-only screenshot action)
 - [x] **S** Headless desktop checks in CI: `tools/headless/check.py` drives the app over D-Bus (window actions plus debug-only `debug-state`, `debug-screenshot`, `debug-go-to`), with generated PDFs whose pages each have their own colour, so screenshots show which page is on screen. Opening, start page, broken files, navigation, page labels, layouts, zoom and its limits, sidebar, saved state, two windows; at scales 1, 1.25 and 2.
-- [ ] **S** Headless checks with pointer input (link clicks, drags, later text selection): needs synthetic input, e.g. mutter's RemoteDesktop D-Bus API
+- [x] **S** Headless checks with pointer input: a virtual pointer and keyboard through mutter's RemoteDesktop D-Bus API (relative motion, with the window maximized so window and screen coordinates agree), and the clipboard read back through it. Link clicks, all the selection gestures, copy, select all, autoscroll, a rotated page
 - [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
 - [x] **S** Android: outline and links through `pdfrs-ffi` (flattened outline with targets; in-document, web and mail links)
 
@@ -66,9 +66,9 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Reading order by layout (columns, blocks) for files whose content stream isn't in reading order (about 5% of the corpus, mostly forms and flyers)
 - [ ] **M** `pdfrs-text` fallbacks for glyphs without Unicode: reverse lookup in the embedded TrueType `cmap` (CID TrueType without `ToUnicode`); character code as Latin-1 / font encoding (Type 3)
 - [ ] **S** Investigate and report upstream: hayro ignores existing `ToUnicode` tables in `complex_ttf_font.pdf` and `issue16538.pdf`
-- [ ] **M** Text selection (drag, double-click word, triple-click line) + copy
+- [x] **M** Text selection (drag, double-click word, triple-click line) + copy. `pdfrs-text`: `position_at` (nearest position between characters, also in margins), word and line ranges, highlight quads per line. `pdfrs-view`: `Selection` (anchor and focus as page and character, across pages; character, word or line granularity), `nearest_pdf_point`/`pdf_to_view`. Desktop: drawn in the accent colour, I-beam cursor, Shift+click, autoscroll near the edges, *Primary*+C/A, Escape, primary selection, Edit menu on macOS
 - [ ] **M** Search: find bar, incremental results across pages (background), highlight matches, next/prev
-- [ ] **S** Text-layer cache per page (lazy, evictable)
+- [ ] **S** Text-layer cache per page: lazy on the desktop (extracted on the main thread when first needed, 0.1–0.25 s for a whole 300-page manual); eviction, and extraction in the background for search, still to do
 
 ## M3: Page editing
 
