@@ -1145,8 +1145,17 @@ def test_thumbnail_selection(ctx):
     s = w.wait("page 2 rotated", lambda s: rotations(s)[1] == 90)
     check(sum(rotations(s)) == 270, s["edit_pages"])
     # With the sidebar focused, Ctrl+A selects every page, not the text.
+    # Rarely (2 in about 40 runs) neither ever happens, as if the key never
+    # arrived, so it gets a second press then.
+    w.settled()
+    everything = list(range(PAGES))
     inp.keys(Input.CONTROL, Input.KEY_A)
-    s = selected_thumbnails(w, list(range(PAGES)))
+    try:
+        s = w.wait("every thumbnail selected", lambda s: s["thumbnails_selected"] == everything, 2)
+    except CheckFailed:
+        check(w.state()["selection"] == "", "Ctrl+A selected the text")
+        inp.keys(Input.CONTROL, Input.KEY_A)
+        s = selected_thumbnails(w, everything)
     check(s["selection"] == "", f"text selected: {s['selection']!r}")
     # Undo: the selection goes back to following the current page.
     w.action("undo")
