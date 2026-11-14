@@ -104,33 +104,42 @@ Frontend uploads tile to a GPU texture (gpui) / GdkTexture (GTK) / Bitmap (Andro
 
 ## pdfrs-view: the shared viewer core
 
-UI-agnostic state machine that both frontends drive:
+UI-agnostic state that both frontends drive. **Implemented in M1** (`crates/pdfrs-view`) for layout, zoom, scrolling and tile planning. Tools and selection come in M2 and M4.
 
 ```rust
-trait ViewHost {                      // implemented by each frontend
-    fn request_redraw(&self);
-    fn tile_ready(&self, key: TileKey);
-    fn show_text_input(&self, field: FieldId, rect: DeviceRect, value: &str);
-    ...
-}
-
-struct Viewer {
-    layout: LayoutMode,               // Single | Continuous | TwoUp { cover_alone: bool } | TwoUpContinuous
-    viewport: Viewport,               // scroll offset, size, scale factor
-    zoom: Zoom,                       // Fixed(f32) | FitWidth | FitPage
-    tool: Tool,                       // Select | Highlight | Ink | Text | Shape | Note | Hand
-    selection: Selection,
-}
+struct ViewPage { doc: DocId, page: u32, geometry: PageGeometry, rotation: Rotation }
 
 impl Viewer {
-    fn visible_items(&self) -> Vec<DrawItem>;   // page rects + tiles + overlays to draw this frame
-    fn on_pointer(&mut self, ev: PointerEvent) -> Vec<Effect>;  // includes stylus pressure
-    fn on_key(&mut self, ev: KeyEvent) -> Vec<Effect>;
-    fn on_scroll / on_pinch / set_layout / set_zoom ...
+    fn new(pages: Vec<ViewPage>, settings: Settings) -> Self;
+    fn set_pages(&mut self, pages: Vec<ViewPage>);       // after reorder/delete/merge/rotate
+    fn set_viewport(&mut self, size: ViewSize, scale_factor: f64);
+    fn set_layout_mode(&mut self, LayoutMode);           // SinglePage | Continuous | TwoPage | TwoPageContinuous
+    fn set_cover_alone(&mut self, bool);
+    fn set_zoom_mode(&mut self, ZoomMode);               // Fixed | FitWidth | FitPage
+    fn zoom_by(&mut self, factor: f64, anchor: ViewPoint);   // pinch, ctrl+scroll
+    fn scroll_by(&mut self, ViewVector);
+    fn go_to_page / next_page / previous_page / current_page;
+    fn hit_test(&self, ViewPoint) -> Option<(usize, PagePoint)>;
+    fn page_to_view(&self, usize, PagePoint) -> Option<ViewPoint>;
+    fn frame(&self, cached: impl Fn(&TileKey) -> bool) -> Frame;
+}
+
+struct Frame {
+    pages: Vec<PageDraw>,      // per visible page: device rect + layers to draw in order
+    requests: Vec<TileKey>,    // for Scheduler::request, highest priority first
+    complete: bool,            // everything visible is sharp
 }
 ```
 
-Frontends translate native events into `PointerEvent`/`KeyEvent` and draw `DrawItem`s. Tool logic (ink smoothing, highlight snapping to text, shape drawing, moving/resizing annotations) is implemented once.
+Design points:
+
+- **Margins and gaps are constant in logical pixels**, like Preview, so layout is recomputed on zoom changes (microseconds). Zoom anchoring tracks a point within a spread in PDF points, plus any offset into the margin in pixels, so the content under the pointer stays put.
+- **Everything the frontend draws is in device pixels**, snapped so page origins are whole pixels. A tile rendered at exactly the device scale has `exact = true` and is drawn 1:1 without filtering.
+- **Layers per page**: a one-tile placeholder (the largest level where the whole page fits in 512 px), then cached tiles from neighbouring zoom levels (±1, ±2) wherever sharp tiles are missing, then sharp tiles. Zooming shows the previous level's tiles instead of the blurry placeholder.
+- **Request order**: visible placeholders, visible sharp tiles, neighbouring pages' placeholders, then a prefetch band of half a viewport above and below.
+- `TileKey` is plain data (`DocId::raw()` is a `u32`), so it can cross the FFI to Kotlin cheaply, with the Android `Bitmap` cache living on the Kotlin side.
+
+Still to come: a `ViewHost`-style callback for redraws and native text inputs (form fields, M5), and pointer/key handling for tools (ink smoothing, highlight snapping to text, moving and resizing annotations, M4). Those are implemented once here, and frontends only translate native events.
 
 ## Saving
 

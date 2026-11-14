@@ -1,10 +1,15 @@
-//! M0 spike: is a custom GTK4 widget fast enough for a tiled PDF canvas?
+//! Spike: a tiled PDF canvas in GTK4, driven by `pdfrs_view::Viewer`.
 //!
-//!   gtk-canvas <file.pdf>                 # interactive: scroll, ctrl+scroll / pinch to zoom
+//!   gtk-canvas <file.pdf>                 # interactive (keys below)
 //!   gtk-canvas <file.pdf> --bench [dir]   # scripted scroll + zoom, prints frame stats,
 //!                                         # optionally saves screenshots into dir
 //!
-//! Throwaway code; the real thing will be driven by `pdfrs-view`.
+//! Keys: 1 single page · 2 continuous · 3 two-page · 4 two-page continuous ·
+//! c toggle cover page alone · w fit width · p fit page · 0 actual size ·
+//! +/- zoom · PgUp/PgDn/←/→ previous/next page · Home/End first/last page.
+//! Scroll; ctrl+scroll or pinch to zoom.
+//!
+//! Throwaway code; `apps/desktop` replaces it in M1.
 
 mod canvas;
 
@@ -15,7 +20,9 @@ use std::time::Instant;
 
 use adw::prelude::*;
 use gtk::{gdk, glib};
+use pdfrs_geom::{Rotation, ViewPoint, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
+use pdfrs_view::{LayoutMode, Settings, ViewPage, Viewer, ZoomMode};
 
 use canvas::{PdfCanvas, State};
 
@@ -52,11 +59,28 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         let _ = tx.try_send(());
     });
     let opened = scheduler.open(data, None).expect("open pdf");
-    let state = Rc::new(RefCell::new(State::new(scheduler, opened.id, opened.pages)));
-
+    let pages = opened
+        .pages
+        .iter()
+        .enumerate()
+        .map(|(i, &geometry)| ViewPage {
+            doc: opened.id,
+            page: i as u32,
+            geometry,
+            rotation: Rotation::None,
+        })
+        .collect();
+    let mut viewer = Viewer::new(pages, Settings::default());
+    match std::env::var("PDFRS_LAYOUT").as_deref() {
+        Ok("single") => viewer.set_layout_mode(LayoutMode::SinglePage),
+        Ok("two-page") => viewer.set_layout_mode(LayoutMode::TwoPage),
+        Ok("two-page-continuous") => viewer.set_layout_mode(LayoutMode::TwoPageContinuous),
+        _ => {}
+    }
+    let state = Rc::new(RefCell::new(State::new(scheduler, viewer)));
     let canvas = PdfCanvas::new(state.clone());
 
-    // Results → textures on the main thread.
+    // Finished tiles → textures on the main thread.
     {
         let state = state.clone();
         let canvas = canvas.clone();
@@ -83,42 +107,34 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         });
     }
 
+    let pointer = Rc::new(RefCell::new(ViewPoint::origin()));
+    {
+        let motion = gtk::EventControllerMotion::new();
+        let pointer = pointer.clone();
+        motion.connect_motion(move |_, x, y| *pointer.borrow_mut() = ViewPoint::new(x, y));
+        canvas.add_controller(motion);
+    }
+
     // Scrolling; ctrl+scroll zooms around the pointer.
     let scroll = gtk::EventControllerScroll::new(
         gtk::EventControllerScrollFlags::BOTH_AXES | gtk::EventControllerScrollFlags::KINETIC,
     );
-    let pointer = Rc::new(RefCell::new((0.0, 0.0)));
-    {
-        let motion = gtk::EventControllerMotion::new();
-        let pointer = pointer.clone();
-        motion.connect_motion(move |_, x, y| *pointer.borrow_mut() = (x, y));
-        canvas.add_controller(motion);
-    }
     {
         let state = state.clone();
         let canvas_ref = canvas.clone();
         let pointer = pointer.clone();
         scroll.connect_scroll(move |ctl, dx, dy| {
-            let (w, h) = (canvas_ref.width() as f64, canvas_ref.height() as f64);
-            let mut s = state.borrow_mut();
             let discrete = ctl.unit() == gdk::ScrollUnit::Wheel;
+            let mut s = state.borrow_mut();
             if ctl
                 .current_event_state()
                 .contains(gdk::ModifierType::CONTROL_MASK)
             {
-                let (px, py) = *pointer.borrow();
-                s.zoom_at(
-                    (-dy * if discrete { 0.15 } else { 0.01 }).exp(),
-                    px,
-                    py,
-                    w,
-                    h,
-                );
+                let factor = (-dy * if discrete { 0.15 } else { 0.01 }).exp();
+                s.viewer.zoom_by(factor, *pointer.borrow());
             } else {
                 let step = if discrete { 60.0 } else { 1.0 };
-                s.scroll_x += dx * step;
-                s.scroll_y += dy * step;
-                s.clamp_scroll(w, h);
+                s.viewer.scroll_by(ViewVector::new(dx * step, dy * step));
             }
             drop(s);
             canvas_ref.queue_draw();
@@ -139,12 +155,52 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
             let (cx, cy) = g.bounding_box_center().unwrap_or((0.0, 0.0));
             let factor = scale / *last.borrow();
             *last.borrow_mut() = scale;
-            let (w, h) = (canvas_ref.width() as f64, canvas_ref.height() as f64);
-            state.borrow_mut().zoom_at(factor, cx, cy, w, h);
+            state
+                .borrow_mut()
+                .viewer
+                .zoom_by(factor, ViewPoint::new(cx, cy));
             canvas_ref.queue_draw();
         });
     }
     canvas.add_controller(pinch);
+
+    // Keyboard.
+    let keys = gtk::EventControllerKey::new();
+    {
+        let state = state.clone();
+        let canvas_ref = canvas.clone();
+        keys.connect_key_pressed(move |_, key, _, _| {
+            let mut s = state.borrow_mut();
+            let v = &mut s.viewer;
+            let centre = ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0);
+            match key {
+                gdk::Key::_1 => v.set_layout_mode(LayoutMode::SinglePage),
+                gdk::Key::_2 => v.set_layout_mode(LayoutMode::Continuous),
+                gdk::Key::_3 => v.set_layout_mode(LayoutMode::TwoPage),
+                gdk::Key::_4 => v.set_layout_mode(LayoutMode::TwoPageContinuous),
+                gdk::Key::c => {
+                    let on = !v.settings().cover_alone;
+                    v.set_cover_alone(on);
+                }
+                gdk::Key::w => v.set_zoom_mode(ZoomMode::FitWidth),
+                gdk::Key::p => v.set_zoom_mode(ZoomMode::FitPage),
+                gdk::Key::_0 => v.set_zoom(1.0, centre),
+                gdk::Key::plus | gdk::Key::equal => v.zoom_by(1.25, centre),
+                gdk::Key::minus => v.zoom_by(0.8, centre),
+                gdk::Key::Page_Down | gdk::Key::Right => v.next_page(),
+                gdk::Key::Page_Up | gdk::Key::Left => v.previous_page(),
+                gdk::Key::Home => v.go_to_page(0),
+                gdk::Key::End => v.go_to_page(v.page_count().saturating_sub(1)),
+                gdk::Key::Down => v.scroll_by(ViewVector::new(0.0, 60.0)),
+                gdk::Key::Up => v.scroll_by(ViewVector::new(0.0, -60.0)),
+                _ => return glib::Propagation::Proceed,
+            }
+            drop(s);
+            canvas_ref.queue_draw();
+            glib::Propagation::Stop
+        });
+    }
+    canvas.add_controller(keys);
 
     let header = adw::HeaderBar::new();
     let view = adw::ToolbarView::new();
@@ -158,17 +214,7 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
         .content(&view)
         .build();
     window.present();
-
-    // Fit width initially.
-    {
-        let state = state.clone();
-        let canvas_ref = canvas.clone();
-        canvas.connect_realize(move |_| {
-            let mut s = state.borrow_mut();
-            let max_w = s.max_page_width();
-            s.zoom = ((canvas_ref.width().max(1100) as f64 - 4.0 * canvas::GAP) / max_w).min(1.5);
-        });
-    }
+    canvas.grab_focus();
 
     if bench {
         run_bench(&window, &canvas, state, shots);
@@ -206,36 +252,37 @@ fn run_bench(
         if let Some(&last) = intervals.borrow().last()
             && last > 50.0
         {
-            let q = state.borrow().scheduler.pending();
+            let s = state.borrow();
             eprintln!(
-                "long frame: {last:.0} ms at t={t:.2} s (queue {q}, zoom {:.2})",
-                state.borrow().zoom
+                "long frame: {last:.0} ms at t={t:.2} s (pending {}, zoom {:.2})",
+                s.scheduler.pending(),
+                s.viewer.zoom()
             );
         }
         let dt = intervals.borrow().last().copied().unwrap_or(16.0) / 1000.0;
-        let (w, h) = (canvas.width() as f64, canvas.height() as f64);
         {
             let mut s = state.borrow_mut();
-            let z0 = *base_zoom.borrow_mut().get_or_insert(s.zoom);
+            let v = &mut s.viewer;
+            let centre = ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0);
+            let z0 = *base_zoom.borrow_mut().get_or_insert(v.zoom());
+            let towards = |v: &Viewer, target: f64, end: f64| {
+                (target / v.zoom()).powf((dt / (end - t)).min(1.0))
+            };
             match t {
-                t if (1.0..11.0).contains(&t) => s.scroll_y += 4000.0 * dt,
+                t if (1.0..11.0).contains(&t) => v.scroll_by(ViewVector::new(0.0, 4000.0 * dt)),
                 t if (11.0..14.0).contains(&t) => {
-                    let target = z0 * 3.0;
-                    let f = (target / s.zoom).powf((dt / (14.0 - t)).min(1.0));
-                    s.zoom_at(f, w / 2.0, h / 2.0, w, h);
+                    let f = towards(v, z0 * 3.0, 14.0);
+                    v.zoom_by(f, centre);
                 }
-                t if (14.0..19.0).contains(&t) => s.scroll_y += 2000.0 * dt,
+                t if (14.0..19.0).contains(&t) => v.scroll_by(ViewVector::new(0.0, 2000.0 * dt)),
                 t if (19.0..21.0).contains(&t) => {
-                    let target = 0.4;
-                    let f = (target / s.zoom).powf((dt / (21.0 - t)).min(1.0));
-                    s.zoom_at(f, w / 2.0, h / 2.0, w, h);
+                    let f = towards(v, 0.4, 21.0);
+                    v.zoom_by(f, centre);
                 }
-                t if (21.0..24.0).contains(&t) => s.scroll_y += 6000.0 * dt,
+                t if (21.0..24.0).contains(&t) => v.scroll_by(ViewVector::new(0.0, 6000.0 * dt)),
                 _ => {}
             }
-            s.clamp_scroll(w, h);
         }
-        // Screenshots: mid-scroll, while zoomed in, zoomed out, and settled.
         if let Some(dir) = &shots {
             for at in [5.0, 13.9, 16.5, 22.5, 25.9] {
                 if t >= at && !shots_taken.borrow().contains(&at) {
@@ -276,10 +323,6 @@ fn pct(v: &[f64], q: f64) -> f64 {
 }
 
 fn report(s: &State, intervals: &[f64], canvas: &PdfCanvas) {
-    let scale = canvas
-        .native()
-        .and_then(|n| n.surface())
-        .map_or(1.0, |s| s.scale());
     let renderer = canvas
         .native()
         .and_then(|n| n.renderer())
@@ -287,7 +330,8 @@ fn report(s: &State, intervals: &[f64], canvas: &PdfCanvas) {
         .unwrap_or_default();
     let total: f64 = intervals.iter().sum::<f64>() / 1000.0;
     println!(
-        "renderer {renderer} · device scale {scale} · {}×{} logical px",
+        "renderer {renderer} · device scale {} · {}×{} logical px",
+        s.viewer.scale_factor(),
         canvas.width(),
         canvas.height()
     );
@@ -312,7 +356,7 @@ fn report(s: &State, intervals: &[f64], canvas: &PdfCanvas) {
         pct(&s.stats.snapshot_ms, 1.0)
     );
     println!(
-        "tiles rendered: {} · tile ms median {:.1} · p95 {:.1} · frames with placeholders: {} / {}",
+        "tiles rendered: {} · tile ms median {:.1} · p95 {:.1} · frames not yet sharp: {} / {}",
         s.stats.tiles_rendered,
         pct(&s.stats.tile_ms, 0.5),
         pct(&s.stats.tile_ms, 0.95),

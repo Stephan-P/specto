@@ -22,7 +22,6 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** Verify Preview's encryption behavior on a Mac (user password, owner-password restrictions, Export → Encrypt) and update D9
 - [x] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + zoom, about 55 fps (D3, see M0-FINDINGS.md)
 - [x] **S** Manual check of the canvas spike on real hardware: works on macOS (GTK), but HiDPI output looks off
-- [ ] **S** Fix HiDPI sharpness. Suspects: (1) zoom levels are picked with `round()` on a √2 scale, so tiles can be rendered up to 19% *below* device resolution and upscaled; use `ceil()` and always downsample. (2) Page and tile positions are rounded to logical px, not device px, so on fractional scales textures land between pixels and get filtered. Verify by comparing the reported `Surface::scale()` with the tile pixel size.
 - [x] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap`; tile pixels need a JNI path, not UniFFI (D4/D5, see M0-FINDINGS.md)
 
 ## M1: Core viewer (desktop)
@@ -34,9 +33,10 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** `pdfrs-source`: open file (mmap), page count, page sizes/rotation, outline, metadata, password prompt hook
 - [x] **M** `pdfrs-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
 - [x] **M** Render scheduler (`pdfrs_render::scheduler`): worker pool, multiple documents, a priority queue that's replaced every frame, panics isolated per tile. `TileCache<T>` (`pdfrs_render::tile`) has an LRU byte budget, protects tiles used this frame, and is generic over the frontend's texture type.
-- [x] **S** HiDPI fix: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike). Still needs checking on the Mac.
-- [ ] **M** `pdfrs-view`: layout engine for Single / Continuous / Two-up / Two-up continuous (+ "cover page alone" option)
-- [ ] **M** `pdfrs-view`: viewport, zoom (fit width/page, fixed), zoom buckets, scroll/pinch handling, HiDPI scale factor
+- [x] **S** HiDPI fix, part 1: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike)
+- [ ] **S** HiDPI, part 2: still slightly blurry on macOS after part 1 (debug on the Mac). Things to check: does `Surface::scale()` report 2? Which GSK renderer is active? At zoom 1.0, does a screenshot pixel match the tile 1:1? GTK's macOS backend may scale the surface itself.
+- [x] **M** `pdfrs-view`: layout for single page / continuous / two-page / two-page continuous, plus "cover page alone"
+- [x] **M** `pdfrs-view`: viewport, zoom (fit width/page, fixed) anchored at the pointer, scrolling, paging, hit-testing, device-pixel-snapped `Frame` with placeholder and neighbouring-level fallback tiles and prioritized requests. The gtk-canvas spike runs on it at 59.5 fps (headless, quiet machine).
 - [ ] **M** Desktop: canvas widget drawing tiles, scaled placeholders while sharp tiles render
 - [ ] **M** Desktop: thumbnail sidebar, outline sidebar, page number entry, keyboard navigation
 - [ ] **S** Desktop: open via dialog / DnD / CLI arg, recent files, remember per-file view state

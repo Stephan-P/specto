@@ -1008,7 +1008,9 @@ dependencies = [
  "async-channel",
  "gtk4",
  "libadwaita",
+ "pdfrs-geom",
  "pdfrs-render",
+ "pdfrs-view",
 ]
 
 [[package]]
@@ -1647,6 +1649,14 @@ dependencies = [
  "pdfrs-geom",
  "self_cell",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pdfrs-view"
+version = "0.1.0"
+dependencies = [
+ "pdfrs-geom",
+ "pdfrs-render",
 ]
 
 [[package]]

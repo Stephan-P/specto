@@ -1,0 +1,14 @@
+[package]
+name = "pdfrs-view"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "UI-agnostic viewer core for pdfrs: layout, zoom, scrolling, tile planning"
+
+[dependencies]
+pdfrs-geom.workspace = true
+pdfrs-render.workspace = true
+
+[lints]
+workspace = true

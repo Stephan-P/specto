@@ -10,6 +10,8 @@ gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 async-channel = "2"
 pdfrs-render.workspace = true
+pdfrs-view.workspace = true
+pdfrs-geom.workspace = true
 
 [lints]
 workspace = true

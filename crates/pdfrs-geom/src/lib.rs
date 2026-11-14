@@ -8,7 +8,7 @@
 //! |---------------|-----------------------|-----------------------------------------------------------|
 //! | [`PdfSpace`]  | PDF points            | page user space: y up, as written in the file             |
 //! | [`PageSpace`] | PDF points            | displayed page: top-left of the crop box after rotation, y down |
-//! | [`LayoutSpace`] | PDF points          | whole document as laid out by the viewer, y down          |
+//! | [`LayoutSpace`] | logical pixels      | whole document as laid out by the viewer at the current zoom, y down |
 //! | [`ViewSpace`] | logical pixels        | top-left of the viewport (what the UI toolkit uses)       |
 //! | [`DeviceSpace`] | physical pixels     | top-left of the viewport / bitmap                         |
 //!
@@ -28,7 +28,8 @@ pub enum PdfSpace {}
 /// The page as displayed: origin at the top-left of the visible area, y down, points.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PageSpace {}
-/// The whole document as laid out by the viewer (points, y down).
+/// The whole document as laid out by the viewer at the current zoom
+/// (logical pixels, y down). [`ViewSpace`] is this minus the scroll offset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LayoutSpace {}
 /// Logical pixels relative to the viewport.
@@ -47,6 +48,8 @@ pub type PageVector = Vector2D<f64, PageSpace>;
 pub type LayoutPoint = Point2D<f64, LayoutSpace>;
 pub type LayoutRect = Rect<f64, LayoutSpace>;
 pub type LayoutSize = Size2D<f64, LayoutSpace>;
+pub type LayoutVector = Vector2D<f64, LayoutSpace>;
+pub type ViewVector = Vector2D<f64, ViewSpace>;
 pub type ViewPoint = Point2D<f64, ViewSpace>;
 pub type ViewRect = Rect<f64, ViewSpace>;
 pub type ViewSize = Size2D<f64, ViewSpace>;

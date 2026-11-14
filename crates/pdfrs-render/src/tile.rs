@@ -13,6 +13,19 @@ pub const TILE_SIZE: u32 = 512;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DocId(pub(crate) u32);
 
+impl DocId {
+    /// The raw id, e.g. to pass a [`TileKey`] across FFI as plain numbers.
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
+    /// Rebuilds an id from [`raw`](Self::raw). Ids not issued by a
+    /// `Scheduler` simply match no document.
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 /// Zoom levels are powers of √2: level `l` renders at `2^(l/2)` device px per point.
 pub fn level_scale(level: i32) -> f64 {
     2f64.powf(level as f64 / 2.0)
