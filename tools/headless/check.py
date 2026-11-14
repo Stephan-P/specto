@@ -32,7 +32,7 @@ Tests (run some by naming them, e.g. `zoom layouts`):
   and Shift+Ctrl+Z; in the page entry, Ctrl+Left moves the cursor instead
 - save: a rotated page is saved (opened again, it's still rotated, and
   the page labels are kept); Save As writes a copy and shows it, leaving
-  the original as it was
+  the original as it was, and the copy opens where the original was left
 - close_prompt: quitting with unsaved changes asks first; Cancel keeps the
   window, Discard closes without saving, Save saves and closes
 
@@ -1000,10 +1000,11 @@ def test_save(ctx):
     s = w.wait("the save", lambda s: not s["modified"] and not s["saving"])
     check("Edited" not in s["subtitle"] and s["toast"] == "", s)
     app.quit()
-    # Opened again: page 2 is turned, nothing else, and it isn't an edit.
+    # Opened again (on page 2, where it was closed): page 2 is turned,
+    # nothing else, and it isn't an edit. Not "next-page": whether that
+    # arrives before or after the saved position is restored is a race.
     app = ctx.app([path])
     w = app.window()
-    w.action("next-page")
     s = w.settled("page 2", lambda s: s["page"] == 1)
     check(turned(s, 1) and not turned(s, 0), s["pages"])
     check(not s["modified"] and s["page_entry"] == LABELS[1], s)
@@ -1017,8 +1018,8 @@ def test_save(ctx):
     check(open(path, "rb").read() == before, "Save As changed the original file")
     check(os.path.exists(copy), "no copy written")
     app.quit()
+    # The copy took over the reading position too.
     w = ctx.app([copy]).window()
-    w.action("next-page")
     s = w.settled("page 2 of the copy", lambda s: s["page"] == 1)
     check(not turned(s, 1), s["pages"])
 
