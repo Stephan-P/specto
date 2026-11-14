@@ -103,21 +103,30 @@ import uniffi.pdfrs_ffi.PdfException
 class MainActivity : ComponentActivity() {
     /** The document to show: from "Open with", or picked in the app. */
     private var document by mutableStateOf<Uri?>(null)
-    private var viewState: PdfViewState? = null
+    private var current: Loaded.Ready? = null
+    private lateinit var store: DocumentStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        store = DocumentStore(this)
         document = intent.viewedDocument()
         setContent {
             AppTheme {
                 App(
                     document = document,
-                    onPicked = { document = it },
-                    onViewState = { viewState = it },
+                    store = store,
+                    onDocument = { document = it },
+                    onReady = { current = it },
                 )
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // The app may not come back: remember where the reader is.
+        current?.let { store.saveView(it.key, it.state.savedView()) }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -136,7 +145,7 @@ class MainActivity : ComponentActivity() {
         super.onTrimMemory(level)
         // In the background, or the system is short on memory: keep only
         // what is on screen. Tiles are re-rendered on demand.
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) viewState?.trimMemory()
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) current?.state?.trimMemory()
     }
 }
 
@@ -189,28 +198,74 @@ private fun Context.displayName(uri: Uri): String {
 
 private sealed interface Loaded {
     data object Loading : Loaded
-    class Ready(val state: PdfViewState, val name: String) : Loaded
-    class Locked(val pdf: ByteArray, val name: String, val wrongPassword: Boolean) : Loaded
+
+    /** [key] identifies the document in the [DocumentStore]. */
+    class Ready(val state: PdfViewState, val name: String, val key: String) : Loaded
+    class Locked(val pdf: ByteArray, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
     class Failed(val message: String) : Loaded
 }
 
-/** Opens [pdf]; a missing or wrong [password] leads to [Loaded.Locked]. */
-private suspend fun Context.open(pdf: ByteArray, name: String, password: String?): Loaded = try {
+/**
+ * Makes sure the app can read [uri] again later, so that the document can be
+ * offered on the start screen. Only some addresses allow that: those from the
+ * system file picker do, most handed over by other apps don't.
+ */
+private fun Context.canReopen(uri: Uri): Boolean {
+    if (uri.scheme == "file") return true
+    return try {
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        true
+    } catch (e: SecurityException) {
+        false
+    }
+}
+
+/** Gives back read permissions for documents the start screen no longer offers. */
+private fun Context.releaseUnused(store: DocumentStore) {
+    val keep = store.reopenable()
+    for (permission in contentResolver.persistedUriPermissions) {
+        if (permission.uri.toString() !in keep) {
+            contentResolver.releasePersistableUriPermission(permission.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+}
+
+/**
+ * Opens [pdf], continuing where the reader left off if it was open before; a
+ * missing or wrong [password] leads to [Loaded.Locked].
+ */
+private suspend fun Context.open(
+    pdf: ByteArray,
+    name: String,
+    uri: Uri,
+    password: String?,
+    store: DocumentStore,
+): Loaded = try {
     val cacheBytes = tileCacheBytes()
-    Loaded.Ready(withContext(Dispatchers.Default) { PdfViewState(pdf, password, cacheBytes) }, name)
+    val key = withContext(Dispatchers.Default) { DocumentStore.fingerprint(pdf) }
+    val restore = store.find(key)?.view
+    val state = withContext(Dispatchers.Default) { PdfViewState(pdf, password, cacheBytes, restore) }
+    store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
+    releaseUnused(store)
+    Loaded.Ready(state, name, key)
 } catch (e: PdfException.PasswordRequired) {
-    Loaded.Locked(pdf, name, wrongPassword = password != null)
+    Loaded.Locked(pdf, name, uri, wrongPassword = password != null)
 } catch (e: Exception) {
     Loaded.Failed(e.message ?: e.toString())
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewState?) -> Unit) {
+private fun App(
+    document: Uri?,
+    store: DocumentStore,
+    onDocument: (Uri?) -> Unit,
+    onReady: (Loaded.Ready?) -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onPicked(uri)
+        if (uri != null) onDocument(uri)
     }
     val pick = { picker.launch(arrayOf("application/pdf")) }
 
@@ -224,9 +279,12 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
     var fullScreen by remember { mutableStateOf(false) }
     var showGoTo by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
-        (loaded as? Loaded.Ready)?.state?.close()
+        (loaded as? Loaded.Ready)?.let {
+            store.saveView(it.key, it.state.savedView())
+            it.state.close()
+        }
         loaded = next
-        onViewState((next as? Loaded.Ready)?.state)
+        onReady(next as? Loaded.Ready)
     }
 
     LaunchedEffect(document) {
@@ -242,8 +300,10 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                     checkNotNull(context.contentResolver.openInputStream(document)) { "cannot open $document" }
                         .use { it.readBytes() }
                 }
-                context.open(pdf, name, password = null)
+                context.open(pdf, name, document, password = null, store)
             } catch (e: Exception) {
+                // Moved, deleted, or the permission to read it is gone.
+                store.unreachable(document.toString())
                 Loaded.Failed(e.message ?: e.toString())
             },
         )
@@ -319,6 +379,16 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                                 pick()
                             },
                         )
+                        if (document != null) {
+                            // Back to the start screen and its recent documents.
+                            DropdownMenuItem(
+                                text = { Text("Close") },
+                                onClick = {
+                                    menu = false
+                                    onDocument(null)
+                                },
+                            )
+                        }
                         if (ready != null) {
                             DropdownMenuItem(
                                 text = { Text("Go to page…") },
@@ -354,7 +424,12 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
         ) {
             val safe = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(besideAndBelow))
             when (val l = loaded) {
-                null -> Button(onClick = pick, modifier = safe) { Text("Open PDF") }
+                null -> StartScreen(
+                    store.recents,
+                    onOpen = pick,
+                    onRecent = { entry -> entry.uri?.let { onDocument(Uri.parse(it)) } },
+                    modifier = safe,
+                )
                 Loaded.Loading -> CircularProgressIndicator(safe)
                 is Loaded.Failed -> Message("Couldn't open this file", l.message, "Open another PDF", pick, safe)
                 is Loaded.Locked -> {
@@ -365,7 +440,7 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                         onDismiss = { show(Loaded.Failed("A password is needed to open ${l.name}.")) },
                         onPassword = { password ->
                             loaded = Loaded.Loading
-                            scope.launch { show(context.open(l.pdf, l.name, password)) }
+                            scope.launch { show(context.open(l.pdf, l.name, l.uri, password, store)) }
                         },
                     )
                 }
@@ -427,7 +502,7 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
 
     if (showGoTo && ready != null) {
         GoToPageDialog(
-            pageCount = ready.state.pageCount,
+            ready.state,
             onDismiss = { showGoTo = false },
             onPage = {
                 showGoTo = false
@@ -595,9 +670,10 @@ private fun PasswordDialog(
 }
 
 @Composable
-private fun GoToPageDialog(pageCount: Int, onDismiss: () -> Unit, onPage: (Int) -> Unit) {
+private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (Int) -> Unit) {
     var text by remember { mutableStateOf("") }
-    val page = text.toIntOrNull()?.takeIf { it in 1..pageCount }
+    val page = if (text.isBlank()) null else state.findPage(text)
+    val last = state.pageCount - 1
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
@@ -606,17 +682,32 @@ private fun GoToPageDialog(pageCount: Int, onDismiss: () -> Unit, onPage: (Int) 
         text = {
             OutlinedTextField(
                 value = text,
-                onValueChange = { new -> text = new.filter(Char::isDigit).take(9) },
+                // Printed page numbers can be anything ("iv", "A-3"); plain
+                // ones are digits.
+                onValueChange = { new ->
+                    text = if (state.hasPageLabels) new.take(20) else new.filter(Char::isDigit).take(9)
+                },
                 modifier = Modifier.focusRequester(focus),
-                label = { Text("Page (1–$pageCount)") },
+                label = { Text("Page (${state.pageLabel(0)}–${state.pageLabel(last)})") },
+                supportingText = if (state.hasPageLabels) {
+                    {
+                        // A typed number may be a printed number or a position.
+                        Text(page?.let { "Page ${it + 1} of ${state.pageCount}" } ?: "Or a position, 1–${state.pageCount}")
+                    }
+                } else {
+                    null
+                },
                 singleLine = true,
-                isError = text.isNotEmpty() && page == null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
-                keyboardActions = KeyboardActions(onGo = { page?.let { onPage(it - 1) } }),
+                isError = text.isNotBlank() && page == null,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (state.hasPageLabels) KeyboardType.Ascii else KeyboardType.Number,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(onGo = { page?.let(onPage) }),
             )
         },
         confirmButton = {
-            TextButton(onClick = { page?.let { onPage(it - 1) } }, enabled = page != null) { Text("Go") }
+            TextButton(onClick = { page?.let(onPage) }, enabled = page != null) { Text("Go") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -632,7 +723,12 @@ private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
     ) {
         Text(
-            "${current + 1} / ${state.pageCount}",
+            // With printed page numbers: "iv (4 / 120)".
+            if (state.hasPageLabels) {
+                "${state.pageLabel(current)} (${current + 1} / ${state.pageCount})"
+            } else {
+                "${current + 1} / ${state.pageCount}"
+            },
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
         )

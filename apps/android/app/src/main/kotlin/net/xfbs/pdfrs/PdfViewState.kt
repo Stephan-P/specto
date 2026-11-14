@@ -26,6 +26,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import uniffi.pdfrs_ffi.Activated
 import uniffi.pdfrs_ffi.OutlineEntry
+import uniffi.pdfrs_ffi.SavedView
 import uniffi.pdfrs_ffi.ViewListener
 import uniffi.pdfrs_ffi.ViewSession
 import uniffi.pdfrs_ffi.ViewMode
@@ -54,7 +55,13 @@ private const val SLIDE_MS = 260
  * Throws `PdfException` if the file can't be opened, e.g.
  * `PdfException.PasswordRequired` for a missing or wrong [password].
  */
-class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCloseable {
+class PdfViewState(
+    pdf: ByteArray,
+    password: String?,
+    cacheBytes: Long,
+    /** Where the reader left off last time, to continue there. */
+    restore: SavedView? = null,
+) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val tilesPosted = AtomicBoolean(false)
     private var closed = false
@@ -77,6 +84,7 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     private var motion: Job? = null
     private val settle = Runnable { refresh() }
     private var thumbnailOwner: Any? = null
+    private var pendingRestore: SavedView? = restore
 
     val pageCount: Int = session.pageCount().toInt()
 
@@ -86,6 +94,21 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     }
 
     fun pageAspect(page: Int): Float = aspects[page]
+
+    /**
+     * The pages' printed numbers, for documents that number them other than
+     * 1, 2, 3 (roman numerals for the front matter, "A-1" in an appendix, …).
+     */
+    private val pageLabels: List<String>? = session.pageLabels()
+
+    /** Whether pages have printed numbers that differ from their positions. */
+    val hasPageLabels: Boolean get() = pageLabels != null
+
+    /** What [page] (zero-based) is called: its printed number, else its position. */
+    fun pageLabel(page: Int): String = pageLabels?.getOrNull(page) ?: "${page + 1}"
+
+    /** The zero-based page meant by [text]: a printed number first, else a position. */
+    fun findPage(text: String): Int? = session.findPage(text)?.toInt()
 
     /** The outline (table of contents) in reading order; empty if there is none. */
     val outline: List<OutlineEntry> = session.outline()
@@ -135,8 +158,14 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
         // Through JNI: the bars around the view are animated, which resizes
         // it on every frame.
         Native.setViewport(sessionId, widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
+        // A position only means something once the view has a size.
+        pendingRestore?.let(session::restoreView)
+        pendingRestore = null
         refresh()
     }
+
+    /** Where the reader is now, for [DocumentStore]. */
+    fun savedView(): SavedView = pendingRestore ?: session.savedView()
 
     fun scrollBy(delta: Offset) {
         Native.scrollBy(sessionId, delta.x.toDouble(), delta.y.toDouble())

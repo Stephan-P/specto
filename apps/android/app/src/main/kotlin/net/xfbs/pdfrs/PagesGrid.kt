@@ -127,10 +127,11 @@ fun PagesGrid(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = M
                     )
                 }
                 Text(
-                    "${page + 1}",
+                    state.pageLabel(page),
                     Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (page == current) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                    maxLines = 1,
                 )
             }
         }

@@ -8,7 +8,11 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Start screen | Launch the app from the launcher | "Open PDF" button, top bar with only the ⋮ menu |
+| Start screen | Launch the app from the launcher | "Open PDF" button, top bar with only the ⋮ menu; below it "Recent", once documents have been opened |
+| Recent documents | Open a few files with "Open PDF", then relaunch the app (or ⋮ → "Close") | Up to 20 documents, newest first, each with the page it was left on and when; tap one to reopen it. Files handed over by another app are usually not listed, because the app isn't allowed to read them again later |
+| Continue reading | Read to some page, zoom or switch to continuous scrolling, leave the app, open the same file again (by any route) | It opens where it was left: same page and position, same mode and zoom. The file is recognised by its content, so a copy or a renamed file continues too |
+| A recent file is gone | Delete or move a listed file, then tap it | "Couldn't open this file", and it disappears from the list |
+| Close | ⋮ → "Close" | Back to the start screen |
 | Pick a file | "Open PDF", or ⋮ → "Open…" | System file picker limited to PDFs; the document opens on page 1 with its file name in the top bar |
 | Open from another app | In Files or a browser, open a PDF and choose pdfrs | The document opens; if another one was open, it is replaced |
 | Password | Open a protected file | Password dialog; a wrong password shows "That password didn't work."; Cancel leaves an explanation and "Open another PDF" |
@@ -35,7 +39,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Switch | ⋮ → "Continuous scrolling" (tick shown when on) | One column of pages fitted to the width, on the same page as before; switching back keeps the page too |
 | Scroll | Drag and flick up and down | Smooth scrolling that slows down by itself |
 | Zoom | Pinch, double tap | As in paged mode; double tap returns to fit width |
-| Not remembered | Open another document | It opens paged again |
+| Remembered per document | Switch a document to continuous, open another, come back | New documents open paged; a document opened before opens in the mode it was left in |
 
 ## Finding your way
 
@@ -46,7 +50,8 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Pages | Top-left button | Grid of all pages, current one outlined, starting near it; tap a page to go there; Back or the arrow returns |
 | Contents | Top-left button, "Contents" tab (documents with an outline) | Collapsible outline with page numbers, the current section highlighted; tap an entry to go there; long outlines start collapsed to their top level |
 | Tabs | Swipe between Pages and Contents, or tap the tab names | Both work; reopening shows the tab used last; documents without an outline show only the grid, without tabs |
-| Go to page | ⋮ → "Go to page…" | Number field with the valid range; "Go" is disabled for invalid input |
+| Go to page | ⋮ → "Go to page…" | Field showing the valid range; "Go" is disabled for input that names no page |
+| Printed page numbers | Open a document numbered i, ii, iii, 1, 2 … (or with an appendix "A-1") | The indicator shows the printed number with the position, e.g. "iii (3 / 240)"; Pages and Contents show printed numbers; "Go to page…" accepts a printed number first ("iii", "A-2", "3") and otherwise a position, and says which page it found |
 | Links in the document | Tap a cross-reference or a table-of-contents line | Jumps to the target |
 | Links to the web | Tap a web or e-mail link | Dialog showing the address; opens only after "Open"; other kinds of links say they can't be opened |
 
@@ -72,4 +77,4 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 ## Not there yet
 
-Printed page numbers (a document numbered i, ii, iii, 1, 2 … is shown as 1, 2, 3 …), search, text selection and copy, saving and sharing, annotations and form filling, page reordering, recent files, remembering the position in a document, two-page view and a tablet layout, printing, and dragging along the strip to flip pages.
+Search, text selection and copy, saving and sharing, annotations and form filling, page reordering, two-page view and a tablet layout, printing, and dragging along the strip to flip pages.

@@ -99,7 +99,7 @@ fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier =
                 )
                 entry.page?.let {
                     Text(
-                        "${it.toInt() + 1}",
+                        state.pageLabel(it.toInt()),
                         Modifier.padding(start = 12.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

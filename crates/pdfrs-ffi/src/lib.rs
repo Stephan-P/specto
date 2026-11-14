@@ -29,7 +29,7 @@ use std::time::Instant;
 use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::{Bitmap, OpenError};
-use pdfrs_source::{Link, NamedAction, OutlineItem, SourceDocument, Target};
+use pdfrs_source::{Link, NamedAction, OutlineItem, PageLabels, SourceDocument, Target};
 use pdfrs_view::{Settings, ViewPage, Viewer};
 
 use tiles::TileBook;
@@ -105,6 +105,21 @@ pub enum Activated {
     Moved,
     /// An external link. Opening it, after asking the user, is up to the app.
     Uri { uri: String },
+}
+
+/// What the app remembers about a document between sessions, to continue
+/// where the reader left off.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct SavedView {
+    /// Zero-based page at the top of the view.
+    pub page: u32,
+    /// How far down that page the view starts, as a fraction of its height.
+    pub page_offset: f64,
+    /// [`ViewMode::Paged`] rather than continuous.
+    pub paged: bool,
+    /// Logical pixels per point if the reader had zoomed in; `None` if the
+    /// view was fitted.
+    pub zoom: Option<f64>,
 }
 
 /// A distance in logical pixels (dp).
@@ -269,6 +284,9 @@ struct Shared {
     state: Mutex<State>,
     /// The outline with what each entry does, read once at open.
     outline: Vec<(OutlineEntry, Option<Target>)>,
+    /// The document's own page numbering ("iv", "A-3", …), unless that is
+    /// just 1, 2, 3.
+    labels: Option<PageLabels>,
 }
 
 impl Shared {
@@ -414,6 +432,7 @@ impl ViewSession {
         let source = SourceDocument::open(data, password.as_deref())?;
         let mut outline = Vec::new();
         flatten_outline(source.outline(), 0, &mut outline);
+        let labels = source.page_labels().filter(|l| !l.is_plain());
         let pages: Vec<ViewPage> = opened
             .pages
             .iter()
@@ -442,6 +461,7 @@ impl ViewSession {
                 links: HashMap::new(),
             }),
             outline,
+            labels,
         });
         let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
         SESSIONS
@@ -462,6 +482,31 @@ impl ViewSession {
 
     pub fn page_count(&self) -> u32 {
         self.page_count
+    }
+
+    /// The pages' printed numbers ("i", "ii", "1", "A-3", …), one per page,
+    /// for documents that number their pages other than 1, 2, 3. `None`
+    /// otherwise: then a page's number is its position.
+    pub fn page_labels(&self) -> Option<Vec<String>> {
+        let labels = self.shared.labels.as_ref()?;
+        Some(
+            (0..self.page_count as usize)
+                .map(|i| labels.label(i))
+                .collect(),
+        )
+    }
+
+    /// The zero-based page the user means by `text`: a printed page number
+    /// (exactly, then ignoring case), else a position counted from 1.
+    pub fn find_page(&self, text: String) -> Option<u32> {
+        let text = text.trim();
+        let labelled = self.shared.labels.as_ref().and_then(|l| l.find(text));
+        labelled
+            .or_else(|| {
+                let n = text.parse::<usize>().ok()?;
+                (1..=self.page_count as usize).contains(&n).then(|| n - 1)
+            })
+            .map(|i| i as u32)
     }
 
     /// The outline (table of contents), flattened in reading order. Empty if
@@ -562,6 +607,43 @@ impl ViewSession {
         });
         viewer.set_swipe(paged);
         viewer.set_zoom_mode(home_fit(viewer));
+    }
+
+    /// Where the reader is, to be stored and passed to
+    /// [`restore_view`](Self::restore_view) the next time the document is opened.
+    pub fn saved_view(&self) -> SavedView {
+        let state = self.shared.lock();
+        let view = state.viewer.view_state();
+        SavedView {
+            page: view.page as u32,
+            page_offset: view.page_offset,
+            paged: state.viewer.settings().swipe,
+            zoom: (view.zoom_mode == pdfrs_view::ZoomMode::Fixed).then_some(view.zoom),
+        }
+    }
+
+    /// Continues where [`saved_view`](Self::saved_view) left off. Call once
+    /// the viewport is set. Values that no longer fit (the file changed) are
+    /// clamped.
+    pub fn restore_view(&self, saved: SavedView) {
+        self.set_view_mode(if saved.paged {
+            ViewMode::Paged
+        } else {
+            ViewMode::Continuous
+        });
+        let mut state = self.shared.lock();
+        let viewer = &mut state.viewer;
+        let mut view = viewer.view_state();
+        view.page = saved.page as usize;
+        view.page_offset = saved.page_offset;
+        match saved.zoom {
+            Some(zoom) => {
+                view.zoom_mode = pdfrs_view::ZoomMode::Fixed;
+                view.zoom = zoom;
+            }
+            None => view.zoom_mode = home_fit(viewer),
+        }
+        viewer.restore_view_state(&view);
     }
 
     /// Back to the view mode's fitted zoom (after zooming in).

@@ -405,6 +405,84 @@ fn outline_and_links() {
 }
 
 #[test]
+fn printed_page_numbers() {
+    // Front matter i–ii, then 1, 2, …: the page printed "1" is the third.
+    let pdf = String::from_utf8(sample_pdf(5)).unwrap().replace(
+        "/Type /Catalog",
+        "/Type /Catalog /PageLabels << /Nums [0 << /S /r >> 2 << /S /D >>] >>",
+    );
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(pdf.into_bytes(), None, 1 << 20, listener).unwrap();
+    assert_eq!(
+        session.page_labels(),
+        Some(["i", "ii", "1", "2", "3"].map(String::from).to_vec())
+    );
+    // Labels win over positions; case doesn't matter; positions still work
+    // where no label says otherwise.
+    assert_eq!(session.find_page("ii".into()), Some(1));
+    assert_eq!(session.find_page(" II ".into()), Some(1));
+    assert_eq!(session.find_page("1".into()), Some(2));
+    assert_eq!(session.find_page("5".into()), Some(4));
+    assert_eq!(session.find_page("6".into()), None);
+    assert_eq!(session.find_page("x".into()), None);
+
+    // Without labels (or with plain ones) there is nothing to show, and
+    // text is a position.
+    let (plain, _rx) = open(5, 1 << 20);
+    assert_eq!(plain.page_labels(), None);
+    assert_eq!(plain.find_page("3".into()), Some(2));
+    assert_eq!(plain.find_page("0".into()), None);
+}
+
+#[test]
+fn saved_view_continues_where_the_reader_left_off() {
+    let (a, _rx) = open(8, 1 << 20);
+    a.set_viewport(216.0, 316.0, 2.0);
+    // Fresh documents are continuous and fitted, at the top.
+    let fresh = a.saved_view();
+    assert_eq!((fresh.page, fresh.paged, fresh.zoom), (0, false, None));
+
+    // Paged, on page 6, zoomed in and scrolled down a little.
+    a.set_view_mode(ViewMode::Paged);
+    a.go_to_page(5);
+    a.zoom_by(2.0, 108.0, 158.0);
+    hot::scroll_in_page_by(a.id(), 0.0, 40.0);
+    let saved = a.saved_view();
+    assert_eq!((saved.page, saved.paged, saved.zoom), (5, true, Some(2.0)));
+    assert!(saved.page_offset > 0.0);
+
+    let (b, _rx) = open(8, 1 << 20);
+    b.set_viewport(216.0, 316.0, 2.0);
+    b.restore_view(saved);
+    let frame = b.frame();
+    assert!(frame.paged);
+    assert_eq!(
+        (frame.current_page, frame.zoom, frame.zoom_factor),
+        (5, 2.0, 2.0)
+    );
+    assert_eq!(b.saved_view(), saved);
+    assert_eq!(b.snap_delta(0.0, 0.0), None);
+
+    // Continuous, half way down page 3.
+    a.set_view_mode(ViewMode::Continuous);
+    a.go_to_page(2);
+    a.scroll_by(0.0, 150.0);
+    let saved = a.saved_view();
+    assert_eq!((saved.page, saved.paged, saved.zoom), (2, false, None));
+    b.restore_view(saved);
+    let frame = b.frame();
+    assert_eq!((frame.paged, frame.zoom_mode), (false, ZoomMode::FitWidth));
+    assert!((b.saved_view().page_offset - saved.page_offset).abs() < 1e-9);
+
+    // A page that no longer exists is clamped to the last one.
+    let (short, _rx) = open(2, 1 << 20);
+    short.set_viewport(216.0, 316.0, 2.0);
+    short.restore_view(SavedView { page: 7, ..saved });
+    assert_eq!(short.frame().current_page, 1);
+}
+
+#[test]
 fn closed_sessions_are_not_found() {
     let (session, _rx) = open(1, 1 << 20);
     let id = session.id();
