@@ -121,11 +121,12 @@ impl Scheduler {
         s.finished.retain(|f| f.key.doc != doc);
     }
 
-    /// Replaces the queue with `wanted`, highest priority first. Tiles already
-    /// being rendered are skipped.
+    /// Replaces the queue with `wanted`, highest priority first. Tiles being
+    /// rendered, or finished but not yet taken with `take_finished`, are skipped.
     pub fn request(&self, wanted: impl IntoIterator<Item = TileKey>) {
         let mut s = self.lock();
-        let mut seen = HashSet::new();
+        // Rendering, or rendered but not collected yet: don't render again.
+        let mut seen: HashSet<TileKey> = s.finished.iter().map(|f| f.key).collect();
         let queue: VecDeque<TileKey> = wanted
             .into_iter()
             .filter(|k| !s.in_flight.contains(k) && s.docs.contains_key(&k.doc) && seen.insert(*k))

@@ -209,6 +209,38 @@ fn scheduler_renders_requested_tiles() {
 }
 
 #[test]
+fn scheduler_does_not_rerender_uncollected_tiles() {
+    let sched = Scheduler::new(2, || {});
+    let opened = sched.open(sample_pdf(""), None).unwrap();
+    let key = TileKey {
+        doc: opened.id,
+        page: 0,
+        rotation: Rotation::None,
+        content: Content::PageOnly,
+        scale: TileScale::from_level(0),
+        tx: 0,
+        ty: 0,
+    };
+    sched.request([key]);
+    let start = std::time::Instant::now();
+    while sched.pending() > 0 {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "render timed out"
+        );
+        std::thread::yield_now();
+    }
+    // Finished but not taken yet: asking again must not queue it.
+    sched.request([key]);
+    assert_eq!(sched.pending(), 0);
+    let done = sched.take_finished();
+    assert_eq!(done.len(), 1);
+    // Once taken, it can be requested again (e.g. after cache eviction).
+    sched.request([key]);
+    assert!(sched.pending() <= 1);
+}
+
+#[test]
 fn scheduler_drops_closed_documents() {
     let sched = Scheduler::new(1, || {});
     let opened = sched.open(sample_pdf(""), None).unwrap();

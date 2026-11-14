@@ -66,7 +66,9 @@ mod imp {
                 return;
             };
             if let Some(texture) = d.cache.get(&key) {
-                snapshot.append_scaled_texture(texture, gsk::ScalingFilter::Trilinear, &rect);
+                // Not `append_scaled_texture`: GSK renders that at logical
+                // resolution on HiDPI surfaces (see canvas.rs).
+                snapshot.append_texture(texture, &rect);
             }
         }
     }

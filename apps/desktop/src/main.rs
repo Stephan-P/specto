@@ -70,8 +70,11 @@ fn debug_screenshot() -> gio::ActionEntry<adw::Application> {
             else {
                 return;
             };
+            // At device resolution, so HiDPI sharpness shows in the PNG.
+            let scale = window.surface().map_or(1.0, |s| s.scale()) as f32;
             let paintable = gtk::WidgetPaintable::new(Some(&window));
             let snapshot = gtk::Snapshot::new();
+            snapshot.scale(scale, scale);
             paintable.snapshot(&snapshot, window.width() as f64, window.height() as f64);
             if let (Some(node), Some(renderer)) = (snapshot.to_node(), window.renderer()) {
                 let _ = renderer.render_texture(&node, None).save_to_png(&path);

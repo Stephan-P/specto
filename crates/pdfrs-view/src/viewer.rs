@@ -553,10 +553,14 @@ impl Viewer {
                 visible_pages.push(i);
 
                 let mut layers = Vec::new();
+                // The placeholder is drawn only under gaps (below), but kept
+                // requested: it doubles as the thumbnail and makes scrolling
+                // back instant.
+                let mut placeholder_layer = None;
                 if let Some(p) = placeholder {
                     let k = key(p, (0, 0));
                     if cached(&k) {
-                        layers.extend(tile_draw(k, page, rect));
+                        placeholder_layer = tile_draw(k, page, rect);
                     } else {
                         frame.requests.push(k);
                     }
@@ -576,6 +580,7 @@ impl Viewer {
                 }
                 if missing {
                     frame.complete = false;
+                    layers.extend(placeholder_layer);
                     // Fill gaps with whatever neighbouring levels are cached,
                     // coarser first so finer ones end up on top.
                     for &f in &fallbacks {

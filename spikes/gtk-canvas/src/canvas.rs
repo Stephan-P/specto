@@ -37,7 +37,7 @@ pub struct State {
 
 impl State {
     pub fn new(scheduler: Scheduler, viewer: Viewer) -> Self {
-        // Keep placeholders: they are tiny and make scrolling back instant.
+        // Placeholders make scrolling back instant: evict them last.
         let placeholders: std::collections::HashSet<_> = viewer
             .pages()
             .iter()
@@ -45,8 +45,9 @@ impl State {
             .collect();
         Self {
             viewer,
-            cache: TileCache::new(CACHE_BUDGET)
-                .with_pinned(move |k| k.scale.level().is_some_and(|l| placeholders.contains(&l))),
+            cache: TileCache::new(CACHE_BUDGET).with_evict_last(move |k| {
+                k.scale.level().is_some_and(|l| placeholders.contains(&l))
+            }),
             scheduler,
             stats: Stats::default(),
             settle_redraw_pending: false,

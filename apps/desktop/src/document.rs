@@ -53,7 +53,7 @@ impl Document {
                 rotation: pdfrs_geom::Rotation::None,
             })
             .collect();
-        // Placeholders double as thumbnails; they're small, so keep them all.
+        // Placeholders double as thumbnails: evict them only after everything else.
         let levels: BTreeSet<i32> = pages
             .iter()
             .filter_map(|p| placeholder_level(&p.displayed()))
@@ -62,7 +62,7 @@ impl Document {
             name,
             viewer: Viewer::new(pages, Settings::default()),
             cache: TileCache::new(CACHE_BUDGET)
-                .with_pinned(move |k| k.scale.level().is_some_and(|l| levels.contains(&l))),
+                .with_evict_last(move |k| k.scale.level().is_some_and(|l| levels.contains(&l))),
             scheduler,
             canvas_requests: Vec::new(),
             thumbnails_shown: BTreeSet::new(),

@@ -185,13 +185,14 @@ struct Entry<T> {
 /// (GDK textures, Android bitmaps, …), bounded by a byte budget.
 ///
 /// Call [`begin_frame`](Self::begin_frame) before drawing; tiles used in the
-/// current frame are never evicted.
+/// current frame are never evicted. Everything else can be, so the budget
+/// always holds. `TileCache<T>` is `Send` when `T` is.
 pub struct TileCache<T> {
     map: HashMap<TileKey, Entry<T>>,
     bytes: usize,
     budget: usize,
     frame: u64,
-    pinned: Box<dyn Fn(&TileKey) -> bool>,
+    evict_last: Box<dyn Fn(&TileKey) -> bool + Send + Sync>,
 }
 
 impl<T> TileCache<T> {
@@ -201,13 +202,19 @@ impl<T> TileCache<T> {
             bytes: 0,
             budget: budget_bytes,
             frame: 0,
-            pinned: Box::new(|_| false),
+            evict_last: Box::new(|_| false),
         }
     }
 
-    /// Tiles matching `pinned` are never evicted (e.g. low-res placeholders).
-    pub fn with_pinned(mut self, pinned: impl Fn(&TileKey) -> bool + 'static) -> Self {
-        self.pinned = Box::new(pinned);
+    /// Tiles matching `evict_last` (e.g. low-res placeholders) are evicted
+    /// only after all others, oldest first. They are not pinned: at 0.5 px/pt
+    /// an A4 placeholder is about 0.5 MB, so a 1,000-page document would
+    /// otherwise outgrow any budget.
+    pub fn with_evict_last(
+        mut self,
+        evict_last: impl Fn(&TileKey) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.evict_last = Box::new(evict_last);
         self
     }
 
@@ -266,17 +273,18 @@ impl<T> TileCache<T> {
         self.bytes
     }
 
-    /// Evicts least recently used tiles until at most `target` bytes remain,
-    /// sparing pinned tiles and those used in the current frame.
+    /// Evicts least recently used tiles until at most `target` bytes remain:
+    /// ordinary tiles first, then `evict_last` ones, never those used in the
+    /// current frame.
     fn evict(&mut self, target: usize) {
-        let mut candidates: Vec<(u64, TileKey)> = self
+        let mut candidates: Vec<(bool, u64, TileKey)> = self
             .map
             .iter()
-            .filter(|(k, e)| e.last_used < self.frame && !(self.pinned)(k))
-            .map(|(k, e)| (e.last_used, *k))
+            .filter(|(_, e)| e.last_used < self.frame)
+            .map(|(k, e)| ((self.evict_last)(k), e.last_used, *k))
             .collect();
         candidates.sort_unstable();
-        for (_, key) in candidates {
+        for (_, _, key) in candidates {
             if self.bytes <= target {
                 break;
             }
@@ -389,20 +397,37 @@ mod tests {
     }
 
     #[test]
-    fn cache_evicts_lru_but_spares_current_frame_and_pinned() {
-        let mut c = TileCache::new(100).with_pinned(|k| k.scale.level() == Some(-4));
+    fn cache_evicts_lru_ordinary_tiles_first_and_spares_current_frame() {
+        let mut c = TileCache::new(100).with_evict_last(|k| k.scale.level() == Some(-4));
         c.begin_frame();
-        c.insert(key(0, -4), "thumb", 40); // pinned
+        c.insert(key(0, -4), "thumb", 20); // evicted last
         c.insert(key(1, 0), "old", 40);
         c.begin_frame();
-        c.insert(key(2, 0), "new", 40); // over budget → evict down to 75
+        // 110 > 100 → evict down to 75: the ordinary tile goes, even though
+        // the placeholder is just as old.
+        c.insert(key(2, 0), "new", 50);
         assert!(c.contains(&key(0, -4)));
         assert!(!c.contains(&key(1, 0)));
         assert!(c.contains(&key(2, 0)));
-        assert_eq!(c.bytes(), 80);
+        assert_eq!(c.bytes(), 70);
+
+        // Placeholders go too once only they are left, so the budget holds.
+        for p in 3..8 {
+            c.begin_frame();
+            c.insert(key(p, -4), "thumb", 40);
+        }
+        assert!(c.bytes() <= 100, "{}", c.bytes());
+        assert!(c.contains(&key(7, -4))); // the newest
+        assert!(!c.contains(&key(0, -4))); // the oldest placeholder went
 
         c.remove_document(DocId(0));
         assert!(c.is_empty());
         assert_eq!(c.bytes(), 0);
+    }
+
+    #[test]
+    fn cache_is_send() {
+        fn assert_send<S: Send>() {}
+        assert_send::<TileCache<Vec<u8>>>();
     }
 }

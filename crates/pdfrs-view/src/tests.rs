@@ -221,6 +221,11 @@ fn frame_with_everything_cached_is_complete_and_exact() {
     }
     // Requests only contain things outside the cache, so nothing.
     assert!(f.requests.is_empty());
+    // Fully covered pages don't list the placeholder underneath (overdraw).
+    for p in &f.pages {
+        let pl = v.placeholder_key(p.page).unwrap();
+        assert!(p.layers.iter().all(|t| t.key != pl));
+    }
 }
 
 /// Checks the sharpest layer of every visible page: never upscaled, and
