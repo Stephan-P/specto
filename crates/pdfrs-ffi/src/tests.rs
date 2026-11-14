@@ -674,8 +674,15 @@ fn saving_what_was_edited() {
         .open(&path)
         .unwrap()
         .into_raw_fd();
-    session.save_to_fd(fd).unwrap();
+    // A copy on the side first: the document stays unsaved.
+    let copy = std::env::temp_dir().join(format!("pdfrs-ffi-copy-{}.pdf", std::process::id()));
+    let copy_fd = std::fs::File::create(&copy).unwrap().into_raw_fd();
+    session.save_to_fd(copy_fd, false).unwrap();
+    assert!(session.edit_state().modified);
+    session.save_to_fd(fd, true).unwrap();
     let written = std::fs::read(&path).unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), written);
+    std::fs::remove_file(&copy).unwrap();
     std::fs::remove_file(&path).unwrap();
     assert!(written.starts_with(b"%PDF-"));
     assert!(written.len() < 100_000 && !written.ends_with(b"x"));
@@ -702,18 +709,21 @@ fn saving_what_was_edited() {
     // A descriptor that can't be written to: an error, and still unsaved.
     let read_only = std::fs::File::open("/dev/null").unwrap().into_raw_fd();
     assert!(matches!(
-        session.save_to_fd(read_only),
+        session.save_to_fd(read_only, true),
         Err(PdfError::Save { .. })
     ));
     assert!(session.edit_state().modified);
-    assert!(matches!(session.save_to_fd(-1), Err(PdfError::Save { .. })));
+    assert!(matches!(
+        session.save_to_fd(-1, true),
+        Err(PdfError::Save { .. })
+    ));
 
     // An untidy file (no cross-reference table) is saved as a tidy one.
     let loose = ViewSession::open(sample_pdf(2), None, 64 << 20, listener.clone()).unwrap();
     assert!(loose.rotate_pages(vec![0], true));
     let path = std::env::temp_dir().join(format!("pdfrs-ffi-loose-{}.pdf", std::process::id()));
     let fd = std::fs::File::create(&path).unwrap().into_raw_fd();
-    loose.save_to_fd(fd).unwrap();
+    loose.save_to_fd(fd, true).unwrap();
     let written = std::fs::read(&path).unwrap();
     std::fs::remove_file(&path).unwrap();
     let tidy = ViewSession::open(written, None, 64 << 20, listener).unwrap();

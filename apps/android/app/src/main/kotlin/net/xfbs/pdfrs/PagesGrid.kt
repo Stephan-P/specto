@@ -4,7 +4,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,9 +13,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +34,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -48,7 +57,8 @@ private val thumbnailPaint = Paint().apply { isFilterBitmap = true }
 
 /**
  * The thumbnail of [page] on a white sheet, filling the space it is given
- * (the caller sets the aspect ratio), outlined, more strongly if [selected].
+ * (the caller sets the aspect ratio), outlined, more strongly if [selected]
+ * (the page being read).
  * Blank until the thumbnail is rendered. The thumbnails are the page view's
  * own low-resolution placeholder tiles, so nothing is rendered twice; the
  * caller must announce the pages it shows with [PdfViewState.showThumbnails].
@@ -60,6 +70,8 @@ fun PageThumbnail(
     selected: Boolean,
     modifier: Modifier = Modifier,
     selectedBorder: Dp = 3.dp,
+    /** Picked to act on (see [PagesGrid]): tinted, with a tick in its corner. */
+    picked: Boolean = false,
 ) {
     val tile = state.thumbnailId(page)
     val bitmap = if (tile != 0L) state.bitmap(tile) else null
@@ -84,12 +96,33 @@ fun PageThumbnail(
                 }
             }
             .then(outline),
-    )
+    ) {
+        if (picked) {
+            val accent = MaterialTheme.colorScheme.primary
+            Box(Modifier.matchParentSize().background(accent.copy(alpha = 0.25f)))
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .size(22.dp)
+                    .background(accent, CircleShape)
+                    .padding(3.dp),
+            )
+        }
+    }
 }
 
 /**
  * All pages as a grid of thumbnails; tapping one calls [onPick] with its
  * zero-based index.
+ *
+ * A long press picks a page instead, to act on: from then on, until none is
+ * picked any more, a tap picks further pages or lets go of them. Which pages
+ * are picked is in [PdfViewState.selectedPages], and what can be done with
+ * them is in the bar above (see [SelectionBar]).
  */
 @Composable
 fun PagesGrid(
@@ -105,6 +138,9 @@ fun PagesGrid(
     val current = state.currentPage
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = current)
     val owner = remember { Any() }
+    val haptics = LocalHapticFeedback.current
+    val picked = state.selectedPages
+    val picking = picked.isNotEmpty()
 
     LaunchedEffect(state, grid) {
         snapshotFlow {
@@ -142,7 +178,16 @@ fun PagesGrid(
     ) {
         items(state.pageCount, key = { it }) { page ->
             Column(
-                Modifier.clickable { onPick(page) },
+                Modifier
+                    .combinedClickable(
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            state.togglePage(page)
+                        },
+                        onClick = { if (picking) state.togglePage(page) else onPick(page) },
+                    )
+                    // Screen readers (and UI tests) hear which pages are picked.
+                    .then(if (picking) Modifier.semantics { selected = page in picked } else Modifier),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(Modifier.fillMaxWidth().aspectRatio(CELL_ASPECT), contentAlignment = Alignment.Center) {
@@ -154,6 +199,7 @@ fun PagesGrid(
                         Modifier
                             .aspectRatio(aspect, matchHeightConstraintsFirst = aspect < CELL_ASPECT)
                             .fillMaxSize(),
+                        picked = page in picked,
                     )
                 }
                 Text(

@@ -979,14 +979,17 @@ impl ViewSession {
 
     /// Writes the document as edited, as a new PDF, to the open file
     /// descriptor `fd` (from `ParcelFileDescriptor.detachFd()`, opened for
-    /// writing), which is closed either way. Once written, the document
-    /// counts as saved; edits made meanwhile stay unsaved. Takes a while
-    /// for a large document: call it off the main thread.
+    /// writing), which is closed either way. Takes a while for a large
+    /// document: call it off the main thread.
+    ///
+    /// With `counts_as_saved`, the document is unmodified once written
+    /// (edits made meanwhile stay unsaved); without, this is a copy on the
+    /// side, to share for instance.
     ///
     /// The session goes on reading the file it was opened from. That file
     /// may be the one written to only if it isn't mapped
     /// ([`PdfFile::is_mapped`]): a mapped file must not change while open.
-    pub fn save_to_fd(&self, fd: i32) -> Result<(), PdfError> {
+    pub fn save_to_fd(&self, fd: i32, counts_as_saved: bool) -> Result<(), PdfError> {
         if fd < 0 {
             return Err(PdfError::Save {
                 reason: "invalid file descriptor".into(),
@@ -1016,7 +1019,9 @@ impl ViewSession {
             let _ = file.set_len(data.len() as u64);
             let _ = file.sync_all();
             drop(file);
-            self.shared.lock().session.mark_saved(job.version);
+            if counts_as_saved {
+                self.shared.lock().session.mark_saved(job.version);
+            }
             Ok(())
         }
         #[cfg(not(unix))]

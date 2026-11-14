@@ -60,6 +60,21 @@ class DocumentStoreTest {
     }
 
     @Test
+    fun anAddressLeadsToOneDocument() {
+        val store = DocumentStore(file)
+        store.opened("before", "report.pdf", "content://docs/1", 12)
+        store.saveView("before", view)
+        // The file there was saved over: other content, so another document.
+        store.opened("after", "report.pdf", "content://docs/1", 11)
+        assertEquals(listOf("after"), store.recents.map { it.key })
+        // What was there is still known, should it turn up again elsewhere.
+        assertEquals(null, store.find("before")?.uri)
+        assertEquals(view, store.find("before")?.view)
+        store.opened("before", "copy of report.pdf", "content://docs/2", 12)
+        assertEquals(listOf("before", "after"), store.recents.map { it.key })
+    }
+
+    @Test
     fun recentsAreTheReopenableOnesNewestFirst() {
         val store = DocumentStore(file)
         store.opened("k1", "one.pdf", "content://docs/1", 1)

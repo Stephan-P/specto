@@ -37,6 +37,23 @@ suspend fun Context.shareDocument(document: Uri, name: String) {
     startActivity(shareSheet(FileProvider.getUriForFile(this, "$packageName.shared", copy), name))
 }
 
+/**
+ * Offers the document open in [state] as it is now, unsaved edits included:
+ * a copy written for the purpose, from the app's cache.
+ *
+ * Throws if it can't be written.
+ */
+suspend fun Context.shareEdited(state: PdfViewState, name: String) {
+    val copy = withContext(Dispatchers.IO) {
+        val dir = File(cacheDir, SHARED_DIR)
+        dir.deleteRecursively()
+        dir.mkdirs()
+        File(dir, sharedFileName(name))
+    }
+    state.writeTo(copy.writableDescriptor(), countsAsSaved = false)
+    startActivity(shareSheet(FileProvider.getUriForFile(this, "$packageName.shared", copy), name))
+}
+
 private fun shareSheet(document: Uri, name: String): Intent {
     val send = Intent(Intent.ACTION_SEND)
         .setType("application/pdf")

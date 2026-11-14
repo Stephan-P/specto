@@ -64,10 +64,20 @@ class DocumentStore(private val file: File) {
     /**
      * Notes that [key] was just opened. [uri] is where to reopen it from, or
      * null if that won't be possible; an address known from before is kept.
+     * An address leads to one document: any other one that was found at
+     * [uri] before is no longer offered from there.
      */
     fun opened(key: String, name: String, uri: String?, pageCount: Int) {
         val known = find(key)
         entries.removeAll { it.key == key }
+        // What is at this address now is this document. Another one found
+        // there before (the file was saved over, or replaced) isn't any more.
+        if (uri != null) {
+            for (i in entries.indices) {
+                val e = entries[i]
+                if (e.uri == uri) entries[i] = Entry(e.key, e.name, null, e.opened, e.pageCount, e.view, e.sidebar)
+            }
+        }
         entries.add(
             0,
             Entry(

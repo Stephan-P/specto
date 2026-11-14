@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, or how the selection, its handles and the copy menu look.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, or how the selection, its handles and the copy menu look.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -24,7 +24,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Share | With a document open, ⋮ → "Share…", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app |
+| Share | With a document open, ⋮ → "Share…", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app With unsaved edits (see "Editing the pages"), what is shared is the document as edited, and sharing saves nothing |
 | Only for documents | Open the ⋮ menu on the start screen, and after a file failed to open | No "Share…" |
 
 ## The top bar
@@ -33,7 +33,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 |---|---|---|
 | Buttons | Open a document | Left: Pages and Contents. Right: search (a magnifying glass), the view button, whose icon is a small picture of the current layout, and ⋮ |
 | View menu | Tap the view button | The layouts, each with its picture ("Single page" and "Continuous"; on wide windows also "Two pages" and "Two pages, continuous"), then "Fit page" and "Fit width". The current layout and fit are ticked. Everything in this menu is remembered for the document |
-| ⋮ menu | Tap ⋮ | Open…, Share…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown |
+| ⋮ menu | Tap ⋮ | Open…, Share…, Save as…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Undo …", and after that "Redo …" |
 | Properties | ⋮ → "Properties" | A dialog with the file name, what the document says about itself (title, author, subject, keywords, the programs it was made with, when it was created and changed; whatever it doesn't state is left out), the number of pages, their size ("210 × 297 mm (A4)"; a note if pages differ), the file size and the PDF version. Values can be selected and copied |
 
 ## Reading, one page at a time (default)
@@ -116,6 +116,23 @@ Needs a document with real text; a scan without a text layer has nothing to sele
 | Share the text | "Share" in the menu, then pick an app (notes, mail, a messenger) | The system's share sheet with the text; the app picked receives it as plain text, lines and pages separated by line breaks, and the selection is gone. More than about a hundred thousand characters (some thirty full pages) is more than can be handed over: then a message says so, and "Copy" still works for up to three times as much |
 | Let go | Tap the page, or press Back | The selection and the menu go; nothing else happens (no full screen, no link followed, and Back doesn't leave) |
 
+## Editing the pages
+
+Pages can be turned, removed and (not yet) reordered. Nothing changes the file that was opened: the result is saved as a new document.
+
+| Feature | How to try it | What should happen |
+|---|---|---|
+| Pick pages | Open the page grid (top left; on a tablet it is beside the document) and long-press a thumbnail | A short vibration; the page is tinted, with a tick in its corner, and the top bar counts the pages picked ("1 selected") and offers what can be done with them. From then on a tap picks further pages or lets go of them; nothing jumps to a page |
+| Let go | ✕ in the bar, or Back; or tap the picked pages until none is left | The usual top bar is back, and taps go to pages again. Back leaves the grid only after that |
+| Select all | With a page picked, ⋮ → "Select all" | Every page is picked, and the bin is greyed out: a document keeps at least one page |
+| Rotate | Pick pages, then one of the two round arrows | The pages turn by a quarter that way, in the grid and in the document; they stay picked, to be turned further. The title says "Edited" |
+| Delete | Pick pages, then the bin | They are gone; the pages after them move up and keep their printed numbers, and the count ("3 / 11") follows. Nothing is picked any more |
+| Undo and redo | ⋮ → "Undo delete" (or rotate), then "Redo …" | One edit at a time is taken back, or done again, in the order they were made. Back at the document as it was opened or saved, "Edited" goes |
+| Save as… | ⋮ → "Save as…", then choose where and under what name (the document's own is suggested) | The document as edited is written there as a new PDF, and is then the one that is open, where the reader was, with nothing left to undo. The file opened before is untouched, and both are on the start screen. Saving over the file that is open works too: it is then listed once, as saved |
+| Asked before edits are lost | With unsaved edits: ⋮ → "Close", or "Open…" and pick a file, or open a PDF from another app | "Save changes?" with "Save as…" (saves, then goes on to what was asked for), "Discard" (goes on without saving) and "Cancel" (stays) |
+| Not asked otherwise | The same without edits, or after saving | No question |
+| Kept only while the app lives | Edit, leave the app, and come back later | The edits are still there unless Android ended the app in the meantime, in which case the document is back as it was last saved. There is no automatic saving yet |
+
 ## Full screen
 
 | Feature | How to check | Expected |
@@ -153,6 +170,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Ends | Home and End | First and last page |
 | Zoom | Ctrl with +, − and 0 | Zoom in and out around the middle of the view, and back to the fitted view |
 | Select and copy | Ctrl+A, Ctrl+C, Escape | Selects all text, copies the selection, lets go of it |
+| Undo and redo | Ctrl+Z; Shift+Ctrl+Z or Ctrl+Y | Takes back the last edit of the pages; does it again |
 | Search | Ctrl+F; in the search field Enter, Shift+Enter and Escape | Opens the search; next match, previous match, and leaving it |
 
 ## Settings
@@ -179,4 +197,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Saving, annotations and form filling, page reordering and printing.
+Saving over the file that was opened without being asked where ("Save"), reordering pages and adding pages of other files, annotations and form filling, and printing.

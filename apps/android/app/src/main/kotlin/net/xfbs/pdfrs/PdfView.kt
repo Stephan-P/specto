@@ -120,8 +120,9 @@ private class SelectionDrag {
  * and right, Page Up and Down, Space and Backspace turn pages; arrows up and
  * down scroll; Home and End go to the first and last page; Ctrl with plus,
  * minus and zero zooms; Ctrl+A selects all text, Ctrl+C copies the selection
- * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]). Returns
- * whether the key was used.
+ * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]); Ctrl+Z takes
+ * back the last edit of the pages, and Shift+Ctrl+Z or Ctrl+Y does it again.
+ * Returns whether the key was used.
  */
 private fun PdfViewState.handleKey(
     scope: CoroutineScope,
@@ -137,6 +138,8 @@ private fun PdfViewState.handleKey(
             Key.A -> selectAll()
             Key.C -> if (hasSelection) onCopy() else return false
             Key.F -> onSearch()
+            Key.Z -> if (event.isShiftPressed) redo() else undo()
+            Key.Y -> redo()
             else -> return false
         }
         return true

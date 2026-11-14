@@ -121,6 +121,9 @@ import uniffi.pdfrs_ffi.PdfException
 class MainActivity : ComponentActivity() {
     /** The document to show: from "Open with", or picked in the app. */
     private var document by mutableStateOf<Uri?>(null)
+
+    /** A document another app asked for while one is open: shown once the open one can be left. */
+    private var incoming by mutableStateOf<Uri?>(null)
     private var current: Loaded.Ready? = null
     private lateinit var store: DocumentStore
     private lateinit var settings: AppSettings
@@ -147,6 +150,8 @@ class MainActivity : ComponentActivity() {
                     store = store,
                     settings = settings,
                     onDocument = { document = it },
+                    incoming = incoming,
+                    onIncoming = { incoming = null },
                     onReady = {
                         current = it
                         stayAwake()
@@ -217,7 +222,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.viewedDocument()?.let { document = it }
+        intent.viewedDocument()?.let { incoming = it }
     }
 
     override fun onTrimMemory(level: Int) {
@@ -286,11 +291,24 @@ private fun Context.displayName(uri: Uri): String {
     return fromProvider ?: uri.lastPathSegment ?: "PDF"
 }
 
+/** Where the reader wants to go from a document with unsaved edits: another one, or (null) the start screen. */
+private class Leaving(val to: Uri?)
+
 private sealed interface Loaded {
     data object Loading : Loaded
 
-    /** [key] identifies the document in the [DocumentStore]. */
-    class Ready(val state: PdfViewState, val name: String, val key: String, val bytes: Long) : Loaded
+    /**
+     * [key] identifies the document in the [DocumentStore]. A [mapped] file
+     * (a large one) is read where it lies for as long as it is open, and
+     * must not change meanwhile.
+     */
+    class Ready(
+        val state: PdfViewState,
+        val name: String,
+        val key: String,
+        val bytes: Long,
+        val mapped: Boolean,
+    ) : Loaded
     /** Keeps the [file], so that trying a password doesn't read it again. */
     class Locked(val file: PdfFile, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
     class Failed(val message: String) : Loaded
@@ -358,7 +376,7 @@ private suspend fun Context.open(
         }
         store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
         releaseUnused(store)
-        Loaded.Ready(state, name, key, size)
+        Loaded.Ready(state, name, key, size, file.isMapped())
     } catch (e: PdfException.PasswordRequired) {
         return Loaded.Locked(file, name, uri, wrongPassword = password != null)
     } catch (e: Exception) {
@@ -375,6 +393,9 @@ private fun App(
     store: DocumentStore,
     settings: AppSettings,
     onDocument: (Uri?) -> Unit,
+    /** A document asked for from outside the app, to show when the open one can be left; [onIncoming] takes note. */
+    incoming: Uri?,
+    onIncoming: () -> Unit,
     onReady: (Loaded.Ready?) -> Unit,
     /** Hands over what the volume keys should do; null while no document is on screen. */
     onPageKeys: (((forward: Boolean) -> Unit)?) -> Unit,
@@ -382,12 +403,30 @@ private fun App(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    var loaded by remember { mutableStateOf<Loaded?>(null) }
+    // Counts the times a document was saved over, to read it afresh.
+    var reloads by remember { mutableStateOf(0) }
+    // Where the reader wants to go while the open document has unsaved edits.
+    var leaving by remember { mutableStateOf<Leaving?>(null) }
+    // What follows a "Save as…" other than showing the saved document.
+    var afterSaving by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var saving by remember { mutableStateOf(false) }
+
+    /** Shows [next] (null: the start screen) instead, asking first if edits would be lost. */
+    fun leaveFor(next: Uri?) {
+        val unsaved = (loaded as? Loaded.Ready)?.state?.editState?.modified == true
+        if (unsaved) leaving = Leaving(next) else onDocument(next)
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onDocument(uri)
+        if (uri != null) leaveFor(uri)
     }
     val pick = { picker.launch(arrayOf("application/pdf")) }
-
-    var loaded by remember { mutableStateOf<Loaded?>(null) }
+    LaunchedEffect(incoming) {
+        if (incoming != null) {
+            leaveFor(incoming)
+            onIncoming()
+        }
+    }
     var showPages by remember { mutableStateOf(false) }
     // Which tab the top-left button opens: the one used last, pages at first.
     var preferContents by remember { mutableStateOf(false) }
@@ -417,7 +456,7 @@ private fun App(
         onReady(next as? Loaded.Ready)
     }
 
-    LaunchedEffect(document) {
+    LaunchedEffect(document, reloads) {
         showPages = false
         fullScreen = false
         searching = false
@@ -440,6 +479,63 @@ private fun App(
         onDispose { show(null) }
     }
 
+    // "Save as…": the system asks where, and the document as edited is
+    // written there. It is then what is open, where the reader was, unless
+    // the reader was on the way elsewhere.
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val then = afterSaving
+        afterSaving = null
+        val open = loaded as? Loaded.Ready
+        if (uri == null || open == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            saving = true
+            try {
+                val written = context.writeEdited(open.state, open.name)
+                val view = open.state.savedView()
+                val sidebar = open.state.sidebarOpen
+                val pages = open.state.pageCount
+                if (open.mapped) {
+                    // The reader may be saving over the file that is open,
+                    // which is read where it lies: let go of it first.
+                    show(null)
+                    loaded = Loaded.Loading
+                }
+                try {
+                    context.copyTo(written, uri)
+                } catch (e: Exception) {
+                    if (!open.mapped) throw e
+                    // Nothing is open any more; what was written is.
+                    Toast.makeText(context, "Couldn't save there. This is the edited copy.", Toast.LENGTH_LONG).show()
+                    onDocument(Uri.fromFile(written))
+                    return@launch
+                }
+                // The saved file is a new document to the store: it starts
+                // out where this one is.
+                val key = withContext(Dispatchers.IO) { written.fingerprint() }
+                store.opened(key, context.displayName(uri), uri.toString().takeIf { context.canReopen(uri) }, pages)
+                store.saveView(key, view, sidebar)
+                withContext(Dispatchers.IO) { written.delete() }
+                if (then != null) {
+                    then()
+                } else {
+                    onDocument(uri)
+                    reloads++
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
+                Toast.makeText(context, "Couldn't save: $reason", Toast.LENGTH_LONG).show()
+            } finally {
+                saving = false
+            }
+        }
+    }
+    fun saveAs(name: String, then: (() -> Unit)? = null) {
+        afterSaving = then
+        saver.launch(name)
+    }
+
     val ready = loaded as? Loaded.Ready
     // A wide window (a tablet, but not one sharing its screen) has room for
     // Pages and Contents in a sidebar next to the document. Narrower ones
@@ -453,6 +549,13 @@ private fun App(
     BackHandler(enabled = overlay) { showPages = false }
     BackHandler(enabled = immersive) { fullScreen = false }
     BackHandler(enabled = searching) { closeSearch() }
+    // Pages picked in the page grid: Back lets go of them first.
+    val picking = ready != null && ready.state.selectedPages.isNotEmpty()
+    BackHandler(enabled = picking) { ready?.state?.selectedPages = emptySet() }
+    if (ready != null && !overlay && !sidebarShown) {
+        // Picked where the page grid is; without it nothing is.
+        SideEffect { ready.state.selectedPages = emptySet() }
+    }
     StatusBar(hidden = immersive)
 
     // The sidebar shows the same thumbnails, so the strip would only repeat them.
@@ -497,7 +600,9 @@ private fun App(
                 visible = !immersive,
                 enter = expandVertically(tween(BARS_MS), expandFrom = Alignment.Bottom),
                 exit = shrinkVertically(tween(BARS_MS), shrinkTowards = Alignment.Bottom),
-            ) { if (searching && ready != null) SearchBar(ready.state, onClose = ::closeSearch) else TopAppBar(
+            ) { if (picking && ready != null) {
+                SelectionBar(ready.state)
+            } else if (searching && ready != null) SearchBar(ready.state, onClose = ::closeSearch) else TopAppBar(
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 navigationIcon = {
                     if (ready != null) {
@@ -515,11 +620,24 @@ private fun App(
                     }
                 },
                 title = {
-                    Text(
-                        ready?.name ?: "pdfrs",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            ready?.name ?: "pdfrs",
+                            Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (ready?.state?.editState?.modified == true) {
+                            // Changed, and not saved anywhere yet.
+                            Text(
+                                "Edited",
+                                Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 },
                 actions = {
                     if (ready != null && !overlay) {
@@ -548,7 +666,12 @@ private fun App(
                                     menu = false
                                     scope.launch {
                                         try {
-                                            context.shareDocument(document, ready.name)
+                                            if (ready.state.editState.modified) {
+                                                // What the reader sees, not what is on disk.
+                                                context.shareEdited(ready.state, ready.name)
+                                            } else {
+                                                context.shareDocument(document, ready.name)
+                                            }
                                         } catch (e: CancellationException) {
                                             throw e
                                         } catch (e: Exception) {
@@ -560,6 +683,32 @@ private fun App(
                             )
                         }
                         if (ready != null) {
+                            DropdownMenuItem(
+                                text = { Text("Save as…") },
+                                onClick = {
+                                    menu = false
+                                    saveAs(ready.name)
+                                },
+                            )
+                            val edits = ready.state.editState
+                            edits.undo?.let { step ->
+                                DropdownMenuItem(
+                                    text = { Text("Undo ${editName(step)}") },
+                                    onClick = {
+                                        menu = false
+                                        ready.state.undo()
+                                    },
+                                )
+                            }
+                            edits.redo?.let { step ->
+                                DropdownMenuItem(
+                                    text = { Text("Redo ${editName(step)}") },
+                                    onClick = {
+                                        menu = false
+                                        ready.state.redo()
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Go to page…") },
                                 onClick = {
@@ -588,7 +737,7 @@ private fun App(
                                 text = { Text("Close") },
                                 onClick = {
                                     menu = false
-                                    onDocument(null)
+                                    leaveFor(null)
                                 },
                             )
                         }
@@ -721,6 +870,30 @@ private fun App(
     externalLink?.let { link ->
         ExternalLinkDialog(link, onDismiss = { externalLink = null })
     }
+
+    leaving?.let { asked ->
+        if (ready == null) {
+            // Nothing left to lose.
+            SideEffect {
+                leaving = null
+                onDocument(asked.to)
+            }
+        } else {
+            UnsavedChangesDialog(
+                ready.name,
+                onSave = {
+                    leaving = null
+                    saveAs(ready.name) { onDocument(asked.to) }
+                },
+                onDiscard = {
+                    leaving = null
+                    onDocument(asked.to)
+                },
+                onCancel = { leaving = null },
+            )
+        }
+    }
+    if (saving) SavingDialog()
 
     if (showProperties && ready != null) {
         PropertiesDialog(ready.state, ready.name, ready.bytes, onDismiss = { showProperties = false })

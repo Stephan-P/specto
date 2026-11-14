@@ -7,7 +7,9 @@ import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
@@ -82,6 +84,30 @@ class ShareTest : AppTest() {
         Thread.sleep(1_000)
         assertEquals(null, sheets.last)
         compose.onNodeWithText("1 / 12").assertIsDisplayed()
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun anEditedDocumentIsSharedAsEdited() {
+        open("pages.pdf", shows = "1 / 12")
+        if (!wide) compose.onNodeWithContentDescription("Contents and pages").performClick()
+        waitForText("2")
+        compose.onNodeWithText("2").performTouchInput { longClick() }
+        compose.onNodeWithContentDescription("Delete pages").performClick()
+        if (!wide) compose.onNodeWithContentDescription("Back to document").performClick()
+        waitForText("1 / 11")
+        menu("Share…")
+        compose.waitUntil(WAIT_MS) { sheets.last != null }
+
+        val send = sheets.last!!.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        val stream = send.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
+        assertEquals("under its own name", "pages.pdf", stream.lastPathSegment)
+        val shared = instrumentation.targetContext.contentResolver.openInputStream(stream)!!.use { it.readBytes() }
+        val original = instrumentation.context.assets.open("pages.pdf").use { it.readBytes() }
+        assertEquals("a PDF", "%PDF-", String(shared, 0, 5))
+        assertTrue("not the file as opened", !shared.contentEquals(original))
+        // Sharing saved nothing: the edits are still only here.
+        compose.onNodeWithText("Edited").assertIsDisplayed()
     }
 
     @Suppress("DEPRECATION")

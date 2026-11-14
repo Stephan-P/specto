@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.pdfrs_ffi.Activated
 import uniffi.pdfrs_ffi.DocumentInfo
+import uniffi.pdfrs_ffi.EditState
 import uniffi.pdfrs_ffi.PageSize
 import uniffi.pdfrs_ffi.PdfFile
 import uniffi.pdfrs_ffi.OutlineEntry
@@ -121,15 +122,17 @@ class PdfViewState(
     /** Device pixels per dp. */
     private var density = 1f
 
-    val pageCount: Int = session.pageCount().toInt()
+    // What follows describes the pages as they are now: editing changes
+    // it (see "editing" below).
 
     /** Width and height of each page as displayed, in points (1/72 inch). */
-    val pageSizes: List<PageSize> = session.pageSizes()
+    var pageSizes: List<PageSize> by mutableStateOf(session.pageSizes())
+        private set
 
-    /** Width / height of each page as displayed. */
-    private val aspects = FloatArray(pageSizes.size) { pageSizes[it].width / pageSizes[it].height }
+    val pageCount: Int get() = pageSizes.size
 
-    fun pageAspect(page: Int): Float = aspects[page]
+    /** Width / height of [page] as displayed; that of a sheet of paper for a page that isn't there (any more). */
+    fun pageAspect(page: Int): Float = pageSizes.getOrNull(page)?.let { it.width / it.height } ?: 0.707f
 
     /** What the document says about itself: title, author, dates, … */
     fun info(): DocumentInfo = session.info()
@@ -138,7 +141,7 @@ class PdfViewState(
      * The pages' printed numbers, for documents that number them other than
      * 1, 2, 3 (roman numerals for the front matter, "A-1" in an appendix, …).
      */
-    private val pageLabels: List<String>? = session.pageLabels()
+    private var pageLabels: List<String>? by mutableStateOf(session.pageLabels())
 
     /** Whether pages have printed numbers that differ from their positions. */
     val hasPageLabels: Boolean get() = pageLabels != null
@@ -150,7 +153,8 @@ class PdfViewState(
     fun findPage(text: String): Int? = session.findPage(text)?.toInt()
 
     /** The outline (table of contents) in reading order; empty if there is none. */
-    val outline: List<OutlineEntry> = session.outline()
+    var outline: List<OutlineEntry> by mutableStateOf(session.outline())
+        private set
 
     init {
         // On a phone, swiping through fitted pages is the default.
@@ -231,6 +235,95 @@ class PdfViewState(
         if (closed) return
         searchStatus = session.searchStatus()
         refresh()
+    }
+
+    // --- editing ------------------------------------------------------------
+    //
+    // Pages can be turned, removed and moved; every such edit can be undone.
+    // Nothing touches the file until the document is written somewhere
+    // ([writeTo]). Pages are named by their position, from 0.
+
+    /** Whether the document has unsaved edits, and what undo and redo would do. */
+    var editState: EditState by mutableStateOf(session.editState())
+        private set
+
+    /**
+     * The pages picked in the page grid to act on, by position. Kept here
+     * rather than in the grid, since the bar above it acts on them.
+     */
+    var selectedPages: Set<Int> by mutableStateOf(emptySet())
+
+    /** Picks [page], or lets go of it if it was picked. */
+    fun togglePage(page: Int) {
+        selectedPages = if (page in selectedPages) selectedPages - page else selectedPages + page
+    }
+
+    /** Turns [pages] by a quarter. They stay picked. */
+    fun rotatePages(pages: Collection<Int>, clockwise: Boolean) {
+        if (closed) return
+        if (session.rotatePages(pages.map { it.toUInt() }, clockwise)) pagesChanged()
+    }
+
+    /** Removes [pages]; a document keeps at least one page. Nothing is picked afterwards. */
+    fun deletePages(pages: Collection<Int>) {
+        if (closed) return
+        if (session.deletePages(pages.map { it.toUInt() })) {
+            selectedPages = emptySet()
+            pagesChanged()
+        }
+    }
+
+    /**
+     * Moves [pages], in their order in the document, to before the page now
+     * at [to] (the page count: to the end). They stay picked, where they are
+     * then.
+     */
+    fun movePages(pages: Collection<Int>, to: Int) {
+        if (closed) return
+        val first = session.movePages(pages.map { it.toUInt() }, to.toUInt())?.toInt() ?: return
+        if (selectedPages.isNotEmpty()) selectedPages = (first until first + pages.toSet().size).toSet()
+        pagesChanged()
+    }
+
+    /** Takes back the last edit, if there is one. */
+    fun undo() {
+        if (closed) return
+        if (session.undo() != null) {
+            selectedPages = emptySet()
+            pagesChanged()
+        }
+    }
+
+    /** Does again what [undo] took back. */
+    fun redo() {
+        if (closed) return
+        if (session.redo() != null) {
+            selectedPages = emptySet()
+            pagesChanged()
+        }
+    }
+
+    /** Positions changed: reads again what goes by them. */
+    private fun pagesChanged() {
+        stopMotion()
+        pageSizes = session.pageSizes()
+        pageLabels = session.pageLabels()
+        outline = session.outline()
+        editState = session.editState()
+        // An edit drops the text selection and runs a search again.
+        searchStatus = session.searchStatus()
+        refresh()
+    }
+
+    /**
+     * Writes the document as edited, as a new PDF, into the open file
+     * descriptor [fd], which is closed either way. With [countsAsSaved] the
+     * document has no unsaved edits afterwards; without, this is a copy on
+     * the side. Throws `PdfException.Save` if it can't be written.
+     */
+    suspend fun writeTo(fd: Int, countsAsSaved: Boolean) {
+        withContext(Dispatchers.IO) { session.saveToFd(fd, countsAsSaved) }
+        if (!closed) editState = session.editState()
     }
 
     // --- text selection -----------------------------------------------------
