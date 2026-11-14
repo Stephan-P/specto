@@ -459,12 +459,18 @@ class Input:
                 self.keys(code)
 
     def clipboard(self):
-        """The clipboard's text."""
-        r, fds = self.bus.call_with_unix_fd_list_sync(
-            self.dest, self.session, self.iface, "SelectionRead",
-            self.GLib.Variant("(s)", ("text/plain;charset=utf-8",)),
-            None, 0, 5000, None, None,
-        )
+        """The clipboard's text; None while nothing owns the clipboard (e.g.
+        before the app has handled the copy shortcut)."""
+        try:
+            r, fds = self.bus.call_with_unix_fd_list_sync(
+                self.dest, self.session, self.iface, "SelectionRead",
+                self.GLib.Variant("(s)", ("text/plain;charset=utf-8",)),
+                None, 0, 5000, None, None,
+            )
+        except self.GLib.GError as e:
+            if "No selection owner" in e.message:
+                return None
+            raise
         fd = fds.get(r.unpack()[0])
         os.set_blocking(fd, True)
         data = b""

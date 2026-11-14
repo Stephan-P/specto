@@ -53,6 +53,7 @@ The desktop app needs the GTK 4 and libadwaita development packages; see [apps/d
 - `apps/desktop`: GTK 4 + libadwaita app (`pdfrs-gtk`)
 - `apps/android`: Android app (Kotlin + Compose)
 - `tools/pdfrs-cli`: the `pdfrs` dev tool
+- `tools/test-files.sh`: copies of the test files for testing by hand, in `target/test-files/`
 - `tools/headless`: run the desktop app under a headless compositor; `check.py` is the automated end-to-end check (also in CI), `smoke.sh` takes screenshots
 - `spikes/`: early prototypes, kept for the measurements in docs/M0-FINDINGS.md: `lopdf-spike` (editing and saving), `gtk-canvas` (tiled GTK viewer with a benchmark and probe mode), `text-check` (text extraction against `pdftotext`)
 - `corpus/`: test corpus fetch script (the files are git-ignored)

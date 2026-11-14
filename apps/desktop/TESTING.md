@@ -45,6 +45,8 @@ Test files: run `corpus/fetch.sh` once. The files are in `corpus/files/pdfjs/tes
 qpdf --encrypt secret owner 256 -- corpus/files/pdfjs/test/pdfs/labelled_pages.pdf /tmp/encrypted.pdf
 ```
 
+`tools/test-files.sh` puts copies of all of these in `target/test-files/`, named after their roles (`long.pdf`, `encrypted.pdf`, …), so saving doesn't change the corpus. It also makes `big.pdf`, LONG padded to over 64 MB, which is memory-mapped when opened. Run it again for fresh copies.
+
 Resetting saved state:
 
 - View state: delete `~/.local/state/pdfrs/view-state.ini` (or `$XDG_STATE_HOME/pdfrs/view-state.ini`). Same path on macOS.

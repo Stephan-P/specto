@@ -1043,6 +1043,8 @@ impl Window {
             // [page of the file, rotation in degrees] per position.
             json.raw("edit_pages", &format!("[{}]", pages.join(", ")))
                 .bool("modified", d.edit.is_modified())
+                .num("cache_tiles", d.cache.len() as f64)
+                .num("cache_bytes", d.cache.bytes() as f64)
                 .bool("saving", inner.saving.get())
                 .str(
                     "alert",
