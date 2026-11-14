@@ -103,6 +103,15 @@ impl Document {
         })
     }
 
+    /// Whether page `i` is slow to render (huge images, or a render that
+    /// took longer than the scheduler's `slow_after`).
+    pub fn is_expensive(&self, i: usize) -> bool {
+        self.viewer
+            .pages()
+            .get(i)
+            .is_some_and(|p| scheduler().is_expensive(p.doc, p.page))
+    }
+
     /// The label of page `i` ("iv", "A-3", …), or its number.
     pub fn page_label(&self, i: usize) -> String {
         self.labels

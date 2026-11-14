@@ -4,7 +4,7 @@
 use std::cell::{Cell, RefCell};
 use std::time::Instant;
 
-use gtk::prelude::*;
+use adw::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, glib, graphene, gsk};
 use pdfrs_geom::{DeviceRect, LayoutVector, ViewPoint, ViewSize, ViewVector};
@@ -43,6 +43,9 @@ mod imp {
         pub pointer: Cell<(f64, f64)>,
         /// Pending redraw for when the view settles (switches to exact tiles).
         pub settle_timer: RefCell<Option<glib::SourceId>>,
+        /// Spinner for pages that take long to render. Only exists while one
+        /// is shown: it asks for a redraw every frame while it animates.
+        pub spinner: RefCell<Option<(adw::SpinnerPaintable, glib::SignalHandlerId)>>,
     }
 
     impl Default for Canvas {
@@ -59,6 +62,7 @@ mod imp {
                 over_link: Cell::default(),
                 pointer: Cell::default(),
                 settle_timer: RefCell::default(),
+                spinner: RefCell::default(),
             }
         }
     }
@@ -160,6 +164,20 @@ mod imp {
                 }
                 snapshot.pop();
             }
+            // A spinner over expensive pages (huge images, or renders that
+            // already took > 500 ms) that aren't sharp yet. Cheap pages
+            // render in milliseconds and never flash one.
+            let viewport = DeviceRect::new(
+                pdfrs_geom::DevicePoint::origin(),
+                (obj.width() as f64 * scale, obj.height() as f64 * scale).into(),
+            );
+            let busy: Vec<DeviceRect> = frame
+                .pages
+                .iter()
+                .filter(|p| !p.complete && d.is_expensive(p.page))
+                .filter_map(|p| p.rect.intersection(&viewport))
+                .collect();
+            obj.draw_spinners(snapshot, &busy, scale);
             snapshot.restore();
             d.set_canvas_requests(frame.requests);
             drop(guard);
@@ -255,6 +273,67 @@ impl Canvas {
         let doc = self.imp().document.borrow().clone()?;
         let d = doc.borrow();
         Some(f(&d.viewer))
+    }
+
+    /// Draws a spinner in the middle of each rectangle (device pixels), and
+    /// creates or drops the animating paintable as needed.
+    fn draw_spinners(&self, snapshot: &gtk::Snapshot, at: &[DeviceRect], scale: f64) {
+        const SIZE: f32 = 32.0;
+        const BACKING: f32 = 56.0;
+        let imp = self.imp();
+        if at.is_empty() {
+            if let Some((paintable, handler)) = imp.spinner.take() {
+                paintable.disconnect(handler);
+            }
+            return;
+        }
+        if imp.spinner.borrow().is_none() {
+            let paintable = adw::SpinnerPaintable::new(Some(self));
+            let this = self.downgrade();
+            let handler = paintable.connect_invalidate_contents(move |_| {
+                if let Some(c) = this.upgrade() {
+                    c.queue_draw();
+                }
+            });
+            imp.spinner.replace(Some((paintable, handler)));
+        }
+        let spinner = imp.spinner.borrow();
+        let Some((paintable, _)) = spinner.as_ref() else {
+            return;
+        };
+        for r in at {
+            let centre = graphene::Point::new(
+                ((r.origin.x + r.size.width / 2.0) / scale) as f32,
+                ((r.origin.y + r.size.height / 2.0) / scale) as f32,
+            );
+            let backing = gsk::RoundedRect::from_rect(
+                graphene::Rect::new(
+                    centre.x() - BACKING / 2.0,
+                    centre.y() - BACKING / 2.0,
+                    BACKING,
+                    BACKING,
+                ),
+                12.0,
+            );
+            snapshot.append_outset_shadow(
+                &backing,
+                &gdk::RGBA::new(0.0, 0.0, 0.0, 0.2),
+                0.0,
+                1.0,
+                0.0,
+                4.0,
+            );
+            snapshot.push_rounded_clip(&backing);
+            snapshot.append_color(&gdk::RGBA::new(1.0, 1.0, 1.0, 0.92), backing.bounds());
+            snapshot.pop();
+            snapshot.save();
+            snapshot.translate(&graphene::Point::new(
+                centre.x() - SIZE / 2.0,
+                centre.y() - SIZE / 2.0,
+            ));
+            paintable.snapshot(snapshot, SIZE as f64, SIZE as f64);
+            snapshot.restore();
+        }
     }
 
     /// Schedules one redraw at `at` (when the view settles), unless one is

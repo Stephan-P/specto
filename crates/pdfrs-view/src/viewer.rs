@@ -148,6 +148,8 @@ pub struct PageDraw {
     /// `layers` in order, clipped to this rectangle.
     pub rect: DeviceRect,
     pub layers: Vec<TileDraw>,
+    /// Every visible tile of this page is available at full sharpness.
+    pub complete: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -886,6 +888,7 @@ impl Viewer {
                     page: i,
                     rect,
                     layers,
+                    complete: !missing,
                 });
             }
         }

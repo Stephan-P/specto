@@ -202,6 +202,7 @@ fn frame_with_everything_cached_is_complete_and_exact() {
     let f = v.frame(Instant::now(), all_cached);
     assert!(f.complete);
     assert_eq!(f.settles_at, None); // 100% at scale 2 *is* level 2
+    assert!(f.pages.iter().all(|p| p.complete));
     for p in &f.pages {
         // Page rects sit on whole device pixels.
         assert_eq!(p.rect.origin.x.fract(), 0.0);
@@ -363,6 +364,7 @@ fn missing_tiles_fall_back_to_neighbouring_levels() {
     // Only level-1 tiles (the previous zoom) are cached.
     let f = v.frame(Instant::now(), |k| level(k) == Some(1));
     assert!(!f.complete);
+    assert!(!f.pages[0].complete);
     let levels: HashSet<Option<i32>> = f.pages[0].layers.iter().map(|t| level(&t.key)).collect();
     assert_eq!(levels, HashSet::from([Some(1)]));
     assert!(f.requests.iter().any(|k| level(k) == Some(2)));
