@@ -51,6 +51,20 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_zoomBy(
     });
 }
 
+/// `Native.setThumbnailRange(session: Long, first: Int, count: Int)`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_xfbs_pdfrs_Native_setThumbnailRange(
+    _env: *mut JNIEnv,
+    _class: jclass,
+    session: jlong,
+    first: jint,
+    count: jint,
+) {
+    guarded((), || {
+        hot::set_thumbnail_range(session as u64, first.max(0) as u32, count.max(0) as u32);
+    });
+}
+
 /// The memory of a direct `java.nio.ByteBuffer`, or `None` if it isn't one.
 ///
 /// # Safety

@@ -140,6 +140,18 @@ pub struct Frame {
     /// Logical pixels (dp) per PDF point.
     pub zoom: f64,
     pub zoom_mode: ZoomMode,
+    /// First page of the range set with [`ViewSession::set_thumbnail_range`].
+    pub thumbnail_first: u32,
+    /// For each page of that range, the id of its thumbnail tile, or 0 while
+    /// it is still being rendered.
+    pub thumbnails: Vec<u64>,
+}
+
+/// Size of a page as displayed, in PDF points.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct PageSize {
+    pub width: f32,
+    pub height: f32,
 }
 
 /// A rendered tile waiting to be copied into a `Bitmap` of this size.
@@ -156,6 +168,8 @@ struct State {
     /// The last frame encoded for [`hot::frame`], kept so a caller whose
     /// buffer was too small can fetch it again without planning a new one.
     encoded: Vec<u8>,
+    /// Pages whose thumbnails the frontend is showing (first, count).
+    thumbnails: (u32, u32),
 }
 
 struct Shared {
@@ -169,10 +183,15 @@ impl Shared {
     }
 
     fn frame(&self, state: &mut State) -> Frame {
-        let State { viewer, tiles, .. } = state;
+        let State {
+            viewer,
+            tiles,
+            thumbnails,
+            ..
+        } = state;
         tiles.begin_frame();
         let now = Instant::now();
-        let planned = viewer.frame(now, |key| tiles.knows(key));
+        let mut planned = viewer.frame(now, |key| tiles.knows(key));
         let pages = planned
             .pages
             .iter()
@@ -192,8 +211,28 @@ impl Shared {
                     .collect(),
             })
             .collect();
+        // Thumbnails are the pages' placeholder tiles, so the page view and
+        // the thumbnail grid share one render. They are requested after
+        // everything the page view wants: the scheduler has one queue, and
+        // each frame replaces it.
+        let (thumbnail_first, count) = *thumbnails;
+        let thumbnail_ids = (thumbnail_first..thumbnail_first.saturating_add(count))
+            .map(|page| {
+                let Some(key) = viewer.placeholder_key(page as usize) else {
+                    return 0;
+                };
+                tiles.use_tile(&key).unwrap_or_else(|| {
+                    if !tiles.knows(&key) && !planned.requests.contains(&key) {
+                        planned.requests.push(key);
+                    }
+                    0
+                })
+            })
+            .collect();
         self.scheduler.request(planned.requests);
         Frame {
+            thumbnail_first,
+            thumbnails: thumbnail_ids,
             pages,
             evicted: tiles.take_evicted(),
             complete: planned.complete,
@@ -288,6 +327,7 @@ impl ViewSession {
                 viewer: Viewer::new(pages, settings),
                 tiles: TileBook::new(cache_bytes as usize),
                 encoded: Vec::new(),
+                thumbnails: (0, 0),
             }),
         });
         let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
@@ -309,6 +349,30 @@ impl ViewSession {
 
     pub fn page_count(&self) -> u32 {
         self.page_count
+    }
+
+    /// Sizes of all pages as displayed, e.g. for the thumbnail grid's cells.
+    pub fn page_sizes(&self) -> Vec<PageSize> {
+        let state = self.shared.lock();
+        state
+            .viewer
+            .pages()
+            .iter()
+            .map(|page| {
+                let size = page.displayed().size();
+                PageSize {
+                    width: size.width as f32,
+                    height: size.height as f32,
+                }
+            })
+            .collect()
+    }
+
+    /// The pages whose thumbnails are on screen (`count` may be 0). Frames
+    /// report their tiles in [`Frame::thumbnails`], keep them cached, and
+    /// request the ones still missing.
+    pub fn set_thumbnail_range(&self, first: u32, count: u32) {
+        hot::set_thumbnail_range(self.id, first, count);
     }
 
     /// View size in logical pixels (dp) and device pixels per logical pixel

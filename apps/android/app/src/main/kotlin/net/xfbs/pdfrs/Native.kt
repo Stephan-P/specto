@@ -24,6 +24,10 @@ object Native {
     @JvmStatic
     external fun zoomBy(session: Long, factor: Double, x: Double, y: Double)
 
+    /** The pages whose thumbnails are on screen; see [ViewFrame.thumbnailId]. */
+    @JvmStatic
+    external fun setThumbnailRange(session: Long, first: Int, count: Int)
+
     /**
      * Plans a frame and writes it into [out] (a direct buffer; see
      * [ViewFrame.decode] for the layout). Returns the bytes written, or minus

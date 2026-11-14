@@ -19,6 +19,9 @@
 //!     u32 page, u32 tile_count, f32 x, y, width, height
 //!     tile_count × { u64 id, f32 x, y, width, height, u32 exact, u32 unused }
 //! }
+//! u32 thumbnail_first
+//! u32 thumbnail_count
+//! thumbnail_count × { u64 id }    0: not rendered yet
 //! ```
 //!
 //! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then
@@ -35,6 +38,18 @@ pub fn scroll_by(session: u64, dx: f64, dy: f64) -> bool {
         .lock()
         .viewer
         .scroll_by(pdfrs_geom::ViewVector::new(dx, dy));
+    true
+}
+
+/// See `ViewSession::set_thumbnail_range`. `false` if the session is closed.
+pub fn set_thumbnail_range(session: u64, first: u32, count: u32) -> bool {
+    let Some(session) = find_session(session) else {
+        return false;
+    };
+    let mut state = session.lock();
+    let pages = state.viewer.page_count() as u32;
+    let first = first.min(pages);
+    state.thumbnails = (first, count.min(pages - first));
     true
 }
 
@@ -150,5 +165,10 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
             put_u32(buf, u32::from(tile.exact));
             put_u32(buf, 0);
         }
+    }
+    put_u32(buf, frame.thumbnail_first);
+    put_u32(buf, frame.thumbnails.len() as u32);
+    for id in &frame.thumbnails {
+        buf.extend_from_slice(&id.to_ne_bytes());
     }
 }

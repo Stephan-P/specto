@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
@@ -108,8 +109,8 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                         // Only a single finger lifting off leads to a fling.
                         val pressed = event.changes.filter { it.pressed }
                         if (event.changes.size == 1) {
-                            val change = event.changes[0]
-                            velocity.addPosition(change.uptimeMillis, change.position)
+                            // Includes the samples batched between frames.
+                            velocity.addPointerInputChange(event.changes[0])
                         } else {
                             velocity.resetTracking()
                         }

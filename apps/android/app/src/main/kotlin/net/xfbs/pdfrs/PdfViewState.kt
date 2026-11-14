@@ -43,8 +43,11 @@ private const val DOUBLE_TAP_ZOOM = 2.5
  *
  * Main thread only, except [tilesReady]. Positions and distances are in dp
  * unless noted. Call [close] when done.
+ *
+ * Throws `PdfException` if the file can't be opened, e.g.
+ * `PdfException.PasswordRequired` for a missing or wrong [password].
  */
-class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
+class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val tilesPosted = AtomicBoolean(false)
     private var closed = false
@@ -60,7 +63,7 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
             }
         }
     }
-    private val session = ViewSession.open(pdf, null, cacheBytes.toULong(), listener)
+    private val session = ViewSession.open(pdf, password, cacheBytes.toULong(), listener)
     private val sessionId = session.id().toLong()
     private val bitmaps = LongSparseArray<Bitmap>()
     private var buffer = newBuffer(16 * 1024)
@@ -69,6 +72,13 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
     private var fitWidthZoom = 1.0
 
     val pageCount: Int = session.pageCount().toInt()
+
+    /** Width / height of each page as displayed. */
+    private val aspects = session.pageSizes().let { sizes ->
+        FloatArray(sizes.size) { sizes[it].width / sizes[it].height }
+    }
+
+    fun pageAspect(page: Int): Float = aspects[page]
 
     /** What to draw. Changes whenever the view or the available tiles change. */
     var frame: ViewFrame? by mutableStateOf(null)
@@ -88,6 +98,23 @@ class PdfViewState(pdf: ByteArray, cacheBytes: Long) : AutoCloseable {
 
     fun zoomBy(factor: Float, anchor: Offset) {
         Native.zoomBy(sessionId, factor.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
+        refresh()
+    }
+
+    /** Shows [page] (zero-based) at the top of the view. */
+    fun goToPage(page: Int) {
+        stopMotion()
+        session.goToPage(page.coerceIn(0, pageCount - 1).toUInt())
+        refresh()
+    }
+
+    /**
+     * Tells which pages' thumbnails are on screen ([count] may be 0), so
+     * that they get rendered and kept: see [ViewFrame.thumbnailId].
+     */
+    fun showThumbnails(first: Int, count: Int) {
+        if (closed) return
+        Native.setThumbnailRange(sessionId, first, count)
         refresh()
     }
 

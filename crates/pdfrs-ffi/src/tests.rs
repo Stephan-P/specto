@@ -212,6 +212,56 @@ fn small_budget_evicts_tiles_that_left_the_screen() {
 }
 
 #[test]
+fn thumbnails_reuse_placeholders_and_survive_eviction_while_shown() {
+    // Room for roughly one screen of tiles.
+    let (session, rx) = open(30, 400 * 600 * 4);
+    session.set_viewport(200.0, 300.0, 2.0);
+    assert_eq!(session.page_sizes().len(), 30);
+    assert_eq!(
+        session.page_sizes()[0],
+        PageSize {
+            width: 200.0,
+            height: 300.0
+        }
+    );
+
+    // The grid shows pages 20–25, far from the page view at the top.
+    session.set_thumbnail_range(20, 6);
+    let first = session.frame();
+    assert_eq!((first.thumbnail_first, first.thumbnails.len()), (20, 6));
+    assert!(first.thumbnails.iter().all(|&id| id == 0));
+    let ready = |session: &ViewSession| loop {
+        let (frame, _) = settle(session, &rx);
+        if frame.thumbnails.iter().all(|&id| id != 0) {
+            return frame.thumbnails;
+        }
+        rx.recv_timeout(Duration::from_secs(10))
+            .expect("thumbnails");
+        for tile in session.take_finished() {
+            claim_tile(session.id(), tile.id, |_| true);
+        }
+    };
+    let shown = ready(&session);
+
+    // Scrolling the page view through the document churns the small cache,
+    // but never evicts a thumbnail that is on screen.
+    let mut evicted = Vec::new();
+    for page in [5, 12, 28] {
+        session.go_to_page(page);
+        evicted.extend(settle(&session, &rx).1);
+    }
+    assert!(!evicted.is_empty());
+    assert!(shown.iter().all(|id| !evicted.contains(id)));
+    assert_eq!(session.frame().thumbnails, shown);
+
+    // A range past the end is clamped; an empty one reports nothing.
+    session.set_thumbnail_range(28, 10);
+    assert_eq!(session.frame().thumbnails.len(), 2);
+    session.set_thumbnail_range(0, 0);
+    assert!(session.frame().thumbnails.is_empty());
+}
+
+#[test]
 fn closed_sessions_are_not_found() {
     let (session, _rx) = open(1, 1 << 20);
     let id = session.id();
@@ -267,8 +317,15 @@ fn decode_frame(mut b: &[u8]) -> Frame {
             }
         })
         .collect();
+    let thumbnail_first = u32_(&mut b);
+    let thumbnail_count = u32_(&mut b);
+    let thumbnails = (0..thumbnail_count)
+        .map(|_| u64::from_ne_bytes(take(&mut b)))
+        .collect();
     assert!(b.is_empty(), "trailing bytes");
     Frame {
+        thumbnail_first,
+        thumbnails,
         pages,
         evicted,
         complete: flags & 1 != 0,

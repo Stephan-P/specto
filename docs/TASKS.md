@@ -96,10 +96,14 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **M** Compose viewer: canvas, scroll with fling, pinch zoom, double-tap zoom, page indicator, rotation without reload. Settles to exact-scale tiles after zooming; pixel-identical to `pdfrs render` on the emulator (M0-FINDINGS.md). Works on a Pixel 9a, including pinch. The per-frame path uses JNI instead of UniFFI (M0-FINDINGS.md).
 - [ ] **S** Measure a release build on the phone (frame times, memory); the numbers so far are from debug builds
 - [x] **S** CI: `cargo clippy -p pdfrs-ffi --all-targets --target aarch64-linux-android` lints the Android-only JNI code too (check only, no NDK needed; clean with `-D warnings`)
-- [ ] **S** Compose viewer: switch view modes (the session already supports them), jump to page, scrollbar
+- [x] **S** Top bar: pages button (top left) opening a thumbnail grid, ⋮ menu (top right) with "Open…" and "Go to page…"; password prompt for encrypted files. Thumbnails are the pages' placeholder tiles, requested after the page view's own tiles.
+- [ ] **L** Paged mode as the phone default (UX decision, 2026-11-14): swipe left/right, one page at a time, each page fitted to the screen on its own (today "fit width" fits the widest page, so portrait pages are small in a document that also has landscape ones). Needs a horizontal paged layout with per-page fit in `pdfrs-view`; the desktop's single-page mode has the same mixed-size problem. Continuous vertical scrolling stays as an option in the ⋮ menu; the choice is not persisted for now. Also: the current page never reaches the last page if the one before it still shows more area.
+- [ ] **M** Thumbnail strip along the bottom as the scrubber for paged mode (like Preview on iOS)
+- [ ] **S** Outline in the pages screen (second tab), once `pdfrs-source` extracts it
+- [ ] **M** Tablet layout: permanent or collapsible sidebar (thumbnails, outline) and the two-page modes, which make no sense on a phone
 - [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
-- [ ] **M** SAF fd-based I/O instead of reading the file into memory, save, recent documents, password prompt
-- [ ] **M** Thumbnails/page organizer (LazyVerticalGrid + drag reorder)
+- [ ] **M** SAF fd-based I/O instead of reading the file into memory, save and share (in the ⋮ menu), recent documents
+- [ ] **M** Page organizer: drag to reorder, delete and rotate in the thumbnail grid (with M3)
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME
 - [ ] **S** Text selection with Android selection handles + copy/share

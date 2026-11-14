@@ -32,7 +32,16 @@ class ViewFrame private constructor(
     private val tileIds: LongArray,
     private val tileRects: FloatArray,
     private val tileExact: BooleanArray,
+    private val thumbnailFirst: Int,
+    private val thumbnails: LongArray,
 ) {
+    /**
+     * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't
+     * rendered yet or [page] is outside the range last passed to
+     * [PdfViewState.showThumbnails].
+     */
+    fun thumbnailId(page: Int): Long = thumbnails.getOrElse(page - thumbnailFirst) { 0 }
+
     /** Zero-based page index of the [i]th visible page. */
     fun page(i: Int): Int = pageIndex[i]
 
@@ -71,7 +80,7 @@ class ViewFrame private constructor(
             for (i in evicted.indices) evicted[i] = b.getLong()
 
             // Tiles are at most what is left, so the arrays can be sized up front.
-            val maxTiles = (length - b.position() - pages * PAGE_BYTES) / TILE_BYTES
+            val maxTiles = (length - b.position() - pages * PAGE_BYTES) / TILE_BYTES + 1
             val pageIndex = IntArray(pages)
             val pageRects = FloatArray(4 * pages)
             val tileStart = IntArray(pages + 1)
@@ -93,6 +102,9 @@ class ViewFrame private constructor(
                 }
             }
             tileStart[pages] = t
+            val thumbnailFirst = b.getInt()
+            val thumbnails = LongArray(b.getInt())
+            for (i in thumbnails.indices) thumbnails[i] = b.getLong()
             return ViewFrame(
                 complete = flags and 1 != 0,
                 settled = flags and 2 != 0,
@@ -109,6 +121,8 @@ class ViewFrame private constructor(
                 tileIds = tileIds,
                 tileRects = tileRects,
                 tileExact = tileExact,
+                thumbnailFirst = thumbnailFirst,
+                thumbnails = thumbnails,
             )
         }
     }
