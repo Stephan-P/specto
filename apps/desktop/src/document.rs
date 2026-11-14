@@ -12,7 +12,7 @@ use pdfrs_geom::ViewPoint;
 use pdfrs_render::OpenError;
 use pdfrs_render::scheduler::{Client, Scheduler};
 use pdfrs_render::tile::{DocId, TileCache, TileKey};
-use pdfrs_source::{Link, SourceDocument, Target};
+use pdfrs_source::{Link, PageLabels, SourceDocument, Target};
 use pdfrs_view::{Settings, ViewPage, Viewer, placeholder_level};
 
 const CACHE_BUDGET: usize = 384 << 20;
@@ -36,6 +36,8 @@ pub struct Document {
     pub source: SourceDocument,
     /// Links per page, parsed on first use.
     links: HashMap<usize, Vec<Link>>,
+    /// Page labels, if the document has any that differ from 1, 2, 3, …
+    pub labels: Option<PageLabels>,
     pub viewer: Viewer,
     pub cache: TileCache<gdk::Texture>,
     doc_id: DocId,
@@ -67,6 +69,7 @@ impl Document {
                 return Err(e);
             }
         };
+        let labels = source.page_labels().filter(|l| !l.is_plain());
         let client = scheduler().client(wake);
         let pages: Vec<ViewPage> = opened
             .pages
@@ -87,6 +90,7 @@ impl Document {
         Ok(Self {
             name,
             source,
+            labels,
             links: HashMap::new(),
             viewer: Viewer::new(pages, Settings::default()),
             cache: TileCache::new(CACHE_BUDGET)
@@ -96,6 +100,25 @@ impl Document {
             canvas_requests: Vec::new(),
             thumbnails_shown: BTreeSet::new(),
             failed: HashSet::new(),
+        })
+    }
+
+    /// The label of page `i` ("iv", "A-3", …), or its number.
+    pub fn page_label(&self, i: usize) -> String {
+        self.labels
+            .as_ref()
+            .map_or_else(|| (i + 1).to_string(), |l| l.label(i))
+    }
+
+    /// The page the user means by `text`: a label, else a page number.
+    pub fn find_page(&self, text: &str) -> Option<usize> {
+        let count = self.viewer.page_count();
+        self.labels.as_ref().and_then(|l| l.find(text)).or_else(|| {
+            text.trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=count).contains(n))
+                .map(|n| n - 1)
         })
     }
 

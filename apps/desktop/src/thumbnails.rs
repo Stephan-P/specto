@@ -156,8 +156,8 @@ impl Sidebar {
                 .and_downcast::<gtk::Label>()
                 .expect("label");
             thumbnail.set_page(Some(page));
-            label.set_label(&(page + 1).to_string());
             let mut d = doc.borrow_mut();
+            label.set_label(&d.page_label(page));
             d.thumbnails_shown.insert(page);
             d.flush_requests();
         });

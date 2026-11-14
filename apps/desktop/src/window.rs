@@ -450,7 +450,10 @@ impl Window {
             "{pages} page{}",
             if pages == 1 { "" } else { "s" }
         ));
-        inner.page_total.set_label(&format!("of {pages}"));
+        // With labels the entry shows "iv", so also give the plain position.
+        if document.borrow().labels.is_none() {
+            inner.page_total.set_label(&format!("of {pages}"));
+        }
 
         let weak = Rc::downgrade(&self.0);
         let sidebar = Sidebar::new(document.clone(), move |page| {
@@ -542,7 +545,7 @@ impl Window {
             .set_label(&format!("{:.0}%", zoom * 100.0));
         if inner.last_page.replace(page) != page {
             if !inner.page_entry.has_focus() {
-                inner.page_entry.set_text(&(page + 1).to_string());
+                self.show_page_number(page);
             }
             if let Some(s) = inner.sidebar.borrow().as_ref() {
                 s.follow(page);
@@ -706,21 +709,41 @@ impl Window {
         ));
     }
 
+    /// Puts page `page`'s label (or number) into the page entry, plus
+    /// "(3 of 120)" when the document has labels.
+    fn show_page_number(&self, page: usize) {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return;
+        };
+        let d = doc.borrow();
+        inner.page_entry.set_text(&d.page_label(page));
+        if d.labels.is_some() {
+            inner
+                .page_total
+                .set_label(&format!("({} of {})", page + 1, d.viewer.page_count()));
+        }
+    }
+
     fn setup_page_entry(&self) {
         let entry = &self.0.page_entry;
         let weak = Rc::downgrade(&self.0);
         entry.connect_activate(move |e| {
             let Some(inner) = weak.upgrade() else { return };
-            let count = inner.canvas.with_viewer(Viewer::page_count).unwrap_or(0);
-            match e.text().trim().parse::<usize>() {
-                Ok(n) if (1..=count).contains(&n) => {
-                    inner.canvas.update_viewer(|v| v.go_to_page(n - 1));
+            let target = inner
+                .document
+                .borrow()
+                .as_ref()
+                .and_then(|d| d.borrow().find_page(&e.text()));
+            match target {
+                Some(page) => {
+                    inner.canvas.update_viewer(|v| v.go_to_page(page));
                     inner.canvas.grab_focus();
                 }
-                _ => {
+                None => {
                     e.error_bell();
                     let current = inner.last_page.get();
-                    e.set_text(&(current + 1).to_string());
+                    Window(inner).show_page_number(current);
                 }
             }
         });
@@ -731,7 +754,7 @@ impl Window {
             if let Some(inner) = weak.upgrade() {
                 let current = inner.last_page.get();
                 if current != usize::MAX {
-                    inner.page_entry.set_text(&(current + 1).to_string());
+                    Window(inner).show_page_number(current);
                 }
             }
         });

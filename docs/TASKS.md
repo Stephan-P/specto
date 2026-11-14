@@ -34,7 +34,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 - [x] **S** `pdfrs-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p pdfrs-render -- --ignored`).
 - [x] **M** `pdfrs-source`: opening and decryption (`open_pdf`, `OpenError`, now shared with `pdfrs-render`), metadata with text-string decoding (UTF-16BE, UTF-8, PDFDocEncoding), outline, links (destinations, URIs, named actions), named destinations via `/Dests` and the `/Names` tree. Every walk is bounded (cycles, depth, item caps). Corpus: 1,077 files, no panics, 0.2 s; 153 with an outline, 49 with links. `pdfrs info --outline` prints both. (No mmap: files are read into memory, as both apps already do.)
-- [ ] **S** Page labels (`/PageLabels`, e.g. "iv" or "A-3") for the page entry and thumbnails
+- [x] **S** Page labels (`pdfrs_source::PageLabels`: all five styles, prefixes, start numbers, number trees split over kids; reverse lookup). Desktop: the page entry shows the label with "(3 of 120)" and accepts labels ("iv") or numbers; thumbnail captions show labels. Documents whose labels are just 1, 2, 3 are treated as unlabelled
+- [ ] **S** Android: page labels through `pdfrs-ffi`
 - [x] **M** `pdfrs-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
 - [x] **M** Render scheduler (`pdfrs_render::scheduler`): worker pool, multiple documents, a priority queue that's replaced every frame, panics isolated per tile. `TileCache<T>` (`pdfrs_render::tile`) has an LRU byte budget, protects tiles used this frame, and is generic over the frontend's texture type.
 - [x] **S** HiDPI fix, part 1: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike)

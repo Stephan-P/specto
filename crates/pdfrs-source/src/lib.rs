@@ -5,20 +5,22 @@
 //! viewer reads from the file. Everything here is defensive: outline and name
 //! trees in broken files can be cyclic or huge, so every walk is bounded.
 
+mod labels;
 mod text;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use hayro_syntax::object::dict::keys::{
-    A, ANNOTS, D, DEST, DESTS, FIRST, KIDS, LIMITS, NAMES, NEXT, OUTLINES, RECT, S, SUBTYPE, TITLE,
-    URI,
+    A, ANNOTS, D, DEST, DESTS, FIRST, KIDS, LIMITS, NAMES, NEXT, NUMS, OUTLINES, P, PAGE_LABELS,
+    RECT, S, ST, SUBTYPE, TITLE, URI,
 };
 use hayro_syntax::object::{Array, Dict, MaybeRef, Name, Object, ObjectIdentifier};
 use hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use pdfrs_geom::{PdfBox, PdfPoint};
 
 pub use hayro_syntax;
+pub use labels::{LabelRange, LabelStyle, PageLabels};
 pub use text::decode_text;
 
 /// Outline items beyond this many are ignored (a guard against huge or
@@ -245,6 +247,15 @@ impl SourceDocument {
         items
     }
 
+    /// The document's page labels, or `None` if it has none.
+    pub fn page_labels(&self) -> Option<PageLabels> {
+        let root = self.catalog()?.get::<Dict<'_>>(PAGE_LABELS)?;
+        let mut ranges = Vec::new();
+        let mut budget = 100_000;
+        collect_label_ranges(&root, 0, &mut ranges, &mut budget);
+        PageLabels::new(ranges, self.page_count())
+    }
+
     /// Links on page `page`, in drawing order.
     pub fn links(&self, page: usize) -> Vec<Link> {
         let Some(p) = self.pdf.pages().get(page) else {
@@ -372,6 +383,61 @@ impl SourceDocument {
         }
         let tree = catalog.get::<Dict<'_>>(NAMES)?.get::<Dict<'_>>(DESTS)?;
         name_tree_lookup(tree, name, 0)
+    }
+}
+
+/// Collects the ranges of a page-label number tree (`/Nums` pairs of start
+/// page and label dictionary, possibly spread over `/Kids`).
+fn collect_label_ranges(
+    node: &Dict<'_>,
+    depth: usize,
+    out: &mut Vec<LabelRange>,
+    budget: &mut usize,
+) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    if let Some(nums) = node.get::<Array<'_>>(NUMS) {
+        let mut it = nums.iter::<Object<'_>>();
+        while let (Some(k), Some(v)) = (it.next(), it.next()) {
+            if *budget == 0 {
+                return;
+            }
+            *budget -= 1;
+            let (Object::Number(start), Object::Dict(d)) = (k, v) else {
+                continue;
+            };
+            let Ok(start) = usize::try_from(start.as_i64()) else {
+                continue;
+            };
+            let style = match d.get::<Name<'_>>(S).as_deref() {
+                Some(b"D") => LabelStyle::Decimal,
+                Some(b"R") => LabelStyle::UpperRoman,
+                Some(b"r") => LabelStyle::LowerRoman,
+                Some(b"A") => LabelStyle::UpperLetters,
+                Some(b"a") => LabelStyle::LowerLetters,
+                _ => LabelStyle::None,
+            };
+            let prefix = d
+                .get::<hayro_syntax::object::String<'_>>(P)
+                .map(|p| decode_text(p.as_bytes()))
+                .unwrap_or_default();
+            let first = d
+                .get::<f64>(ST)
+                .filter(|v| v.is_finite() && *v >= 1.0)
+                .map_or(1, |v| v.min(u32::MAX as f64) as u32);
+            out.push(LabelRange {
+                start,
+                style,
+                prefix,
+                first,
+            });
+        }
+    }
+    if let Some(kids) = node.get::<Array<'_>>(KIDS) {
+        for kid in kids.iter::<Dict<'_>>().take(10_000) {
+            collect_label_ranges(&kid, depth + 1, out, budget);
+        }
     }
 }
 

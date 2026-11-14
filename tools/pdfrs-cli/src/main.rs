@@ -79,6 +79,17 @@ fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
                 println!("{k:<9} {v}");
             }
         }
+        if let Some(labels) = source.page_labels() {
+            let shown: Vec<String> = (0..source.page_count().min(12))
+                .map(|i| labels.label(i))
+                .collect();
+            let more = if source.page_count() > 12 {
+                ", …"
+            } else {
+                ""
+            };
+            println!("labels:   {}{more}", shown.join(", "));
+        }
         println!("outline:");
         print_outline(&source.outline(), 1);
         for page in 0..source.page_count() {

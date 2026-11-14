@@ -106,6 +106,30 @@ fn links_and_their_targets() {
 }
 
 #[test]
+fn page_labels_from_a_number_tree() {
+    let doc = SourceDocument::open(
+        pdf(&[
+            "<< /Type /Catalog /Pages 2 0 R /PageLabels << /Kids [7 0 R 8 0 R] >> >>",
+            "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 /MediaBox [0 0 100 100] >>",
+            "<< /Type /Page /Parent 2 0 R >>",
+            "<< /Type /Page /Parent 2 0 R >>",
+            "<< /Type /Page /Parent 2 0 R >>",
+            "<< /Type /Page /Parent 2 0 R >>",
+            // Kids split the ranges; the second kid's dictionary is a reference.
+            "<< /Limits [0 0] /Nums [0 << /S /r >>] >>",
+            "<< /Limits [2 3] /Nums [2 << /S /D /St 7 >> 3 9 0 R] >>",
+            "<< /S /A /P <FEFF00410070> >>",
+        ]),
+        None,
+    )
+    .unwrap();
+    let labels = doc.page_labels().expect("labels");
+    let all: Vec<String> = (0..4).map(|i| labels.label(i)).collect();
+    assert_eq!(all, ["i", "ii", "7", "ApA"]);
+    assert_eq!(labels.find("ii"), Some(1));
+}
+
+#[test]
 fn documents_without_structure() {
     let doc = SourceDocument::open(
         pdf(&[
@@ -118,6 +142,7 @@ fn documents_without_structure() {
     .unwrap();
     assert!(doc.outline().is_empty());
     assert!(doc.links(0).is_empty());
+    assert!(doc.page_labels().is_none());
     assert_eq!(doc.metadata(), Default::default());
     assert!(matches!(
         SourceDocument::open(b"nope".to_vec(), None),
@@ -151,6 +176,11 @@ fn corpus_structure_does_not_panic() {
                 let o = !doc.outline().is_empty();
                 let _ = doc.metadata();
                 let l = (0..doc.page_count().min(50)).any(|i| !doc.links(i).is_empty());
+                if let Some(labels) = doc.page_labels() {
+                    for i in 0..doc.page_count().min(500) {
+                        let _ = labels.label(i);
+                    }
+                }
                 (o, l)
             }));
             match r {
