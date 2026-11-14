@@ -23,10 +23,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          # The FFI crate's JNI code only compiles for Android.
+          targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets
+      - name: Clippy (Android FFI)
+        # Check only, so no NDK is needed.
+        run: cargo clippy -p pdfrs-ffi --all-targets --target aarch64-linux-android
       - name: Test
         run: cargo test --workspace

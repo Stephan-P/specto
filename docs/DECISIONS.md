@@ -55,9 +55,14 @@ Because `pdfrs-view` is UI-agnostic, a later port (e.g. to gpui) would only repl
 
 **Recommendation:** Compose + UniFFI, with tiles written directly into `Bitmap`s from Rust via the NDK bitmap API.
 
-## D5: FFI binding generator: UniFFI (Proposed)
+## D5: FFI: UniFFI for the coarse API, hand-written JNI for the hot path (Decided, 2026-11-14)
 
-UniFFI (Mozilla) generates Kotlin bindings with callback interfaces, which we need for `ViewHost`/tile-ready events. Alternative: hand-written `jni` crate code for the hot path (bitmap rendering) if UniFFI overhead shows up in profiles.
+UniFFI (Mozilla) generates the Kotlin bindings for everything called occasionally: opening documents, changing modes, callbacks such as `tiles_ready`. Anything per frame or per tile goes through a few hand-written JNI functions instead (`crates/pdfrs-ffi/src/jni.rs` over `hot.rs`), using only `jni-sys` and the `ndk` crate:
+
+- **Tile pixels:** returning a 6.6 MB page through UniFFI cost about 6 ms extra; JNI copies once into the locked `Bitmap` (M0).
+- **Per-frame calls** (scroll, zoom, frame, finished tiles): even a trivial UniFFI call cost 200–370 µs through JNA, against about 4 µs of actual work. On a Pixel 9a, moving these to JNI cut slow frames from 1.65% to 0.61% (debug build; M0-FINDINGS.md, "On a phone").
+
+JNI functions take a session id, not a raw pointer, and frames are written into a direct `ByteBuffer` in a documented layout (`hot.rs`). `jni.rs` only compiles for Android, so CI lints the FFI crate a second time with `--target aarch64-linux-android`.
 
 ## D6: License: MIT OR Apache-2.0 (Decided, 2026-11-14)
 
