@@ -186,6 +186,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **M** Desktop: large files without reading them into memory: mapped from 64 MB (`PdfData`). Re-opening safely after a save is part of the save task
 - [ ] **L** Decide whether page content is exposed to screen readers (the text layer through AT-SPI and TalkBack, reading order, tagged PDF structure), and if so, plan it
 - [ ] **S** Crash handling: a panic hook that writes a log file the user can attach to a bug report (no telemetry); desktop and Android
+- [ ] **M** Mapped files that shrink: a file of 64 MB or more is mapped (`PdfData`), and if another program truncates it in place while it is open, reading the missing part kills the app with `SIGBUS` (on Android a sync or download app could do that; a panic hook doesn't see it). Decide whether and how to guard against it. Ideas: notice the change first and stop reading (the file monitor of "File changed on disk while open", or checking size and modification time before each render); map only files nobody else can write (on Android, copy large files from other apps into the app's cache first, at the cost of the space); a `SIGBUS` handler that turns the fault into a failed render; or reading by position instead of mapping, which hayro's one-slice input doesn't allow today
 - [ ] **S–M** Touch on Linux (2-in-1 laptops, phones): drag to scroll, long-press to select, a layout for narrow windows; touch input in the headless checks
 
 ## M8: Internationalization
