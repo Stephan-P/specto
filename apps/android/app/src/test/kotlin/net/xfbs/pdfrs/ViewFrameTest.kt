@@ -83,18 +83,31 @@ class ViewFrameTest {
     @Test
     fun selection() {
         assertTrue(frame.selection)
-        // Two lines, the second slightly rotated.
-        assertEquals(2, frame.highlightCount)
-        assertEquals(100f, frame.highlightX(0, 0))
-        assertEquals(80.5f, frame.highlightY(0, 0))
-        assertEquals(900f, frame.highlightX(0, 2))
-        assertEquals(50.25f, frame.highlightY(0, 2))
-        assertEquals(60.5f, frame.highlightX(1, 3))
-        assertEquals(90f, frame.highlightY(1, 3))
-        assertArrayEquals(floatArrayOf(60f, 50.25f, 900f, 121f), frame.highlightBounds(), 0f)
+        // After two search matches: two selected lines, the second slightly rotated.
+        assertEquals(4, frame.highlightCount)
+        assertEquals(ViewFrame.HIGHLIGHT_SELECTION, frame.highlightKind(2))
+        assertEquals(ViewFrame.HIGHLIGHT_SELECTION, frame.highlightKind(3))
+        assertEquals(100f, frame.highlightX(2, 0))
+        assertEquals(80.5f, frame.highlightY(2, 0))
+        assertEquals(900f, frame.highlightX(2, 2))
+        assertEquals(50.25f, frame.highlightY(2, 2))
+        assertEquals(60.5f, frame.highlightX(3, 3))
+        assertEquals(90f, frame.highlightY(3, 3))
+        // Only what is selected counts here, not the matches further down.
+        assertArrayEquals(floatArrayOf(60f, 50.25f, 900f, 121f), frame.selectionBounds(), 0f)
         // It starts above the view and ends on it.
         assertEquals(null, frame.selectionStart)
         assertArrayEquals(floatArrayOf(300f, 121f, 300.5f, 91f), frame.selectionEnd, 0f)
+    }
+
+    @Test
+    fun searchMatches() {
+        assertEquals(ViewFrame.HIGHLIGHT_MATCH, frame.highlightKind(0))
+        assertEquals(ViewFrame.HIGHLIGHT_CURRENT_MATCH, frame.highlightKind(1))
+        assertEquals(400f, frame.highlightX(0, 0))
+        assertEquals(300f, frame.highlightY(0, 0))
+        assertEquals(480f, frame.highlightX(1, 2))
+        assertEquals(470f, frame.highlightY(1, 2))
     }
 
     @Test

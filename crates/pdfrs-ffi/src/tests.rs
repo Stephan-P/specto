@@ -30,6 +30,11 @@ impl ViewListener for Listener {
     fn tiles_ready(&self) {
         let _ = self.0.lock().unwrap().send(());
     }
+
+    // The same signal: tests that search wait for either.
+    fn search_changed(&self) {
+        let _ = self.0.lock().unwrap().send(());
+    }
 }
 
 fn open(pages: usize, cache_bytes: u64) -> (Arc<ViewSession>, mpsc::Receiver<()>) {
@@ -693,6 +698,116 @@ fn selecting_text() {
 }
 
 #[test]
+fn searching() {
+    let (tx, rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(text_pdf(), None, 1 << 20, listener).unwrap();
+    session.set_viewport(216.0, 316.0, 2.0);
+    session.set_view_mode(ViewMode::Paged);
+    assert_eq!(session.search_status(), None);
+    let kinds = |s: &ViewSession| -> Vec<HighlightKind> {
+        s.frame().highlights.iter().map(|h| h.kind).collect()
+    };
+
+    // The first search has the document read in the background; the
+    // listener hears when there is more to show. "page" is only on the
+    // second page, which the view then goes to.
+    session.search("page".into());
+    let status = loop {
+        let status = session.search_status().unwrap();
+        if status.pages_searched == status.pages {
+            break status;
+        }
+        rx.recv_timeout(Duration::from_secs(10))
+            .expect("the indexer reports its progress");
+    };
+    assert_eq!(
+        (status.matches, status.current, status.pages),
+        (1, Some(0), 2)
+    );
+    assert_eq!(session.frame().current_page, 1);
+    assert_eq!(kinds(&session), [HighlightKind::CurrentMatch]);
+
+    // From now on searches are answered at once. Case and spacing don't
+    // matter; the view returns to the first page for this one.
+    session.search("HELLO   brave".into());
+    let status = session.search_status().unwrap();
+    assert_eq!((status.matches, status.current), (1, Some(0)));
+    let frame = session.frame();
+    assert_eq!(frame.current_page, 0);
+    let [h] = frame.highlights[..] else {
+        panic!("one match on one line: {:?}", frame.highlights);
+    };
+    // "Hello brave" runs from x 20 to about 101 pt: 56 to about 218 px.
+    assert!((h.start_bottom.x - 56.0).abs() < 4.0, "{h:?}");
+    assert!((h.end_bottom.x - 218.0).abs() < 8.0, "{h:?}");
+
+    // Three matches on the first page and one on the second, starting with
+    // the first one on the page being looked at.
+    session.search("o".into());
+    let status = session.search_status().unwrap();
+    assert_eq!((status.matches, status.current), (4, Some(0)));
+    assert_eq!(
+        kinds(&session),
+        [
+            HighlightKind::CurrentMatch,
+            HighlightKind::Match,
+            HighlightKind::Match
+        ]
+    );
+    // Stepping goes through them and around, turning pages as needed.
+    session.search_step(true);
+    assert_eq!(session.search_status().unwrap().current, Some(1));
+    assert_eq!(
+        kinds(&session),
+        [
+            HighlightKind::Match,
+            HighlightKind::CurrentMatch,
+            HighlightKind::Match
+        ]
+    );
+    session.search_step(true);
+    session.search_step(true);
+    assert_eq!(session.search_status().unwrap().current, Some(3));
+    assert_eq!(session.frame().current_page, 1);
+    assert_eq!(kinds(&session), [HighlightKind::CurrentMatch]);
+    session.search_step(true);
+    assert_eq!(session.search_status().unwrap().current, Some(0));
+    assert_eq!(session.frame().current_page, 0);
+    session.search_step(false);
+    assert_eq!(session.search_status().unwrap().current, Some(3));
+    assert_eq!(session.frame().current_page, 1);
+
+    // A search started on the second page begins with the match there.
+    session.search("o".into());
+    assert_eq!(session.search_status().unwrap().current, Some(3));
+
+    // Matches and the selection are highlighted side by side.
+    session.go_to_page(0);
+    session.select_all();
+    let both = kinds(&session);
+    assert!(both.contains(&HighlightKind::Selection) && both.contains(&HighlightKind::Match));
+    assert_eq!(
+        both.first(),
+        Some(&HighlightKind::Match),
+        "the selection is drawn on top"
+    );
+    session.clear_selection();
+
+    // Nothing found, and no search at all.
+    session.search("zebra".into());
+    let status = session.search_status().unwrap();
+    assert_eq!((status.matches, status.current), (0, None));
+    assert!(session.frame().highlights.is_empty());
+    session.search("  ".into());
+    assert_eq!(session.search_status(), None);
+    session.search("o".into());
+    session.end_search();
+    assert_eq!(session.search_status(), None);
+    assert!(session.frame().highlights.is_empty());
+}
+
+#[test]
 fn what_a_document_says_about_itself() {
     let (plain, _rx) = open(1, 1 << 20);
     let info = plain.info();
@@ -878,8 +993,14 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     let edges = u32_(&mut b);
     let highlights = (0..highlight_count)
         .map(|_| {
-            assert_eq!((u32_(&mut b), u32_(&mut b)), (0, 0));
+            let kind = [
+                HighlightKind::Selection,
+                HighlightKind::Match,
+                HighlightKind::CurrentMatch,
+            ][u32_(&mut b) as usize];
+            assert_eq!(u32_(&mut b), 0);
             Highlight {
+                kind,
                 start_bottom: point(&mut b),
                 end_bottom: point(&mut b),
                 end_top: point(&mut b),
@@ -972,12 +1093,28 @@ fn fixture_frame() -> Frame {
         selection: true,
         highlights: vec![
             Highlight {
+                kind: HighlightKind::Match,
+                start_bottom: Point { x: 400.0, y: 300.0 },
+                end_bottom: Point { x: 480.0, y: 300.0 },
+                end_top: Point { x: 480.0, y: 270.0 },
+                start_top: Point { x: 400.0, y: 270.0 },
+            },
+            Highlight {
+                kind: HighlightKind::CurrentMatch,
+                start_bottom: Point { x: 400.0, y: 500.0 },
+                end_bottom: Point { x: 480.0, y: 500.0 },
+                end_top: Point { x: 480.0, y: 470.0 },
+                start_top: Point { x: 400.0, y: 470.0 },
+            },
+            Highlight {
+                kind: HighlightKind::Selection,
                 start_bottom: Point { x: 100.0, y: 80.5 },
                 end_bottom: Point { x: 900.0, y: 80.5 },
                 end_top: Point { x: 900.0, y: 50.25 },
                 start_top: Point { x: 100.0, y: 50.25 },
             },
             Highlight {
+                kind: HighlightKind::Selection,
                 start_bottom: Point { x: 60.0, y: 120.0 },
                 end_bottom: Point { x: 300.0, y: 121.0 },
                 end_top: Point { x: 300.5, y: 91.0 },

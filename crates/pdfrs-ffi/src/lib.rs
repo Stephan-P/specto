@@ -19,6 +19,7 @@
 pub mod hot;
 #[cfg(target_os = "android")]
 mod jni;
+mod search;
 mod tiles;
 
 use std::collections::HashMap;
@@ -33,8 +34,10 @@ use pdfrs_source::{Link, NamedAction, OutlineItem, PageLabels, PdfData, SourceDo
 use pdfrs_text::{Extractor, TextPage};
 use pdfrs_view::{
     Granularity, Selection, Settings, TextPages, ViewPage, Viewer, over_text, text_char,
-    text_position,
+    text_position, text_quads,
 };
+
+use search::SearchSession;
 
 use tiles::TileBook;
 
@@ -72,6 +75,12 @@ pub trait ViewListener: Send + Sync {
     /// Finished tiles are waiting in [`ViewSession::take_finished`].
     /// Called from a render thread, so hop to the main thread first.
     fn tiles_ready(&self);
+
+    /// A search got further: it found more, or has been through more of
+    /// the document. [`ViewSession::search_status`] and the next frame show
+    /// what changed (the view may have moved to a first match). Called from
+    /// a background thread, like [`tiles_ready`](Self::tiles_ready).
+    fn search_changed(&self);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -198,11 +207,36 @@ pub struct Point {
     pub y: f32,
 }
 
-/// Text to highlight: the part of one line that is selected, as the four
-/// corners of a quadrilateral (lines can be rotated). "Start" and "end" are
-/// along the line, "bottom" is its baseline side.
+/// Why a stretch of text is highlighted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum HighlightKind {
+    /// It is selected.
+    Selection,
+    /// The search found it.
+    Match,
+    /// The search found it, and it is the match being looked at.
+    CurrentMatch,
+}
+
+/// How a search stands, for a search bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct SearchStatus {
+    /// Matches found so far.
+    pub matches: u32,
+    /// Which of them is the current one, counted from 0; `None` if nothing
+    /// has been found (yet).
+    pub current: Option<u32>,
+    /// How many pages have been searched; the rest follow in the background.
+    pub pages_searched: u32,
+    pub pages: u32,
+}
+
+/// Text to highlight: the part of one line that is selected or was found,
+/// as the four corners of a quadrilateral (lines can be rotated). "Start"
+/// and "end" are along the line, "bottom" is its baseline side.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
 pub struct Highlight {
+    pub kind: HighlightKind,
     pub start_bottom: Point,
     pub end_bottom: Point,
     pub end_top: Point,
@@ -277,7 +311,8 @@ pub struct Frame {
     pub thumbnails: Vec<u64>,
     /// Whether any text is selected, on screen or not.
     pub selection: bool,
-    /// The selected text on the visible pages: draw these over the pages.
+    /// The selected text and the search's matches on the visible pages:
+    /// draw these over the pages, in order.
     pub highlights: Vec<Highlight>,
     /// Where the selection starts and ends, for its handles; `None` for an
     /// end that isn't on a visible page.
@@ -318,6 +353,7 @@ struct State {
     /// Text pages extracted so far, for selecting.
     texts: TextCache,
     selection: Option<Selection>,
+    search: SearchSession,
 }
 
 /// How many pages' text is kept (the least recently used go first). A page
@@ -428,6 +464,7 @@ fn flatten_outline(
 
 struct Shared {
     scheduler: Scheduler,
+    listener: Arc<dyn ViewListener>,
     state: Mutex<State>,
     /// The outline with what each entry does, read once at open.
     outline: Vec<(OutlineEntry, Option<Target>)>,
@@ -450,6 +487,7 @@ impl Shared {
             source,
             texts,
             selection,
+            search,
             ..
         } = state;
         tiles.begin_frame();
@@ -494,21 +532,49 @@ impl Shared {
             .collect();
         self.scheduler.request(planned.requests);
 
-        // The selection on the visible pages. Positions come in logical
-        // pixels; everything in a frame is in device pixels.
-        let selection = selection.as_ref().filter(|s| !s.is_empty());
+        // What the search found and what is selected on the visible pages.
+        // Positions come in logical pixels; everything in a frame is in
+        // device pixels.
+        let px = viewer.device_scale().get() / viewer.zoom();
+        let point = |p: ViewPoint| Point {
+            x: (p.x * px) as f32,
+            y: (p.y * px) as f32,
+        };
+        let highlight = |kind: HighlightKind, q: &[ViewPoint; 4]| Highlight {
+            kind,
+            start_bottom: point(q[0]),
+            end_bottom: point(q[1]),
+            end_top: point(q[2]),
+            start_top: point(q[3]),
+        };
+        let mut texts = TextLayer {
+            source,
+            cache: texts,
+        };
         let mut highlights = Vec::new();
+        if let Some(search) = search.current.as_ref() {
+            for page in &planned.pages {
+                let mut matches = search.results.on_page(page.page).peekable();
+                if matches.peek().is_none() {
+                    continue;
+                }
+                let Some(text) = texts.text_page(page.page) else {
+                    continue;
+                };
+                for (found, current) in matches {
+                    let kind = if current {
+                        HighlightKind::CurrentMatch
+                    } else {
+                        HighlightKind::Match
+                    };
+                    let quads = text_quads(viewer, &text, page.page, found.chars.clone());
+                    highlights.extend(quads.iter().map(|q| highlight(kind, q)));
+                }
+            }
+        }
+        let selection = selection.as_ref().filter(|s| !s.is_empty());
         let (mut selection_start, mut selection_end) = (None, None);
         if let Some(selection) = selection {
-            let px = viewer.device_scale().get() / viewer.zoom();
-            let point = |p: ViewPoint| Point {
-                x: (p.x * px) as f32,
-                y: (p.y * px) as f32,
-            };
-            let mut texts = TextLayer {
-                source,
-                cache: texts,
-            };
             let (start, end) = selection.range();
             for page in &planned.pages {
                 let quads = selection.view_quads(viewer, &mut texts, page.page);
@@ -524,12 +590,7 @@ impl Shared {
                         top: point(q[2]),
                     });
                 }
-                highlights.extend(quads.iter().map(|q| Highlight {
-                    start_bottom: point(q[0]),
-                    end_bottom: point(q[1]),
-                    end_top: point(q[2]),
-                    start_top: point(q[3]),
-                }));
+                highlights.extend(quads.iter().map(|q| highlight(HighlightKind::Selection, q)));
             }
         }
         Frame {
@@ -723,9 +784,10 @@ impl ViewSession {
         listener: Arc<dyn ViewListener>,
     ) -> Result<Arc<Self>, PdfError> {
         let threads = std::thread::available_parallelism().map_or(2, |n| n.get().clamp(2, 4));
-        let scheduler = Scheduler::new(threads, move || listener.tiles_ready());
+        let on_tiles = listener.clone();
+        let scheduler = Scheduler::new(threads, move || on_tiles.tiles_ready());
         let opened = scheduler.open(data.clone(), password.as_deref())?;
-        let source = SourceDocument::open(data, password.as_deref())?;
+        let source = SourceDocument::open(data.clone(), password.as_deref())?;
         let mut outline = Vec::new();
         flatten_outline(source.outline(), 0, &mut outline);
         let labels = source.page_labels().filter(|l| !l.is_plain());
@@ -746,8 +808,10 @@ impl ViewSession {
             margin: 8.0,
             ..Settings::default()
         };
+        let search = SearchSession::new(data, password, opened.pages.len());
         let shared = Arc::new(Shared {
             scheduler,
+            listener,
             state: Mutex::new(State {
                 viewer: Viewer::new(pages, settings),
                 tiles: TileBook::new(cache_bytes as usize),
@@ -759,6 +823,7 @@ impl ViewSession {
                 fit: default_fit(false),
                 texts: TextCache::default(),
                 selection: None,
+                search,
             }),
             outline,
             labels,
@@ -939,6 +1004,41 @@ impl ViewSession {
         let (_, mut texts, selection) = state.text();
         let text = selection.as_ref()?.text(&mut texts);
         (!text.is_empty()).then_some(text)
+    }
+
+    // --- search ---------------------------------------------------------------
+    //
+    // Matches show up in frames like the selection does
+    // ([`Frame::highlights`]). The document is read for searching once, in
+    // the background, starting with the first search; until that is done a
+    // search keeps finding more, and says so through
+    // [`ViewListener::search_changed`].
+
+    /// Searches for `text`, ignoring case and accents, and goes to the
+    /// first match from the current page on. Each call starts afresh, so
+    /// this can follow a search field as it is typed into; text with nothing
+    /// to search for ends the search.
+    pub fn search(&self, text: String) {
+        let mut state = self.shared.lock();
+        state.search(&text);
+        if state.search.current.is_some() {
+            search::start_indexing(&self.shared, &mut state);
+        }
+    }
+
+    /// Goes to the next (or previous) match; after the last one comes the
+    /// first again.
+    pub fn search_step(&self, forward: bool) {
+        self.shared.lock().search_step(forward);
+    }
+
+    pub fn end_search(&self) {
+        self.shared.lock().search.current = None;
+    }
+
+    /// How the search stands; `None` if there is none.
+    pub fn search_status(&self) -> Option<SearchStatus> {
+        self.shared.lock().search_status()
     }
 
     /// Sizes of all pages as displayed, e.g. for the thumbnail grid's cells.

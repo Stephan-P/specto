@@ -32,6 +32,7 @@ import uniffi.pdfrs_ffi.PageSize
 import uniffi.pdfrs_ffi.PdfFile
 import uniffi.pdfrs_ffi.OutlineEntry
 import uniffi.pdfrs_ffi.SavedView
+import uniffi.pdfrs_ffi.SearchStatus
 import uniffi.pdfrs_ffi.ViewListener
 import uniffi.pdfrs_ffi.ViewSession
 import uniffi.pdfrs_ffi.ViewMode
@@ -81,6 +82,7 @@ class PdfViewState(
 ) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val tilesPosted = AtomicBoolean(false)
+    private val searchPosted = AtomicBoolean(false)
     private var closed = false
 
     private val listener = object : ViewListener {
@@ -90,6 +92,16 @@ class PdfViewState(
                 main.post {
                     tilesPosted.set(false)
                     collectTiles()
+                }
+            }
+        }
+
+        // Called on the thread that reads the document for searching.
+        override fun searchChanged() {
+            if (searchPosted.compareAndSet(false, true)) {
+                main.post {
+                    searchPosted.set(false)
+                    searchMoved()
                 }
             }
         }
@@ -178,6 +190,48 @@ class PdfViewState(
 
     /** Follows the frames, but only changes when the mode does: the top bar reads it. */
     private var pagedNow by mutableStateOf(true)
+
+    // --- search --------------------------------------------------------------
+    //
+    // Like the selection, a search lives in Rust and shows up in frames, as
+    // highlighted matches. The first one has the whole document read in the
+    // background, so it keeps finding more for a moment.
+
+    /** How the search stands: matches so far, the current one, how much has been searched. Null without a search. */
+    var searchStatus: SearchStatus? by mutableStateOf(null)
+        private set
+
+    /**
+     * Searches for [text], ignoring case and accents, and goes to the first
+     * match from the current page on. Fine to call for every letter typed;
+     * blank text ends the search.
+     */
+    fun search(text: String) {
+        if (closed) return
+        stopMotion()
+        session.search(text)
+        searchMoved()
+    }
+
+    /** Goes to the next (or previous) match; after the last one comes the first again. */
+    fun searchStep(forward: Boolean) {
+        if (closed) return
+        stopMotion()
+        session.searchStep(forward)
+        searchMoved()
+    }
+
+    fun endSearch() {
+        if (closed) return
+        session.endSearch()
+        searchMoved()
+    }
+
+    private fun searchMoved() {
+        if (closed) return
+        searchStatus = session.searchStatus()
+        refresh()
+    }
 
     // --- text selection -----------------------------------------------------
     //

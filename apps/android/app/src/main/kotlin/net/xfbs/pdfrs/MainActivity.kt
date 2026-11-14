@@ -55,6 +55,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -93,6 +94,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
@@ -379,6 +381,7 @@ private fun App(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onDocument(uri)
     }
@@ -395,6 +398,16 @@ private fun App(
     var showGoTo by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    // The top bar is a search field for now.
+    var searching by remember { mutableStateOf(false) }
+    // Counts searches closed, so the page can take the keyboard back.
+    var searchesClosed by remember { mutableStateOf(0) }
+    fun closeSearch() {
+        if (!searching) return
+        searching = false
+        searchesClosed++
+        (loaded as? Loaded.Ready)?.state?.endSearch()
+    }
     fun show(next: Loaded?) {
         (loaded as? Loaded.Ready)?.let {
             store.saveView(it.key, it.state.savedView(), it.state.sidebarOpen)
@@ -407,6 +420,7 @@ private fun App(
     LaunchedEffect(document) {
         showPages = false
         fullScreen = false
+        searching = false
         show(null)
         if (document == null) return@LaunchedEffect
         loaded = Loaded.Loading
@@ -438,6 +452,7 @@ private fun App(
     ready?.state?.let { SideEffect { it.wideWindow = wide } }
     BackHandler(enabled = overlay) { showPages = false }
     BackHandler(enabled = immersive) { fullScreen = false }
+    BackHandler(enabled = searching) { closeSearch() }
     StatusBar(hidden = immersive)
 
     // The sidebar shows the same thumbnails, so the strip would only repeat them.
@@ -482,7 +497,7 @@ private fun App(
                 visible = !immersive,
                 enter = expandVertically(tween(BARS_MS), expandFrom = Alignment.Bottom),
                 exit = shrinkVertically(tween(BARS_MS), shrinkTowards = Alignment.Bottom),
-            ) { TopAppBar(
+            ) { if (searching && ready != null) SearchBar(ready.state, onClose = ::closeSearch) else TopAppBar(
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 navigationIcon = {
                     if (ready != null) {
@@ -507,8 +522,13 @@ private fun App(
                     )
                 },
                 actions = {
-                    // How this document is shown; everything else is behind ⋮.
-                    if (ready != null && !overlay) ViewMenu(ready.state, wide)
+                    if (ready != null && !overlay) {
+                        IconButton(onClick = { searching = true }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Search")
+                        }
+                        // How this document is shown; everything else is behind ⋮.
+                        ViewMenu(ready.state, wide)
+                    }
                     var menu by remember { mutableStateOf(false) }
                     IconButton(onClick = { menu = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
@@ -656,7 +676,15 @@ private fun App(
                                     // The tag is how UI tests find the page area.
                                     Modifier.fillMaxSize().testTag(PAGE_VIEW_TAG),
                                     onExternalLink = { externalLink = it },
-                                    onTap = { fullScreen = !fullScreen },
+                                    // While searching, a tap puts the keyboard
+                                    // away instead of the bars.
+                                    onTap = { if (searching) focusManager.clearFocus() else fullScreen = !fullScreen },
+                                    onSearch = {
+                                        // The search field is part of the bars.
+                                        fullScreen = false
+                                        searching = true
+                                    },
+                                    refocus = searchesClosed,
                                 )
                                 // Always there in the normal view; in full screen it
                                 // shows up on a page turn and leaves again.

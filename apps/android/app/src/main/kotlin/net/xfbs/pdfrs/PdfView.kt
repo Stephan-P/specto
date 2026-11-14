@@ -92,6 +92,10 @@ private const val MENU_DELAY_MS = 150L
 /** Beyond this many characters the system can't take a text onto the clipboard. */
 private const val CLIPBOARD_MAX_CHARS = 300_000
 
+/** What the search found, as on the desktop: yellow, and orange for the match being looked at. */
+private val MATCH_COLOUR = Color(0xFFFFD600)
+private val CURRENT_MATCH_COLOUR = Color(0xFFFF6D00)
+
 /** Where a finger is dragging the selection, between pointer events. */
 private class SelectionDrag {
     /** A long press selected a word, and the finger is still down. */
@@ -106,9 +110,15 @@ private class SelectionDrag {
  * and right, Page Up and Down, Space and Backspace turn pages; arrows up and
  * down scroll; Home and End go to the first and last page; Ctrl with plus,
  * minus and zero zooms; Ctrl+A selects all text, Ctrl+C copies the selection
- * ([onCopy]) and Escape drops it. Returns whether the key was used.
+ * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]). Returns
+ * whether the key was used.
  */
-private fun PdfViewState.handleKey(scope: CoroutineScope, event: KeyEvent, onCopy: () -> Unit): Boolean {
+private fun PdfViewState.handleKey(
+    scope: CoroutineScope,
+    event: KeyEvent,
+    onCopy: () -> Unit,
+    onSearch: () -> Unit,
+): Boolean {
     if (event.isCtrlPressed) {
         when (event.key) {
             Key.Equals, Key.Plus, Key.NumPadAdd -> zoomStep(zoomIn = true)
@@ -116,6 +126,7 @@ private fun PdfViewState.handleKey(scope: CoroutineScope, event: KeyEvent, onCop
             Key.Zero, Key.NumPad0 -> fit()
             Key.A -> selectAll()
             Key.C -> if (hasSelection) onCopy() else return false
+            Key.F -> onSearch()
             else -> return false
         }
         return true
@@ -148,6 +159,11 @@ private fun PdfViewState.handleKey(scope: CoroutineScope, event: KeyEvent, onCop
  * it selects further words. The selection then has a handle at each end to
  * drag, and the system's text menu with "Copy" and "Select all". A tap or
  * Back drops it.
+ *
+ * What a search found is highlighted too. The search itself is run from
+ * outside (see [PdfViewState.search]); [onSearch] is called for Ctrl+F. The
+ * page takes the keyboard focus when it appears, and again whenever
+ * [refocus] changes.
  */
 @Composable
 fun PdfView(
@@ -155,6 +171,8 @@ fun PdfView(
     modifier: Modifier = Modifier,
     onExternalLink: (String) -> Unit = {},
     onTap: () -> Unit = {},
+    onSearch: () -> Unit = {},
+    refocus: Any? = null,
 ) {
     val density = LocalDensity.current.density
     val scope = rememberCoroutineScope()
@@ -170,7 +188,8 @@ fun PdfView(
     // Pages are white whatever the theme: take the darker of the two accents.
     val accent = MaterialTheme.colorScheme.run { if (primary.luminance() > 0.5f) inversePrimary else primary }
     val handleRadius = HANDLE_RADIUS.value * density
-    val highlight = remember { Path() }
+    // One path per kind of highlight, in the order of `ViewFrame.HIGHLIGHT_*`.
+    val highlights = remember { List(3) { Path() } }
     val drag = remember(state) { SelectionDrag() }
     // A finger is moving an end of the selection (a handle, or after the long press).
     var selecting by remember(state) { mutableStateOf(false) }
@@ -241,7 +260,7 @@ fun PdfView(
     // screen. It goes away while the view or the selection is moving and
     // comes back once they rest.
     val selected = if (state.hasSelection) {
-        state.frame?.highlightBounds()?.let { Rect(it[0], it[1], it[2], it[3]) }
+        state.frame?.selectionBounds()?.let { Rect(it[0], it[1], it[2], it[3]) }
     } else {
         null
     }
@@ -277,14 +296,14 @@ fun PdfView(
 
     // Keys go to whatever has the focus, so the page takes it when it appears.
     val focus = remember { FocusRequester() }
-    LaunchedEffect(state) { focus.requestFocus() }
+    LaunchedEffect(state, refocus) { focus.requestFocus() }
 
     Canvas(
         modifier
             .clipToBounds()
             .focusRequester(focus)
             .focusable()
-            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy) }
+            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy, onSearch) }
             .onGloballyPositioned {
                 origin = it.positionInWindow()
                 originInRoot = it.positionInRoot()
@@ -429,15 +448,19 @@ fun PdfView(
                 }
             }
         }
-        // The selected text, and a handle at each end that is on screen.
+        // What the search found and what is selected, and a handle at each
+        // end of the selection that is on screen.
         if (f.highlightCount > 0) {
-            highlight.rewind()
+            highlights.forEach { it.rewind() }
             for (i in 0 until f.highlightCount) {
-                highlight.moveTo(f.highlightX(i, 0), f.highlightY(i, 0))
-                for (corner in 1..3) highlight.lineTo(f.highlightX(i, corner), f.highlightY(i, corner))
-                highlight.close()
+                val path = highlights[f.highlightKind(i)]
+                path.moveTo(f.highlightX(i, 0), f.highlightY(i, 0))
+                for (corner in 1..3) path.lineTo(f.highlightX(i, corner), f.highlightY(i, corner))
+                path.close()
             }
-            drawPath(highlight, accent, alpha = 0.3f)
+            drawPath(highlights[ViewFrame.HIGHLIGHT_MATCH], MATCH_COLOUR, alpha = 0.4f)
+            drawPath(highlights[ViewFrame.HIGHLIGHT_CURRENT_MATCH], CURRENT_MATCH_COLOUR, alpha = 0.55f)
+            drawPath(highlights[ViewFrame.HIGHLIGHT_SELECTION], accent, alpha = 0.3f)
         }
         f.selectionStart?.let { drawHandle(it, end = false, handleRadius, accent) }
         f.selectionEnd?.let { drawHandle(it, end = true, handleRadius, accent) }

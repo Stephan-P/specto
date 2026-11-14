@@ -30,7 +30,7 @@
 //! u32 highlight_count
 //! u32 edges            bit 0: the selection's start is on screen, bit 1: its end
 //! highlight_count × {
-//!     u32 kind (0: selection), u32 unused
+//!     u32 kind (0: selection, 1: search match, 2: the current match), u32 unused
 //!     4 × { f32 x, y }  start bottom, end bottom, end top, start top
 //! }
 //! 2 × { f32 bottom x, y, top x, y }    the selection's start and end edge,
@@ -40,7 +40,7 @@
 //! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then
 //! `count × { u64 id, u32 width, u32 height }`.
 
-use crate::{FinishedTile, Frame, Point, Rect, ZoomMode, find_session};
+use crate::{FinishedTile, Frame, HighlightKind, Point, Rect, ZoomMode, find_session};
 
 /// See `ViewSession::set_viewport`. Here because the app animates its bars,
 /// which resizes the view on every frame. `false` if the session is closed.
@@ -233,7 +233,14 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
         u32::from(frame.selection_start.is_some()) | u32::from(frame.selection_end.is_some()) << 1,
     );
     for h in &frame.highlights {
-        put_u32(buf, 0);
+        put_u32(
+            buf,
+            match h.kind {
+                HighlightKind::Selection => 0,
+                HighlightKind::Match => 1,
+                HighlightKind::CurrentMatch => 2,
+            },
+        );
         put_u32(buf, 0);
         for p in [h.start_bottom, h.end_bottom, h.end_top, h.start_top] {
             put_point(buf, p);

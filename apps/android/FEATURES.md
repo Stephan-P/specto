@@ -31,7 +31,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Three buttons | Open a document | Left: Pages and Contents. Right: the view button, whose icon is a small picture of the current layout, and ⋮ |
+| Buttons | Open a document | Left: Pages and Contents. Right: search (a magnifying glass), the view button, whose icon is a small picture of the current layout, and ⋮ |
 | View menu | Tap the view button | The layouts, each with its picture ("Single page" and "Continuous"; on wide windows also "Two pages" and "Two pages, continuous"), then "Fit page" and "Fit width". The current layout and fit are ticked. Everything in this menu is remembered for the document |
 | ⋮ menu | Tap ⋮ | Open…, Share…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown |
 | Properties | ⋮ → "Properties" | A dialog with the file name, what the document says about itself (title, author, subject, keywords, the programs it was made with, when it was created and changed; whatever it doesn't state is left out), the number of pages, their size ("210 × 297 mm (A4)"; a note if pages differ), the file size and the PDF version. Values can be selected and copied |
@@ -83,6 +83,21 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Printed page numbers | Open a document numbered i, ii, iii, 1, 2 … (or with an appendix "A-1") | The indicator shows the printed number with the position, e.g. "iii (3 / 240)"; Pages and Contents show printed numbers; "Go to page…" accepts a printed number first ("iii", "A-2", "3") and otherwise a position, and says which page it found |
 | Links in the document | Tap a cross-reference or a table-of-contents line | Jumps to the target |
 | Links to the web | Tap a web or e-mail link | Dialog showing the address; opens only after "Open"; other kinds of links say they can't be opened |
+
+## Searching
+
+Needs a document with real text, like selecting.
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Search | Tap the magnifying glass and type a word | The top bar becomes a search field with the keyboard up. Matches are highlighted in yellow as you type, the one being looked at in orange, and the view goes to the first match from the current page on, turning or scrolling as needed |
+| Count | Look right of the field | "3 of 17": which match is shown, and how many there are. The first search reads the whole document in the background, so for a moment the count grows and ends in "…"; later searches are answered at once |
+| Next and previous | The arrows right of the count | The next or previous match, across pages; after the last comes the first again, and before the first the last |
+| Case and accents | Search "resume" in a text that has "Résumé" | Found: capitals and accents don't matter, nor does a line break or a hyphen at a line's end inside what is searched for |
+| Nothing found | Search for something that isn't there | "No matches", and the arrows are greyed out |
+| Put the keyboard away | The keyboard's search key, or a tap on the page | The keyboard goes, the search and its highlights stay, and the arrows still work |
+| Leave | The arrow left of the field, or Back (once the keyboard is away) | The usual top bar returns and the highlights go; the view stays where the search led |
+| Scans | Search in a scanned document without a text layer | "No matches" |
 
 ## Selecting and copying text
 
@@ -137,6 +152,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Ends | Home and End | First and last page |
 | Zoom | Ctrl with +, − and 0 | Zoom in and out around the middle of the view, and back to the fitted view |
 | Select and copy | Ctrl+A, Ctrl+C, Escape | Selects all text, copies the selection, lets go of it |
+| Search | Ctrl+F; in the search field Enter, Shift+Enter and Escape | Opens the search; next match, previous match, and leaving it |
 
 ## Settings
 
@@ -161,4 +177,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Search, sharing selected text, saving, annotations and form filling, page reordering and printing.
+Sharing selected text, saving, annotations and form filling, page reordering and printing.

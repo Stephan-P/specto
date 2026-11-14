@@ -17,6 +17,7 @@ What it can do today:
 - Paged reading with swipes, each page fitted to the screen, or continuous scrolling
 - Pinch and double-tap zoom, with pages sharp at any zoom
 - A thumbnail strip, a grid of all pages, the table of contents, links, and printed page numbers ("iii (3 / 240)")
+- Search, with all matches highlighted
 - Selecting text and copying it
 - Two pages side by side on tablets and other wide windows, optionally with the cover page on its own
 - Fit page or fit width, full screen, keyboard navigation, light and dark mode
@@ -25,7 +26,7 @@ What it can do today:
 - Sharing the open document with other apps, and its properties (title, author, page size, …)
 - Optional: keep the screen on while reading, turn pages with the volume keys
 
-Coming next: search. After that: annotations, filling in forms, and reordering pages.
+Coming next: annotations, filling in forms, and reordering pages.
 
 The full list of features, with how to check each one, is in [FEATURES.md](FEATURES.md).
 

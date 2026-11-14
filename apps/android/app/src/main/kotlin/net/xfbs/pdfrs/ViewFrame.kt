@@ -47,6 +47,8 @@ class ViewFrame private constructor(
     private val thumbnails: LongArray,
     /** Eight numbers per highlight: x and y of its four corners. */
     private val highlights: FloatArray,
+    /** Why each is highlighted: one of the `HIGHLIGHT_*` constants. */
+    private val highlightKinds: IntArray,
     /**
      * Where the selection starts, for its handle: the edge of its first
      * line as bottom x, bottom y, top x, top y. Null if that isn't on screen.
@@ -56,24 +58,32 @@ class ViewFrame private constructor(
     val selectionEnd: FloatArray?,
 ) {
     /**
-     * How many stretches of selected text are on screen, one per line. Each
-     * is a quadrilateral (lines can be rotated) with the corners 0: start
+     * How many stretches of text on screen are highlighted, because they
+     * are selected or the search found them; one per line. Each is a
+     * quadrilateral (lines can be rotated) with the corners 0: start
      * bottom, 1: end bottom, 2: end top, 3: start top.
      */
-    val highlightCount: Int get() = highlights.size / 8
+    val highlightCount: Int get() = highlightKinds.size
+
+    /** [HIGHLIGHT_SELECTION], [HIGHLIGHT_MATCH] or [HIGHLIGHT_CURRENT_MATCH]. */
+    fun highlightKind(i: Int): Int = highlightKinds[i]
 
     fun highlightX(i: Int, corner: Int): Float = highlights[8 * i + 2 * corner]
     fun highlightY(i: Int, corner: Int): Float = highlights[8 * i + 2 * corner + 1]
 
-    /** What the highlights on screen cover, as left, top, right, bottom; null without any. */
-    fun highlightBounds(): FloatArray? {
-        if (highlights.isEmpty()) return null
-        val bounds = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
-        for (i in highlights.indices step 2) {
-            bounds[0] = minOf(bounds[0], highlights[i])
-            bounds[1] = minOf(bounds[1], highlights[i + 1])
-            bounds[2] = maxOf(bounds[2], highlights[i])
-            bounds[3] = maxOf(bounds[3], highlights[i + 1])
+    /** What the selected text on screen covers, as left, top, right, bottom; null if there is none. */
+    fun selectionBounds(): FloatArray? {
+        var bounds: FloatArray? = null
+        for (h in highlightKinds.indices) {
+            if (highlightKinds[h] != HIGHLIGHT_SELECTION) continue
+            val b = bounds
+                ?: floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE).also { bounds = it }
+            for (i in 8 * h until 8 * h + 8 step 2) {
+                b[0] = minOf(b[0], highlights[i])
+                b[1] = minOf(b[1], highlights[i + 1])
+                b[2] = maxOf(b[2], highlights[i])
+                b[3] = maxOf(b[3], highlights[i + 1])
+            }
         }
         return bounds
     }
@@ -129,6 +139,11 @@ class ViewFrame private constructor(
     fun tileIsExact(t: Int): Boolean = tileExact[t]
 
     companion object {
+        /** Kinds of highlight, as [highlightKind] reports them. */
+        const val HIGHLIGHT_SELECTION = 0
+        const val HIGHLIGHT_MATCH = 1
+        const val HIGHLIGHT_CURRENT_MATCH = 2
+
         private const val PAGE_BYTES = 24
         private const val TILE_BYTES = 32
 
@@ -174,10 +189,11 @@ class ViewFrame private constructor(
             val thumbnailFirst = b.getInt()
             val thumbnails = LongArray(b.getInt())
             for (i in thumbnails.indices) thumbnails[i] = b.getLong()
-            val highlights = FloatArray(8 * b.getInt())
+            val highlightKinds = IntArray(b.getInt())
+            val highlights = FloatArray(8 * highlightKinds.size)
             val edges = b.getInt()
-            for (i in 0 until highlights.size / 8) {
-                b.getInt() // kind: only selections so far
+            for (i in highlightKinds.indices) {
+                highlightKinds[i] = b.getInt()
                 b.getInt()
                 for (k in 0 until 8) highlights[8 * i + k] = b.getFloat()
             }
@@ -212,6 +228,7 @@ class ViewFrame private constructor(
                 thumbnailFirst = thumbnailFirst,
                 thumbnails = thumbnails,
                 highlights = highlights,
+                highlightKinds = highlightKinds,
                 selectionStart = selectionStart,
                 selectionEnd = selectionEnd,
             )
