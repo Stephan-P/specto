@@ -65,8 +65,28 @@ enum Command {
     Corpus(corpus::CorpusArgs),
 }
 
+/// Makes writing to a closed pipe (`pdfrs info … | head`) end the program
+/// quietly, as for other command line tools. Rust ignores SIGPIPE, so
+/// `println!` would panic instead.
+#[cfg(unix)]
+#[allow(unsafe_code)]
+fn default_sigpipe() {
+    // SAFETY: called at the start of main, before any other threads exist;
+    // it only resets how the process handles one signal.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 fn main() -> Result<()> {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    // Not for check and corpus, which talk to child processes through
+    // pipes and handle their errors.
+    #[cfg(unix)]
+    if !matches!(cli.command, Command::Check(_) | Command::Corpus(_)) {
+        default_sigpipe();
+    }
+    match cli.command {
         Command::Info {
             file,
             password,

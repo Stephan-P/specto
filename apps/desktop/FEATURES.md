@@ -62,9 +62,11 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 ## Editing
 
 - Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main menu) turn the current page, or both pages of a two-page spread
+- Insert Pages from File (main menu): all pages of another PDF go after the current page (or spread), and the view goes to the first of them. Encrypted files ask for their password
 - Undo and Redo (*Primary*+Z, Shift+*Primary*+Z, or the main menu, which names the edit: "Undo Rotate Page")
 - "Edited" in the title while there are changes; undoing back to the state as opened removes it
-- Selection, search, links and the table of contents keep working on edited pages
+- Selection, search, links and the table of contents keep working on edited pages, inserted ones included
+- Printed page numbers are shown only while the pages are those of the file, in order; otherwise plain numbers
 - In the page entry or the search field, the shortcuts act on the text instead (Undo, moving by words)
 
 ## Saving
@@ -79,7 +81,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -95,6 +97,6 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Not yet
 
-- Printing, deleting and moving pages, inserting pages from other files, annotations, form filling
+- Printing, deleting and moving pages, annotations, form filling
 - Highlighting the current outline entry
 - Dark mode for page content

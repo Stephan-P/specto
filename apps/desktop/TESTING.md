@@ -113,6 +113,10 @@ Resetting saved state:
 - LONG: *Primary*+Right on a page turns it clockwise, sharp after a moment; its thumbnail turns too, and the title says "Edited". *Primary*+Left twice turns it the other way.
 - In Two Pages, rotating turns both pages of the spread.
 - The main menu shows "Undo Rotate Page" and "Redo Rotate Page" as appropriate; undoing every edit removes "Edited".
+- LONG, on page 2: Insert Pages from File, choosing LINKS. Its pages follow page 2 and the view is on the first of them; the page count grows, the page entry shows plain numbers instead of LONG's printed ones, and LINKS's in-document links lead to its own (inserted) pages. Undo removes them.
+- Inserting ENCRYPTED asks for its password; Cancel inserts nothing.
+- With a search open, inserting a file: matches on the new pages are found too.
+- LONG with LINKS inserted, saved: reopened, both are there; LONG's Contents still work. The file opens in other viewers.
 - On a rotated page: selecting text, searching (highlights on the words), links and Contents entries still work.
 - Typing in the page entry, *Primary*+Left moves the cursor by a word and *Primary*+Z undoes the typing; no page is rotated or edit undone.
 - macOS: Edit → Undo and Redo, and Tools → Rotate Left and Rotate Right, with Cmd+Z, Shift+Cmd+Z, Cmd+Left and Cmd+Right.

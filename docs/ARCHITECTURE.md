@@ -51,11 +51,11 @@ Session (in the frontend for now: the desktop's Document)
 
 Why this shape:
 
-- **Delete / reorder / rotate / merge** are just edits to `pages`. Merging another PDF adds a `SourceDoc` and splices its `PageRef`s in. Nothing gets re-parsed or re-rendered except what becomes newly visible.
+- **Delete / reorder / rotate / merge** are just edits to `pages`. Inserting pages of another PDF adds a source and splices its `PageRef`s in. Nothing gets re-parsed or re-rendered except what becomes newly visible. On the desktop, each source has its own scheduler document, parsed file, page geometries, links and search text; the first is the file opened, whose outline and page labels the document shows. Sources stay open while undo can bring their pages back. Saving passes the first source plus those pages still come from to `pdfrs-write`.
 - **Rendering** a `PageRef` renders the original page from its source *without* its annotations. The viewer then draws annotations from the edit model, so new or edited annotations look the same as existing ones and stay editable. Existing annotations are imported into the model on load (keeping their original appearance stream when we don't modify them).
 - **Undo/redo** for pages keeps a copy of the page list from before each edit (12 bytes a page, so 120 KB a step for 10,000 pages; 100 steps are kept). Undo can't drift out of step with redo, as hand-written inverse commands can. Each step records what the edit was (`Edit::Rotate { pages }`, …), which the frontends name in their menus ("Undo Rotate Page"). Annotations and form values are larger and will get commands of their own.
 - **Modified** compares a version number of the current page list with the one last saved, so undoing back to the saved state counts as unmodified.
-- **Positions and pages of the file**: the viewer, selections and search results work with positions in the edited list; what doesn't change with editing (text layers, search text, links, outline destinations) is keyed by the page of the file, and mapped to its current position when needed.
+- **Positions and pages of the file**: the viewer, selections and search results work with positions in the edited list; what doesn't change with editing (text layers, search text, links, outline destinations) is keyed by the file and its page, and mapped to its current position when needed. A link's destination is looked up in the file the link is in.
 
 ### Annotations
 

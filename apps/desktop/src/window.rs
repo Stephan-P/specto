@@ -12,7 +12,7 @@ use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
 use crate::debug;
-use crate::document::{Document, SharedDocument};
+use crate::document::{Document, Indexed, MAIN, SharedDocument};
 use crate::outline::OutlineView;
 use crate::state;
 use crate::thumbnails::Sidebar;
@@ -40,6 +40,7 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "rotate-right",
     "save",
     "save-as",
+    "insert-file",
 ];
 
 #[derive(Clone)]
@@ -170,6 +171,11 @@ impl Window {
             let m = gio::Menu::new();
             m.append(Some("Rotate Left"), Some("win.rotate-left"));
             m.append(Some("Rotate Right"), Some("win.rotate-right"));
+            m
+        });
+        main_menu.append_section(None, &{
+            let m = gio::Menu::new();
+            m.append(Some("Insert Pages from File…"), Some("win.insert-file"));
             m
         });
         let main_button = gtk::MenuButton::builder()
@@ -423,15 +429,7 @@ impl Window {
     }
 
     async fn load(&self, file: gio::File) {
-        let name = file
-            .query_info_future(
-                gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
-                gio::FileQueryInfoFlags::NONE,
-                glib::Priority::DEFAULT,
-            )
-            .await
-            .map(|i| i.display_name().to_string())
-            .unwrap_or_else(|_| file.parse_name().to_string());
+        let name = display_name(&file).await;
         let data = match read_pdf(&file).await {
             Ok(data) => data,
             Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
@@ -575,7 +573,7 @@ impl Window {
                 inner.canvas.update_viewer(|v| v.go_to_page(page));
             }
         });
-        let outline = document.borrow().source.outline();
+        let outline = document.borrow().outline();
         if outline.is_empty() {
             inner.split.set_sidebar(Some(&sidebar.widget));
         } else {
@@ -587,13 +585,13 @@ impl Window {
                     .upgrade()
                     .and_then(|d| {
                         let d = d.borrow();
-                        Some(d.page_label(d.position_of(page)?))
+                        Some(d.page_label(d.position_of(MAIN, page)?))
                     })
                     .unwrap_or_default()
             };
             let outline = OutlineView::new(&outline, page_label, move |target| {
                 if let Some(inner) = weak.upgrade() {
-                    inner.canvas.follow(target);
+                    inner.canvas.follow(MAIN, target);
                 }
             });
             let stack = adw::ViewStack::new();
@@ -801,27 +799,51 @@ impl Window {
             self.reveal_match();
         }
         if let Some(rx) = indexer {
-            let weak = Rc::downgrade(&self.0);
-            glib::spawn_future_local(async move {
-                while let Ok(page) = rx.recv().await {
-                    let Some(inner) = weak.upgrade() else { break };
-                    let w = Window(inner);
-                    let Some(doc) = w.0.document.borrow().clone() else {
-                        break;
-                    };
-                    let before = doc.borrow().search_status();
-                    let new_current = doc.borrow_mut().indexed(page);
-                    if new_current {
-                        w.reveal_match();
-                    } else if doc.borrow().search_status() != before {
-                        w.update_search_status();
-                        w.0.canvas.queue_draw();
-                    }
-                }
-            });
+            self.receive_index(rx);
         }
         self.update_search_status();
         self.0.canvas.queue_draw();
+    }
+
+    /// Indexes pages the current search hasn't seen yet (inserted ones),
+    /// if there is a search.
+    fn index_for_search(&self) {
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        let rx = {
+            let mut d = doc.borrow_mut();
+            if d.search_status().is_none() {
+                return;
+            }
+            let from = d.viewer.current_page();
+            d.start_indexing(from)
+        };
+        if let Some(rx) = rx {
+            self.receive_index(rx);
+        }
+    }
+
+    /// Takes in the indexer's pages as they come, updating the search.
+    fn receive_index(&self, rx: async_channel::Receiver<Indexed>) {
+        let weak = Rc::downgrade(&self.0);
+        glib::spawn_future_local(async move {
+            while let Ok(page) = rx.recv().await {
+                let Some(inner) = weak.upgrade() else { break };
+                let w = Window(inner);
+                let Some(doc) = w.0.document.borrow().clone() else {
+                    break;
+                };
+                let before = doc.borrow().search_status();
+                let new_current = doc.borrow_mut().indexed(page);
+                if new_current {
+                    w.reveal_match();
+                } else if doc.borrow().search_status() != before {
+                    w.update_search_status();
+                    w.0.canvas.queue_draw();
+                }
+            }
+        });
     }
 
     fn search_step(&self, forward: bool) {
@@ -921,6 +943,13 @@ impl Window {
                 let (w, file) = (w.clone(), gio::File::for_path(path));
                 glib::spawn_future_local(async move {
                     w.save_as_file(file).await;
+                });
+            }),
+            // Insert Pages from File without the file dialog.
+            action("debug-insert", |w, path| {
+                let (w, file) = (w.clone(), gio::File::for_path(path));
+                glib::spawn_future_local(async move {
+                    w.insert_file(file).await;
                 });
             }),
             // Answers the open "Save changes?" dialog.
@@ -1038,9 +1067,9 @@ impl Window {
                 .edit
                 .pages()
                 .iter()
-                .map(|p| format!("[{}, {}]", p.page, p.rotation.degrees()))
+                .map(|p| format!("[{}, {}, {}]", p.page, p.rotation.degrees(), p.source.0))
                 .collect();
-            // [page of the file, rotation in degrees] per position.
+            // [page of the file, rotation in degrees, file] per position.
             json.raw("edit_pages", &format!("[{}]", pages.join(", ")))
                 .bool("modified", d.edit.is_modified())
                 .num("cache_tiles", d.cache.len() as f64)
@@ -1091,6 +1120,76 @@ impl Window {
             return;
         };
         self.edit(|d| d.rotate(&pages, by));
+    }
+
+    /// Asks for a PDF and inserts its pages.
+    async fn choose_insert_file(&self) {
+        let dialog = pdf_dialog("Insert Pages from File");
+        if let Some(folder) = self
+            .0
+            .uri
+            .borrow()
+            .as_ref()
+            .and_then(|u| gio::File::for_uri(u).parent())
+        {
+            dialog.set_initial_folder(Some(&folder));
+        }
+        if let Ok(file) = dialog.open_future(Some(&self.0.window)).await {
+            self.insert_file(file).await;
+        }
+    }
+
+    /// Inserts all pages of `file` after the current page (or spread) and
+    /// goes to the first of them.
+    async fn insert_file(&self, file: gio::File) {
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        let name = display_name(&file).await;
+        let data = match read_pdf(&file).await {
+            Ok(data) => data,
+            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
+        };
+        let mut password: Option<String> = None;
+        let (source, count) = loop {
+            let opened = doc
+                .borrow_mut()
+                .add_source(data.clone(), password.as_deref());
+            match opened {
+                Ok(s) => break s,
+                Err(OpenError::PasswordRequired) => {
+                    match self.ask_password(&name, password.is_some()).await {
+                        Some(p) => password = Some(p),
+                        None => return,
+                    }
+                }
+                Err(e) => return self.toast(&format!("Couldn't open “{name}”: {e}")),
+            }
+        };
+        // The window may have moved on to another document meanwhile.
+        if !self
+            .0
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| Rc::ptr_eq(d, &doc))
+        {
+            return;
+        }
+        let at = self
+            .0
+            .canvas
+            .with_viewer(|v| v.current_spread().last().map_or(0, |&p| p + 1))
+            .unwrap_or(0);
+        let mut inserted = None;
+        self.edit(|d| {
+            inserted = d.insert(at, source, 0..count);
+            inserted.is_some()
+        });
+        if let Some(range) = inserted {
+            self.0.canvas.update_viewer(|v| v.go_to_page(range.start));
+        }
+        self.index_for_search();
     }
 
     fn is_modified(&self) -> bool {
@@ -1437,6 +1536,12 @@ impl Window {
                     glib::spawn_future_local(async move { w.save_as().await });
                 }))
                 .build(),
+            gio::ActionEntry::builder("insert-file")
+                .activate(with(|w| {
+                    let w = w.clone();
+                    glib::spawn_future_local(async move { w.choose_insert_file().await });
+                }))
+                .build(),
             gio::ActionEntry::builder("rotate-left")
                 .activate(with(|w| w.rotate(Rotation::Cw270)))
                 .build(),
@@ -1603,17 +1708,7 @@ impl Window {
     }
 
     fn choose_file(&self) {
-        let filter = gtk::FileFilter::new();
-        filter.set_name(Some("PDF documents"));
-        filter.add_mime_type("application/pdf");
-        filter.add_suffix("pdf");
-        let filters = gio::ListStore::new::<gtk::FileFilter>();
-        filters.append(&filter);
-        let dialog = gtk::FileDialog::builder()
-            .title("Open PDF")
-            .filters(&filters)
-            .default_filter(&filter)
-            .build();
+        let dialog = pdf_dialog("Open PDF");
         let this = self.clone();
         glib::spawn_future_local(async move {
             if let Ok(file) = dialog.open_future(Some(&this.0.window)).await {
@@ -1635,6 +1730,33 @@ fn primary_key() -> &'static str {
 
 fn centre(v: &Viewer) -> ViewPoint {
     ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0)
+}
+
+/// A file dialog for choosing a PDF.
+fn pdf_dialog(title: &str) -> gtk::FileDialog {
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some("PDF documents"));
+    filter.add_mime_type("application/pdf");
+    filter.add_suffix("pdf");
+    let filters = gio::ListStore::new::<gtk::FileFilter>();
+    filters.append(&filter);
+    gtk::FileDialog::builder()
+        .title(title)
+        .filters(&filters)
+        .default_filter(&filter)
+        .build()
+}
+
+/// The name of `file` to show ("Report.pdf").
+async fn display_name(file: &gio::File) -> String {
+    file.query_info_future(
+        gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+        gio::FileQueryInfoFlags::NONE,
+        glib::Priority::DEFAULT,
+    )
+    .await
+    .map(|i| i.display_name().to_string())
+    .unwrap_or_else(|_| file.parse_name().to_string())
 }
 
 /// Reads `file`, mapping it if it's large and local (see [`PdfData`]).

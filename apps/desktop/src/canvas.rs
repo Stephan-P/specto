@@ -12,6 +12,7 @@ use pdfrs_source::{NamedAction, Target};
 use pdfrs_view::{Granularity, Selection, Viewer, over_text, text_char, text_position, text_quads};
 
 use crate::document::SharedDocument;
+use pdfrs_doc::SourceId;
 
 /// Dragging a selection this close to the top or bottom edge (logical px)
 /// scrolls the view.
@@ -250,8 +251,8 @@ impl Canvas {
         self.imp().on_open_uri.replace(Some(Box::new(f)));
     }
 
-    /// Follows a link or outline target.
-    pub fn follow(&self, target: &Target) {
+    /// Follows a link or outline target in file `source`.
+    pub fn follow(&self, source: SourceId, target: &Target) {
         match target {
             Target::Destination(d) => {
                 // Destinations name pages of the file; pages may have moved
@@ -259,7 +260,7 @@ impl Canvas {
                 let Some(doc) = self.imp().document.borrow().clone() else {
                     return;
                 };
-                let Some(page) = doc.borrow().position_of(d.page) else {
+                let Some(page) = doc.borrow().position_of(source, d.page) else {
                     return;
                 };
                 self.update_viewer(|v| v.go_to_pdf_position(page, d.left, d.top))
@@ -278,7 +279,7 @@ impl Canvas {
         }
     }
 
-    fn link_at(&self, x: f64, y: f64) -> Option<Target> {
+    fn link_at(&self, x: f64, y: f64) -> Option<(SourceId, Target)> {
         let doc = self.imp().document.borrow().clone()?;
         let mut d = doc.borrow_mut();
         d.link_at(ViewPoint::new(x, y))
@@ -680,9 +681,9 @@ impl Canvas {
             if n_press != 1 || c.imp().selecting.get() {
                 return;
             }
-            if let Some(target) = c.link_at(x, y) {
+            if let Some((source, target)) = c.link_at(x, y) {
                 g.set_state(gtk::EventSequenceState::Claimed);
-                c.follow(&target);
+                c.follow(source, &target);
             }
         });
         self.add_controller(click);

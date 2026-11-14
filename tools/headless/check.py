@@ -35,6 +35,8 @@ Tests (run some by naming them, e.g. `zoom layouts`):
   the original as it was, and the copy opens where the original was left
 - close_prompt: quitting with unsaved changes asks first; Cancel keeps the
   window, Discard closes without saving, Save saves and closes
+- insert_file: pages of another file inserted after the current page, shown
+  and searched; undo; saved, they're in the file
 
 With the virtual pointer and keyboard, on a Courier text PDF:
 
@@ -930,7 +932,7 @@ def test_search_indexes_in_background(ctx):
 
 def rotations(s):
     """The rotation of each page, in degrees."""
-    return [r for _, r in s["edit_pages"]]
+    return [p[1] for p in s["edit_pages"]]
 
 
 def test_rotate_and_undo(ctx):
@@ -1071,6 +1073,52 @@ def test_close_prompt(ctx):
         raise CheckFailed("the app didn't quit after discarding")
     s = ctx.app([path]).window().settled()
     check(turned(s, 0), "the discarded rotation was saved")
+
+
+def test_insert_file(ctx):
+    path = copy_of_pages(ctx)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    inp = ctx.input().attach(w)
+    w.action("next-page")
+    w.settled("page 2", lambda s: s["page"] == 1)
+    # The text PDF's three pages go after page 2, and the view goes there.
+    w.action("debug-insert", gvariant_str(ctx.text))
+    s = w.wait("the inserted pages", lambda s: len(s["edit_pages"]) == PAGES + 3)
+    inserted = [[0, 0, 1], [1, 0, 1], [2, 0, 1]]
+    check(s["edit_pages"][2:5] == inserted, s["edit_pages"])
+    check(s["edit_pages"][5] == [2, 0, 0], s["edit_pages"])
+    check(s["undo"] == "Insert 3 Pages" and s["modified"], s)
+    s = w.settled("the first inserted page", lambda s: s["page"] == 2)
+    # Page labels no longer fit, so plain numbers.
+    check(s["page_entry"] == "3" and s["subtitle"].startswith("15 pages"), s)
+    # (Original page 3's thumbnail shows in the sidebar, but not the page.)
+    c = w.colours("inserted")
+    check(c.get(2, 0) < 0.1, f"page 3 of the original still shown: {fmt(c)}")
+    # Searching finds text on the inserted pages, at their new positions.
+    search_for(w, inp, "lazy")
+    s = status(w, "1 of 1")
+    check(s["match_page"] == 2, s)
+    inp.keys(Input.ESCAPE)
+    # Undone, and done again.
+    w.action("undo")
+    s = w.wait("the insert undone", lambda s: len(s["edit_pages"]) == PAGES)
+    check(not s["modified"] and s["page_entry"] == LABELS[s["page"]], s)
+    w.action("redo")
+    w.wait("the insert redone", lambda s: len(s["edit_pages"]) == PAGES + 3)
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    # One file now: the inserted pages are its pages 3 to 5.
+    w = ctx.app([path]).window()
+    s = w.settled()
+    check([p[2] for p in s["edit_pages"]] == [0] * (PAGES + 3), s["edit_pages"])
+    w.action("debug-go-to", gvariant_str("4"))
+    w.settled("page 4", lambda s: s["page"] == 3)
+    search_for(w, inp.attach(w), "Second page")
+    s = status(w, "1 of 1")
+    check(s["match_page"] == 3, s)
 
 
 def test_select_after_rotating(ctx):

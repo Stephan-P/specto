@@ -81,7 +81,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Edits in the model: delete pages, move pages, rotate pages, insert pages
 - [x] **S** Desktop: rotate left and right (current page or spread), undo and redo with the edit's name in the main menu, "Edited" in the title; text, search and links keyed by page of the file so they survive edits. Headless checks `rotate_and_undo`, `select_after_rotating`
 - [ ] **S** Desktop: delete and move pages (with the page organizer below)
-- [ ] **M** Commands: insert pages from another PDF / merge (multi-source sessions)
+- [x] **M** Desktop: documents with pages from several files (a `Source` per file: scheduler document, parsed file, geometries, links, search text); Insert Pages from File after the current page or spread, with a password prompt; text, links and search keyed by file and page; the search indexer covers inserted pages. Headless check `insert_file`
 - [x] **L** `pdfrs-write`: full rewrite save: flat page tree, rotation, deleted pages removed with what only they used, pages copied in from other sources, object and xref streams, encryption kept. Streams repaired from hayro where lopdf reads them wrong; the result is read back and checked page by page before it's used. Corpus: 1,066 of 1,077 files identical when rendered, 11 refused, none damaged
 - [ ] **M** `pdfrs-write`: save the 11 corpus files it refuses (lopdf can't read damaged cross-reference tables or page trees that hayro recovers; one has an encryption dictionary lopdf re-encrypts wrongly), e.g. by building the objects from hayro's reading of the file
 - [ ] **S** `pdfrs-write`: page labels after deleting or moving pages: write labels that keep each remaining page's label instead of dropping them; the same in the viewer

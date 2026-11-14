@@ -1616,6 +1616,7 @@ dependencies = [
  "anyhow",
  "clap",
  "image",
+ "libc",
  "pdfrs-doc",
  "pdfrs-render",
  "pdfrs-source",
