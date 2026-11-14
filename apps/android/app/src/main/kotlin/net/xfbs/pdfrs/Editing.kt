@@ -97,12 +97,19 @@ fun SelectionBar(state: PdfViewState) {
  * unless the reader says where.
  */
 @Composable
-fun UnsavedChangesDialog(name: String, onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Unit) {
+fun UnsavedChangesDialog(
+    name: String,
+    /** Whether saving means asking where ("Save as…"), since the document's own file can't be written over. */
+    saveAs: Boolean,
+    onSave: () -> Unit,
+    onDiscard: () -> Unit,
+    onCancel: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text("Save changes?") },
         text = { Text("The changes to the pages of $name are lost unless you save them.") },
-        confirmButton = { TextButton(onClick = onSave) { Text("Save as…") } },
+        confirmButton = { TextButton(onClick = onSave) { Text(if (saveAs) "Save as…" else "Save") } },
         dismissButton = {
             TextButton(onClick = onCancel) { Text("Cancel") }
             TextButton(onClick = onDiscard) { Text("Discard") }

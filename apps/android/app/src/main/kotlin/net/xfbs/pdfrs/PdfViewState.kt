@@ -326,6 +326,16 @@ class PdfViewState(
         if (!closed) editState = session.editState()
     }
 
+    /**
+     * The copy last written with [writeTo] has been put where the document
+     * is kept: what it holds is saved now. Edits made since are not.
+     */
+    fun writtenIsSaved() {
+        if (closed) return
+        session.writtenIsSaved()
+        editState = session.editState()
+    }
+
     // --- text selection -----------------------------------------------------
     //
     // The selection lives in Rust and shows up in frames: the highlights to

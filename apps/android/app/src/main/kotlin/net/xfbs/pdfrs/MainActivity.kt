@@ -6,6 +6,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -305,10 +306,14 @@ private sealed interface Loaded {
     class Ready(
         val state: PdfViewState,
         val name: String,
-        val key: String,
-        val bytes: Long,
+        key: String,
+        bytes: Long,
         val mapped: Boolean,
-    ) : Loaded
+    ) : Loaded {
+        // Both change when the document is saved over its file.
+        var key: String = key
+        var bytes: Long by mutableStateOf(bytes)
+    }
     /** Keeps the [file], so that trying a password doesn't read it again. */
     class Locked(val file: PdfFile, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
     class Failed(val message: String) : Loaded
@@ -321,6 +326,15 @@ private sealed interface Loaded {
  */
 private fun Context.canReopen(uri: Uri): Boolean {
     if (uri.scheme == "file") return true
+    try {
+        // To write as well, where that was offered: for "Save".
+        contentResolver.takePersistableUriPermission(
+            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+        )
+        return true
+    } catch (e: SecurityException) {
+        // Reading alone, then.
+    }
     return try {
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         true
@@ -329,12 +343,26 @@ private fun Context.canReopen(uri: Uri): Boolean {
     }
 }
 
+/**
+ * Whether the document at [uri] may be written over, as far as can be told
+ * without trying: "Save" is offered for these. Documents from the system
+ * file picker usually may; those handed over by other apps mostly not.
+ */
+private fun Context.canSaveOver(uri: Uri): Boolean {
+    if (uri.scheme == "file") return uri.path?.let { File(it).canWrite() } == true
+    return checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
+        PackageManager.PERMISSION_GRANTED
+}
+
 /** Gives back read permissions for documents the start screen no longer offers. */
 private fun Context.releaseUnused(store: DocumentStore) {
     val keep = store.reopenable()
     for (permission in contentResolver.persistedUriPermissions) {
         if (permission.uri.toString() !in keep) {
-            contentResolver.releasePersistableUriPermission(permission.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val write = if (permission.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0
+            contentResolver.releasePersistableUriPermission(
+                permission.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or write,
+            )
         }
     }
 }
@@ -479,14 +507,14 @@ private fun App(
         onDispose { show(null) }
     }
 
-    // "Save as…": the system asks where, and the document as edited is
-    // written there. It is then what is open, where the reader was, unless
-    // the reader was on the way elsewhere.
-    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val then = afterSaving
-        afterSaving = null
-        val open = loaded as? Loaded.Ready
-        if (uri == null || open == null) return@rememberLauncherForActivityResult
+    /**
+     * Writes the open document, as edited, to [uri] and then shows what is
+     * there, where the reader was, unless [then] says what to do instead.
+     * The document is read afresh from [uri], also if that is the file it
+     * was opened from.
+     */
+    fun saveTo(uri: Uri, then: (() -> Unit)?) {
+        val open = loaded as? Loaded.Ready ?: return
         scope.launch {
             saving = true
             try {
@@ -531,9 +559,61 @@ private fun App(
             }
         }
     }
+
+    // "Save as…": the system asks where.
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val then = afterSaving
+        afterSaving = null
+        if (uri != null) saveTo(uri, then)
+    }
     fun saveAs(name: String, then: (() -> Unit)? = null) {
         afterSaving = then
         saver.launch(name)
+    }
+
+    // "Save": over the file the document was opened from, where the app may
+    // write to it.
+    val canSave = remember(document) { document != null && context.canSaveOver(document) }
+
+    /**
+     * Saves the open document over its file and goes on with [then]. The
+     * document stays open as it is, edits still to be undone, unless its
+     * file is mapped: that one has to be closed to be written, and is read
+     * afresh.
+     */
+    fun save(then: (() -> Unit)? = null) {
+        val open = loaded as? Loaded.Ready ?: return
+        val uri = document ?: return
+        if (open.mapped) return saveTo(uri, then)
+        scope.launch {
+            saving = true
+            try {
+                // Written beside it first and then copied over it: should
+                // writing fail, the file is as it was.
+                val written = context.writeEdited(open.state, open.name)
+                context.copyTo(written, uri)
+                open.state.writtenIsSaved()
+                // Its content is how the store knows a document: under what
+                // it is now, it is where this one was.
+                val (key, size) = withContext(Dispatchers.IO) {
+                    val result = written.fingerprint() to written.length()
+                    written.delete()
+                    result
+                }
+                store.opened(key, open.name, uri.toString().takeIf { context.canReopen(uri) }, open.state.pageCount)
+                store.saveView(key, open.state.savedView(), open.state.sidebarOpen)
+                open.key = key
+                open.bytes = size
+                then?.invoke()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
+                Toast.makeText(context, "Couldn't save: $reason", Toast.LENGTH_LONG).show()
+            } finally {
+                saving = false
+            }
+        }
     }
 
     val ready = loaded as? Loaded.Ready
@@ -683,6 +763,15 @@ private fun App(
                             )
                         }
                         if (ready != null) {
+                            if (canSave && ready.state.editState.modified) {
+                                DropdownMenuItem(
+                                    text = { Text("Save") },
+                                    onClick = {
+                                        menu = false
+                                        save()
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Save as…") },
                                 onClick = {
@@ -833,6 +922,9 @@ private fun App(
                                         fullScreen = false
                                         searching = true
                                     },
+                                    onSave = {
+                                        if (canSave && l.state.editState.modified) save() else saveAs(l.name)
+                                    },
                                     refocus = searchesClosed,
                                 )
                                 // Always there in the normal view; in full screen it
@@ -881,9 +973,10 @@ private fun App(
         } else {
             UnsavedChangesDialog(
                 ready.name,
+                saveAs = !canSave,
                 onSave = {
                     leaving = null
-                    saveAs(ready.name) { onDocument(asked.to) }
+                    if (canSave) save { onDocument(asked.to) } else saveAs(ready.name) { onDocument(asked.to) }
                 },
                 onDiscard = {
                     leaving = null

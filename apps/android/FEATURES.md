@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, or how the selection, its handles and the copy menu look.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, saving over a file from the system's file picker, how dragging pages looks, or how the selection, its handles and the copy menu look.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -33,7 +33,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 |---|---|---|
 | Buttons | Open a document | Left: Pages and Contents. Right: search (a magnifying glass), the view button, whose icon is a small picture of the current layout, and ⋮ |
 | View menu | Tap the view button | The layouts, each with its picture ("Single page" and "Continuous"; on wide windows also "Two pages" and "Two pages, continuous"), then "Fit page" and "Fit width". The current layout and fit are ticked. Everything in this menu is remembered for the document |
-| ⋮ menu | Tap ⋮ | Open…, Share…, Save as…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Undo …", and after that "Redo …" |
+| ⋮ menu | Tap ⋮ | Open…, Share…, Save as…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Save" (where the file can be written over) and "Undo …", and after undoing "Redo …" |
 | Properties | ⋮ → "Properties" | A dialog with the file name, what the document says about itself (title, author, subject, keywords, the programs it was made with, when it was created and changed; whatever it doesn't state is left out), the number of pages, their size ("210 × 297 mm (A4)"; a note if pages differ), the file size and the PDF version. Values can be selected and copied |
 
 ## Reading, one page at a time (default)
@@ -118,7 +118,7 @@ Needs a document with real text; a scan without a text layer has nothing to sele
 
 ## Editing the pages
 
-Pages can be turned, removed and (not yet) reordered. Nothing changes the file that was opened: the result is saved as a new document.
+Pages can be turned, removed and put in another order. Nothing changes a file until the document is saved: over the file it was opened from where the app may write to it, or as a new one.
 
 | Feature | How to try it | What should happen |
 |---|---|---|
@@ -127,9 +127,14 @@ Pages can be turned, removed and (not yet) reordered. Nothing changes the file t
 | Select all | With a page picked, ⋮ → "Select all" | Every page is picked, and the bin is greyed out: a document keeps at least one page |
 | Rotate | Pick pages, then one of the two round arrows | The pages turn by a quarter that way, in the grid and in the document; they stay picked, to be turned further. The title says "Edited" |
 | Delete | Pick pages, then the bin | They are gone; the pages after them move up and keep their printed numbers, and the count ("3 / 11") follows. Nothing is picked any more |
-| Undo and redo | ⋮ → "Undo delete" (or rotate), then "Redo …" | One edit at a time is taken back, or done again, in the order they were made. Back at the document as it was opened or saved, "Edited" goes |
+| Reorder | Long-press a thumbnail and, without lifting the finger, drag it to another place | The page fades where it was and a count ("1 page") floats above the finger; a bar between two thumbnails shows where it would go. Lifting the finger moves it there, and it stays picked. Near the top or bottom edge the grid scrolls on |
+| Reorder several | Pick several pages, then long-press one of them and drag | All of them move to the place shown, in the order they were in |
+| A long press that goes nowhere | Long-press a picked page and lift the finger | It is let go of, as with a tap |
+| Undo and redo | ⋮ → "Undo delete" (or rotate, or move), then "Redo …" | One edit at a time is taken back, or done again, in the order they were made. Back at the document as it was opened or saved, "Edited" goes |
+| Save | With unsaved edits to a document opened with "Open…" (the system's file picker): ⋮ → "Save" | The file is written over with the document as edited (a new PDF is written beside it first, so a failure leaves the file as it was). "Edited" goes; the document stays open where it was, and the edits can still be undone, which makes it "Edited" again |
+| Save only where it can work | Open a PDF from another app (a mail attachment, a download notification), edit it, and look at the ⋮ menu; also look without edits | No "Save" for a document the app was only given to read, and none while there is nothing to save. "Save as…" is always there |
 | Save as… | ⋮ → "Save as…", then choose where and under what name (the document's own is suggested) | The document as edited is written there as a new PDF, and is then the one that is open, where the reader was, with nothing left to undo. The file opened before is untouched, and both are on the start screen. Saving over the file that is open works too: it is then listed once, as saved |
-| Asked before edits are lost | With unsaved edits: ⋮ → "Close", or "Open…" and pick a file, or open a PDF from another app | "Save changes?" with "Save as…" (saves, then goes on to what was asked for), "Discard" (goes on without saving) and "Cancel" (stays) |
+| Asked before edits are lost | With unsaved edits: ⋮ → "Close", or "Open…" and pick a file, or open a PDF from another app | "Save changes?" with "Save" (or "Save as…", where the file can't be written over), which saves and then goes on to what was asked for, "Discard" (goes on without saving) and "Cancel" (stays) |
 | Not asked otherwise | The same without edits, or after saving | No question |
 | Kept only while the app lives | Edit, leave the app, and come back later | The edits are still there unless Android ended the app in the meantime, in which case the document is back as it was last saved. There is no automatic saving yet |
 
@@ -171,6 +176,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Zoom | Ctrl with +, − and 0 | Zoom in and out around the middle of the view, and back to the fitted view |
 | Select and copy | Ctrl+A, Ctrl+C, Escape | Selects all text, copies the selection, lets go of it |
 | Undo and redo | Ctrl+Z; Shift+Ctrl+Z or Ctrl+Y | Takes back the last edit of the pages; does it again |
+| Save | Ctrl+S | Saves over the file if there are edits and that is possible, else asks where ("Save as…") |
 | Search | Ctrl+F; in the search field Enter, Shift+Enter and Escape | Opens the search; next match, previous match, and leaving it |
 
 ## Settings
@@ -197,4 +203,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Saving over the file that was opened without being asked where ("Save"), reordering pages and adding pages of other files, annotations and form filling, and printing.
+Adding pages of other files, keeping unsaved edits when Android ends the app, annotations and form filling, and printing.

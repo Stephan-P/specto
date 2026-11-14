@@ -120,8 +120,9 @@ private class SelectionDrag {
  * and right, Page Up and Down, Space and Backspace turn pages; arrows up and
  * down scroll; Home and End go to the first and last page; Ctrl with plus,
  * minus and zero zooms; Ctrl+A selects all text, Ctrl+C copies the selection
- * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]); Ctrl+Z takes
- * back the last edit of the pages, and Shift+Ctrl+Z or Ctrl+Y does it again.
+ * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]); Ctrl+S saves
+ * ([onSave]); Ctrl+Z takes back the last edit of the pages, and Shift+Ctrl+Z
+ * or Ctrl+Y does it again.
  * Returns whether the key was used.
  */
 private fun PdfViewState.handleKey(
@@ -129,6 +130,7 @@ private fun PdfViewState.handleKey(
     event: KeyEvent,
     onCopy: () -> Unit,
     onSearch: () -> Unit,
+    onSave: () -> Unit,
 ): Boolean {
     if (event.isCtrlPressed) {
         when (event.key) {
@@ -138,6 +140,7 @@ private fun PdfViewState.handleKey(
             Key.A -> selectAll()
             Key.C -> if (hasSelection) onCopy() else return false
             Key.F -> onSearch()
+            Key.S -> onSave()
             Key.Z -> if (event.isShiftPressed) redo() else undo()
             Key.Y -> redo()
             else -> return false
@@ -174,7 +177,8 @@ private fun PdfViewState.handleKey(
  * Back drops it.
  *
  * What a search found is highlighted too. The search itself is run from
- * outside (see [PdfViewState.search]); [onSearch] is called for Ctrl+F. The
+ * outside (see [PdfViewState.search]); [onSearch] is called for Ctrl+F, and
+ * [onSave] for Ctrl+S. The
  * page takes the keyboard focus when it appears, and again whenever
  * [refocus] changes.
  *
@@ -188,10 +192,11 @@ fun PdfView(
     onExternalLink: (String) -> Unit = {},
     onTap: () -> Unit = {},
     onSearch: () -> Unit = {},
+    onSave: () -> Unit = {},
     refocus: Any? = null,
 ) {
     Box(modifier) {
-        PageCanvas(state, Modifier.fillMaxSize(), onExternalLink, onTap, onSearch, refocus)
+        PageCanvas(state, Modifier.fillMaxSize(), onExternalLink, onTap, onSearch, onSave, refocus)
         BusyPages(state)
     }
 }
@@ -204,6 +209,7 @@ private fun PageCanvas(
     onExternalLink: (String) -> Unit,
     onTap: () -> Unit,
     onSearch: () -> Unit,
+    onSave: () -> Unit,
     refocus: Any?,
 ) {
     val density = LocalDensity.current.density
@@ -358,7 +364,7 @@ private fun PageCanvas(
             .clipToBounds()
             .focusRequester(focus)
             .focusable()
-            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy, onSearch) }
+            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy, onSearch, onSave) }
             .onGloballyPositioned {
                 origin = it.positionInWindow()
                 originInRoot = it.positionInRoot()

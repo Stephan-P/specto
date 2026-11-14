@@ -399,6 +399,9 @@ struct State {
     /// What the view is fitted to unless the reader zoomed, and returns to:
     /// `FitPage` or `FitWidth`.
     fit: pdfrs_view::ZoomMode,
+    /// The state of the pages last written as a copy on the side (see
+    /// `ViewSession::save_to_fd`), which may yet become the saved one.
+    written: Option<pdfrs_doc::Version>,
 }
 
 /// How many pages' text is kept (the least recently used go first). A page
@@ -821,6 +824,7 @@ impl ViewSession {
                 thumbnails: (0, 0),
                 // Sessions start out scrolling.
                 fit: default_fit(false),
+                written: None,
             }),
             outline,
         });
@@ -984,7 +988,9 @@ impl ViewSession {
     ///
     /// With `counts_as_saved`, the document is unmodified once written
     /// (edits made meanwhile stay unsaved); without, this is a copy on the
-    /// side, to share for instance.
+    /// side, to share for instance, or to put in the document's place
+    /// afterwards (then [`written_is_saved`](Self::written_is_saved) says
+    /// so).
     ///
     /// The session goes on reading the file it was opened from. That file
     /// may be the one written to only if it isn't mapped
@@ -1019,8 +1025,11 @@ impl ViewSession {
             let _ = file.set_len(data.len() as u64);
             let _ = file.sync_all();
             drop(file);
+            let mut state = self.shared.lock();
             if counts_as_saved {
-                self.shared.lock().session.mark_saved(job.version);
+                state.session.mark_saved(job.version);
+            } else {
+                state.written = Some(job.version);
             }
             Ok(())
         }
@@ -1028,6 +1037,17 @@ impl ViewSession {
         Err(PdfError::Save {
             reason: "file descriptors are not supported here".into(),
         })
+    }
+
+    /// The copy last written with [`save_to_fd`](Self::save_to_fd) has
+    /// become the saved document (it was put where the document is kept):
+    /// the document is unmodified, unless it was edited since that copy.
+    /// Does nothing if no copy was written.
+    pub fn written_is_saved(&self) {
+        let mut state = self.shared.lock();
+        if let Some(version) = state.written.take() {
+            state.session.mark_saved(version);
+        }
     }
 
     // --- text selection ------------------------------------------------------

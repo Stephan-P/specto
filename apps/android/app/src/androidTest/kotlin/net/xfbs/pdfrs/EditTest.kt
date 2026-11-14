@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -180,6 +183,64 @@ class EditTest : AppTest() {
         waitForText("1 / 11")
     }
 
+    /** Where the thumbnail labelled [label] is in the page grid. */
+    private fun cell(label: String): Rect {
+        val grid = compose.onNodeWithTag(PAGES_GRID_TAG).fetchSemanticsNode().boundsInRoot
+        return compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.translate(-grid.topLeft)
+    }
+
+    /** The labels given, in the order their thumbnails are in: row by row, or down the sidebar. */
+    private fun inOrder(vararg labels: String): List<String> =
+        labels.sortedWith(compareBy({ cell(it).top }, { cell(it).left }))
+
+    /** Presses long on the thumbnail labelled [from] and drags it to just behind the one labelled [behind]. */
+    private fun drag(from: String, behind: String) {
+        val start = cell(from).center
+        val target = cell(behind)
+        // Behind is to the right in the grid, and below in the sidebar's single column.
+        val end = if (wide) Offset(target.center.x, target.bottom - 4f) else Offset(target.right - 4f, target.center.y)
+        compose.onNodeWithTag(PAGES_GRID_TAG).performTouchInput {
+            down(start)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveTo((start + end) / 2f)
+            moveTo(end)
+            up()
+        }
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun draggingMovesPages() {
+        // Its first pages are numbered i, ii and iii, so they can be told apart.
+        open("book.pdf", shows = "i (1 / 14)")
+        if (!wide) compose.onNodeWithContentDescription("Contents and pages").performClick()
+        waitForText("iii")
+        assertEquals(listOf("i", "ii", "iii"), inOrder("i", "ii", "iii"))
+
+        // A long press that moves on takes the page along; it stays picked.
+        drag("ii", behind = "iii")
+        waitForText("1 selected")
+        compose.waitUntil(WAIT_MS) { inOrder("i", "ii", "iii") == listOf("i", "iii", "ii") }
+        compose.onNodeWithText("ii").assertIsSelected()
+        // Dragging one of several picked pages moves them all, in their order.
+        compose.onNodeWithText("i").performClick()
+        waitForText("2 selected")
+        drag("i", behind = "iii")
+        compose.waitUntil(WAIT_MS) { inOrder("i", "ii", "iii") == listOf("iii", "i", "ii") }
+        compose.onNodeWithText("2 selected").assertIsDisplayed()
+
+        // A long press on a picked page that goes nowhere lets go of it.
+        pick("i")
+        waitForText("1 selected")
+        compose.onNodeWithContentDescription("Clear selection").performClick()
+        // Each drag was one edit.
+        menu("Undo move")
+        compose.waitUntil(WAIT_MS) { inOrder("i", "ii", "iii") == listOf("i", "iii", "ii") }
+        menu("Undo move")
+        compose.waitUntil(WAIT_MS) { inOrder("i", "ii", "iii") == listOf("i", "ii", "iii") }
+        waitUntilGone("Edited")
+    }
+
     @Test
     fun savingAsWritesTheEditedDocumentAndShowsIt() {
         openPages()
@@ -264,6 +325,46 @@ class EditTest : AppTest() {
     }
 
     @Test
+    fun savingWritesOverTheFileAndKeepsTheDocumentOpen() {
+        openPages()
+        // Nothing to save yet.
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onAllNodesWithText("Save").assertCountEquals(0)
+        compose.onNodeWithText("Save as…").assertIsDisplayed()
+        Espresso.pressBack()
+
+        showGrid()
+        pick("2")
+        compose.onNodeWithContentDescription("Delete pages").performClick()
+        leaveGrid()
+        waitForText("1 / 11")
+        val opened = File(instrumentation.targetContext.cacheDir, "pages.pdf")
+        val before = opened.readBytes()
+        menu("Save")
+        waitUntilGone("Edited")
+        val saved = opened.readBytes()
+        assertTrue("written anew", !saved.contentEquals(before))
+        assertEquals("a PDF", "%PDF-", String(saved, 0, 5))
+        // Still the same document, where it was: the edit can be taken
+        // back, which is a change to save again. Ctrl+S does that.
+        compose.onNodeWithText("1 / 11").assertIsDisplayed()
+        menu("Undo delete")
+        waitForText("1 / 12")
+        compose.onNodeWithText("Edited").assertIsDisplayed()
+        page.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.S) } }
+        waitUntilGone("Edited")
+        assertTrue("written again", !opened.readBytes().contentEquals(saved))
+        assertEquals("never asked where", 0, dialogs.asked)
+
+        // Saved, it is left without a question, and listed once.
+        menu("Close")
+        waitForText("Recent")
+        compose.onNodeWithText("pages.pdf").performClick()
+        waitForText("1 / 12")
+        assertTrue(!shown("Edited"))
+    }
+
+    @Test
     fun leavingUnsavedEditsAsksFirst() {
         openPages()
         edit()
@@ -276,14 +377,16 @@ class EditTest : AppTest() {
         // Saved from the question, the reader goes on to where they were going.
         menu("Close")
         waitForText("Save changes?")
-        compose.onNodeWithText("Save as…").performClick()
+        compose.onNodeWithText("Save").performClick()
         waitForText("Recent")
-        compose.onNodeWithText("edited.pdf").assertIsDisplayed()
-        assertEquals(1, dialogs.asked)
-
-        // Discarded, the edits are gone.
         compose.onNodeWithText("pages.pdf").performClick()
         waitForText("1 / 12")
+        assertTrue(!shown("Edited"))
+        menu("Properties")
+        waitForText("210 × 297 mm (A4); other pages differ")
+        compose.onNodeWithText("Close").performClick()
+
+        // Discarded, the edits are gone: page 2 is turned once, not twice.
         edit()
         menu("Close")
         waitForText("Save changes?")
@@ -292,7 +395,34 @@ class EditTest : AppTest() {
         compose.onNodeWithText("pages.pdf").performClick()
         waitForText("1 / 12")
         assertTrue(!shown("Edited"))
-        assertEquals(1, dialogs.asked)
+        menu("Properties")
+        waitForText("210 × 297 mm (A4); other pages differ")
+        assertEquals(0, dialogs.asked)
+    }
+
+    @Test
+    fun aFileThatCantBeWrittenOverIsSavedElsewhere() {
+        openPages()
+        val opened = File(instrumentation.targetContext.cacheDir, "pages.pdf")
+        try {
+            // As most documents handed over by other apps are: to read only.
+            assertTrue(opened.setReadOnly())
+            reopen("pages.pdf")
+            waitForText("1 / 12")
+            edit()
+            compose.onNodeWithContentDescription("More").performClick()
+            compose.onAllNodesWithText("Save").assertCountEquals(0)
+            // Leaving it, the question offers the only way there is.
+            compose.onNodeWithText("Close").performClick()
+            waitForText("Save changes?")
+            compose.onNodeWithText("Save as…").performClick()
+            waitForText("Recent")
+            compose.onNodeWithText("edited.pdf").assertIsDisplayed()
+            compose.onNodeWithText("pages.pdf").assertIsDisplayed()
+            assertEquals(1, dialogs.asked)
+        } finally {
+            opened.setWritable(true)
+        }
     }
 
     @Test

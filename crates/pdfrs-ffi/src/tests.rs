@@ -679,6 +679,26 @@ fn saving_what_was_edited() {
     let copy_fd = std::fs::File::create(&copy).unwrap().into_raw_fd();
     session.save_to_fd(copy_fd, false).unwrap();
     assert!(session.edit_state().modified);
+    // Unless the copy is put in the document's place: then what it holds
+    // is saved, and an edit made since is not.
+    assert!(session.rotate_pages(vec![0], true));
+    session.written_is_saved();
+    assert!(session.edit_state().modified);
+    assert!(session.undo().is_some());
+    assert!(!session.edit_state().modified);
+    assert!(session.redo().is_some());
+    assert!(session.undo().is_some());
+    assert!(session.delete_pages(vec![0]));
+    assert!(session.undo().is_some());
+    // Said once, it is used up.
+    assert!(session.rotate_pages(vec![1], true));
+    session.written_is_saved();
+    assert!(session.edit_state().modified);
+    assert!(session.undo().is_some());
+    assert!(!session.edit_state().modified);
+    assert!(session.undo().is_some());
+    assert!(session.edit_state().modified);
+    assert!(session.redo().is_some());
     session.save_to_fd(fd, true).unwrap();
     let written = std::fs::read(&path).unwrap();
     assert_eq!(std::fs::read(&copy).unwrap(), written);
