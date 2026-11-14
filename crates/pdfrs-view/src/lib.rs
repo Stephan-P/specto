@@ -14,7 +14,7 @@ mod viewer;
 
 pub use layout::{LayoutMode, group_spreads};
 pub use viewer::{
-    Frame, PageDraw, Settings, TileDraw, ViewPage, Viewer, ZoomMode, placeholder_level,
+    Frame, PageDraw, Settings, TileDraw, ViewPage, ViewState, Viewer, ZoomMode, placeholder_level,
 };
 
 #[cfg(test)]

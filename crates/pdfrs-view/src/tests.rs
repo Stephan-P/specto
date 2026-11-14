@@ -410,3 +410,66 @@ fn go_to_pdf_position_respects_rotation() {
     let r = v.page_rect(1).unwrap();
     assert!(close(r.origin.y + 300.0, 10.0), "{r:?}");
 }
+
+#[test]
+fn view_state_round_trips_across_viewers_and_sizes() {
+    let mut a = viewer(letters(10));
+    a.set_layout_mode(LayoutMode::TwoPageContinuous);
+    a.set_cover_alone(true);
+    a.set_zoom(0.8, ViewPoint::origin());
+    a.go_to_pdf_position(5, None, Some(792.0 - 300.0)); // 300 pt into page 6
+    let state = a.view_state();
+    assert_eq!(state.page, 5);
+    assert!(
+        (state.page_offset - 300.0 / 792.0).abs() < 0.02,
+        "{state:?}"
+    );
+    assert_eq!(state.zoom_mode, ZoomMode::Fixed);
+
+    // A new viewer, as after reopening the file, in a different window size.
+    let mut b = viewer(letters(10));
+    b.restore_view_state(&state);
+    b.set_viewport(ViewSize::new(700.0, 500.0), 2.0);
+    assert_eq!(b.layout_mode(), LayoutMode::TwoPageContinuous);
+    assert!(b.settings().cover_alone);
+    assert!(close(b.zoom(), 0.8));
+    let again = b.view_state();
+    assert_eq!(again.page, 5);
+    assert!(
+        (again.page_offset - state.page_offset).abs() < 0.02,
+        "{again:?}"
+    );
+
+    // Fewer pages now: clamped instead of failing, and the last page is in
+    // view (the scroll is clamped too, so it needn't be at the top).
+    let mut c = viewer(letters(3));
+    c.restore_view_state(&state);
+    let last = c.page_rect(2).unwrap();
+    assert!(
+        last.min_y() < c.viewport().height && last.max_y() > 0.0,
+        "{last:?}"
+    );
+}
+
+#[test]
+fn mode_names_round_trip() {
+    for m in LayoutMode::ALL {
+        assert_eq!(LayoutMode::from_name(m.name()), Some(m));
+    }
+    for z in [ZoomMode::Fixed, ZoomMode::FitWidth, ZoomMode::FitPage] {
+        assert_eq!(ZoomMode::from_name(z.name()), Some(z));
+    }
+    assert_eq!(LayoutMode::from_name("nonsense"), None);
+}
+
+#[test]
+fn view_state_at_the_document_start_keeps_the_margin() {
+    let mut a = viewer(letters(10));
+    a.set_zoom(1.0, ViewPoint::origin());
+    let state = a.view_state();
+    assert_eq!(state.page, 0);
+    assert!(state.page_offset < 0.0, "{state:?}");
+    let mut b = viewer(letters(10));
+    b.restore_view_state(&state);
+    assert!(close(b.scroll_offset().y, 0.0), "{:?}", b.scroll_offset());
+}

@@ -17,6 +17,27 @@ pub enum LayoutMode {
 }
 
 impl LayoutMode {
+    pub const ALL: [Self; 4] = [
+        Self::SinglePage,
+        Self::Continuous,
+        Self::TwoPage,
+        Self::TwoPageContinuous,
+    ];
+
+    /// A stable name, for settings files and actions.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::SinglePage => "single",
+            Self::Continuous => "continuous",
+            Self::TwoPage => "two-page",
+            Self::TwoPageContinuous => "two-page-continuous",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name() == name)
+    }
+
     pub fn is_continuous(self) -> bool {
         matches!(self, Self::Continuous | Self::TwoPageContinuous)
     }

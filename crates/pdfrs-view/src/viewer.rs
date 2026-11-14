@@ -42,6 +42,39 @@ pub enum ZoomMode {
     FitPage,
 }
 
+impl ZoomMode {
+    /// A stable name, for settings files and actions.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Fixed => "fixed",
+            Self::FitWidth => "fit-width",
+            Self::FitPage => "fit-page",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Fixed, Self::FitWidth, Self::FitPage]
+            .into_iter()
+            .find(|m| m.name() == name)
+    }
+}
+
+/// What a frontend remembers about a document between sessions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ViewState {
+    /// The page at the top of the viewport.
+    pub page: usize,
+    /// How far down that page the viewport starts, as a fraction of the
+    /// page's height (so it survives a different window size or zoom).
+    /// Negative if it starts in the margin or gap above the page.
+    pub page_offset: f64,
+    pub layout: LayoutMode,
+    pub cover_alone: bool,
+    pub zoom_mode: ZoomMode,
+    /// Logical px per point; only used with `ZoomMode::Fixed`.
+    pub zoom: f64,
+}
+
 #[derive(Clone, Debug)]
 pub struct Settings {
     /// Gap between spreads and between the pages of a spread, logical px.
@@ -349,6 +382,62 @@ impl Viewer {
     /// Multiplies the zoom (pinch, ctrl+scroll), keeping `anchor` in place.
     pub fn zoom_by(&mut self, factor: f64, anchor: ViewPoint) {
         self.set_zoom(self.zoom * factor, anchor);
+    }
+
+    /// The current position and view settings, to restore later.
+    pub fn view_state(&self) -> ViewState {
+        let top = self.scroll.y.max(0.0);
+        // The first laid-out page whose bottom is below the viewport top.
+        let page = self
+            .visible_spreads(top, top)
+            .flat_map(|s| s.pages.iter().copied())
+            .find(|&i| self.layout.page_rects[i].is_some_and(|r| r.max_y() > top))
+            .unwrap_or_else(|| self.current_page());
+        let page_offset = self
+            .layout
+            .page_rects
+            .get(page)
+            .copied()
+            .flatten()
+            .map_or(0.0, |r| {
+                // Slightly negative when the viewport starts in the margin or
+                // gap above the page (e.g. at the very top of the document).
+                ((top - r.origin.y) / r.size.height).clamp(-0.5, 1.0)
+            });
+        ViewState {
+            page,
+            page_offset,
+            layout: self.mode,
+            cover_alone: self.settings.cover_alone,
+            zoom_mode: self.zoom_mode,
+            zoom: self.zoom,
+        }
+    }
+
+    /// Restores a [`ViewState`]. Out-of-range values (e.g. the file changed
+    /// and has fewer pages now) are clamped.
+    pub fn restore_view_state(&mut self, state: &ViewState) {
+        if self.pages.is_empty() {
+            return;
+        }
+        self.mode = state.layout;
+        self.settings.cover_alone = state.cover_alone;
+        self.regroup();
+        self.zoom_mode = state.zoom_mode;
+        if state.zoom.is_finite() {
+            self.zoom = state.zoom;
+        }
+        let page = state.page.min(self.pages.len() - 1);
+        self.go_to_page(page);
+        if let Some(Some(r)) = self.layout.page_rects.get(page) {
+            let offset = if state.page_offset.is_finite() {
+                state.page_offset.clamp(-0.5, 1.0)
+            } else {
+                0.0
+            };
+            self.scroll.y = r.origin.y + offset * r.size.height;
+            self.clamp_scroll();
+        }
     }
 
     /// A zoom gesture (pinch) started: until [`end_zoom_gesture`](Self::end_zoom_gesture)

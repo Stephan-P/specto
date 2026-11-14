@@ -75,7 +75,7 @@ While a field is focused, the frontend overlays a **native text input** (GTK ent
 pdfrs-view (visible pages, zoom, device scale)
    │  requests TileKey { page, zoom_bucket, scale_factor, tile_x, tile_y, content_version }
    ▼
-RenderScheduler (priority queue: visible > prefetch; cancel on scroll/zoom)
+Scheduler (one per app; a Client per view with its own priority queue, replaced every frame; clients served round-robin; guards for expensive pages)
    │  worker thread pool (rayon or dedicated threads)
    ▼
 Renderer trait ──► HayroRenderer (default)   | PdfiumRenderer (tests / optional fallback)
@@ -124,6 +124,8 @@ impl Viewer {
     fn page_to_view(&self, usize, PagePoint) -> Option<ViewPoint>;
     fn begin_zoom_gesture / end_zoom_gesture;            // pinch: never settled while active
     fn frame(&mut self, now: Instant, cached: impl Fn(&TileKey) -> bool) -> Frame;
+    fn view_state(&self) -> ViewState;                   // page + offset, layout, zoom: to remember per file
+    fn restore_view_state(&mut self, &ViewState);
 }
 
 struct Frame {

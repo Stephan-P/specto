@@ -315,6 +315,55 @@ fn slow_pages_get_an_extra_worker_and_render_one_tile_at_a_time() {
 }
 
 #[test]
+fn clients_have_separate_queues_and_results() {
+    let sched = Scheduler::new(2, || {});
+    let (a_tx, a_rx) = mpsc::channel();
+    let a_tx = std::sync::Mutex::new(a_tx);
+    let a = sched.client(move || {
+        let _ = a_tx.lock().unwrap().send(());
+    });
+    let b = sched.client(|| {});
+    let doc_a = sched.open(sample_pdf(""), None).unwrap().id;
+    let doc_b = sched.open(sample_pdf("/Rotate 90"), None).unwrap().id;
+    let key = |doc, tx| TileKey {
+        doc,
+        page: 0,
+        rotation: Rotation::None,
+        content: Content::PageOnly,
+        scale: TileScale::from_level(2),
+        tx,
+        ty: 0,
+    };
+    // B's request must not replace A's (as `Scheduler::request` would).
+    a.request([key(doc_a, 0)]);
+    b.request([key(doc_b, 0)]);
+    a_rx.recv_timeout(Duration::from_secs(10))
+        .expect("A was notified");
+    let start = std::time::Instant::now();
+    while a.pending() + b.pending() > 0 {
+        assert!(start.elapsed() < Duration::from_secs(10), "timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let (ra, rb) = (a.take_finished(), b.take_finished());
+    assert_eq!(
+        ra.iter().map(|f| f.key).collect::<Vec<_>>(),
+        [key(doc_a, 0)]
+    );
+    assert_eq!(
+        rb.iter().map(|f| f.key).collect::<Vec<_>>(),
+        [key(doc_b, 0)]
+    );
+    assert!(
+        sched.take_finished().is_empty(),
+        "nothing for the default client"
+    );
+    // A dropped client's requests disappear.
+    b.request([key(doc_b, 1)]);
+    drop(b);
+    assert_eq!(sched.pending() + a.pending(), 0);
+}
+
+#[test]
 fn scheduler_drops_closed_documents() {
     let sched = Scheduler::new(1, || {});
     let opened = sched.open(sample_pdf(""), None).unwrap();

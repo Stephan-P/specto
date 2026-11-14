@@ -5,6 +5,7 @@
 mod canvas;
 mod document;
 mod outline;
+mod state;
 mod thumbnails;
 mod window;
 
@@ -39,8 +40,13 @@ fn main() -> glib::ExitCode {
         ] {
             app.set_accels_for_action(action, accels);
         }
+        // Close windows one by one, so each saves its view state.
         let quit = gio::ActionEntry::builder("quit")
-            .activate(|app: &adw::Application, _, _| app.quit())
+            .activate(|app: &adw::Application, _, _| {
+                for window in app.windows() {
+                    window.close();
+                }
+            })
             .build();
         app.add_action_entries([quit]);
         if std::env::var_os("PDFRS_DEBUG").is_some() {

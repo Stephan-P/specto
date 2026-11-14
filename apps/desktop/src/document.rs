@@ -4,20 +4,31 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use pdfrs_geom::ViewPoint;
 use pdfrs_render::OpenError;
-use pdfrs_render::scheduler::Scheduler;
-use pdfrs_render::tile::{TileCache, TileKey};
+use pdfrs_render::scheduler::{Client, Scheduler};
+use pdfrs_render::tile::{DocId, TileCache, TileKey};
 use pdfrs_source::{Link, SourceDocument, Target};
 use pdfrs_view::{Settings, ViewPage, Viewer, placeholder_level};
 
 const CACHE_BUDGET: usize = 384 << 20;
 
 pub type SharedDocument = Rc<RefCell<Document>>;
+
+/// One scheduler (and worker pool) for the whole app; each document gets a
+/// client of it, so windows don't each start a pool or cancel each other's
+/// requests.
+fn scheduler() -> &'static Scheduler {
+    static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
+    SCHEDULER.get_or_init(|| {
+        let threads = std::thread::available_parallelism().map_or(2, |n| n.get());
+        Scheduler::new(threads, || {})
+    })
+}
 
 pub struct Document {
     pub name: String,
@@ -27,7 +38,8 @@ pub struct Document {
     links: HashMap<usize, Vec<Link>>,
     pub viewer: Viewer,
     pub cache: TileCache<gdk::Texture>,
-    scheduler: Scheduler,
+    doc_id: DocId,
+    client: Client,
     /// Requests from the canvas's last frame, highest priority first.
     canvas_requests: Vec<TileKey>,
     /// Pages whose thumbnails are currently on screen in the sidebar.
@@ -46,11 +58,16 @@ impl Document {
         password: Option<&str>,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, OpenError> {
-        let threads = std::thread::available_parallelism().map_or(2, |n| n.get());
-        let scheduler = Scheduler::new(threads, wake);
         let data: Arc<[u8]> = data.into();
-        let opened = scheduler.open(data.clone(), password)?;
-        let source = SourceDocument::open(data, password)?;
+        let opened = scheduler().open(data.clone(), password)?;
+        let source = match SourceDocument::open(data, password) {
+            Ok(s) => s,
+            Err(e) => {
+                scheduler().close(opened.id);
+                return Err(e);
+            }
+        };
+        let client = scheduler().client(wake);
         let pages: Vec<ViewPage> = opened
             .pages
             .iter()
@@ -74,7 +91,8 @@ impl Document {
             viewer: Viewer::new(pages, Settings::default()),
             cache: TileCache::new(CACHE_BUDGET)
                 .with_evict_last(move |k| k.scale.level().is_some_and(|l| levels.contains(&l))),
-            scheduler,
+            doc_id: opened.id,
+            client,
             canvas_requests: Vec::new(),
             thumbnails_shown: BTreeSet::new(),
             failed: HashSet::new(),
@@ -115,13 +133,13 @@ impl Document {
             .filter_map(|&i| self.viewer.placeholder_key(i))
             .filter(|k| !self.cache.contains(k));
         let all = self.canvas_requests.iter().copied().chain(thumbnails);
-        self.scheduler
+        self.client
             .request(all.filter(|k| !self.failed.contains(k)));
     }
 
     /// Moves finished tiles into the cache. Returns whether any arrived.
     pub fn receive_tiles(&mut self) -> bool {
-        let finished = self.scheduler.take_finished();
+        let finished = self.client.take_finished();
         let any = !finished.is_empty();
         for f in finished {
             match f.result {
@@ -143,5 +161,11 @@ impl Document {
             }
         }
         any
+    }
+}
+
+impl Drop for Document {
+    fn drop(&mut self) {
+        scheduler().close(self.doc_id);
     }
 }

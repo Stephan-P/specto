@@ -12,6 +12,7 @@ use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 use crate::canvas::Canvas;
 use crate::document::{Document, SharedDocument};
 use crate::outline::OutlineView;
+use crate::state;
 use crate::thumbnails::Sidebar;
 
 /// Actions that need an open document.
@@ -42,6 +43,10 @@ pub struct Inner {
     /// Header bar widgets that only make sense with a document open.
     document_widgets: Vec<gtk::Widget>,
     document: RefCell<Option<SharedDocument>>,
+    /// URI of the open file, for remembering its view state.
+    uri: RefCell<Option<String>>,
+    recent_title: gtk::Label,
+    recent_list: gtk::ListBox,
     sidebar: RefCell<Option<Sidebar>>,
     /// Thumbnails / Contents, if the document has an outline.
     sidebar_stack: RefCell<Option<adw::ViewStack>>,
@@ -75,7 +80,25 @@ impl Window {
             .halign(gtk::Align::Center)
             .css_classes(["pill", "suggested-action"])
             .build();
-        empty.set_child(Some(&open_button));
+        let recent_list = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .build();
+        let recent_title = gtk::Label::builder()
+            .label("Recent")
+            .xalign(0.0)
+            .css_classes(["heading"])
+            .build();
+        let start = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .halign(gtk::Align::Center)
+            .width_request(360)
+            .build();
+        start.append(&open_button);
+        start.append(&recent_title);
+        start.append(&recent_list);
+        empty.set_child(Some(&start));
 
         let stack = gtk::Stack::new();
         stack.add_named(&empty, Some("empty"));
@@ -191,6 +214,9 @@ impl Window {
             ],
             zoom_button,
             document: RefCell::default(),
+            uri: RefCell::default(),
+            recent_title,
+            recent_list,
             sidebar: RefCell::default(),
             sidebar_stack: RefCell::default(),
             last_page: Cell::new(usize::MAX),
@@ -211,6 +237,29 @@ impl Window {
             }
         });
         this.set_document_actions_enabled(false);
+
+        // Remember where the user was in this file.
+        let weak = Rc::downgrade(&this.0);
+        this.0.window.connect_close_request(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).save_state();
+            }
+            glib::Propagation::Proceed
+        });
+
+        this.refresh_recent();
+        let weak = Rc::downgrade(&this.0);
+        let handler = gtk::RecentManager::default().connect_changed(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).refresh_recent();
+            }
+        });
+        let handler = RefCell::new(Some(handler));
+        this.0.window.connect_destroy(move |_| {
+            if let Some(h) = handler.take() {
+                gtk::RecentManager::default().disconnect(h);
+            }
+        });
 
         // Callbacks only hold weak references, so the GTK window owns the
         // state and keeps it alive until it is destroyed.
@@ -283,6 +332,90 @@ impl Window {
         };
         drop(tx);
         self.set_document(Rc::new(RefCell::new(document)), rx);
+        let uri = file.uri().to_string();
+        self.restore_state(&uri);
+        gtk::RecentManager::default().add_item(&uri);
+        self.0.uri.replace(Some(uri));
+    }
+
+    /// Applies the view state saved for `uri`, if any.
+    fn restore_state(&self, uri: &str) {
+        let Some(saved) = state::load(uri) else {
+            return;
+        };
+        let inner = &self.0;
+        inner
+            .canvas
+            .update_viewer(|v| v.restore_view_state(&saved.view));
+        if inner.sidebar_stack.borrow().is_some() {
+            gio::prelude::ActionGroupExt::activate_action(
+                &inner.window,
+                "sidebar-page",
+                Some(&saved.sidebar_page.to_variant()),
+            );
+        }
+        inner.split.set_show_sidebar(saved.sidebar);
+    }
+
+    fn save_state(&self) {
+        let inner = &self.0;
+        let (Some(uri), Some(doc)) = (inner.uri.borrow().clone(), inner.document.borrow().clone())
+        else {
+            return;
+        };
+        let view = doc.borrow().viewer.view_state();
+        let sidebar_page = inner
+            .sidebar_stack
+            .borrow()
+            .as_ref()
+            .and_then(|s| s.visible_child_name())
+            .map_or_else(|| "thumbnails".to_owned(), |n| n.to_string());
+        state::save(
+            &uri,
+            &state::Saved {
+                view,
+                sidebar: inner.split.shows_sidebar(),
+                sidebar_page,
+            },
+        );
+    }
+
+    /// Lists recently opened PDFs on the start page.
+    fn refresh_recent(&self) {
+        let inner = &self.0;
+        while let Some(row) = inner.recent_list.first_child() {
+            inner.recent_list.remove(&row);
+        }
+        let mut items: Vec<gtk::RecentInfo> = gtk::RecentManager::default()
+            .items()
+            .into_iter()
+            .filter(|i| i.mime_type() == "application/pdf" && i.exists())
+            .collect();
+        items.sort_by_key(|i| std::cmp::Reverse(i.modified().to_unix()));
+        for info in items.into_iter().take(8) {
+            let file = gio::File::for_uri(&info.uri());
+            let subtitle = file
+                .parent()
+                .and_then(|p| p.path())
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            let row = adw::ActionRow::builder()
+                .title(glib::markup_escape_text(&info.display_name()))
+                .subtitle(glib::markup_escape_text(&subtitle))
+                .activatable(true)
+                .build();
+            row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+            let weak = Rc::downgrade(&self.0);
+            row.connect_activated(move |_| {
+                if let Some(inner) = weak.upgrade() {
+                    Window(inner).open(file.clone());
+                }
+            });
+            inner.recent_list.append(&row);
+        }
+        let any = inner.recent_list.first_child().is_some();
+        inner.recent_list.set_visible(any);
+        inner.recent_title.set_visible(any);
     }
 
     async fn ask_password(&self, name: &str, retry: bool) -> Option<String> {
@@ -424,7 +557,7 @@ impl Window {
                 a.set_state(&state);
             }
         };
-        set_state("layout", layout_name(mode).to_variant());
+        set_state("layout", mode.name().to_variant());
         set_state("cover-alone", cover.to_variant());
     }
 
@@ -524,7 +657,7 @@ impl Window {
                 else {
                     return;
                 };
-                let Some(mode) = layout_from_name(&name) else {
+                let Some(mode) = LayoutMode::from_name(&name) else {
                     return;
                 };
                 action.set_state(&name.to_variant());
@@ -645,23 +778,4 @@ impl Window {
 
 fn centre(v: &Viewer) -> ViewPoint {
     ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0)
-}
-
-fn layout_name(mode: LayoutMode) -> &'static str {
-    match mode {
-        LayoutMode::SinglePage => "single",
-        LayoutMode::Continuous => "continuous",
-        LayoutMode::TwoPage => "two-page",
-        LayoutMode::TwoPageContinuous => "two-page-continuous",
-    }
-}
-
-fn layout_from_name(name: &str) -> Option<LayoutMode> {
-    Some(match name {
-        "single" => LayoutMode::SinglePage,
-        "continuous" => LayoutMode::Continuous,
-        "two-page" => LayoutMode::TwoPage,
-        "two-page-continuous" => LayoutMode::TwoPageContinuous,
-        _ => return None,
-    })
 }

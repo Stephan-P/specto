@@ -6,6 +6,12 @@
 //! collected with [`Scheduler::take_finished`] after the `notify` callback
 //! fires (the frontend uses it to wake its main loop).
 //!
+//! Several views (windows) can share one scheduler and its threads: each gets
+//! a [`Client`] with its own queue, finished tiles and `notify` callback, so
+//! their requests don't replace each other. Workers serve the clients'
+//! queues round-robin. `Scheduler::request` and friends use a built-in
+//! default client.
+//!
 //! Each worker thread opens its own copy of every document it renders, because
 //! hayro's caches are not `Send`. A panic while rendering is caught and
 //! reported as [`RenderError::Panicked`] for that tile only.
@@ -29,7 +35,7 @@
 //!   [`Limits::stall_after`]) and other work is waiting, so the rest of the
 //!   document keeps rendering. Extra workers exit once nothing is stalled.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -94,14 +100,31 @@ fn page_of(key: &TileKey) -> PageId {
     (key.doc, key.page)
 }
 
+type ClientId = u32;
+type Notify = Arc<dyn Fn() + Send + Sync>;
+
+struct ClientState {
+    queue: VecDeque<TileKey>,
+    finished: Vec<Finished>,
+    notify: Notify,
+}
+
+/// A tile being rendered: when it started, and for whom.
+#[derive(Clone, Copy, Debug)]
+struct InFlight {
+    started: Instant,
+    client: ClientId,
+}
+
 #[derive(Default)]
 struct State {
     docs: HashMap<DocId, Arc<Source>>,
     next_doc: u32,
-    queue: VecDeque<TileKey>,
-    /// Tiles being rendered, with their start time.
-    in_flight: HashMap<TileKey, Instant>,
-    finished: Vec<Finished>,
+    clients: BTreeMap<ClientId, ClientState>,
+    next_client: ClientId,
+    /// The client served last, for round-robin.
+    cursor: ClientId,
+    in_flight: HashMap<TileKey, InFlight>,
     /// Pages rendered one tile at a time.
     expensive: HashSet<PageId>,
     /// Pages with huge images: workers drop their document copy afterwards.
@@ -116,7 +139,7 @@ impl State {
     fn stalled(&self, now: Instant, limits: &Limits) -> usize {
         self.in_flight
             .values()
-            .filter(|&&t| now.duration_since(t) >= limits.stall_after)
+            .filter(|f| now.duration_since(f.started) >= limits.stall_after)
             .count()
     }
 }
@@ -124,7 +147,6 @@ impl State {
 struct Shared {
     state: Mutex<State>,
     wake: Condvar,
-    notify: Box<dyn Fn() + Send + Sync>,
     limits: Limits,
 }
 
@@ -136,6 +158,57 @@ impl Shared {
 
 pub struct Scheduler {
     shared: Arc<Shared>,
+    default: Client,
+}
+
+/// One view's share of a [`Scheduler`]: its own request queue, finished
+/// tiles and wake-up callback. Dropping it discards its queue and results.
+pub struct Client {
+    shared: Arc<Shared>,
+    id: ClientId,
+}
+
+impl Client {
+    /// Replaces this client's queue with `wanted`, highest priority first.
+    /// Tiles being rendered (for anyone), or finished but not yet taken by
+    /// this client, are skipped.
+    pub fn request(&self, wanted: impl IntoIterator<Item = TileKey>) {
+        let mut s = self.shared.lock();
+        let s = &mut *s;
+        let Some(client) = s.clients.get_mut(&self.id) else {
+            return;
+        };
+        let mut seen: HashSet<TileKey> = client.finished.iter().map(|f| f.key).collect();
+        client.queue = wanted
+            .into_iter()
+            .filter(|k| {
+                !s.in_flight.contains_key(k) && s.docs.contains_key(&k.doc) && seen.insert(*k)
+            })
+            .collect();
+        self.shared.wake.notify_all();
+    }
+
+    /// Takes all of this client's tiles finished since the last call.
+    pub fn take_finished(&self) -> Vec<Finished> {
+        let mut s = self.shared.lock();
+        s.clients
+            .get_mut(&self.id)
+            .map(|c| std::mem::take(&mut c.finished))
+            .unwrap_or_default()
+    }
+
+    /// Number of this client's tiles queued or being rendered.
+    pub fn pending(&self) -> usize {
+        let s = self.shared.lock();
+        let queued = s.clients.get(&self.id).map_or(0, |c| c.queue.len());
+        queued + s.in_flight.values().filter(|f| f.client == self.id).count()
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.shared.lock().clients.remove(&self.id);
+    }
 }
 
 impl Scheduler {
@@ -159,7 +232,6 @@ impl Scheduler {
                 ..State::default()
             }),
             wake: Condvar::new(),
-            notify: Box::new(notify),
             limits,
         });
         for _ in 0..threads {
@@ -170,7 +242,14 @@ impl Scheduler {
             .name("pdfrs-render-watchdog".into())
             .spawn(move || watchdog(&s))
             .expect("spawn render watchdog");
-        Self { shared }
+        let default = new_client(&shared, Arc::new(notify));
+        Self { shared, default }
+    }
+
+    /// A new client (e.g. for another window). `notify` is called from a
+    /// worker thread when tiles for this client are ready.
+    pub fn client(&self, notify: impl Fn() + Send + Sync + 'static) -> Client {
+        new_client(&self.shared, Arc::new(notify))
     }
 
     /// Opens a document, validating it on the calling thread.
@@ -210,38 +289,27 @@ impl Scheduler {
     pub fn close(&self, doc: DocId) {
         let mut s = self.lock();
         s.docs.remove(&doc);
-        s.queue.retain(|k| k.doc != doc);
-        s.finished.retain(|f| f.key.doc != doc);
+        for c in s.clients.values_mut() {
+            c.queue.retain(|k| k.doc != doc);
+            c.finished.retain(|f| f.key.doc != doc);
+        }
         s.expensive.retain(|p| p.0 != doc);
         s.heavy.retain(|p| p.0 != doc);
     }
 
-    /// Replaces the queue with `wanted`, highest priority first. Tiles being
-    /// rendered, or finished but not yet taken with `take_finished`, are skipped.
+    /// Replaces the default client's queue (see [`Client::request`]).
     pub fn request(&self, wanted: impl IntoIterator<Item = TileKey>) {
-        let mut s = self.lock();
-        // Rendering, or rendered but not collected yet: don't render again.
-        let mut seen: HashSet<TileKey> = s.finished.iter().map(|f| f.key).collect();
-        let queue: VecDeque<TileKey> = wanted
-            .into_iter()
-            .filter(|k| {
-                !s.in_flight.contains_key(k) && s.docs.contains_key(&k.doc) && seen.insert(*k)
-            })
-            .collect();
-        s.queue = queue;
-        drop(s);
-        self.shared.wake.notify_all();
+        self.default.request(wanted);
     }
 
-    /// Takes all tiles finished since the last call.
+    /// Takes the default client's finished tiles.
     pub fn take_finished(&self) -> Vec<Finished> {
-        std::mem::take(&mut self.lock().finished)
+        self.default.take_finished()
     }
 
-    /// Number of tiles queued or being rendered.
+    /// The default client's tiles queued or being rendered.
     pub fn pending(&self) -> usize {
-        let s = self.lock();
-        s.queue.len() + s.in_flight.len()
+        self.default.pending()
     }
 
     /// Whether a page is rendered one tile at a time because it is slow or
@@ -269,11 +337,29 @@ impl Drop for Scheduler {
     }
 }
 
+fn new_client(shared: &Arc<Shared>, notify: Notify) -> Client {
+    let mut s = shared.lock();
+    let id = s.next_client;
+    s.next_client += 1;
+    s.clients.insert(
+        id,
+        ClientState {
+            queue: VecDeque::new(),
+            finished: Vec::new(),
+            notify,
+        },
+    );
+    Client {
+        shared: shared.clone(),
+        id,
+    }
+}
+
 /// Index of the first queued tile a worker may start: tiles of an expensive
 /// page wait while another tile of that page is being rendered.
-fn next_eligible(
+fn first_eligible(
     queue: &VecDeque<TileKey>,
-    in_flight: &HashMap<TileKey, Instant>,
+    in_flight: &HashMap<TileKey, InFlight>,
     expensive: &HashSet<PageId>,
 ) -> Option<usize> {
     queue.iter().position(|k| {
@@ -282,13 +368,23 @@ fn next_eligible(
     })
 }
 
+/// The next tile to start, as (client, index in its queue): clients are
+/// served round-robin, starting after the one served last.
+fn next_eligible(s: &State) -> Option<(ClientId, usize)> {
+    let after = s.clients.range(s.cursor + 1..);
+    let before = s.clients.range(..=s.cursor);
+    after
+        .chain(before)
+        .find_map(|(&id, c)| Some((id, first_eligible(&c.queue, &s.in_flight, &s.expensive)?)))
+}
+
 /// Whether the watchdog should start another worker.
 fn should_spawn(s: &State, now: Instant, limits: &Limits) -> bool {
     let idle = s.workers.saturating_sub(s.in_flight.len());
     idle == 0
         && s.workers < s.base_workers + limits.max_extra_workers
         && s.stalled(now, limits) > 0
-        && next_eligible(&s.queue, &s.in_flight, &s.expensive).is_some()
+        && next_eligible(s).is_some()
 }
 
 fn spawn_worker(shared: &Arc<Shared>) {
@@ -308,7 +404,7 @@ fn watchdog(shared: &Arc<Shared>) {
         let slow: Vec<PageId> = s
             .in_flight
             .iter()
-            .filter(|(_, t)| now.duration_since(**t) >= shared.limits.slow_after)
+            .filter(|(_, f)| now.duration_since(f.started) >= shared.limits.slow_after)
             .map(|(k, _)| page_of(k))
             .collect();
         s.expensive.extend(slow);
@@ -352,10 +448,16 @@ fn worker(shared: &Shared) {
                     s.workers -= 1;
                     return;
                 }
-                if let Some(i) = next_eligible(&s.queue, &s.in_flight, &s.expensive) {
-                    let key = s.queue.remove(i).expect("index from position");
+                if let Some((client, i)) = next_eligible(&s) {
+                    s.cursor = client;
+                    let key = s
+                        .clients
+                        .get_mut(&client)
+                        .and_then(|c| c.queue.remove(i))
+                        .expect("index from next_eligible");
                     if let Some(source) = s.docs.get(&key.doc).cloned() {
-                        s.in_flight.insert(key, Instant::now());
+                        let started = Instant::now();
+                        s.in_flight.insert(key, InFlight { started, client });
                         let heavy = s.heavy.contains(&page_of(&key));
                         break (key, source, heavy);
                     }
@@ -373,27 +475,32 @@ fn worker(shared: &Shared) {
             docs.remove(&key.doc);
         }
 
-        let was_empty = {
+        let notify = {
             let mut s = shared.lock();
-            s.in_flight.remove(&key);
+            let s = &mut *s;
+            let client = s.in_flight.remove(&key).map(|f| f.client);
             if elapsed >= shared.limits.slow_after {
                 s.expensive.insert(page_of(&key));
             }
-            if !s.docs.contains_key(&key.doc) {
-                continue; // closed while rendering
+            // Deliver unless the document was closed or the client dropped
+            // while rendering.
+            match client.and_then(|c| s.clients.get_mut(&c)) {
+                Some(c) if s.docs.contains_key(&key.doc) => {
+                    let was_empty = c.finished.is_empty();
+                    c.finished.push(Finished {
+                        key,
+                        result,
+                        elapsed,
+                    });
+                    was_empty.then(|| c.notify.clone())
+                }
+                _ => None,
             }
-            let was_empty = s.finished.is_empty();
-            s.finished.push(Finished {
-                key,
-                result,
-                elapsed,
-            });
-            was_empty
         };
         // Tiles of this page may have been waiting for this one.
         shared.wake.notify_all();
-        if was_empty {
-            (shared.notify)();
+        if let Some(notify) = notify {
+            notify();
         }
     }
 }
@@ -465,19 +572,53 @@ mod tests {
         }
     }
 
+    fn flight(started: Instant, client: ClientId) -> InFlight {
+        InFlight { started, client }
+    }
+
+    fn client_state(queue: &[TileKey]) -> ClientState {
+        ClientState {
+            queue: queue.iter().copied().collect(),
+            finished: Vec::new(),
+            notify: Arc::new(|| {}),
+        }
+    }
+
     #[test]
     fn expensive_pages_render_one_tile_at_a_time() {
         let now = Instant::now();
         let queue: VecDeque<_> = [key(0, 1, 1), key(0, 1, 2), key(0, 2, 0)].into();
-        let in_flight = HashMap::from([(key(0, 1, 0), now)]);
+        let in_flight = HashMap::from([(key(0, 1, 0), flight(now, 0))]);
         // Page 1 is cheap: its next tile may start alongside the first.
-        assert_eq!(next_eligible(&queue, &in_flight, &HashSet::new()), Some(0));
+        assert_eq!(first_eligible(&queue, &in_flight, &HashSet::new()), Some(0));
         // Page 1 is expensive: skip its tiles, start page 2's.
         let expensive = HashSet::from([(DocId(0), 1)]);
-        assert_eq!(next_eligible(&queue, &in_flight, &expensive), Some(2));
+        assert_eq!(first_eligible(&queue, &in_flight, &expensive), Some(2));
         // Nothing else queued: wait.
         let only_page_1: VecDeque<_> = [key(0, 1, 1)].into();
-        assert_eq!(next_eligible(&only_page_1, &in_flight, &expensive), None);
+        assert_eq!(first_eligible(&only_page_1, &in_flight, &expensive), None);
+    }
+
+    #[test]
+    fn clients_are_served_round_robin() {
+        let mut s = State {
+            clients: BTreeMap::from([
+                (0, client_state(&[key(0, 0, 0), key(0, 0, 1)])),
+                (1, client_state(&[])),
+                (2, client_state(&[key(1, 0, 0)])),
+            ]),
+            ..State::default()
+        };
+        s.cursor = 0;
+        assert_eq!(
+            next_eligible(&s),
+            Some((2, 0)),
+            "after client 0 comes 2 (1 is idle)"
+        );
+        s.cursor = 2;
+        assert_eq!(next_eligible(&s), Some((0, 0)), "wraps around");
+        s.clients.get_mut(&0).unwrap().queue.clear();
+        assert_eq!(next_eligible(&s), Some((2, 0)), "the only client with work");
     }
 
     #[test]
@@ -491,15 +632,15 @@ mod tests {
         let mut s = State {
             workers: 1,
             base_workers: 1,
-            in_flight: HashMap::from([(key(0, 0, 0), start)]),
-            queue: [key(0, 1, 0)].into(),
+            in_flight: HashMap::from([(key(0, 0, 0), flight(start, 0))]),
+            clients: BTreeMap::from([(0, client_state(&[key(0, 1, 0)]))]),
             ..State::default()
         };
         assert!(!should_spawn(&s, start, &limits), "not stalled yet");
         assert!(should_spawn(&s, later, &limits));
-        s.queue.clear();
+        s.clients.get_mut(&0).unwrap().queue.clear();
         assert!(!should_spawn(&s, later, &limits), "nothing waiting");
-        s.queue.push_back(key(0, 1, 0));
+        s.clients.get_mut(&0).unwrap().queue.push_back(key(0, 1, 0));
         s.workers = 2;
         assert!(!should_spawn(&s, later, &limits), "cap reached");
     }

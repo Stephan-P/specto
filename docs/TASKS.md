@@ -49,8 +49,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **M** Desktop: thumbnail sidebar (`GtkListView`, shares placeholder tiles with the canvas, follows the current page), page number entry, layout and zoom menus, keyboard navigation and shortcuts
 - [x] **S** Desktop: outline sidebar ("Contents" tab next to Thumbnails, shown when the document has an outline; `GtkTreeListModel` with expanders; `win.sidebar-page` action)
 - [x] **S** Desktop: open via dialog, drag-and-drop or command line (one window per document), password prompt, start page
-- [ ] **S** Desktop: recent files, remember per-file view state (page, zoom, layout)
-- [ ] **S** Desktop: one shared scheduler per app instead of per window (needs per-document request groups in `Scheduler`)
+- [x] **S** Desktop: recent files (GTK `RecentManager`, so they also show up in GNOME; listed on the start page) and per-file view state: page and position, layout, zoom, sidebar (`pdfrs_view::ViewState`, stored in `$XDG_STATE_HOME/pdfrs/view-state.ini`, last 200 files). Ctrl+Q closes windows one by one so each saves.
+- [x] **S** Desktop: one scheduler for the whole app. `Scheduler::client` gives each view its own queue, results and wake-up callback; workers serve clients round-robin. Three windows now share 4 workers instead of starting 4 each.
 - [x] **S** Headless GUI smoke test: `tools/headless/run.sh tools/headless/smoke.sh file.pdf out/` (screenshots via a debug-only `app.screenshot` action). Could run in CI.
 - [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
 - [ ] **S** Android: outline and links through `pdfrs-ffi`
