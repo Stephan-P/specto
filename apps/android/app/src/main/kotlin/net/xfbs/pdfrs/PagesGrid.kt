@@ -31,10 +31,15 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Shape of a grid cell; pages are fitted into it whatever their own shape. */
 private const val CELL_ASPECT = 0.72f
+
+/** How long the page must stay the same before a following grid scrolls to it. */
+private const val FOLLOW_DELAY_MS = 300L
 
 /** Thumbnails to prepare beyond the visible ones, for scrolling on. */
 const val THUMBNAIL_PREFETCH = 6
@@ -87,7 +92,13 @@ fun PageThumbnail(
  * zero-based index.
  */
 @Composable
-fun PagesGrid(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun PagesGrid(
+    state: PdfViewState,
+    onPick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Scroll to keep the current page in view as the reader moves on. */
+    follow: Boolean = false,
+) {
     val current = state.currentPage
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = current)
     val owner = remember { Any() }
@@ -100,6 +111,20 @@ fun PagesGrid(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = M
     }
     DisposableEffect(state) {
         onDispose { state.hideThumbnails(owner) }
+    }
+    if (follow) {
+        LaunchedEffect(state, grid) {
+            snapshotFlow { state.currentPage }.collectLatest { page ->
+                // Once the page view rests, and only if the page isn't fully in view.
+                delay(FOLLOW_DELAY_MS)
+                val info = grid.layoutInfo
+                val item = info.visibleItemsInfo.firstOrNull { it.index == page }
+                val inView = item != null &&
+                    item.offset.y >= info.viewportStartOffset &&
+                    item.offset.y + item.size.height <= info.viewportEndOffset
+                if (!inView && !grid.isScrollInProgress) grid.animateScrollToItem(page)
+            }
+        }
     }
 
     LazyVerticalGrid(

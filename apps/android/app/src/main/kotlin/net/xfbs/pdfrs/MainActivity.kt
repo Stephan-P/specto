@@ -19,23 +19,28 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +85,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -175,6 +181,14 @@ private val besideAndBelow = WindowInsetsSides.Horizontal + WindowInsetsSides.Bo
 
 /** Identifies the page area to UI tests. */
 const val PAGE_VIEW_TAG = "page-view"
+
+/** Identifies the sidebar of wide windows to UI tests. */
+const val SIDEBAR_TAG = "sidebar"
+
+/** Windows at least this wide (in dp) show Pages and Contents beside the document. */
+const val WIDE_WINDOW_DP = 840
+
+private val SIDEBAR_WIDTH = 300.dp
 
 /** Duration of the bars sliding in and out. */
 private const val BARS_MS = 220
@@ -282,6 +296,8 @@ private fun App(
     // Tapping the page hides everything but the page; tapping again brings
     // the bars back.
     var fullScreen by remember { mutableStateOf(false) }
+    // Wide windows: whether the sidebar is open. It starts open.
+    var sidebar by remember { mutableStateOf(true) }
     var showGoTo by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
         (loaded as? Loaded.Ready)?.let {
@@ -318,12 +334,19 @@ private fun App(
     }
 
     val ready = loaded as? Loaded.Ready
-    val immersive = fullScreen && ready != null && !showPages
-    BackHandler(enabled = showPages) { showPages = false }
+    // A wide window (a tablet, but not one sharing its screen) has room for
+    // Pages and Contents in a sidebar next to the document. Narrower ones
+    // show them full screen instead, on request.
+    val wide = LocalConfiguration.current.screenWidthDp >= WIDE_WINDOW_DP
+    val overlay = showPages && !wide
+    val immersive = fullScreen && ready != null && !overlay
+    val sidebarShown = wide && sidebar && ready != null && !immersive
+    BackHandler(enabled = overlay) { showPages = false }
     BackHandler(enabled = immersive) { fullScreen = false }
     StatusBar(hidden = immersive)
 
-    val hasStrip = ready != null && !showPages && !immersive && ready.state.pageCount > 1
+    // The sidebar shows the same thumbnails, so the strip would only repeat them.
+    val hasStrip = ready != null && !overlay && !immersive && !sidebarShown && ready.state.pageCount > 1
     // The document whose strip is showing, kept while the strip slides out.
     var stripState by remember { mutableStateOf<PdfViewState?>(null) }
     if (hasStrip) stripState = ready?.state else if (ready == null) stripState = null
@@ -355,8 +378,8 @@ private fun App(
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 navigationIcon = {
                     if (ready != null) {
-                        IconButton(onClick = { showPages = !showPages }) {
-                            if (showPages) {
+                        IconButton(onClick = { if (wide) sidebar = !sidebar else showPages = !showPages }) {
+                            if (overlay) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to document")
                             } else {
                                 Icon(Icons.Filled.Menu, contentDescription = "Contents and pages")
@@ -449,55 +472,81 @@ private fun App(
                         },
                     )
                 }
-                is Loaded.Ready ->
-                    if (showPages) {
-                        Navigator(
-                            l.state,
-                            startOnContents = preferContents,
-                            onTab = { preferContents = it },
-                            onPage = {
-                                l.state.goToPage(it)
-                                showPages = false
-                            },
-                            onOutlineEntry = {
-                                (l.state.openOutlineEntry(it) as? Activated.Uri)?.let { link ->
-                                    externalLink = link.uri
-                                }
-                                showPages = false
-                            },
-                        )
-                    } else {
-                        PdfView(
-                            l.state,
-                            // The tag is how UI tests find the page area.
-                            Modifier.fillMaxSize().testTag(PAGE_VIEW_TAG),
-                            onExternalLink = { externalLink = it },
-                            onTap = { fullScreen = !fullScreen },
-                        )
-                        // Always there in the normal view; in full screen it
-                        // shows up on a page turn and leaves again.
-                        var turned by remember(l.state) { mutableStateOf(false) }
-                        LaunchedEffect(l.state, immersive) {
-                            turned = false
-                            snapshotFlow { l.state.currentPage }.drop(1).collectLatest {
-                                turned = true
-                                delay(INDICATOR_MS)
-                                turned = false
-                            }
+                is Loaded.Ready -> {
+                    val navigator: @Composable (Modifier, WindowInsetsSides, Boolean) -> Unit =
+                        { modifier, insets, closeAfterwards ->
+                            Navigator(
+                                l.state,
+                                startOnContents = preferContents,
+                                onTab = { preferContents = it },
+                                onPage = {
+                                    l.state.goToPage(it)
+                                    if (closeAfterwards) showPages = false
+                                },
+                                onOutlineEntry = {
+                                    (l.state.openOutlineEntry(it) as? Activated.Uri)?.let { link ->
+                                        externalLink = link.uri
+                                    }
+                                    if (closeAfterwards) showPages = false
+                                },
+                                modifier = modifier,
+                                insets = insets,
+                                // Beside the document, it keeps up with it.
+                                follow = !closeAfterwards,
+                            )
                         }
+                    if (overlay) {
+                        navigator(Modifier.fillMaxSize(), besideAndBelow, true)
+                    } else Row(Modifier.fillMaxSize()) {
+                        // The sidebar takes its width as it slides, so the
+                        // page area resizes smoothly, as with the bars.
                         AnimatedVisibility(
-                            visible = !immersive || turned,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                // Above the strip if there is one, else above the navigation bar.
-                                .then(if (hasStrip) Modifier else Modifier.navigationBarsPadding())
-                                .padding(12.dp),
-                            enter = fadeIn(),
-                            exit = fadeOut(),
+                            visible = sidebarShown,
+                            enter = expandHorizontally(tween(BARS_MS), expandFrom = Alignment.End),
+                            exit = shrinkHorizontally(tween(BARS_MS), shrinkTowards = Alignment.End),
                         ) {
-                            PageIndicator(l.state)
+                            navigator(
+                                Modifier.width(SIDEBAR_WIDTH).fillMaxHeight().testTag(SIDEBAR_TAG),
+                                WindowInsetsSides.Start + WindowInsetsSides.Bottom,
+                                false,
+                            )
+                        }
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                                PdfView(
+                                    l.state,
+                                    // The tag is how UI tests find the page area.
+                                    Modifier.fillMaxSize().testTag(PAGE_VIEW_TAG),
+                                    onExternalLink = { externalLink = it },
+                                    onTap = { fullScreen = !fullScreen },
+                                )
+                                // Always there in the normal view; in full screen it
+                                // shows up on a page turn and leaves again.
+                                var turned by remember(l.state) { mutableStateOf(false) }
+                                LaunchedEffect(l.state, immersive) {
+                                    turned = false
+                                    snapshotFlow { l.state.currentPage }.drop(1).collectLatest {
+                                        turned = true
+                                        delay(INDICATOR_MS)
+                                        turned = false
+                                    }
+                                }
+                                // Fully qualified: inside the Row, the plain name
+                                // would mean the variant that animates a row's child.
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = !immersive || turned,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        // Above the strip if there is one, else above the navigation bar.
+                                        .then(if (hasStrip) Modifier else Modifier.navigationBarsPadding())
+                                        .padding(12.dp),
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                ) {
+                                    PageIndicator(l.state)
+                                }
                         }
                     }
+                }
             }
         }
     }
@@ -559,8 +608,9 @@ private fun Message(
 }
 
 /**
- * What the top-left button opens: the page grid and, if the document has an
- * outline, its contents as a second tab. The tabs can also be swiped.
+ * What the top-left button opens, full screen or as a sidebar: the page grid
+ * and, if the document has an outline, its contents as a second tab. The
+ * tabs can also be swiped.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -570,13 +620,17 @@ private fun Navigator(
     onTab: (contents: Boolean) -> Unit,
     onPage: (Int) -> Unit,
     onOutlineEntry: (Int) -> Unit,
+    modifier: Modifier,
+    /** Which screen edges it touches, to keep clear of cutouts and the navigation bar there. */
+    insets: WindowInsetsSides,
+    /** Whether the page list keeps the current page in view (shown beside the document). */
+    follow: Boolean,
 ) {
-    val background = Modifier
-        .fillMaxSize()
+    val background = modifier
         .background(MaterialTheme.colorScheme.surface)
-        .windowInsetsPadding(WindowInsets.safeDrawing.only(besideAndBelow))
+        .windowInsetsPadding(WindowInsets.safeDrawing.only(insets))
     if (state.outline.isEmpty()) {
-        PagesGrid(state, onPage, background)
+        PagesGrid(state, onPage, background, follow)
         return
     }
     val scope = rememberCoroutineScope()
@@ -594,7 +648,7 @@ private fun Navigator(
         }
         HorizontalPager(pager, Modifier.fillMaxSize()) { tab ->
             if (tab == 0) {
-                PagesGrid(state, onPage, Modifier.fillMaxSize())
+                PagesGrid(state, onPage, Modifier.fillMaxSize(), follow)
             } else {
                 OutlineList(state, onOutlineEntry, Modifier.fillMaxSize())
             }

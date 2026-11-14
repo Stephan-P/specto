@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-A handful of these are also checked automatically (`ReaderTest`: opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off), but automated tests can't judge how anything looks or feels.
+A handful of these are also checked automatically (`ReaderTest`: opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off, and the sidebar or full-screen Pages depending on the window), but automated tests can't judge how anything looks or feels.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -67,6 +67,18 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Show them again | Tap again, or press Back | The bars slide back in and the page glides back, on the same page |
 | Still usable | Swipe, zoom and tap links in full screen | All work as in the normal view |
 
+## Tablets and other wide windows
+
+Applies when the app's window is at least 840 dp wide: a tablet in landscape, but not in portrait or when sharing the screen.
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Sidebar | Open a document on a tablet in landscape | Pages (and Contents, if the document has an outline) are shown in a sidebar on the left, open from the start, with the document beside it; no thumbnail strip |
+| Stays open | Tap a page or an outline entry in the sidebar | The document goes there; the sidebar stays, and its page list scrolls to keep the current page in view as you read on |
+| Fold away | Top-left button | The sidebar slides out, the document takes the room and the thumbnail strip returns; the button brings the sidebar back |
+| Full screen | Tap the page | The sidebar leaves along with the bars, and returns with them |
+| Falls back | Rotate to portrait, or put the app in split screen | The phone layout: Pages and Contents full screen on request, the strip at the bottom; same document and page throughout |
+
 ## Behaviour of the app as a whole
 
 | Feature | How to check | Expected |
@@ -79,4 +91,4 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 ## Not there yet
 
-Search, text selection and copy, saving and sharing, annotations and form filling, page reordering, two-page view and a tablet layout, printing, and dragging along the strip to flip pages.
+Search, text selection and copy, saving and sharing, annotations and form filling, page reordering, two-page view, printing, and dragging along the strip to flip pages.
