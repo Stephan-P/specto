@@ -86,6 +86,30 @@ Run on the 384-page Valgrind manual under a headless `mutter` (1100×854 window,
 
 **Caveats:** this was headless (no real display or vsync from a physical monitor) at scale 1. Fractional HiDPI (`Surface::scale()`) is wired up but untested, as is touchpad pinch, which needs real hardware. Worth a manual run: `cargo run --release -p gtk-canvas -- some.pdf`.
 
+## Android (D4/D5)
+
+`apps/android` is a Gradle project (AGP 9.2, Kotlin + Compose) with one activity. `crates/pdfrs-ffi` wraps `pdfrs-render` with UniFFI proc macros, and the Gradle build runs `cargo ndk` and `uniffi-bindgen` (`tools/uniffi-bindgen`) as generated-source tasks, so "Run" in Android Studio picks up Rust changes. The app renders page 1 of a bundled sample (or a file from the system picker) at screen width.
+
+- hayro and the whole render stack cross-compile to `aarch64-linux-android` with no changes. `libpdfrs_ffi.so` is 5.8 MB stripped (release, no size tuning).
+- UniFFI's generated scaffolding compiles under the workspace `unsafe_code = "deny"` lint. Only the JNI module needs an `allow`.
+- Kotlin bindings need JNA (`net.java.dev.jna:jna` as an `aar`).
+
+Two ways to get pixels into a `Bitmap`, measured warm on the same document object (40 interleaved rounds, 1080×1530 px, four runs, with the M1 render cache):
+
+| Path | Median | Min |
+|---|---|---|
+| UniFFI returns `Vec<u8>` → `ByteArray` → `Bitmap.copyPixelsFromBuffer` | 8.7–9.8 ms | 7.5–8.0 ms |
+| JNI function locks the `Bitmap` (`AndroidBitmap_lockPixels`) and Rust copies in once | 3.0–3.3 ms | 2.5–2.7 ms |
+
+- Returning a 6.6 MB buffer through UniFFI costs about 6 ms per page on top of a 3 ms render, a third of a 60 Hz frame. UniFFI is fine for the coarse API, but **tiles should not go through it**. (A first measurement a few minutes after the emulator booted showed 61–72 ms vs 16–18 ms; those numbers were inflated by the emulator still settling and did not reproduce.)
+- `HayroDocument` is not `Send` since M1 (render cache), but UniFFI objects are called from any thread. The spike's `PdfDocument` holds the shared bytes and opens one copy per calling thread; the real surface should sit on `pdfrs_render::scheduler` instead.
+- The JNI side door is small: one `extern "system"` function taking `PdfDocument.rawHandle()` and the `Bitmap`, using only `jni-sys` types and the `ndk` crate (`crates/pdfrs-ffi/src/android_bitmap.rs`). No `jni` crate needed.
+- It is not truly zero-copy yet: hayro renders into its own `Pixmap`, which is then copied into the locked bitmap. Rendering straight into bitmap memory would need a hayro/vello_cpu target over a borrowed buffer.
+
+**Conclusion:** Compose + UniFFI works for the API surface, with a hand-written JNI path for tile pixels. **D4 and D5 stand**, with D5's "JNI for the hot path" alternative now required rather than optional.
+
+**Caveats:** measured on the arm64 emulator on an Apple Silicon host, not a phone, and on a simple page where the copy overhead dominates. `rawHandle()` relies on Kotlin keeping the document open during the call, which the real `pdfrs-ffi` surface should make safe by construction. The file picker path is untested.
+
 ## Not done yet
 
 - Verify Preview's encryption behavior on a Mac (D9).

@@ -23,7 +23,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + zoom, about 55 fps (D3, see M0-FINDINGS.md)
 - [x] **S** Manual check of the canvas spike on real hardware: works on macOS (GTK), but HiDPI output looks off
 - [ ] **S** Fix HiDPI sharpness. Suspects: (1) zoom levels are picked with `round()` on a √2 scale, so tiles can be rendered up to 19% *below* device resolution and upscaled; use `ceil()` and always downsample. (2) Page and tile positions are rounded to logical px, not device px, so on fractional scales textures land between pixels and get filtered. Verify by comparing the reported `Surface::scale()` with the tile pixel size.
-- [ ] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap` (D4/D5). Do this on the other machine.
+- [x] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap`; tile pixels need a JNI path, not UniFFI (D4/D5, see M0-FINDINGS.md)
 
 ## M1: Core viewer (desktop)
 

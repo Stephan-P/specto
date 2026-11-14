@@ -14,6 +14,7 @@ pdfrs-render = { path = "crates/pdfrs-render" }
 hayro = "0.9"
 anyhow = "1"
 thiserror = "2"
+uniffi = "0.32"
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 wait-timeout = "0.2"

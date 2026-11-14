@@ -1,0 +1,23 @@
+[package]
+name = "pdfrs-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+# cdylib for Android (libpdfrs_ffi.so), lib for host tests.
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+pdfrs-render.workspace = true
+thiserror.workspace = true
+uniffi.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Direct `Bitmap` access for the JNI tile path (see src/android_bitmap.rs).
+ndk = { version = "0.9", features = ["bitmap"] }
+jni-sys = "0.3"
+
+[lints]
+workspace = true

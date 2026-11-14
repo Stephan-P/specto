@@ -1,0 +1,45 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 595] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 726 >>
+stream
+0.93 0.95 0.98 rg 0 0 420 595 re f
+0.15 0.35 0.75 rg 40 470 340 80 re f
+1 1 1 rg BT /F1 36 Tf 60 498 Td (pdfrs) Tj ET
+0.1 0.1 0.1 rg BT /F2 14 Tf 40 430 Td (Rendered by Rust \(hayro\) through UniFFI.) Tj ET
+BT /F2 11 Tf 40 405 Td 15 TL (The quick brown fox jumps over the lazy dog.) Tj T* (Hairlines, curves and fine text below check sharpness.) Tj ET
+0.8 0.2 0.2 RG 0.25 w 40 380 m 380 380 l S
+1 w 40 370 m 380 370 l S
+0.2 0.6 0.3 rg 120 250 m 120 305 165 350 220 350 c 275 350 320 305 320 250 c 320 195 275 150 220 150 c 165 150 120 195 120 250 c f
+0.95 0.75 0.1 rg 220 320 m 280 215 l 160 215 l f
+0.1 0.1 0.1 rg BT /F2 6 Tf 40 120 Td (Six point text: 0123456789 abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000001027 00000 n 
+0000001102 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+1172
+%%EOF
