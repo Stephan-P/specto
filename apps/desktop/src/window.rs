@@ -41,6 +41,7 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "save",
     "save-as",
     "insert-file",
+    "delete-pages",
 ];
 
 #[derive(Clone)]
@@ -86,6 +87,7 @@ pub struct Inner {
 impl Window {
     pub fn new(app: &adw::Application) -> Self {
         let canvas = Canvas::new();
+        canvas.add_controller(delete_keys());
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&canvas)
             .hexpand(true)
@@ -171,6 +173,10 @@ impl Window {
             let m = gio::Menu::new();
             m.append(Some("Rotate Left"), Some("win.rotate-left"));
             m.append(Some("Rotate Right"), Some("win.rotate-right"));
+            let delete = gio::MenuItem::new(Some("Delete Pages"), Some("win.delete-pages"));
+            // Shown only: the keys work through `delete_keys`.
+            delete.set_attribute_value("accel", Some(&"Delete".to_variant()));
+            m.append_item(&delete);
             m
         });
         main_menu.append_section(None, &{
@@ -573,6 +579,7 @@ impl Window {
                 inner.canvas.update_viewer(|v| v.go_to_page(page));
             }
         });
+        sidebar.widget.add_controller(delete_keys());
         let outline = document.borrow().outline();
         if outline.is_empty() {
             inner.split.set_sidebar(Some(&sidebar.widget));
@@ -1136,6 +1143,34 @@ impl Window {
             .unwrap_or_default()
     }
 
+    /// Deletes the pages selected in the sidebar if there are several,
+    /// else the current page. The last page can't be deleted.
+    fn delete_pages(&self) {
+        let selected = self
+            .0
+            .sidebar
+            .borrow()
+            .as_ref()
+            .map(Sidebar::selected)
+            .unwrap_or_default();
+        let pages = if selected.len() > 1 {
+            selected
+        } else {
+            match self.0.canvas.with_viewer(|v| v.current_page()) {
+                Some(p) => vec![p],
+                None => return,
+            }
+        };
+        let mut deleted = false;
+        self.edit(|d| {
+            deleted = d.delete(&pages);
+            deleted.then(Vec::new)
+        });
+        if !deleted {
+            self.0.window.error_bell();
+        }
+    }
+
     /// Whether the sidebar has the keyboard focus.
     fn sidebar_has_focus(&self) -> bool {
         let focus = gtk::prelude::GtkWindowExt::focus(&self.0.window);
@@ -1587,6 +1622,9 @@ impl Window {
                     glib::spawn_future_local(async move { w.choose_insert_file().await });
                 }))
                 .build(),
+            gio::ActionEntry::builder("delete-pages")
+                .activate(with(|w| w.delete_pages()))
+                .build(),
             gio::ActionEntry::builder("rotate-left")
                 .activate(with(|w| w.rotate(Rotation::Cw270)))
                 .build(),
@@ -1775,6 +1813,18 @@ fn primary_key() -> &'static str {
 
 fn centre(v: &Viewer) -> ViewPoint {
     ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0)
+}
+
+/// Delete and Backspace delete pages, on the canvas and in the sidebar.
+/// Not shortcuts for the whole window, which would take the keys from text
+/// fields.
+fn delete_keys() -> gtk::ShortcutController {
+    let keys = gtk::ShortcutController::new();
+    keys.add_shortcut(gtk::Shortcut::new(
+        gtk::ShortcutTrigger::parse_string("Delete|KP_Delete|BackSpace"),
+        Some(gtk::NamedAction::new("win.delete-pages")),
+    ));
+    keys
 }
 
 /// A file dialog for choosing a PDF.

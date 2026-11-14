@@ -38,6 +38,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - thumbnail_selection: clicking a thumbnail goes to its page; Shift+click
   and Ctrl+click select several, which stay selected while the view moves
   and are what Rotate turns; Ctrl+A in the sidebar selects every page
+- delete_pages: Delete on the document deletes the current page, Backspace
+  in the sidebar the selected ones; not in the page entry; never the last
+  page; undo brings them back
 - insert_file: pages of another file inserted after the current page, shown
   and searched; undo; saved, they're in the file
 
@@ -315,6 +318,7 @@ class Input:
     # don't depend on the keyboard layout.
     ESCAPE, CONTROL, SHIFT, ENTER, KEY_A, KEY_C, KEY_F = 1, 29, 42, 28, 30, 46, 33
     LEFT, RIGHT, KEY_Z = 105, 106, 44
+    BACKSPACE, DELETE = 14, 111
     # Key codes for typing, on a US layout (mutter's default).
     TYPING = {
         **{c: 16 + i for i, c in enumerate("qwertyuiop")},
@@ -1142,6 +1146,58 @@ def test_thumbnail_selection(ctx):
     w.action("undo")
     w.wait("page 2 turned back", lambda s: rotations(s)[1] == 0)
     selected_thumbnails(w, [w.state()["page"]])
+
+
+def file_pages(s):
+    """The page of the file at each position."""
+    return [p[0] for p in s["edit_pages"]]
+
+
+def test_delete_pages(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    w.maximize()
+    w.settled("maximized")
+    inp = ctx.input().attach(w)
+    w.action("debug-go-to", gvariant_str(LABELS[2]))
+    w.settled("page 3", lambda s: s["page"] == 2)
+    # The document has the focus: Delete deletes the current page, and the
+    # next one takes its place.
+    w.wait("the canvas focused", lambda s: s["focus"] == "PdfrsCanvas")
+    inp.keys(Input.DELETE)
+    s = w.wait("page 3 deleted", lambda s: len(s["edit_pages"]) == PAGES - 1)
+    check(file_pages(s) == [0, 1] + list(range(3, PAGES)), s["edit_pages"])
+    check(s["undo"] == "Delete Page" and s["subtitle"].startswith("11 pages"), s)
+    s = w.settled("the page after it", lambda s: s["page"] == 2)
+    w.showing(3, "after-delete")
+    # Two selected in the sidebar: Backspace deletes both.
+    w.action("first-page")
+    w.settled("page 1", lambda s: s["page"] == 0 and s["thumbnails"][0][0] == 0)
+    click_thumbnail(w, inp, 0)
+    click_thumbnail(w, inp, 1, control=True)
+    selected_thumbnails(w, [0, 1])
+    inp.keys(Input.BACKSPACE)
+    s = w.wait("pages 1 and 2 deleted", lambda s: len(s["edit_pages"]) == PAGES - 3)
+    check(file_pages(s) == list(range(3, PAGES)), s["edit_pages"])
+    check(s["undo"] == "Delete 2 Pages", s)
+    # In the page entry, Backspace edits the text.
+    w.action("go-to-page")
+    w.wait("the page entry", lambda s: s["focus"] == "GtkText")
+    inp.keys(Input.BACKSPACE)
+    time.sleep(0.5)
+    check(len(w.state()["edit_pages"]) == PAGES - 3, "Backspace in the page entry deleted a page")
+    # Every page selected: nothing is deleted (a document keeps a page).
+    click_thumbnail(w, inp, 0)
+    inp.keys(Input.CONTROL, Input.KEY_A)
+    selected_thumbnails(w, list(range(PAGES - 3)))
+    inp.keys(Input.DELETE)
+    time.sleep(0.5)
+    check(len(w.state()["edit_pages"]) == PAGES - 3, "every page deleted")
+    # Undo brings them back.
+    w.action("undo")
+    w.action("undo")
+    s = w.wait("both undone", lambda s: len(s["edit_pages"]) == PAGES)
+    check(not s["modified"], s)
 
 
 def test_insert_file(ctx):

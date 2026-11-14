@@ -131,7 +131,10 @@ fn menubar() -> gio::Menu {
     let edit = submenu(&[
         section(&[("Undo", "win.undo"), ("Redo", "win.redo")]),
         section(&[("Copy", "win.copy"), ("Select All", "win.select-all")]),
-        section(&[("Insert Pages from File…", "win.insert-file")]),
+        section(&[
+            ("Insert Pages from File…", "win.insert-file"),
+            ("Delete Pages", "win.delete-pages"),
+        ]),
         section(&[
             ("Find…", "win.find"),
             ("Find Next", "win.find-next"),

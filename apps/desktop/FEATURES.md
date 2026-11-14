@@ -63,6 +63,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 ## Editing
 
 - Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main menu) turn the pages selected in the sidebar if there are several, otherwise the current page, or both pages of a two-page spread
+- Delete Pages (Delete or Backspace on the document or in the sidebar, or the main menu) deletes the pages selected in the sidebar if there are several, otherwise the current page. The last page can't be deleted. In text fields the keys edit the text
 - Insert Pages from File (main menu): all pages of another PDF go after the current page (or spread), and the view goes to the first of them, with the new pages selected in the sidebar. Encrypted files ask for their password
 - Undo and Redo (*Primary*+Z, Shift+*Primary*+Z, or the main menu, which names the edit: "Undo Rotate Page")
 - "Edited" in the title while there are changes; undoing back to the state as opened removes it
@@ -82,7 +83,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -98,6 +99,6 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Not yet
 
-- Printing, deleting and moving pages, annotations, form filling
+- Printing, moving pages, annotations, form filling
 - Highlighting the current outline entry
 - Dark mode for page content
