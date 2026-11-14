@@ -117,7 +117,10 @@ Resetting saved state:
 - LONG: drag thumbnail 2 below thumbnail 4. While dragging, a line in the accent colour shows the place between thumbnails; after the drop the page is fourth, still selected, and the view hasn't moved. "Undo Move Page" puts it back.
 - Select thumbnails 2 and 3, drag one of them down past the bottom of the sidebar: the sidebar scrolls; dropping moves both ("Move 2 Pages").
 - Drag two PDFs from the file manager onto the thumbnails, between pages 3 and 4: a line shows the place, then their pages are inserted there, in order, and selected; one Undo ("Undo Insert N Pages") removes them all. Dropped on the page view instead, they open in new windows. A non-PDF file dropped on the thumbnails gives "Couldn't open … not a valid PDF file" and inserts nothing.
-- Dropping a thumbnail where it already is changes nothing (no "Edited"). Dragging a thumbnail into another window's sidebar is refused.
+- Dropping a thumbnail where it already is changes nothing (no "Edited"). 
+- LONG and LINKS in two windows: select two thumbnails in LONG and drag them onto LINKS's thumbnails. They're inserted where dropped, selected, with any rotation they had; LONG still has them; "Undo Insert 2 Pages" in LINKS removes them. Saved, LINKS has the pages.
+- LABELS: delete "ii" and move "1" to the end. The page entry and thumbnails show i, iii, iv, 2, 3, a, b, 4, 5, 1. Saved and reopened (here and in another viewer), the labels are the same. Typing "1" goes to the last page.
+- LABELS with SIZES inserted after "iv": the inserted pages are numbered by their position (5, 6, …); the others keep their labels.
 - Typing in the page entry or the search field, Delete and Backspace edit the text and delete no pages.
 - LONG with pages deleted, saved and reopened: the pages are gone; Contents entries that pointed at them do nothing, the others still work.
 - With the sidebar focused, *Primary*+A selects every thumbnail, not the page text; with the document focused, it selects the text.

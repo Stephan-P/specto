@@ -5,8 +5,8 @@
 //!
 //! The pages shown come from an [`EditDoc`], so they can be rotated,
 //! deleted, moved and inserted, including pages of other files. Each file
-//! is a source; the first ([`MAIN`]) is the one opened, whose outline and
-//! page labels the document has. Positions in the viewer are where a page
+//! is a source; the first ([`MAIN`]) is the one opened, whose outline the
+//! document has. Each page keeps its page label from its file. Positions in the viewer are where a page
 //! is now; caches of what doesn't change with editing (text, search text,
 //! links) are keyed by the page of the file it comes from.
 //!
@@ -76,6 +76,8 @@ struct Source {
     geometries: Vec<PageGeometry>,
     /// Links per page of the file, parsed on first use.
     links: HashMap<u32, Vec<Link>>,
+    /// The file's page labels, if it has any that differ from 1, 2, 3, …
+    labels: Option<PageLabels>,
     /// Every page's text prepared for searching, filled in the background.
     index: Vec<Option<SearchText>>,
 }
@@ -95,6 +97,7 @@ impl Source {
             }
         };
         Ok(Self {
+            labels: doc.page_labels().filter(|l| !l.is_plain()),
             doc,
             data,
             password: password.map(str::to_owned),
@@ -111,11 +114,10 @@ pub struct Session {
     /// files pages were inserted from. Kept while undo can bring their
     /// pages back.
     sources: Vec<Source>,
-    /// Page labels, if the document has any that differ from 1, 2, 3, …
-    /// and its pages are still those of the file, in their original order.
+    /// Page labels, if the document has any that differ from 1, 2, 3, …:
+    /// each page keeps the label it has in its file, through edits (see
+    /// `PageLabels::of_pages`).
     labels: Option<PageLabels>,
-    /// The file's page labels, whatever the order.
-    file_labels: Option<PageLabels>,
     /// The pages as edited.
     edit: EditDoc,
     pub viewer: Viewer,
@@ -140,13 +142,12 @@ impl Session {
         options: Options,
     ) -> Result<Self, OpenError> {
         let source = Source::open(scheduler, data, password)?;
-        let labels = source.doc.page_labels().filter(|l| !l.is_plain());
+        let labels = source.labels.clone();
         let edit = EditDoc::from_source(MAIN, source.geometries.len() as u32);
         let sources = vec![source];
         let pages = view_pages(&edit, &sources);
         Ok(Self {
             sources,
-            file_labels: labels.clone(),
             labels,
             edit,
             viewer: Viewer::new(pages, options.settings),
@@ -293,6 +294,23 @@ fn view_pages(edit: &EditDoc, sources: &[Source]) -> Vec<ViewPage> {
         .collect()
 }
 
+/// Pages taken out of a session to put into another one, as when dragging
+/// pages from one window to another: the files they come from (the data is
+/// shared, not copied) and each page with the rotation the user gave it.
+#[derive(Clone, Debug)]
+pub struct PageBundle {
+    /// Each file and its password.
+    files: Vec<(PdfData, Option<String>)>,
+    /// Index in `files`, page of that file, rotation.
+    pages: Vec<(usize, u32, Rotation)>,
+}
+
+impl PageBundle {
+    pub fn page_count(&self) -> usize {
+        self.pages.len()
+    }
+}
+
 /// What saving needs, taken from the session so the file can be written
 /// on another thread.
 pub struct SaveJob {
@@ -351,6 +369,69 @@ impl Session {
             pages,
             version: self.edit.version(),
         }
+    }
+
+    /// The pages at `which` (in document order), to insert into another
+    /// session with [`insert_bundle`](Self::insert_bundle).
+    pub fn bundle(&self, which: &[usize]) -> PageBundle {
+        let mut which: Vec<usize> = which.to_vec();
+        which.sort_unstable();
+        which.dedup();
+        let mut files: Vec<(PdfData, Option<String>)> = Vec::new();
+        let mut file_of: HashMap<SourceId, usize> = HashMap::new();
+        let mut pages = Vec::new();
+        for p in which.iter().filter_map(|&i| self.edit.pages().get(i)) {
+            let file = *file_of.entry(p.source).or_insert_with(|| {
+                let s = &self.sources[p.source.0 as usize];
+                files.push((s.data.clone(), s.password.clone()));
+                files.len() - 1
+            });
+            pages.push((file, p.page, p.rotation));
+        }
+        PageBundle { files, pages }
+    }
+
+    /// Inserts the pages of `bundle` (from another session) before position
+    /// `at`, as one edit, keeping their rotation. Files the session already
+    /// has (the same data) are reused, the others opened with `scheduler`.
+    /// Returns where the pages ended up, or the error opening a file (then
+    /// nothing is inserted).
+    pub fn insert_bundle(
+        &mut self,
+        scheduler: &Scheduler,
+        at: usize,
+        bundle: &PageBundle,
+    ) -> Result<Option<Range<usize>>, OpenError> {
+        let mut ids = Vec::with_capacity(bundle.files.len());
+        for (data, password) in &bundle.files {
+            let known = self
+                .sources
+                .iter()
+                .position(|s| s.data.same(data))
+                .map(|i| SourceId(i as u32));
+            let id = match known {
+                Some(id) => id,
+                None => {
+                    self.add_source(scheduler, data.clone(), password.as_deref())?
+                        .0
+                }
+            };
+            ids.push(id);
+        }
+        let refs = bundle
+            .pages
+            .iter()
+            .map(|&(file, page, rotation)| PageRef {
+                source: ids[file],
+                page,
+                rotation,
+            })
+            .collect();
+        let range = self.edit.insert(at, refs);
+        if range.is_some() {
+            self.pages_changed();
+        }
+        Ok(range)
     }
 
     /// Turns the pages at `which` clockwise by `by`. Returns whether
@@ -413,19 +494,13 @@ impl Session {
     /// search runs again.
     fn pages_changed(&mut self) -> bool {
         let pages = view_pages(&self.edit, &self.sources);
-        let main_pages = self.sources[0].geometries.len();
-        let in_order = pages.len() == main_pages
-            && self
-                .edit
-                .pages()
-                .iter()
-                .enumerate()
-                .all(|(i, p)| p.source == MAIN && p.page as usize == i);
-        self.labels = if in_order {
-            self.file_labels.clone()
-        } else {
-            None
-        };
+        let sources = &self.sources;
+        self.labels = PageLabels::of_pages(self.edit.pages().iter().map(|p| {
+            (
+                sources[p.source.0 as usize].labels.as_ref(),
+                p.page as usize,
+            )
+        }));
         self.viewer.set_pages(pages);
         self.selection = None;
         self.search_again();

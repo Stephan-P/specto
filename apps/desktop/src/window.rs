@@ -12,7 +12,7 @@ use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
 use crate::debug;
-use crate::document::{Document, Indexed, MAIN, SaveJob, SharedDocument};
+use crate::document::{Document, Indexed, MAIN, PageBundle, SaveJob, SharedDocument};
 use crate::outline::OutlineView;
 use crate::state;
 use crate::thumbnails::Sidebar;
@@ -356,6 +356,7 @@ impl Window {
         this.setup_drop();
         if debug::enabled() {
             this.setup_debug_actions();
+            DEBUG_WINDOWS.with_borrow_mut(|w| w.push(Rc::downgrade(&this.0)));
         }
         let weak = Rc::downgrade(&this.0);
         this.0.canvas.connect_view_changed(move || {
@@ -578,6 +579,7 @@ impl Window {
         let weak = Rc::downgrade(&self.0);
         let weak_move = Rc::downgrade(&self.0);
         let weak_files = Rc::downgrade(&self.0);
+        let weak_pages = Rc::downgrade(&self.0);
         let sidebar = Sidebar::new(
             document.clone(),
             move |page| {
@@ -594,6 +596,11 @@ impl Window {
                 if let Some(inner) = weak_files.upgrade() {
                     let w = Window(inner);
                     glib::spawn_future_local(async move { w.insert_files(files, Some(to)).await });
+                }
+            },
+            move |bundle, to| {
+                if let Some(inner) = weak_pages.upgrade() {
+                    Window(inner).insert_bundle(&bundle, to);
                 }
             },
         );
@@ -992,6 +999,32 @@ impl Window {
                     s.drop_files_at(files, &w.0.window, y);
                 }
             }),
+            // Drops pages of another window without dragging: "1:0,2@450"
+            // drops pages 0 and 2 of window 1 at window height 450.
+            action("debug-drop-pages-from", |w, arg| {
+                let parse = || {
+                    let (window, rest) = arg.split_once(':')?;
+                    let (pages, y) = rest.rsplit_once('@')?;
+                    let pages: Vec<usize> =
+                        pages.split(',').filter_map(|p| p.parse().ok()).collect();
+                    Some((window.parse::<u32>().ok()?, pages, y.parse::<f64>().ok()?))
+                };
+                let Some((n, pages, y)) = parse() else {
+                    return;
+                };
+                let from = DEBUG_WINDOWS.with_borrow(|ws| {
+                    ws.iter()
+                        .filter_map(std::rc::Weak::upgrade)
+                        .find(|i| i.window.id() == n)
+                });
+                let Some(doc) = from.and_then(|i| i.document.borrow().clone()) else {
+                    return;
+                };
+                let bundle = doc.borrow().bundle(&pages);
+                if let Some(s) = w.0.sidebar.borrow().as_ref() {
+                    s.drop_bundle_at(bundle, &w.0.window, y);
+                }
+            }),
             // Export Selected Pages without the file dialog.
             action("debug-export", |w, path| {
                 let (w, file) = (w.clone(), gio::File::for_path(path));
@@ -1216,6 +1249,29 @@ impl Window {
         });
         if !deleted {
             self.0.window.error_bell();
+        }
+    }
+
+    /// Inserts pages of another document before position `to`; they're
+    /// selected, and the view goes to the first of them.
+    fn insert_bundle(&self, bundle: &PageBundle, to: usize) {
+        let mut error = None;
+        self.edit(|d| match d.insert_bundle(to, bundle) {
+            Ok(range) => {
+                let range = range?;
+                Some(Edited {
+                    go_to: Some(range.start),
+                    select: range.collect(),
+                })
+            }
+            Err(e) => {
+                error = Some(e);
+                None
+            }
+        });
+        match error {
+            Some(e) => self.toast(&format!("Couldn't copy the pages: {e}")),
+            None => self.index_for_search(),
         }
     }
 
@@ -1970,6 +2026,12 @@ fn primary_key() -> &'static str {
 
 fn centre(v: &Viewer) -> ViewPoint {
     ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0)
+}
+
+thread_local! {
+    /// The windows, with the test hooks only: for those that reach into
+    /// another window.
+    static DEBUG_WINDOWS: RefCell<Vec<std::rc::Weak<Inner>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// What an edit changed, for [`Window::edit`].

@@ -70,7 +70,8 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Undo and Redo (*Primary*+Z, Shift+*Primary*+Z, or the main menu, which names the edit: "Undo Rotate Page")
 - "Edited" in the title while there are changes; undoing back to the state as opened removes it
 - Selection, search, links and the table of contents keep working on edited pages, inserted ones included
-- Printed page numbers are shown only while the pages are those of the file, in order; otherwise plain numbers
+- Pages keep their printed page numbers (labels) through rotating, deleting, moving and inserting; inserted pages of a file without labels are numbered by their position
+- Thumbnails dragged into another window's sidebar are copied there (with their rotation), as one edit; the first window keeps them
 - In the page entry or the search field, the shortcuts act on the text instead (Undo, moving by words)
 
 ## Saving
@@ -79,7 +80,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Export Selected Pages (main menu): saves the pages selected in the sidebar (or the current page) as a new PDF, suggesting a name like "Report (pages 2-4, 7).pdf"; the document stays as it was
 - The new file is written next to the old one and then takes its place, so the old file is intact until the new one is complete
 - Encrypted documents stay encrypted, with the same password
-- Saved files keep the outline, links, metadata and page labels (labels only while all pages are there, in their order)
+- Saved files keep the outline, links, metadata and page labels; after deleting, moving or inserting pages, each page keeps its label in the saved file too
 - Closing a window or quitting with unsaved changes asks "Save Changes?": Save, Discard or Cancel
 - Edits made while a save is running stay "Edited"
 - A file pdfrs can't save correctly (a few damaged ones) isn't written: a message says so instead

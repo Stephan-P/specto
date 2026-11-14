@@ -22,7 +22,7 @@ use pdfrs_geom::{PdfBox, PdfPoint};
 
 pub use data::{MAP_THRESHOLD, PdfData};
 pub use hayro_syntax;
-pub use labels::{LabelRange, LabelStyle, PageLabels};
+pub use labels::{LabelRange, LabelStyle, PageLabel, PageLabels};
 pub use text::decode_text;
 
 /// Outline items beyond this many are ignored (a guard against huge or

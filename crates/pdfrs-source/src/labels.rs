@@ -28,6 +28,41 @@ pub struct LabelRange {
     pub first: u32,
 }
 
+/// The label of one page, in its parts: "A-3" is prefix "A-", number 3
+/// in decimal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PageLabel {
+    pub style: LabelStyle,
+    pub prefix: String,
+    /// Not shown in style `None`.
+    pub number: u32,
+}
+
+impl PageLabel {
+    /// The plain page number `n`.
+    pub fn number(n: usize) -> Self {
+        Self {
+            style: LabelStyle::Decimal,
+            prefix: String::new(),
+            number: n.min(u32::MAX as usize) as u32,
+        }
+    }
+
+    /// The label as shown: "iv", "A-3".
+    pub fn text(&self) -> String {
+        let n = u64::from(self.number);
+        let number = match self.style {
+            LabelStyle::Decimal => n.to_string(),
+            LabelStyle::UpperRoman => roman(n),
+            LabelStyle::LowerRoman => roman(n).to_lowercase(),
+            LabelStyle::UpperLetters => letters(n),
+            LabelStyle::LowerLetters => letters(n).to_lowercase(),
+            LabelStyle::None => String::new(),
+        };
+        format!("{}{number}", self.prefix)
+    }
+}
+
 /// The labels of a document. Pages before the first range (if a broken file
 /// doesn't start at 0) get plain decimal numbers.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,20 +84,72 @@ impl PageLabels {
 
     /// The label of page `index` (zero-based).
     pub fn label(&self, index: usize) -> String {
+        self.page(index).text()
+    }
+
+    /// The label of page `index`, in its parts.
+    pub fn page(&self, index: usize) -> PageLabel {
         let i = self.ranges.partition_point(|r| r.start <= index);
         let Some(range) = i.checked_sub(1).map(|i| &self.ranges[i]) else {
-            return (index + 1).to_string();
+            return PageLabel::number(index + 1);
         };
         let n = range.first as u64 + (index - range.start) as u64;
-        let number = match range.style {
-            LabelStyle::Decimal => n.to_string(),
-            LabelStyle::UpperRoman => roman(n),
-            LabelStyle::LowerRoman => roman(n).to_lowercase(),
-            LabelStyle::UpperLetters => letters(n),
-            LabelStyle::LowerLetters => letters(n).to_lowercase(),
-            LabelStyle::None => String::new(),
-        };
-        format!("{}{number}", range.prefix)
+        PageLabel {
+            style: range.style,
+            prefix: range.prefix.clone(),
+            number: n.min(u32::MAX as u64) as u32,
+        }
+    }
+
+    /// The labels of pages labelled one by one, as ranges: a range goes on
+    /// while the labels continue each other. `None` for no pages.
+    pub fn from_pages(labels: &[PageLabel]) -> Option<Self> {
+        let mut ranges: Vec<LabelRange> = Vec::new();
+        for (i, label) in labels.iter().enumerate() {
+            let continues = i > 0 && {
+                let before = &labels[i - 1];
+                before.style == label.style
+                    && before.prefix == label.prefix
+                    && (label.style == LabelStyle::None
+                        || before.number.checked_add(1) == Some(label.number))
+            };
+            if !continues {
+                ranges.push(LabelRange {
+                    start: i,
+                    style: label.style,
+                    prefix: label.prefix.clone(),
+                    first: label.number,
+                });
+            }
+        }
+        Self::new(ranges, labels.len())
+    }
+
+    /// The labels of a document put together from pages of several files:
+    /// `pages` has, for each page, the labels of its file (if it has any
+    /// worth showing) and its page there. Each page keeps the label it has
+    /// in its file; pages of files without labels are numbered by their
+    /// position. `None` if no page has a label of its own, or the result is
+    /// just 1, 2, 3, …
+    pub fn of_pages<'a>(
+        pages: impl IntoIterator<Item = (Option<&'a PageLabels>, usize)>,
+    ) -> Option<Self> {
+        let mut any = false;
+        let labels: Vec<PageLabel> = pages
+            .into_iter()
+            .enumerate()
+            .map(|(position, (labels, page))| match labels {
+                Some(l) => {
+                    any = true;
+                    l.page(page)
+                }
+                None => PageLabel::number(position + 1),
+            })
+            .collect();
+        if !any {
+            return None;
+        }
+        Self::from_pages(&labels).filter(|l| !l.is_plain())
     }
 
     /// The first page whose label is `text`: exactly, then ignoring case.
@@ -176,6 +263,57 @@ mod tests {
         assert_eq!(labels.find("A-2"), Some(10));
         assert_eq!(labels.find("nope"), None);
         assert!(!labels.is_plain());
+    }
+
+    #[test]
+    fn labels_of_pages_put_together() {
+        // i–iv, 1–5, A-1, A-2, as above.
+        let book = PageLabels::new(
+            vec![
+                range(0, LabelStyle::LowerRoman, "", 1),
+                range(4, LabelStyle::Decimal, "", 1),
+                range(9, LabelStyle::Decimal, "A-", 1),
+            ],
+            11,
+        )
+        .unwrap();
+        // ii deleted, 3 moved to the end, two pages of an unlabelled file
+        // inserted after iv.
+        let pages = [0, 2, 3]
+            .into_iter()
+            .map(|p| (Some(&book), p))
+            .chain([(None, 0), (None, 1)])
+            .chain([4, 5, 7, 8, 9, 10, 6].into_iter().map(|p| (Some(&book), p)));
+        let labels = PageLabels::of_pages(pages).unwrap();
+        let all: Vec<String> = (0..12).map(|i| labels.label(i)).collect();
+        assert_eq!(
+            all,
+            [
+                "i", "iii", "iv", "4", "5", "1", "2", "4", "5", "A-1", "A-2", "3"
+            ]
+        );
+        // As few ranges as that takes: i, iii–iv, 4–5, 1–2, 4–5, A-1–A-2, 3.
+        assert_eq!(labels.ranges().len(), 7);
+        // Kept in order, the same ranges as the file's.
+        let same = PageLabels::of_pages((0..11).map(|p| (Some(&book), p))).unwrap();
+        assert_eq!(same.ranges(), book.ranges());
+        // Nothing labelled: no labels.
+        assert!(PageLabels::of_pages([(None, 0), (None, 1)]).is_none());
+        // Prefix-only labels continue whatever the number.
+        let covers = PageLabels::from_pages(&[
+            PageLabel {
+                style: LabelStyle::None,
+                prefix: "Cover".into(),
+                number: 1,
+            },
+            PageLabel {
+                style: LabelStyle::None,
+                prefix: "Cover".into(),
+                number: 7,
+            },
+        ])
+        .unwrap();
+        assert_eq!(covers.ranges().len(), 1);
     }
 
     #[test]

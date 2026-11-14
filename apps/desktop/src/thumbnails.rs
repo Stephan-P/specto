@@ -15,7 +15,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib, graphene, gsk};
 
-use crate::document::SharedDocument;
+use crate::document::{PageBundle, SharedDocument};
 
 /// Thumbnail width in logical pixels.
 const WIDTH: f64 = 120.0;
@@ -113,10 +113,12 @@ impl Thumbnail {
 }
 
 /// What a thumbnail drag carries: the document it's from (as an address,
-/// only compared) and the positions of the pages dragged.
+/// only compared), the positions of the pages dragged (to move them within
+/// it) and the pages themselves (to copy them into another document).
 struct DraggedPages {
     document: usize,
     pages: Vec<usize>,
+    bundle: PageBundle,
 }
 
 /// Distance from the top or bottom edge, in pixels, within which a drag
@@ -140,13 +142,15 @@ pub struct Sidebar {
 impl Sidebar {
     /// `on_activate` is called with a page index when the user picks a
     /// thumbnail; `on_move` with the pages dragged and the position they
-    /// were dropped before (counted before the move); `on_files` with files
-    /// dropped and the position they were dropped before.
+    /// were dropped before (counted before the move); `on_files` and
+    /// `on_pages` with files, or pages of another document, dropped and the
+    /// position they were dropped before.
     pub fn new(
         document: SharedDocument,
         on_activate: impl Fn(usize) + 'static,
         on_move: impl Fn(Vec<usize>, usize) + 'static,
         on_files: impl Fn(Vec<gio::File>, usize) + 'static,
+        on_pages: impl Fn(PageBundle, usize) + 'static,
     ) -> Self {
         let count = document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
@@ -158,6 +162,7 @@ impl Sidebar {
             pending: Rc::default(),
             on_move: Rc::new(on_move),
             on_files: Rc::new(on_files),
+            on_pages: Rc::new(on_pages),
         };
 
         let factory = gtk::SignalListItemFactory::new();
@@ -177,7 +182,7 @@ impl Sidebar {
                 .build();
             column.append(&thumbnail);
             column.append(&label);
-            column.add_controller(drag_source(item, &thumbnail, &sel, &f, doc_address, &d));
+            column.add_controller(drag_source(item, &thumbnail, &sel, &f, &doc, &d));
             item.set_child(Some(&column));
         });
         let doc = document.clone();
@@ -261,6 +266,18 @@ impl Sidebar {
         if let Some((to, _)) = drop_place(&self.list, y) {
             let on_move = self.drops.on_move.clone();
             glib::idle_add_local_once(move || on_move(pages, to));
+        }
+    }
+
+    /// Does what dropping pages of another document at window height `y`
+    /// does, for tests.
+    pub fn drop_bundle_at(&self, bundle: PageBundle, window: &impl IsA<gtk::Widget>, y: f64) {
+        let y = window
+            .compute_point(&self.list, &graphene::Point::new(0.0, y as f32))
+            .map(|p| f64::from(p.y()));
+        if let Some((to, _)) = y.and_then(|y| drop_place(&self.list, y)) {
+            let on_pages = self.drops.on_pages.clone();
+            glib::idle_add_local_once(move || on_pages(bundle, to));
         }
     }
 
@@ -390,6 +407,8 @@ struct Drops {
     on_move: Rc<dyn Fn(Vec<usize>, usize)>,
     /// Files dropped, inserted at once.
     on_files: Rc<dyn Fn(Vec<gio::File>, usize)>,
+    /// Pages of another document dropped, inserted after the drop.
+    on_pages: Rc<dyn Fn(PageBundle, usize)>,
 }
 
 /// Dragging a thumbnail drags the selected pages if it's one of them,
@@ -399,11 +418,13 @@ fn drag_source(
     thumbnail: &Thumbnail,
     selection: &gtk::MultiSelection,
     following: &Rc<Cell<bool>>,
-    document: usize,
+    document: &SharedDocument,
     drops: &Drops,
 ) -> gtk::DragSource {
     let source = gtk::DragSource::new();
-    source.set_actions(gdk::DragAction::MOVE);
+    // Moved within the document, copied into another one.
+    source.set_actions(gdk::DragAction::MOVE | gdk::DragAction::COPY);
+    let doc = Rc::downgrade(document);
     let drops = drops.clone();
     source.connect_drag_end(move |_, _, _| {
         if let Some((pages, to)) = drops.pending.take() {
@@ -430,14 +451,21 @@ fn drag_source(
             following.set(false);
         }
         let set = selection.selection();
-        let pages = (0..set.size())
+        let pages: Vec<usize> = (0..set.size())
             .map(|i| set.nth(i as u32) as usize)
             .collect();
+        let doc = doc.upgrade()?;
+        let document = Rc::as_ptr(&doc) as usize;
+        let bundle = doc.borrow().bundle(&pages);
         if let Some(t) = thumbnail.upgrade() {
             let icon = gtk::WidgetPaintable::new(Some(&t));
             source.set_icon(Some(&icon), x as i32, y as i32);
         }
-        let value = glib::BoxedAnyObject::new(DraggedPages { document, pages });
+        let value = glib::BoxedAnyObject::new(DraggedPages {
+            document,
+            pages,
+            bundle,
+        });
         Some(gdk::ContentProvider::for_value(&value.to_value()))
     });
     source
@@ -557,6 +585,24 @@ fn has_files(drop: &gdk::Drop) -> bool {
     drop.formats().contains_type(gdk::FileList::static_type())
 }
 
+/// The thumbnails `drop` brings, if any: what the drag in this process
+/// carries.
+fn dragged(drop: &gdk::Drop) -> Option<glib::BoxedAnyObject> {
+    drop.drag()?
+        .content()
+        .value(glib::BoxedAnyObject::static_type())
+        .ok()?
+        .get::<glib::BoxedAnyObject>()
+        .ok()
+}
+
+/// Whether `object` holds thumbnails of the document at `document`.
+fn from_document(object: &glib::BoxedAnyObject, document: usize) -> bool {
+    object
+        .try_borrow::<DraggedPages>()
+        .is_ok_and(|d| d.document == document)
+}
+
 /// Takes thumbnails or files dropped on the list: shows where they'd go
 /// while dragging, scrolls near the edges, and reports the move or the
 /// files.
@@ -575,14 +621,9 @@ fn drop_target(
         glib::BoxedAnyObject::static_type(),
         gdk::FileList::static_type(),
     ]);
-    // Files, or drags of this document's thumbnails.
+    // Files, or thumbnails of any window.
     target.connect_accept(move |_, drop| {
-        has_files(drop)
-            || drop
-                .drag()
-                .and_then(|d| d.content().value(glib::BoxedAnyObject::static_type()).ok())
-                .and_then(|v| v.get::<glib::BoxedAnyObject>().ok())
-                .is_some_and(|b| b.borrow::<DraggedPages>().document == document)
+        has_files(drop) || dragged(drop).is_some_and(|b| b.try_borrow::<DraggedPages>().is_ok())
     });
     let autoscroll = Autoscroll::new(scrolled);
     let (l, ind, auto) = (list.downgrade(), indicator.clone(), autoscroll.clone());
@@ -590,10 +631,14 @@ fn drop_target(
         let Some(list) = l.upgrade() else {
             return gdk::DragAction::empty();
         };
-        let action = if target.current_drop().is_some_and(|d| has_files(&d)) {
-            gdk::DragAction::COPY
-        } else {
+        let own = target
+            .current_drop()
+            .and_then(|d| dragged(&d))
+            .is_some_and(|b| from_document(&b, document));
+        let action = if own {
             gdk::DragAction::MOVE
+        } else {
+            gdk::DragAction::COPY
         };
         auto.set_speed(edge_speed(y, f64::from(list.height())));
         match drop_place(&list, y) {
@@ -635,7 +680,16 @@ fn drop_target(
         let Ok(b) = value.get::<glib::BoxedAnyObject>() else {
             return false;
         };
-        let pages = b.borrow::<DraggedPages>().pages.clone();
+        let Ok(dragged) = b.try_borrow::<DraggedPages>() else {
+            return false;
+        };
+        if dragged.document != document {
+            // Copied in, after the drop (opening files may take a moment).
+            let (bundle, on_pages) = (dragged.bundle.clone(), drops.on_pages.clone());
+            glib::idle_add_local_once(move || on_pages(bundle, to));
+            return true;
+        }
+        let pages = dragged.pages.clone();
         drops.pending.set(Some((pages, to)));
         true
     });

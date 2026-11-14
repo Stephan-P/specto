@@ -148,7 +148,7 @@ fn text_follows_the_pages() {
 }
 
 #[test]
-fn page_labels_hold_while_the_pages_are_the_files() {
+fn pages_keep_their_labels() {
     let scheduler = Scheduler::new(1, || {});
     let mut session = open(&scheduler, book(4, "alpha"));
     assert!(session.labels().is_some());
@@ -158,18 +158,28 @@ fn page_labels_hold_while_the_pages_are_the_files() {
     // "1" is the page labelled 1, not the first page.
     assert_eq!(session.find_page("1"), Some(2));
 
-    // Turning a page keeps the numbering; another order doesn't.
+    // Turned, deleted or moved, pages keep their labels.
     assert!(session.rotate(&[0], Rotation::Cw90));
     assert_eq!(session.page_label(0), "i");
     assert!(session.delete(&[1]));
-    assert!(session.labels().is_none());
-    assert_eq!(session.page_label(0), "1");
-    assert_eq!(session.find_page("1"), Some(0));
+    let labels: Vec<String> = (0..3).map(|i| session.page_label(i)).collect();
+    assert_eq!(labels, ["i", "1", "2"]);
+    assert_eq!(session.find_page("1"), Some(1));
     assert_eq!(session.find_page("ii"), None);
-    assert_eq!(session.find_page("4"), None);
+    assert_eq!(session.move_pages(&[0], 3), Some(2..3));
+    let labels: Vec<String> = (0..3).map(|i| session.page_label(i)).collect();
+    assert_eq!(labels, ["1", "2", "i"]);
+    // Numbers that aren't labels are positions.
+    assert_eq!(session.find_page("3"), Some(2));
 
     assert!(session.undo().is_some());
+    assert!(session.undo().is_some());
     assert_eq!(session.page_label(1), "ii");
+
+    // Back in the file's order, the labels are the file's again; a file
+    // whose labels are 1, 2, 3, … has none.
+    assert!(session.undo().is_some());
+    assert_eq!(session.labels(), session.main().page_labels().as_ref());
     session.close(&scheduler);
 }
 
@@ -293,9 +303,10 @@ fn pages_of_another_file() {
     assert!(session.search("beta"));
     assert_eq!(session.current_match().unwrap().page, 1);
 
-    // Its links and labels are its own: the document has no numbering
-    // of its own any more, and the first file's link still finds its page.
-    assert!(session.labels().is_none());
+    // Its links and labels are its own: the pages keep their labels, and
+    // the first file's link still finds its page.
+    let labels: Vec<String> = (0..5).map(|i| session.page_label(i)).collect();
+    assert_eq!(labels, ["i", "i", "ii", "1", "ii"]);
     assert_eq!(session.position_of(other, 2), Some(3));
 
     // Undone, the file stays known, for redo.
@@ -304,6 +315,61 @@ fn pages_of_another_file() {
     assert!(session.redo().is_some());
     assert_eq!(session.viewer.page_count(), 5);
     session.close(&scheduler);
+}
+
+#[test]
+fn pages_from_one_session_into_another() {
+    let scheduler = Scheduler::new(1, || {});
+    let mut from = open(&scheduler, book(3, "alpha"));
+    let (beta, _) = from
+        .add_source(&scheduler, book(2, "beta").into(), None)
+        .unwrap();
+    assert_eq!(from.insert(3, &[beta]), Some(3..5));
+    assert!(from.rotate(&[2], Rotation::Cw90));
+    // Pages of both files, in document order whatever the order asked.
+    let bundle = from.bundle(&[4, 2, 0, 2]);
+    assert_eq!(bundle.page_count(), 3);
+
+    let mut to = open(&scheduler, book(2, "gamma"));
+    assert_eq!(to.insert_bundle(&scheduler, 1, &bundle), Ok(Some(1..4)));
+    let text = all_text(&mut to);
+    let order: Vec<&str> = text.lines().filter(|l| l.contains("page")).collect();
+    assert_eq!(
+        order,
+        [
+            "gamma page 1",
+            "alpha page 1",
+            "alpha page 3",
+            "beta page 2",
+            "gamma page 2"
+        ]
+    );
+    // The rotation comes along; it's one edit.
+    assert_eq!(to.edit().pages()[2].rotation, Rotation::Cw90);
+    assert_eq!(
+        to.edit().undo_edit(),
+        Some(pdfrs_doc::Edit::Insert { pages: 3 })
+    );
+
+    // The same files again aren't opened a second time.
+    let again = from.bundle(&[1]);
+    assert_eq!(to.insert_bundle(&scheduler, 0, &again), Ok(Some(0..1)));
+    let sources: std::collections::HashSet<_> =
+        to.edit().pages().iter().map(|p| p.source).collect();
+    assert_eq!(sources.len(), 3);
+
+    // Within one session, a bundle copies pages.
+    let own = to.bundle(&[0]);
+    assert_eq!(to.insert_bundle(&scheduler, 6, &own), Ok(Some(6..7)));
+    assert_eq!(to.edit().pages()[6], to.edit().pages()[0]);
+
+    // Saved, the copied pages are in the file.
+    let mut saved = open(&scheduler, to.save_job().write().unwrap());
+    assert_eq!(saved.viewer.page_count(), 7);
+    assert!(all_text(&mut saved).contains("beta page 2"));
+    for s in [&mut from, &mut to, &mut saved] {
+        s.close(&scheduler);
+    }
 }
 
 #[test]

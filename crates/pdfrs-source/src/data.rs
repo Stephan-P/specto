@@ -71,6 +71,13 @@ impl PdfData {
     }
 
     /// Whether the bytes are a mapping of the file rather than a copy.
+    /// Whether `self` and `other` are the same bytes in memory: clones of
+    /// one `PdfData`, not just equal contents.
+    pub fn same(&self, other: &PdfData) -> bool {
+        let (a, b): (&[u8], &[u8]) = (self, other);
+        std::ptr::eq(a, b)
+    }
+
     pub fn is_mapped(&self) -> bool {
         matches!(self.0, Inner::Mapped(_))
     }

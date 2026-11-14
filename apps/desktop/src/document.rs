@@ -24,7 +24,7 @@ use pdfrs_session::{Options, Session};
 use pdfrs_source::PdfData;
 use pdfrs_view::placeholder_level;
 
-pub use pdfrs_session::{Indexed, MAIN, SaveJob, TextLayer};
+pub use pdfrs_session::{Indexed, MAIN, PageBundle, SaveJob, TextLayer};
 
 const CACHE_BUDGET: usize = 384 << 20;
 
@@ -213,6 +213,21 @@ impl Document {
         let range = self.session.insert(at, sources)?;
         self.pages_changed();
         Some(range)
+    }
+
+    /// Inserts the pages of `bundle` (from another document) before
+    /// position `at`, as one edit. Returns where they ended up, or the
+    /// error opening one of their files.
+    pub fn insert_bundle(
+        &mut self,
+        at: usize,
+        bundle: &PageBundle,
+    ) -> Result<Option<Range<usize>>, OpenError> {
+        let range = self.session.insert_bundle(scheduler(), at, bundle)?;
+        if range.is_some() {
+            self.pages_changed();
+        }
+        Ok(range)
     }
 
     pub fn undo(&mut self) -> Option<Edit> {

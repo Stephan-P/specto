@@ -47,8 +47,12 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - drop_files_and_export: two PDFs dropped (through a test hook) on the
   sidebar are inserted where dropped, as one edit; Export Selected Pages
   writes those pages as a new file and leaves the document as it was
+- pages_between_windows: pages of one window dropped (through a test
+  hook) on another's thumbnails are copied there, rotation included; the
+  first window keeps them; saved, they're in the second file
 - insert_file: pages of another file inserted after the current page, shown
-  and searched; undo; saved, they're in the file
+  and searched; the pages keep their labels, the inserted ones numbered by
+  position; undo; saved, they're in the file
 
 With the virtual pointer and keyboard, on a Courier text PDF:
 
@@ -1185,6 +1189,8 @@ def test_delete_pages(ctx):
     check(s["undo"] == "Delete Page" and s["subtitle"].startswith("11 pages"), s)
     s = w.settled("the page after it", lambda s: s["page"] == 2)
     w.showing(3, "after-delete")
+    # It keeps its label.
+    check(s["page_entry"] == LABELS[3], s)
     # Two selected in the sidebar: Backspace deletes both.
     w.action("first-page")
     w.settled("page 1", lambda s: s["page"] == 0 and s["thumbnails"][0][0] == 0)
@@ -1286,6 +1292,39 @@ def test_drop_files_and_export(ctx):
     check("Pages:           6" in info.stdout, f"pdfinfo: {info.stdout}{info.stderr}")
 
 
+def test_pages_between_windows(ctx):
+    path = os.path.join(ctx.home, "text.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([ctx.pages, path])
+    one, two = app.window(1), app.window(2)
+    one.wait("the document", lambda s: s["view"] == "document")
+    # The second window is on top, so it draws (see two_windows).
+    s = two.settled()
+    one.action("debug-go-to", gvariant_str(LABELS[2]))
+    one.wait("page 3", lambda s: s["page"] == 2)
+    one.action("rotate-right")
+    one.wait("page 3 rotated", lambda s: rotations(s)[2] == 90)
+    # Pages 1 and 3 of the first window, dropped below page 1 of the second.
+    rect = next(t[1:] for t in s["thumbnails"] if t[0] == 0)
+    at = rect[1] + rect[3] * 0.6
+    two.action("debug-drop-pages-from", gvariant_str(f"1:0,2@{at}"))
+    s = two.wait("the pages copied", lambda s: len(s["edit_pages"]) == 5)
+    check([(p[0], p[2]) for p in s["edit_pages"]] == [(0, 0), (0, 1), (2, 1), (1, 0), (2, 0)],
+          s["edit_pages"])
+    check(rotations(s) == [0, 0, 90, 0, 0], s["edit_pages"])
+    check(s["undo"] == "Insert 2 Pages" and s["thumbnails_selected"] == [1, 2], s)
+    # Its page, not its render: at scale 2 the windows overlap and the
+    # compositor may stop sending this one frames.
+    two.wait("the first copied page", lambda s: s["page"] == 1)
+    # The first window still has them.
+    check(len(one.state()["edit_pages"]) == PAGES, "pages left the first window")
+    # Saved, the second file has them.
+    two.action("save")
+    two.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    info = subprocess.run(["pdfinfo", path], capture_output=True, text=True)
+    check("Pages:           5" in info.stdout, f"pdfinfo: {info.stdout}{info.stderr}")
+
+
 def test_insert_file(ctx):
     path = copy_of_pages(ctx)
     app = ctx.app([path])
@@ -1302,8 +1341,14 @@ def test_insert_file(ctx):
     check(s["edit_pages"][5] == [2, 0, 0], s["edit_pages"])
     check(s["undo"] == "Insert 3 Pages" and s["modified"], s)
     s = w.settled("the first inserted page", lambda s: s["page"] == 2)
-    # Page labels no longer fit, so plain numbers.
-    check(s["page_entry"] == "3" and s["subtitle"].startswith("15 pages"), s)
+    # The inserted pages have no labels: numbered by position. The others
+    # keep theirs.
+    check(s["page_entry"] == "3" and s["page_total"] == "(3 of 15)", s)
+    check(s["subtitle"].startswith("15 pages"), s)
+    w.action("debug-go-to", gvariant_str(LABELS[2]))
+    w.wait("page iii, now sixth", lambda s: s["page"] == 5)
+    w.action("debug-go-to", gvariant_str("3"))
+    w.wait("the first inserted page", lambda s: s["page"] == 2)
     # (Original page 3's thumbnail shows in the sidebar, but not the page.)
     c = w.colours("inserted")
     check(c.get(2, 0) < 0.1, f"page 3 of the original still shown: {fmt(c)}")

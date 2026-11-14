@@ -14,8 +14,11 @@
 //! - Deleted pages are removed, with everything only they used. References
 //!   to them elsewhere (outline entries, links) are left dangling, which
 //!   readers treat as null: the entry stays, but goes nowhere.
-//! - Page labels are kept only if the pages are all still there, in order;
-//!   otherwise they would label the wrong pages.
+//! - Page labels: each page keeps the label it had in its file. If the
+//!   pages are all still there, in order, the file's `/PageLabels` stays as
+//!   it is; otherwise new ones are written (`PageLabels::of_pages`: pages
+//!   of files without labels are numbered by position), or none if no page
+//!   has a label of its own.
 //! - A page used twice gets a copy of its page dictionary (and of its
 //!   annotations, except form fields), sharing contents and resources.
 //!
@@ -41,8 +44,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use lopdf::{Dictionary, Document, LoadOptions, Object, ObjectId, SaveOptions};
 use pdfrs_doc::{PageRef, Rotation, SourceId};
-use pdfrs_source::PdfData;
 use pdfrs_source::hayro_syntax::object::{ObjectIdentifier, Stream as HayroStream};
+use pdfrs_source::{LabelStyle, PageLabels, PdfData};
 
 /// Attributes a page can inherit from its ancestors in the page tree.
 const INHERITABLE: [&[u8]; 4] = [b"Resources", b"MediaBox", b"CropBox", b"Rotate"];
@@ -160,8 +163,16 @@ pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteErro
             .iter()
             .enumerate()
             .all(|(i, p)| p.source == main.id && p.page as usize == i);
-    if !in_order && let Ok(catalog) = doc.get_dictionary_mut(catalog_id) {
-        catalog.remove(b"PageLabels");
+    if !in_order {
+        let tree = page_labels(sources, pages).map(|l| label_tree(&l));
+        if let Ok(catalog) = doc.get_dictionary_mut(catalog_id) {
+            match tree {
+                Some(tree) => catalog.set("PageLabels", tree),
+                None => {
+                    catalog.remove(b"PageLabels");
+                }
+            }
+        }
     }
 
     doc.prune_objects();
@@ -245,6 +256,68 @@ fn verify(out: &[u8], sources: &[Source], pages: &[PageRef]) -> Result<(), Write
         }
     }
     Ok(())
+}
+
+/// The labels of `pages`, each keeping the label it has in its file.
+fn page_labels(sources: &[Source], pages: &[PageRef]) -> Option<PageLabels> {
+    let mut of_source: HashMap<SourceId, Option<PageLabels>> = HashMap::new();
+    for s in sources {
+        if pages.iter().any(|p| p.source == s.id) {
+            let labels = pdfrs_source::SourceDocument::open(s.data.clone(), s.password)
+                .ok()
+                .and_then(|d| d.page_labels())
+                .filter(|l| !l.is_plain());
+            of_source.insert(s.id, labels);
+        }
+    }
+    PageLabels::of_pages(pages.iter().map(|p| {
+        let labels = of_source.get(&p.source).and_then(Option::as_ref);
+        (labels, p.page as usize)
+    }))
+}
+
+/// `labels` as a `/PageLabels` number tree.
+fn label_tree(labels: &PageLabels) -> Dictionary {
+    let mut nums = Vec::new();
+    for r in labels.ranges() {
+        let mut d = Dictionary::new();
+        d.set("Type", Object::Name(b"PageLabel".to_vec()));
+        let style: Option<&[u8]> = match r.style {
+            LabelStyle::Decimal => Some(b"D"),
+            LabelStyle::UpperRoman => Some(b"R"),
+            LabelStyle::LowerRoman => Some(b"r"),
+            LabelStyle::UpperLetters => Some(b"A"),
+            LabelStyle::LowerLetters => Some(b"a"),
+            LabelStyle::None => None,
+        };
+        if let Some(s) = style {
+            d.set("S", Object::Name(s.to_vec()));
+        }
+        if !r.prefix.is_empty() {
+            d.set("P", text_string(&r.prefix));
+        }
+        if r.first != 1 && style.is_some() {
+            d.set("St", i64::from(r.first));
+        }
+        nums.push(Object::Integer(r.start as i64));
+        nums.push(Object::Dictionary(d));
+    }
+    let mut tree = Dictionary::new();
+    tree.set("Nums", nums);
+    tree
+}
+
+/// A PDF text string: ASCII as is, anything else as UTF-16BE.
+fn text_string(s: &str) -> Object {
+    let bytes = if s.is_ascii() {
+        s.as_bytes().to_vec()
+    } else {
+        [0xFE, 0xFF]
+            .into_iter()
+            .chain(s.encode_utf16().flat_map(u16::to_be_bytes))
+            .collect()
+    };
+    Object::String(bytes, lopdf::StringFormat::Literal)
 }
 
 /// How many pages the main document had.

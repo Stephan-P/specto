@@ -252,8 +252,13 @@ fn deleting_and_moving_pages() {
     let expected: Vec<_> = pages.iter().map(|&p| (&original, p)).collect();
     assert_pages(&written, &expected);
     let source = SourceDocument::open(out.clone(), None).unwrap();
-    // The labels would be wrong now.
-    assert!(source.page_labels().is_none());
+    // Each page keeps its label.
+    let original = SourceDocument::open(data.clone(), None).unwrap();
+    let before = original.page_labels().unwrap();
+    let after = source.page_labels().unwrap();
+    for (i, p) in pages.iter().enumerate() {
+        assert_eq!(after.label(i), before.label(p.page as usize));
+    }
     // The outline entry stays, but its page is gone.
     assert_eq!(source.outline()[0].title, "Last page");
     assert!(source.outline()[0].target.is_none());
