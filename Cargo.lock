@@ -1002,18 +1002,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gtk-canvas"
-version = "0.0.0"
-dependencies = [
- "async-channel",
- "gtk4",
- "libadwaita",
- "pdfrs-geom",
- "pdfrs-render",
- "pdfrs-view",
-]
-
-[[package]]
 name = "gtk4"
 version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2265,15 +2253,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
-]
-
-[[package]]
-name = "text-check"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "hayro",
- "unicode-normalization",
 ]
 
 [[package]]

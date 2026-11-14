@@ -1,5 +1,7 @@
 # M0 spike findings (2026-11-14)
 
+Two of the spikes described here have since been removed, because the desktop app and `pdfrs-text` replaced them: `spikes/gtk-canvas` and `spikes/text-check`. The commands below that use them need a checkout of commit f32a26a, the last one that has them. `spikes/lopdf-spike` is still there.
+
 Machine: aarch64 Fedora 44, 4 cores, Rust 1.100, release builds.
 Versions: hayro 0.9.0, lopdf 0.47.0, Poppler (`pdftoppm`) as the reference.
 
