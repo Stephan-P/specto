@@ -60,7 +60,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 ## M2: Text
 
 - [x] **S** Spike: hayro's glyph → Unicode mapping is good enough to build on (recall 0.99–1.00 on everyday PDFs vs `pdftotext`; M0-FINDINGS.md, "Text extraction check")
-- [ ] **L** `pdfrs-text`: glyph extraction via hayro's `Device`, word/line grouping (rotation-aware, CJK without spaces), reading order
+- [x] **L** `pdfrs-text`: glyph extraction via hayro's `Device` (quads in PDF space, rotation and vertical writing), words and lines in content order, RTL (Hebrew/Arabic) in logical order for text output, `text_range`, `char_at`, `word_of`, `line_of`. Character-level match with `pdftotext -raw` on the corpus: median recall and order 1.000, 87% of files ≥ 0.99 recall; everyday PDFs 0.98–1.00. 384 pages in 0.2 s
+- [ ] **M** Reading order by layout (columns, blocks) for files whose content stream isn't in reading order (about 5% of the corpus, mostly forms and flyers)
 - [ ] **M** `pdfrs-text` fallbacks for glyphs without Unicode: reverse lookup in the embedded TrueType `cmap` (CID TrueType without `ToUnicode`); character code as Latin-1 / font encoding (Type 3)
 - [ ] **S** Investigate and report upstream: hayro ignores existing `ToUnicode` tables in `complex_ttf_font.pdf` and `issue16538.pdf`
 - [ ] **M** Text selection (drag, double-click word, triple-click line) + copy

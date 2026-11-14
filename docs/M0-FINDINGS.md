@@ -203,6 +203,19 @@ The other low scores come from the spike's naive word building (rotated text, Ch
 
 **Conclusion:** build `pdfrs-text` on hayro's `Device` interface and `as_unicode`, plus two fallbacks of our own (font `cmap` reverse lookup, char-code fallback), and report the third group upstream. No font parsing of our own beyond the `cmap` table.
 
+## Text layer (M2)
+
+`crates/pdfrs-text`, measured against `pdftotext -raw` at the **character** level (whitespace ignored, annotations included on both sides). Word-level comparisons turned out to be misleading: Poppler separates Japanese characters with spaces and splits letter-spaced headings into single letters, while we keep them together.
+
+| | Recall | Order (sequence similarity) |
+|---|---|---|
+| Everyday PDFs (`/usr/share`) | 0.98–1.00 (words) | 0.92–1.00 |
+| pdf.js corpus, 166 files with ≥ 100 characters | median 1.000; 87% ≥ 0.99 | median 1.000; 86% ≥ 0.95 |
+
+- What's left is mostly glyphs without Unicode (the fallbacks in TASKS.md) and files whose content stream isn't in reading order (forms, flyers), where Poppler partly reorders by layout.
+- Right-to-left text: most generators draw Hebrew and Arabic left to right (visual order). Text output reverses RTL words and lines drawn that way, and RTL glyphs placed right to left (logical order) don't break lines. Historic RTL scripts are left alone, as Poppler does.
+- Speed: the 384-page Valgrind manual in 0.20 s (17 MB), the corpus's first three pages per file in 0.8 s. Search over whole documents doesn't need precomputed text.
+
 ## Not done yet
 
 - Verify Preview's encryption behavior on a Mac (D9).

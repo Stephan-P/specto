@@ -45,6 +45,7 @@ target/release/pdfrs corpus corpus/files/... --reference  # regression run, see 
 
 - `crates/pdfrs-geom`: typed coordinate spaces and page geometry (crop box, rotation)
 - `crates/pdfrs-source`: opening, metadata, outline and links
+- `crates/pdfrs-text`: text layer (characters with positions, words, lines)
 - `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
 - `crates/pdfrs-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
 - `crates/pdfrs-ffi`: UniFFI bindings for Android

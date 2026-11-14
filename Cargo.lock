@@ -1621,6 +1621,7 @@ dependencies = [
  "image",
  "pdfrs-render",
  "pdfrs-source",
+ "pdfrs-text",
  "wait-timeout",
 ]
 
@@ -1676,6 +1677,15 @@ dependencies = [
  "hayro-syntax",
  "pdfrs-geom",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pdfrs-text"
+version = "0.1.0"
+dependencies = [
+ "hayro",
+ "pdfrs-geom",
+ "pdfrs-source",
 ]
 
 [[package]]

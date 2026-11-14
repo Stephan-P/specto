@@ -30,6 +30,18 @@ enum Command {
     },
     /// Render pages to PNG.
     Render(RenderArgs),
+    /// Print the text layer (words separated by spaces, lines by newlines).
+    Text {
+        file: PathBuf,
+        /// Pages, 1-based, e.g. "1,3,5-7". Default: all.
+        #[arg(short, long)]
+        pages: Option<String>,
+        #[arg(long)]
+        password: Option<String>,
+        /// Include text drawn by annotations (form fields, notes).
+        #[arg(long)]
+        annotations: bool,
+    },
     /// Render a single file and print per-page results (used by `corpus`).
     #[command(hide = true)]
     Check(check::CheckArgs),
@@ -45,6 +57,12 @@ fn main() -> Result<()> {
             outline,
         } => info(&file, password.as_deref(), outline),
         Command::Render(args) => render(&args),
+        Command::Text {
+            file,
+            pages,
+            password,
+            annotations,
+        } => text(&file, pages.as_deref(), password.as_deref(), annotations),
         Command::Check(args) => check::run(&args),
         Command::Corpus(args) => corpus::run(&args),
     }
@@ -121,6 +139,24 @@ fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
     }
     if doc.page_count() > 10 {
         println!("…");
+    }
+    Ok(())
+}
+
+fn text(file: &Path, pages: Option<&str>, password: Option<&str>, annotations: bool) -> Result<()> {
+    let source = pdfrs_source::SourceDocument::open(std::fs::read(file)?, password)?;
+    let pages = match pages {
+        Some(spec) => parse_pages(spec, source.page_count())?,
+        None => (0..source.page_count()).collect(),
+    };
+    let extractor = pdfrs_text::Extractor::new(source.pdf()).with_annotations(annotations);
+    for (i, page) in pages.into_iter().enumerate() {
+        if i > 0 {
+            println!("\u{c}"); // form feed between pages, like pdftotext
+        }
+        if let Some(t) = extractor.page(page) {
+            println!("{}", t.text());
+        }
     }
     Ok(())
 }

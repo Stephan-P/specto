@@ -1,0 +1,17 @@
+[package]
+name = "pdfrs-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Text layer for pdfrs: characters with positions, words, lines"
+
+[dependencies]
+hayro.workspace = true
+pdfrs-geom.workspace = true
+
+[dev-dependencies]
+pdfrs-source.workspace = true
+
+[lints]
+workspace = true

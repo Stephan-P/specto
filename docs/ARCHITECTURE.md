@@ -15,7 +15,7 @@ pdfrs/
 │   ├── pdfrs-geom      # typed coordinate spaces (euclid), PageGeometry: CropBox, /Rotate
 │   ├── pdfrs-source    # opening/decryption, metadata, outline, links (hayro-syntax)
 │   ├── pdfrs-render    # Document trait, hayro backend, TileCache<T>, render scheduler
-│   ├── pdfrs-text      # text extraction with glyph quads → selection, search, highlight targets
+│   ├── pdfrs-text      # text layer via hayro's Device: char quads (PDF space), words, lines
 │   ├── pdfrs-doc       # edit model: page list, annotations, form values, undo/redo, commands
 │   ├── pdfrs-annot     # annotation types + appearance-stream generation
 │   ├── pdfrs-forms     # AcroForm model, field values, appearance regeneration

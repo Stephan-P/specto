@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 pdfrs-render.workspace = true
 pdfrs-source.workspace = true
+pdfrs-text.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 image.workspace = true

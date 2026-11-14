@@ -41,6 +41,7 @@ pub enum DeviceSpace {}
 
 pub type PdfPoint = Point2D<f64, PdfSpace>;
 pub type PdfBox = Box2D<f64, PdfSpace>;
+pub type PdfVector = Vector2D<f64, PdfSpace>;
 pub type PagePoint = Point2D<f64, PageSpace>;
 pub type PageSize = Size2D<f64, PageSpace>;
 pub type PageRect = Rect<f64, PageSpace>;
@@ -61,6 +62,53 @@ pub type DeviceIntSize = Size2D<u32, DeviceSpace>;
 
 pub type PdfToPage = Transform2D<f64, PdfSpace, PageSpace>;
 pub type PageToPdf = Transform2D<f64, PageSpace, PdfSpace>;
+
+/// A quadrilateral, e.g. a glyph or a highlighted run of text that may be
+/// rotated. Points go around in order; for text: bottom-left, bottom-right,
+/// top-right, top-left *in the text's own direction*.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Quad<U> {
+    pub points: [Point2D<f64, U>; 4],
+}
+
+impl<U> Quad<U> {
+    pub fn new(points: [Point2D<f64, U>; 4]) -> Self {
+        Self { points }
+    }
+
+    /// The axis-aligned bounding box.
+    pub fn bounds(&self) -> Box2D<f64, U> {
+        Box2D::from_points(self.points)
+    }
+
+    /// Whether `p` lies inside (convex quads, either winding).
+    pub fn contains(&self, p: Point2D<f64, U>) -> bool {
+        let mut sign = 0.0;
+        for i in 0..4 {
+            let (a, b) = (self.points[i], self.points[(i + 1) % 4]);
+            let cross = (b - a).cross(p - a);
+            if cross.abs() < 1e-12 {
+                continue;
+            }
+            if sign == 0.0 {
+                sign = cross.signum();
+            } else if cross.signum() != sign {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Maps the quad into another space.
+    pub fn transform<V>(&self, t: &Transform2D<f64, U, V>) -> Quad<V> {
+        Quad {
+            points: self.points.map(|p| t.transform_point(p)),
+        }
+    }
+}
+
+pub type PdfQuad = Quad<PdfSpace>;
+pub type PageQuad = Quad<PageSpace>;
 
 /// Fallback size for degenerate pages: A4 (210 × 297 mm), matching hayro.
 const A4: (f64, f64) = (210.0 / 25.4 * 72.0, 297.0 / 25.4 * 72.0);
@@ -264,6 +312,24 @@ mod tests {
         );
         assert_eq!(g.visible_box(), pdf_box(0.0, 50.0, 200.0, 100.0));
         assert_eq!(g.size(), PageSize::new(200.0, 50.0));
+    }
+
+    #[test]
+    fn quads_contain_points_and_transform() {
+        // A square rotated 45°, centred on (10, 10).
+        let q = PdfQuad::new([
+            PdfPoint::new(10.0, 5.0),
+            PdfPoint::new(15.0, 10.0),
+            PdfPoint::new(10.0, 15.0),
+            PdfPoint::new(5.0, 10.0),
+        ]);
+        assert!(q.contains(PdfPoint::new(10.0, 10.0)));
+        assert!(q.contains(PdfPoint::new(12.0, 10.0)));
+        assert!(!q.contains(PdfPoint::new(6.0, 6.0))); // inside the bounds, outside the quad
+        assert_eq!(q.bounds(), pdf_box(5.0, 5.0, 15.0, 15.0));
+        let g = geometry(Rotation::None);
+        let page = q.transform(&g.pdf_to_page());
+        assert!(page.contains(g.pdf_to_page().transform_point(PdfPoint::new(10.0, 10.0))));
     }
 
     #[test]
