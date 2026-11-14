@@ -16,6 +16,10 @@ object Native {
         System.loadLibrary("pdfrs_ffi")
     }
 
+    /** View size in dp and the display density. */
+    @JvmStatic
+    external fun setViewport(session: Long, width: Double, height: Double, scale: Double)
+
     /** Scrolls by dp. */
     @JvmStatic
     external fun scrollBy(session: Long, dx: Double, dy: Double)

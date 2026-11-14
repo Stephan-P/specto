@@ -30,6 +30,19 @@
 
 use crate::{FinishedTile, Frame, Rect, ZoomMode, find_session};
 
+/// See `ViewSession::set_viewport`. Here because the app animates its bars,
+/// which resizes the view on every frame. `false` if the session is closed.
+pub fn set_viewport(session: u64, width: f64, height: f64, scale: f64) -> bool {
+    let Some(session) = find_session(session) else {
+        return false;
+    };
+    session
+        .lock()
+        .viewer
+        .set_viewport(pdfrs_geom::ViewSize::new(width, height), scale);
+    true
+}
+
 /// Scrolls by logical pixels. `false` if the session is closed.
 pub fn scroll_by(session: u64, dx: f64, dy: f64) -> bool {
     let Some(session) = find_session(session) else {

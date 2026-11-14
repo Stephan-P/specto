@@ -54,10 +54,10 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Hide the bars | Tap the page where there is no link | Top bar, strip, page indicator and status bar disappear after a brief moment; the navigation handle stays |
+| Hide the bars | Tap the page where there is no link | After a brief moment the top bar slides up and the strip slides down (about a fifth of a second) while the page glides to its new place; the page indicator and status bar go too; the navigation handle stays |
 | Whole screen | Zoom in while in full screen | The page uses the entire screen, including the area around the camera cutout; the background has one colour throughout |
 | Page number | Turn a page in full screen | "n / total" fades in at the bottom and out again after about a second and a half |
-| Show them again | Tap again, or press Back | Everything returns, on the same page |
+| Show them again | Tap again, or press Back | The bars slide back in and the page glides back, on the same page |
 | Still usable | Swipe, zoom and tap links in full screen | All work as in the normal view |
 
 ## Behaviour of the app as a whole

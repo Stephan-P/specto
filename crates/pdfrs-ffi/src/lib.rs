@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, Weak};
 use std::time::Instant;
 
-use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewSize, ViewVector};
+use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::{Bitmap, OpenError};
 use pdfrs_source::{Link, NamedAction, OutlineItem, SourceDocument, Target};
@@ -532,10 +532,7 @@ impl ViewSession {
     /// View size in logical pixels (dp) and device pixels per logical pixel
     /// (the display density, e.g. 2.625).
     pub fn set_viewport(&self, width: f64, height: f64, scale: f64) {
-        self.shared
-            .lock()
-            .viewer
-            .set_viewport(ViewSize::new(width, height), scale);
+        hot::set_viewport(self.id, width, height, scale);
     }
 
     /// Scrolls the content by this many logical pixels.

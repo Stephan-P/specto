@@ -132,7 +132,9 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     fun bitmap(id: Long): Bitmap? = bitmaps[id]
 
     fun setViewport(widthDp: Float, heightDp: Float, density: Float) {
-        session.setViewport(widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
+        // Through JNI: the bars around the view are animated, which resizes
+        // it on every frame.
+        Native.setViewport(sessionId, widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
         refresh()
     }
 

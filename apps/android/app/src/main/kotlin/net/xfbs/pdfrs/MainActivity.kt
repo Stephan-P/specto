@@ -18,8 +18,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -159,6 +162,9 @@ private fun AppTheme(content: @Composable () -> Unit) {
 /** Keeps content that isn't the page itself clear of the camera cutout and the navigation bar. */
 private val besideAndBelow = WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
 
+/** Duration of the bars sliding in and out. */
+private const val BARS_MS = 220
+
 /** How long the page number stays after a page turn in full screen. */
 private const val INDICATOR_MS = 1500L
 
@@ -253,17 +259,34 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
     StatusBar(hidden = immersive)
 
     val hasStrip = ready != null && !showPages && !immersive && ready.state.pageCount > 1
+    // The document whose strip is showing, kept while the strip slides out.
+    var stripState by remember { mutableStateOf<PdfViewState?>(null) }
+    if (hasStrip) stripState = ready?.state else if (ready == null) stripState = null
 
     Scaffold(
         // The page view goes edge to edge: under the camera cutout (in
         // landscape, beside it) and under the navigation handle. Everything
         // else keeps clear of them by itself.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        // The bars slide in and out. They take up their space as they go, so
+        // the page area between them resizes smoothly and the page glides
+        // rather than jumps.
         bottomBar = {
-            if (hasStrip && ready != null) ThumbnailStrip(ready.state)
+            AnimatedVisibility(
+                visible = hasStrip,
+                enter = expandVertically(tween(BARS_MS), expandFrom = Alignment.Top),
+                exit = shrinkVertically(tween(BARS_MS), shrinkTowards = Alignment.Top),
+            ) {
+                // Still there while sliding out, when `ready` may be gone.
+                stripState?.let { ThumbnailStrip(it) }
+            }
         },
         topBar = {
-            if (!immersive) TopAppBar(
+            AnimatedVisibility(
+                visible = !immersive,
+                enter = expandVertically(tween(BARS_MS), expandFrom = Alignment.Bottom),
+                exit = shrinkVertically(tween(BARS_MS), shrinkTowards = Alignment.Bottom),
+            ) { TopAppBar(
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 navigationIcon = {
                     if (ready != null) {
@@ -319,7 +342,7 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                         }
                     }
                 },
-            )
+            ) }
         },
     ) { insets ->
         Box(

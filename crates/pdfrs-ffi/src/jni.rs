@@ -22,6 +22,21 @@ fn guarded<T>(on_panic: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(on_panic)
 }
 
+/// `Native.setViewport(session: Long, width: Double, height: Double, scale: Double)`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_xfbs_pdfrs_Native_setViewport(
+    _env: *mut JNIEnv,
+    _class: jclass,
+    session: jlong,
+    width: jdouble,
+    height: jdouble,
+    scale: jdouble,
+) {
+    guarded((), || {
+        hot::set_viewport(session as u64, width, height, scale);
+    });
+}
+
 /// `Native.scrollBy(session: Long, dx: Double, dy: Double)`
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollBy(
