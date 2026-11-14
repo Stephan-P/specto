@@ -17,6 +17,7 @@ async-channel = "2"
 pdfrs-doc.workspace = true
 pdfrs-geom.workspace = true
 pdfrs-render.workspace = true
+pdfrs-session.workspace = true
 pdfrs-source.workspace = true
 pdfrs-text.workspace = true
 pdfrs-write.workspace = true

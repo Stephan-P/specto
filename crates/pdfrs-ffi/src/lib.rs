@@ -27,17 +27,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, Weak};
 use std::time::Instant;
 
-use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewVector};
+use pdfrs_doc::SourceId;
+use pdfrs_geom::{DeviceRect, ViewPoint, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::{Bitmap, OpenError};
-use pdfrs_source::{Link, NamedAction, OutlineItem, PageLabels, PdfData, SourceDocument, Target};
-use pdfrs_text::{Extractor, TextPage};
+use pdfrs_session::{MAIN, Options, Session};
+use pdfrs_source::{NamedAction, OutlineItem, PdfData, Target};
 use pdfrs_view::{
-    Granularity, Selection, Settings, TextPages, ViewPage, Viewer, over_text, text_char,
-    text_position, text_quads,
+    Granularity, Selection, Settings, TextPages, over_text, text_char, text_position, text_quads,
 };
-
-use search::SearchSession;
 
 use tiles::TileBook;
 
@@ -341,81 +339,29 @@ pub struct FinishedTile {
 }
 
 struct State {
-    viewer: Viewer,
+    /// The document: its file, pages, viewer, text, selection and search,
+    /// as the desktop app has it too.
+    session: Session,
     tiles: TileBook,
     /// The last frame encoded for [`hot::frame`], kept so a caller whose
     /// buffer was too small can fetch it again without planning a new one.
     encoded: Vec<u8>,
     /// Pages whose thumbnails the frontend is showing (first, count).
     thumbnails: (u32, u32),
-    /// Structure (links), separate from rendering.
-    source: SourceDocument,
-    /// Links per page, parsed on first use.
-    links: HashMap<usize, Vec<Link>>,
     /// What the view is fitted to unless the reader zoomed, and returns to:
     /// `FitPage` or `FitWidth`.
     fit: pdfrs_view::ZoomMode,
-    /// Text pages extracted so far, for selecting.
-    texts: TextCache,
-    selection: Option<Selection>,
-    search: SearchSession,
 }
 
 /// How many pages' text is kept (the least recently used go first). A page
 /// takes about 100 bytes per character.
 const TEXT_PAGES: usize = 24;
 
-/// Text pages by page number.
-#[derive(Default)]
-struct TextCache {
-    pages: HashMap<usize, (Arc<TextPage>, u64)>,
-    clock: u64,
-}
-
-/// The document's text pages, extracted when first needed: a fraction of a
-/// millisecond to a few milliseconds per page.
-struct TextLayer<'a> {
-    source: &'a SourceDocument,
-    cache: &'a mut TextCache,
-}
-
-impl TextPages for TextLayer<'_> {
-    fn text_page(&mut self, page: usize) -> Option<Arc<TextPage>> {
-        let cache = &mut *self.cache;
-        cache.clock += 1;
-        if let Some((text, used)) = cache.pages.get_mut(&page) {
-            *used = cache.clock;
-            return Some(text.clone());
-        }
-        let text = Arc::new(Extractor::new(self.source.pdf()).page(page)?);
-        cache.pages.insert(page, (text.clone(), cache.clock));
-        if cache.pages.len() > TEXT_PAGES
-            && let Some(&oldest) = cache
-                .pages
-                .iter()
-                .min_by_key(|(_, (_, used))| *used)
-                .map(|(p, _)| p)
-        {
-            cache.pages.remove(&oldest);
-        }
-        Some(text)
-    }
-}
-
 impl State {
-    /// The viewer, the text layer and the selection, to work on together.
-    fn text(&mut self) -> (&Viewer, TextLayer<'_>, &mut Option<Selection>) {
-        let texts = TextLayer {
-            source: &self.source,
-            cache: &mut self.texts,
-        };
-        (&self.viewer, texts, &mut self.selection)
-    }
-
     /// Moves the end of the selection that isn't its anchor to the text
     /// nearest to `p`. A selection never shrinks to nothing this way.
     fn select_to(&mut self, p: ViewPoint) {
-        let (viewer, mut texts, selection) = self.text();
+        let (viewer, mut texts, selection) = self.session.text();
         let (Some(s), Some(to)) = (selection.as_mut(), text_position(viewer, &mut texts, p)) else {
             return;
         };
@@ -426,11 +372,22 @@ impl State {
         }
     }
 
-    /// Does what a link or outline entry asks for.
-    fn follow(&mut self, target: &Target) -> Activated {
-        let viewer = &mut self.viewer;
+    /// Does what a link or outline entry of file `source` asks for.
+    fn follow(&mut self, source: SourceId, target: &Target) -> Activated {
+        // Destinations name pages of the file; where such a page is now is
+        // the session's to say (it may be gone).
+        let destination = match target {
+            Target::Destination(d) => match self.session.position_of(source, d.page) {
+                Some(page) => Some(page),
+                None => return Activated::Nothing,
+            },
+            _ => None,
+        };
+        let viewer = &mut self.session.viewer;
         match target {
-            Target::Destination(d) => viewer.go_to_pdf_position(d.page, d.left, d.top),
+            Target::Destination(d) => {
+                viewer.go_to_pdf_position(destination.unwrap_or(d.page), d.left, d.top);
+            }
             Target::Named(NamedAction::NextPage) => viewer.next_page(),
             Target::Named(NamedAction::PrevPage) => viewer.previous_page(),
             Target::Named(NamedAction::FirstPage) => viewer.go_to_page(0),
@@ -473,9 +430,6 @@ struct Shared {
     state: Mutex<State>,
     /// The outline with what each entry does, read once at open.
     outline: Vec<(OutlineEntry, Option<Target>)>,
-    /// The document's own page numbering ("iv", "A-3", …), unless that is
-    /// just 1, 2, 3.
-    labels: Option<PageLabels>,
 }
 
 impl Shared {
@@ -485,18 +439,15 @@ impl Shared {
 
     fn frame(&self, state: &mut State) -> Frame {
         let State {
-            viewer,
+            session,
             tiles,
             thumbnails,
             fit,
-            source,
-            texts,
-            selection,
-            search,
             ..
         } = state;
         tiles.begin_frame();
         let now = Instant::now();
+        let viewer = &mut session.viewer;
         let mut planned = viewer.frame(now, |key| tiles.knows(key));
         let expensive = |i: usize| {
             let page = viewer.pages().get(i);
@@ -545,6 +496,13 @@ impl Shared {
         // What the search found and what is selected on the visible pages.
         // Positions come in logical pixels; everything in a frame is in
         // device pixels.
+        let found: Vec<_> = planned
+            .pages
+            .iter()
+            .map(|page| (page.page, session.matches_on(page.page)))
+            .filter(|(_, matches)| !matches.is_empty())
+            .collect();
+        let (viewer, mut texts, selection) = session.text();
         let px = viewer.device_scale().get() / viewer.zoom();
         let point = |p: ViewPoint| Point {
             x: (p.x * px) as f32,
@@ -557,29 +515,19 @@ impl Shared {
             end_top: point(q[2]),
             start_top: point(q[3]),
         };
-        let mut texts = TextLayer {
-            source,
-            cache: texts,
-        };
         let mut highlights = Vec::new();
-        if let Some(search) = search.current.as_ref() {
-            for page in &planned.pages {
-                let mut matches = search.results.on_page(page.page).peekable();
-                if matches.peek().is_none() {
-                    continue;
-                }
-                let Some(text) = texts.text_page(page.page) else {
-                    continue;
+        for (page, matches) in found {
+            let Some(text) = texts.text_page(page) else {
+                continue;
+            };
+            for (found, current) in matches {
+                let kind = if current {
+                    HighlightKind::CurrentMatch
+                } else {
+                    HighlightKind::Match
                 };
-                for (found, current) in matches {
-                    let kind = if current {
-                        HighlightKind::CurrentMatch
-                    } else {
-                        HighlightKind::Match
-                    };
-                    let quads = text_quads(viewer, &text, page.page, found.chars.clone());
-                    highlights.extend(quads.iter().map(|q| highlight(kind, q)));
-                }
+                let quads = text_quads(viewer, &text, page, found.chars.clone());
+                highlights.extend(quads.iter().map(|q| highlight(kind, q)));
             }
         }
         let selection = selection.as_ref().filter(|s| !s.is_empty());
@@ -636,9 +584,15 @@ impl Shared {
     fn take_finished(&self) -> Vec<FinishedTile> {
         let finished = self.scheduler.take_finished();
         let mut state = self.lock();
-        let State { viewer, tiles, .. } = &mut *state;
+        let State { session, tiles, .. } = &mut *state;
+        let viewer = &session.viewer;
         tiles.add_finished(finished, |key| {
-            viewer.placeholder_key(key.page as usize) == Some(*key)
+            // Keys name a page of a file; the viewer goes by position.
+            let position = viewer
+                .pages()
+                .iter()
+                .position(|p| p.doc == key.doc && p.page == key.page);
+            position.is_some_and(|i| viewer.placeholder_key(i) == Some(*key))
         })
     }
 }
@@ -796,47 +750,31 @@ impl ViewSession {
         let threads = std::thread::available_parallelism().map_or(2, |n| n.get().clamp(2, 4));
         let on_tiles = listener.clone();
         let scheduler = Scheduler::new(threads, move || on_tiles.tiles_ready());
-        let opened = scheduler.open(data.clone(), password.as_deref())?;
-        let source = SourceDocument::open(data.clone(), password.as_deref())?;
-        let mut outline = Vec::new();
-        flatten_outline(source.outline(), 0, &mut outline);
-        let labels = source.page_labels().filter(|l| !l.is_plain());
-        let pages: Vec<ViewPage> = opened
-            .pages
-            .iter()
-            .enumerate()
-            .map(|(i, &geometry)| ViewPage {
-                doc: opened.id,
-                page: i as u32,
-                geometry,
-                rotation: Rotation::None,
-            })
-            .collect();
-        let settings = Settings {
-            // Phone screens are narrow: spend less of them on chrome.
-            gap: 8.0,
-            margin: 8.0,
-            ..Settings::default()
+        let options = Options {
+            settings: Settings {
+                // Phone screens are narrow: spend less of them on chrome.
+                gap: 8.0,
+                margin: 8.0,
+                ..Settings::default()
+            },
+            text_pages: TEXT_PAGES,
         };
-        let search = SearchSession::new(data, password, opened.pages.len());
+        let session = Session::open(&scheduler, data, password.as_deref(), options)?;
+        let mut outline = Vec::new();
+        flatten_outline(session.outline(), 0, &mut outline);
+        let page_count = session.viewer.page_count() as u32;
         let shared = Arc::new(Shared {
             scheduler,
             listener,
             state: Mutex::new(State {
-                viewer: Viewer::new(pages, settings),
+                session,
                 tiles: TileBook::new(cache_bytes as usize),
                 encoded: Vec::new(),
                 thumbnails: (0, 0),
-                source,
-                links: HashMap::new(),
                 // Sessions start out scrolling.
                 fit: default_fit(false),
-                texts: TextCache::default(),
-                selection: None,
-                search,
             }),
             outline,
-            labels,
         });
         let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
         SESSIONS
@@ -845,7 +783,7 @@ impl ViewSession {
             .insert(id, Arc::downgrade(&shared));
         Ok(Arc::new(Self {
             id,
-            page_count: opened.pages.len() as u32,
+            page_count,
             shared,
         }))
     }
@@ -866,7 +804,8 @@ impl ViewSession {
     /// for documents that number their pages other than 1, 2, 3. `None`
     /// otherwise: then a page's number is its position.
     pub fn page_labels(&self) -> Option<Vec<String>> {
-        let labels = self.shared.labels.as_ref()?;
+        let state = self.shared.lock();
+        let labels = state.session.labels()?;
         Some(
             (0..self.page_count as usize)
                 .map(|i| labels.label(i))
@@ -877,20 +816,15 @@ impl ViewSession {
     /// The zero-based page the user means by `text`: a printed page number
     /// (exactly, then ignoring case), else a position counted from 1.
     pub fn find_page(&self, text: String) -> Option<u32> {
-        let text = text.trim();
-        let labelled = self.shared.labels.as_ref().and_then(|l| l.find(text));
-        labelled
-            .or_else(|| {
-                let n = text.parse::<usize>().ok()?;
-                (1..=self.page_count as usize).contains(&n).then(|| n - 1)
-            })
-            .map(|i| i as u32)
+        let state = self.shared.lock();
+        state.session.find_page(text.trim()).map(|i| i as u32)
     }
 
     /// What the document says about itself.
     pub fn info(&self) -> DocumentInfo {
         let state = self.shared.lock();
-        let m = state.source.metadata();
+        let source = state.session.main();
+        let m = source.metadata();
         DocumentInfo {
             title: m.title,
             author: m.author,
@@ -900,7 +834,7 @@ impl ViewSession {
             producer: m.producer,
             created: m.created.map(|d| d.to_string()),
             modified: m.modified.map(|d| d.to_string()),
-            pdf_version: state.source.version().to_owned(),
+            pdf_version: source.version().to_owned(),
         }
     }
 
@@ -913,7 +847,7 @@ impl ViewSession {
     /// Goes where outline entry `index` (into [`outline`](Self::outline)) leads.
     pub fn activate_outline(&self, index: u32) -> Activated {
         match self.shared.outline.get(index as usize) {
-            Some((_, Some(target))) => self.shared.lock().follow(target),
+            Some((_, Some(target))) => self.shared.lock().follow(MAIN, target),
             _ => Activated::Nothing,
         }
     }
@@ -922,25 +856,8 @@ impl ViewSession {
     /// the link there, if there is one.
     pub fn tap(&self, x: f64, y: f64) -> Activated {
         let mut state = self.shared.lock();
-        let Some((page, at)) = state.viewer.hit_test(ViewPoint::new(x, y)) else {
-            return Activated::Nothing;
-        };
-        let Some(view_page) = state.viewer.pages().get(page) else {
-            return Activated::Nothing;
-        };
-        let pdf = view_page.displayed().page_to_pdf().transform_point(at);
-        let source_page = view_page.page as usize;
-        let State { source, links, .. } = &mut *state;
-        let target = links
-            .entry(source_page)
-            .or_insert_with(|| source.links(source_page))
-            .iter()
-            // The topmost link is the last one drawn.
-            .rev()
-            .find(|l| l.contains(pdf))
-            .map(|l| l.target.clone());
-        match target {
-            Some(target) => state.follow(&target),
+        match state.session.link_at(ViewPoint::new(x, y)) {
+            Some((source, target)) => state.follow(source, &target),
             None => Activated::Nothing,
         }
     }
@@ -956,7 +873,7 @@ impl ViewSession {
     /// on with [`select_to`](Self::select_to) then selects word by word.
     pub fn select_word_at(&self, x: f64, y: f64) -> bool {
         let mut state = self.shared.lock();
-        let (viewer, mut texts, selection) = state.text();
+        let (viewer, mut texts, selection) = state.session.text();
         let p = ViewPoint::new(x, y);
         if !over_text(viewer, &mut texts, p) {
             return false;
@@ -977,7 +894,7 @@ impl ViewSession {
     /// moves that end, character by character, and the other one stays.
     pub fn grab_selection(&self, end: bool) {
         let mut state = self.shared.lock();
-        let (_, mut texts, selection) = state.text();
+        let (_, mut texts, selection) = state.session.text();
         let Some(current) = selection.as_ref() else {
             return;
         };
@@ -998,11 +915,12 @@ impl ViewSession {
     /// Selects the whole document.
     pub fn select_all(&self) {
         let mut state = self.shared.lock();
-        state.selection = Some(Selection::all(self.page_count as usize));
+        let pages = state.session.viewer.page_count();
+        state.session.selection = Some(Selection::all(pages));
     }
 
     pub fn clear_selection(&self) {
-        self.shared.lock().selection = None;
+        self.shared.lock().session.selection = None;
     }
 
     /// The selected text, for copying: lines and pages separated by
@@ -1010,10 +928,7 @@ impl ViewSession {
     /// text. Reads every selected page, which takes a while for a long
     /// document selected as a whole.
     pub fn selected_text(&self) -> Option<String> {
-        let mut state = self.shared.lock();
-        let (_, mut texts, selection) = state.text();
-        let text = selection.as_ref()?.text(&mut texts);
-        (!text.is_empty()).then_some(text)
+        self.shared.lock().session.selected_text()
     }
 
     // --- search ---------------------------------------------------------------
@@ -1030,8 +945,10 @@ impl ViewSession {
     /// to search for ends the search.
     pub fn search(&self, text: String) {
         let mut state = self.shared.lock();
-        state.search(&text);
-        if state.search.current.is_some() {
+        if state.session.search(&text) {
+            state.session.reveal_match();
+        }
+        if state.session.search_status().is_some() {
             search::start_indexing(&self.shared, &mut state);
         }
     }
@@ -1039,22 +956,32 @@ impl ViewSession {
     /// Goes to the next (or previous) match; after the last one comes the
     /// first again.
     pub fn search_step(&self, forward: bool) {
-        self.shared.lock().search_step(forward);
+        let mut state = self.shared.lock();
+        if state.session.search_step(forward) {
+            state.session.reveal_match();
+        }
     }
 
     pub fn end_search(&self) {
-        self.shared.lock().search.current = None;
+        self.shared.lock().session.end_search();
     }
 
     /// How the search stands; `None` if there is none.
     pub fn search_status(&self) -> Option<SearchStatus> {
-        self.shared.lock().search_status()
+        let status = self.shared.lock().session.search_status()?;
+        Some(SearchStatus {
+            matches: status.matches as u32,
+            current: status.current.map(|i| i as u32),
+            pages_searched: status.pages_indexed as u32,
+            pages: status.pages as u32,
+        })
     }
 
     /// Sizes of all pages as displayed, e.g. for the thumbnail grid's cells.
     pub fn page_sizes(&self) -> Vec<PageSize> {
         let state = self.shared.lock();
         state
+            .session
             .viewer
             .pages()
             .iter()
@@ -1083,7 +1010,11 @@ impl ViewSession {
 
     /// Scrolls the content by this many logical pixels.
     pub fn scroll_by(&self, dx: f64, dy: f64) {
-        self.shared.lock().viewer.scroll_by(ViewVector::new(dx, dy));
+        self.shared
+            .lock()
+            .session
+            .viewer
+            .scroll_by(ViewVector::new(dx, dy));
     }
 
     /// Multiplies the zoom, keeping the content under (`x`, `y`) in place
@@ -1091,6 +1022,7 @@ impl ViewSession {
     pub fn zoom_by(&self, factor: f64, x: f64, y: f64) {
         self.shared
             .lock()
+            .session
             .viewer
             .zoom_by(factor, ViewPoint::new(x, y));
     }
@@ -1102,11 +1034,11 @@ impl ViewSession {
     pub fn set_view_mode(&self, mode: ViewMode) {
         let mut state = self.shared.lock();
         let paged = mode == ViewMode::Paged;
-        if paged != state.viewer.settings().swipe {
+        if paged != state.session.viewer.settings().swipe {
             state.fit = default_fit(paged);
         }
         let fit = state.fit;
-        let viewer = &mut state.viewer;
+        let viewer = &mut state.session.viewer;
         viewer.set_layout_mode(layout_for(paged, viewer.layout_mode().is_two_page()));
         viewer.set_swipe(paged);
         viewer.set_zoom_mode(fit);
@@ -1119,7 +1051,7 @@ impl ViewSession {
         let mut state = self.shared.lock();
         state.fit = fit_mode(fit_width);
         let fit = state.fit;
-        state.viewer.set_zoom_mode(fit);
+        state.session.viewer.set_zoom_mode(fit);
     }
 
     /// Shows pages two side by side (or one at a time again), in either view
@@ -1128,7 +1060,7 @@ impl ViewSession {
     pub fn set_spread(&self, two_pages: bool, cover_alone: bool) {
         let mut state = self.shared.lock();
         let fit = state.fit;
-        let viewer = &mut state.viewer;
+        let viewer = &mut state.session.viewer;
         let layout = layout_for(viewer.settings().swipe, two_pages);
         if layout == viewer.layout_mode() && cover_alone == viewer.settings().cover_alone {
             return;
@@ -1142,11 +1074,11 @@ impl ViewSession {
     /// [`restore_view`](Self::restore_view) the next time the document is opened.
     pub fn saved_view(&self) -> SavedView {
         let state = self.shared.lock();
-        let view = state.viewer.view_state();
+        let view = state.session.viewer.view_state();
         SavedView {
             page: view.page as u32,
             page_offset: view.page_offset,
-            paged: state.viewer.settings().swipe,
+            paged: state.session.viewer.settings().swipe,
             zoom: (view.zoom_mode == pdfrs_view::ZoomMode::Fixed).then_some(view.zoom),
             two_pages: view.layout.is_two_page(),
             cover_alone: view.cover_alone,
@@ -1167,7 +1099,7 @@ impl ViewSession {
         self.set_fit_width(saved.fit_width);
         let mut state = self.shared.lock();
         let fit = state.fit;
-        let viewer = &mut state.viewer;
+        let viewer = &mut state.session.viewer;
         let mut view = viewer.view_state();
         view.page = saved.page as usize;
         view.page_offset = saved.page_offset;
@@ -1185,7 +1117,7 @@ impl ViewSession {
     pub fn fit(&self) {
         let mut state = self.shared.lock();
         let fit = state.fit;
-        state.viewer.set_zoom_mode(fit);
+        state.session.viewer.set_zoom_mode(fit);
     }
 
     /// Call when a drag or pinch ends in paged mode: how far the view still
@@ -1194,7 +1126,7 @@ impl ViewSession {
     /// velocity at release in logical px/s; a flick turns the page.
     pub fn snap_delta(&self, vx: f64, vy: f64) -> Option<Offset> {
         let state = self.shared.lock();
-        let delta = state.viewer.snap_delta(ViewVector::new(vx, vy))?;
+        let delta = state.session.viewer.snap_delta(ViewVector::new(vx, vy))?;
         Some(Offset {
             x: delta.x,
             y: delta.y,
@@ -1204,15 +1136,15 @@ impl ViewSession {
     /// A pinch (or zoom animation) starts. Until [`end_zoom_gesture`](Self::end_zoom_gesture),
     /// no exact-scale tiles are rendered for the zooms passed through.
     pub fn begin_zoom_gesture(&self) {
-        self.shared.lock().viewer.begin_zoom_gesture();
+        self.shared.lock().session.viewer.begin_zoom_gesture();
     }
 
     pub fn end_zoom_gesture(&self) {
-        self.shared.lock().viewer.end_zoom_gesture();
+        self.shared.lock().session.viewer.end_zoom_gesture();
     }
 
     pub fn set_zoom_mode(&self, mode: ZoomMode) {
-        self.shared.lock().viewer.set_zoom_mode(match mode {
+        self.shared.lock().session.viewer.set_zoom_mode(match mode {
             ZoomMode::Fixed => pdfrs_view::ZoomMode::Fixed,
             ZoomMode::FitWidth => pdfrs_view::ZoomMode::FitWidth,
             ZoomMode::FitPage => pdfrs_view::ZoomMode::FitPage,
@@ -1220,17 +1152,21 @@ impl ViewSession {
     }
 
     pub fn set_layout_mode(&self, mode: LayoutMode) {
-        self.shared.lock().viewer.set_layout_mode(match mode {
-            LayoutMode::SinglePage => pdfrs_view::LayoutMode::SinglePage,
-            LayoutMode::Continuous => pdfrs_view::LayoutMode::Continuous,
-            LayoutMode::TwoPage => pdfrs_view::LayoutMode::TwoPage,
-            LayoutMode::TwoPageContinuous => pdfrs_view::LayoutMode::TwoPageContinuous,
-        });
+        self.shared
+            .lock()
+            .session
+            .viewer
+            .set_layout_mode(match mode {
+                LayoutMode::SinglePage => pdfrs_view::LayoutMode::SinglePage,
+                LayoutMode::Continuous => pdfrs_view::LayoutMode::Continuous,
+                LayoutMode::TwoPage => pdfrs_view::LayoutMode::TwoPage,
+                LayoutMode::TwoPageContinuous => pdfrs_view::LayoutMode::TwoPageContinuous,
+            });
     }
 
     /// Shows `page` (zero-based) at the top of the view.
     pub fn go_to_page(&self, page: u32) {
-        self.shared.lock().viewer.go_to_page(page as usize);
+        self.shared.lock().session.viewer.go_to_page(page as usize);
     }
 
     /// Goes to the next or previous page: the next pair with two pages, and
@@ -1239,9 +1175,9 @@ impl ViewSession {
     pub fn turn_page(&self, forward: bool) {
         let mut state = self.shared.lock();
         if forward {
-            state.viewer.next_page();
+            state.session.viewer.next_page();
         } else {
-            state.viewer.previous_page();
+            state.session.viewer.previous_page();
         }
     }
 

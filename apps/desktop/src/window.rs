@@ -1131,14 +1131,14 @@ impl Window {
         if let Some(doc) = inner.document.borrow().as_ref() {
             let d = doc.borrow();
             let pages: Vec<String> = d
-                .edit
+                .edit()
                 .pages()
                 .iter()
                 .map(|p| format!("[{}, {}, {}]", p.page, p.rotation.degrees(), p.source.0))
                 .collect();
             // [page of the file, rotation in degrees, file] per position.
             json.raw("edit_pages", &format!("[{}]", pages.join(", ")))
-                .bool("modified", d.edit.is_modified())
+                .bool("modified", d.edit().is_modified())
                 .num("cache_tiles", d.cache.len() as f64)
                 .num("cache_bytes", d.cache.bytes() as f64)
                 .bool("saving", inner.saving.get())
@@ -1154,11 +1154,11 @@ impl Window {
                 .str("subtitle", &inner.title.subtitle())
                 .str(
                     "undo",
-                    &d.edit.undo_edit().map(edit_name).unwrap_or_default(),
+                    &d.edit().undo_edit().map(edit_name).unwrap_or_default(),
                 )
                 .str(
                     "redo",
-                    &d.edit.redo_edit().map(edit_name).unwrap_or_default(),
+                    &d.edit().redo_edit().map(edit_name).unwrap_or_default(),
                 );
         }
         inner.canvas.with_viewer(|v| {
@@ -1418,7 +1418,7 @@ impl Window {
             let d = doc.borrow();
             let refs = pages
                 .iter()
-                .filter_map(|&i| d.edit.pages().get(i).copied())
+                .filter_map(|&i| d.edit().pages().get(i).copied())
                 .collect();
             d.save_pages(refs)
         };
@@ -1438,7 +1438,7 @@ impl Window {
             .document
             .borrow()
             .as_ref()
-            .is_some_and(|d| d.borrow().edit.is_modified())
+            .is_some_and(|d| d.borrow().edit().is_modified())
     }
 
     /// Saves the document to its file, if it has changes. Returns whether
@@ -1521,7 +1521,7 @@ impl Window {
         inner.saving.set(false);
         match result {
             Ok(()) => {
-                doc.borrow_mut().edit.mark_saved_version(version);
+                doc.borrow_mut().mark_saved(version);
                 self.update_edit_state();
                 true
             }
@@ -1607,7 +1607,7 @@ impl Window {
             return;
         };
         let d = doc.borrow();
-        let (undo, redo) = (d.edit.undo_edit(), d.edit.redo_edit());
+        let (undo, redo) = (d.edit().undo_edit(), d.edit().redo_edit());
         for (name, edit) in [("undo", undo), ("redo", redo)] {
             if let Some(a) = inner
                 .window
@@ -1630,12 +1630,12 @@ impl Window {
 
         let pages = d.viewer.page_count();
         let mut subtitle = format!("{pages} page{}", if pages == 1 { "" } else { "s" });
-        if d.edit.is_modified() {
+        if d.edit().is_modified() {
             subtitle.push_str(" — Edited");
         }
         inner.title.set_subtitle(&subtitle);
         // With labels, `show_page_number` gives the position instead.
-        if d.labels.is_none() {
+        if d.labels().is_none() {
             inner.page_total.set_label(&format!("of {pages}"));
         }
     }
@@ -1887,7 +1887,7 @@ impl Window {
         };
         let d = doc.borrow();
         inner.page_entry.set_text(&d.page_label(page));
-        if d.labels.is_some() {
+        if d.labels().is_some() {
             inner
                 .page_total
                 .set_label(&format!("({} of {})", page + 1, d.viewer.page_count()));

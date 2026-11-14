@@ -52,6 +52,7 @@ pub fn set_viewport(session: u64, width: f64, height: f64, scale: f64) -> bool {
     };
     session
         .lock()
+        .session
         .viewer
         .set_viewport(pdfrs_geom::ViewSize::new(width, height), scale);
     true
@@ -64,6 +65,7 @@ pub fn scroll_by(session: u64, dx: f64, dy: f64) -> bool {
     };
     session
         .lock()
+        .session
         .viewer
         .scroll_by(pdfrs_geom::ViewVector::new(dx, dy));
     true
@@ -75,7 +77,7 @@ pub fn set_thumbnail_range(session: u64, first: u32, count: u32) -> bool {
         return false;
     };
     let mut state = session.lock();
-    let pages = state.viewer.page_count() as u32;
+    let pages = state.session.viewer.page_count() as u32;
     let first = first.min(pages);
     state.thumbnails = (first, count.min(pages - first));
     true
@@ -89,6 +91,7 @@ pub fn scroll_in_page_by(session: u64, dx: f64, dy: f64) -> bool {
     };
     session
         .lock()
+        .session
         .viewer
         .scroll_in_page_by(pdfrs_geom::ViewVector::new(dx, dy));
     true
@@ -101,6 +104,7 @@ pub fn zoom_by(session: u64, factor: f64, x: f64, y: f64) -> bool {
     };
     session
         .lock()
+        .session
         .viewer
         .zoom_by(factor, pdfrs_geom::ViewPoint::new(x, y));
     true

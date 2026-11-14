@@ -1635,6 +1635,7 @@ dependencies = [
  "pdfrs-doc",
  "pdfrs-geom",
  "pdfrs-render",
+ "pdfrs-session",
  "pdfrs-source",
  "pdfrs-text",
  "pdfrs-view",
@@ -1654,10 +1655,11 @@ version = "0.1.0"
 dependencies = [
  "jni-sys 0.3.1",
  "ndk",
+ "pdfrs-doc",
  "pdfrs-geom",
  "pdfrs-render",
+ "pdfrs-session",
  "pdfrs-source",
- "pdfrs-text",
  "pdfrs-view",
  "thiserror 2.0.21",
  "uniffi",
@@ -1679,6 +1681,19 @@ dependencies = [
  "pdfrs-source",
  "self_cell",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pdfrs-session"
+version = "0.1.0"
+dependencies = [
+ "pdfrs-doc",
+ "pdfrs-geom",
+ "pdfrs-render",
+ "pdfrs-source",
+ "pdfrs-text",
+ "pdfrs-view",
+ "pdfrs-write",
 ]
 
 [[package]]

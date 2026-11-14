@@ -157,7 +157,7 @@ mod imp {
                 d.viewer.set_viewport(size, scale);
             }
             let now = Instant::now();
-            let frame = d.viewer.frame(now, |k| d.cache.contains(k));
+            let frame = d.session.viewer.frame(now, |k| d.cache.contains(k));
             let (dx, dy) = device_pixel_snap(&*obj, scale);
             snapshot.save();
             snapshot.translate(&graphene::Point::new(dx, dy));
