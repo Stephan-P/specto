@@ -485,6 +485,245 @@ fn outline_and_links() {
     assert_eq!(session.tap(2.0, 150.0), Activated::Nothing);
 }
 
+/// Four pages of 200 × 300 pt reading "Page 1" to "Page 4", numbered i,
+/// ii, 1, 2, with an outline entry for the second and for the fourth. A
+/// well-formed file, cross-reference table and all: saving reads strictly.
+fn book_pdf() -> Vec<u8> {
+    let mut objects: Vec<(usize, String)> = vec![
+        (
+            1,
+            "<< /Type /Catalog /Pages 2 0 R /Outlines 20 0 R \
+             /PageLabels << /Nums [0 << /S /r >> 2 << /S /D >>] >> >>"
+                .into(),
+        ),
+        (
+            2,
+            "<< /Type /Pages /Kids [10 0 R 12 0 R 14 0 R 16 0 R] /Count 4 \
+             /MediaBox [0 0 200 300] /Resources << /Font << /F1 3 0 R >> >> >>"
+                .into(),
+        ),
+        (
+            3,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".into(),
+        ),
+        (
+            20,
+            "<< /Type /Outlines /First 21 0 R /Last 22 0 R /Count 2 >>".into(),
+        ),
+        (
+            21,
+            "<< /Title (Second) /Parent 20 0 R /Next 22 0 R /Dest [12 0 R /Fit] >>".into(),
+        ),
+        (
+            22,
+            "<< /Title (Fourth) /Parent 20 0 R /Prev 21 0 R /Dest [16 0 R /Fit] >>".into(),
+        ),
+    ];
+    for i in 0..4 {
+        let content = format!("BT /F1 16 Tf 20 250 Td (Page {}) Tj ET", i + 1);
+        objects.push((
+            10 + 2 * i,
+            format!(
+                "<< /Type /Page /Parent 2 0 R /Contents {} 0 R >>",
+                11 + 2 * i
+            ),
+        ));
+        objects.push((
+            11 + 2 * i,
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            ),
+        ));
+    }
+    objects.sort_by_key(|(number, _)| *number);
+    let size = objects.last().map_or(1, |(number, _)| number + 1);
+    let mut out = String::from("%PDF-1.7\n");
+    let mut offsets = vec![None; size];
+    for (number, body) in &objects {
+        offsets[*number] = Some(out.len());
+        out += &format!("{number} 0 obj\n{body}\nendobj\n");
+    }
+    let xref = out.len();
+    out += &format!("xref\n0 {size}\n");
+    for (number, offset) in offsets.iter().enumerate() {
+        out += &match offset {
+            Some(offset) => format!("{offset:010} 00000 n \n"),
+            None if number == 0 => "0000000000 65535 f \n".into(),
+            None => "0000000000 00000 f \n".into(),
+        };
+    }
+    out += &format!("trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+    out.into_bytes()
+}
+
+#[test]
+fn editing_pages() {
+    let (tx, rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(book_pdf(), None, 64 << 20, listener).unwrap();
+    session.set_viewport(216.0, 316.0, 2.0);
+    let sizes = |s: &ViewSession| -> Vec<(f32, f32)> {
+        let sizes = s.page_sizes();
+        sizes.iter().map(|p| (p.width, p.height)).collect()
+    };
+    let pages = |s: &ViewSession| -> Vec<Option<u32>> {
+        let outline = s.outline();
+        outline.iter().map(|e| e.page).collect()
+    };
+    let untouched = EditState {
+        modified: false,
+        undo: None,
+        redo: None,
+    };
+    assert_eq!(session.edit_state(), untouched);
+    assert_eq!(session.undo(), None);
+    assert_eq!(pages(&session), [Some(1), Some(3)]);
+
+    // Turned, a page is as wide as it was high, and is drawn that way.
+    assert!(session.rotate_pages(vec![0], true));
+    assert_eq!(sizes(&session)[..2], [(300.0, 200.0), (200.0, 300.0)]);
+    let rotate = EditStep {
+        kind: EditKind::Rotate,
+        pages: 1,
+    };
+    assert_eq!(
+        session.edit_state(),
+        EditState {
+            modified: true,
+            undo: Some(rotate),
+            redo: None
+        }
+    );
+    let (frame, _) = settle(&session, &rx);
+    let first = &frame.pages[0];
+    assert_eq!(first.page, 0);
+    assert!(first.rect.width > first.rect.height);
+    assert!((covered_exactly(first) - 1.0).abs() < 1e-3);
+    // The other way round twice: upside down, counted as one more each.
+    assert!(session.rotate_pages(vec![0, 1], false));
+    assert_eq!(sizes(&session)[..2], [(200.0, 300.0), (300.0, 200.0)]);
+    assert_eq!(session.undo().map(|e| e.pages), Some(2));
+
+    // Without a page, the others move up; they keep their printed numbers,
+    // and the outline knows where its pages are now.
+    assert!(session.delete_pages(vec![1]));
+    assert_eq!(session.page_count(), 3);
+    assert_eq!(session.page_labels().unwrap(), ["i", "1", "2"]);
+    assert_eq!(pages(&session), [None, Some(2)]);
+    assert_eq!(session.activate_outline(0), Activated::Nothing);
+    assert_eq!(session.activate_outline(1), Activated::Moved);
+    assert_eq!(session.frame().current_page, 2);
+    assert_eq!(session.find_page("2".into()), Some(2));
+    // A document keeps at least one page.
+    assert!(!session.delete_pages(vec![0, 1, 2]));
+    assert!(!session.delete_pages(vec![7]));
+
+    // To the end, and back to the front.
+    assert_eq!(session.move_pages(vec![0], 3), Some(2));
+    assert_eq!(session.page_labels().unwrap(), ["1", "2", "i"]);
+    assert_eq!(pages(&session), [None, Some(1)]);
+    assert_eq!(session.move_pages(vec![2], 0), Some(0));
+    assert_eq!(session.move_pages(vec![0], 0), None);
+
+    // Selecting everything means the pages there are now.
+    session.select_all();
+    let text = session.selected_text().unwrap();
+    assert_eq!(
+        text.lines().collect::<Vec<_>>(),
+        ["Page 1", "Page 3", "Page 4"]
+    );
+    // An edit lets go of the selection.
+    assert!(session.rotate_pages(vec![2], true));
+    assert!(session.selected_text().is_none());
+
+    // Everything can be taken back and done again.
+    let mut undone = 0;
+    while session.undo().is_some() {
+        undone += 1;
+    }
+    assert_eq!(undone, 5);
+    assert_eq!(session.page_count(), 4);
+    assert_eq!(pages(&session), [Some(1), Some(3)]);
+    assert_eq!(sizes(&session), [(200.0, 300.0); 4]);
+    let state = session.edit_state();
+    assert!(!state.modified && state.undo.is_none());
+    assert_eq!(state.redo, Some(rotate));
+    assert_eq!(session.redo(), Some(rotate));
+    assert!(session.edit_state().modified);
+    let (frame, _) = settle(&session, &rx);
+    assert!(frame.complete);
+}
+
+#[cfg(unix)]
+#[test]
+fn saving_what_was_edited() {
+    use std::os::fd::IntoRawFd;
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(book_pdf(), None, 64 << 20, listener.clone()).unwrap();
+    assert!(session.rotate_pages(vec![0], true));
+    assert!(session.delete_pages(vec![1]));
+    assert!(session.edit_state().modified);
+
+    // Onto a file that was longer before: nothing of it is left behind.
+    let path = std::env::temp_dir().join(format!("pdfrs-ffi-save-{}.pdf", std::process::id()));
+    std::fs::write(&path, vec![b'x'; 100_000]).unwrap();
+    let fd = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .into_raw_fd();
+    session.save_to_fd(fd).unwrap();
+    let written = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert!(written.starts_with(b"%PDF-"));
+    assert!(written.len() < 100_000 && !written.ends_with(b"x"));
+
+    // Saved, but the edits can still be taken back, which is a change again.
+    let state = session.edit_state();
+    assert!(!state.modified && state.undo.is_some());
+    assert!(session.undo().is_some());
+    assert!(session.edit_state().modified);
+
+    let saved = ViewSession::open(written, None, 64 << 20, listener.clone()).unwrap();
+    assert_eq!(saved.page_count(), 3);
+    let first = saved.page_sizes()[0];
+    assert_eq!((first.width, first.height), (300.0, 200.0));
+    assert_eq!(saved.page_labels().unwrap(), ["i", "1", "2"]);
+    saved.select_all();
+    let text = saved.selected_text().unwrap();
+    assert_eq!(
+        text.lines().collect::<Vec<_>>(),
+        ["Page 1", "Page 3", "Page 4"]
+    );
+    assert!(!saved.edit_state().modified);
+
+    // A descriptor that can't be written to: an error, and still unsaved.
+    let read_only = std::fs::File::open("/dev/null").unwrap().into_raw_fd();
+    assert!(matches!(
+        session.save_to_fd(read_only),
+        Err(PdfError::Save { .. })
+    ));
+    assert!(session.edit_state().modified);
+    assert!(matches!(session.save_to_fd(-1), Err(PdfError::Save { .. })));
+
+    // An untidy file (no cross-reference table) is saved as a tidy one.
+    let loose = ViewSession::open(sample_pdf(2), None, 64 << 20, listener.clone()).unwrap();
+    assert!(loose.rotate_pages(vec![0], true));
+    let path = std::env::temp_dir().join(format!("pdfrs-ffi-loose-{}.pdf", std::process::id()));
+    let fd = std::fs::File::create(&path).unwrap().into_raw_fd();
+    loose.save_to_fd(fd).unwrap();
+    let written = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    let tidy = ViewSession::open(written, None, 64 << 20, listener).unwrap();
+    let first = tidy.page_sizes()[0];
+    assert_eq!(
+        (tidy.page_count(), first.width, first.height),
+        (2, 300.0, 200.0)
+    );
+}
+
 #[test]
 fn printed_page_numbers() {
     // Front matter i–ii, then 1, 2, …: the page printed "1" is the third.

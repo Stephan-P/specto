@@ -54,6 +54,8 @@ pub enum PdfError {
     // with `Throwable.message`, and the bindings wouldn't compile.
     #[error("couldn't read the file: {reason}")]
     Io { reason: String },
+    #[error("couldn't save the document: {reason}")]
+    Save { reason: String },
 }
 
 impl From<OpenError> for PdfError {
@@ -106,10 +108,55 @@ pub struct OutlineEntry {
     pub title: String,
     /// Nesting level, 0 for top-level items.
     pub depth: u32,
-    /// Zero-based page the item leads to, if it leads into this document.
+    /// Zero-based page the item leads to, if it leads into this document
+    /// and the page is still in it.
     pub page: Option<u32>,
     /// Whether deeper entries follow that belong to this one.
     pub has_children: bool,
+}
+
+/// What an edit did, for naming it ("Undo Rotate").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum EditKind {
+    Rotate,
+    Delete,
+    Move,
+    Insert,
+}
+
+/// An edit that can be undone or redone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct EditStep {
+    pub kind: EditKind,
+    /// How many pages it changed.
+    pub pages: u32,
+}
+
+impl From<pdfrs_doc::Edit> for EditStep {
+    fn from(edit: pdfrs_doc::Edit) -> Self {
+        use pdfrs_doc::Edit;
+        let (kind, pages) = match edit {
+            Edit::Rotate { pages } => (EditKind::Rotate, pages),
+            Edit::Delete { pages } => (EditKind::Delete, pages),
+            Edit::Move { pages } => (EditKind::Move, pages),
+            Edit::Insert { pages } => (EditKind::Insert, pages),
+        };
+        Self {
+            kind,
+            pages: pages as u32,
+        }
+    }
+}
+
+/// Where the document stands as something being edited.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct EditState {
+    /// Whether it differs from what was opened or last saved.
+    pub modified: bool,
+    /// What [`ViewSession::undo`] would take back, if anything.
+    pub undo: Option<EditStep>,
+    /// What [`ViewSession::redo`] would bring back, if anything.
+    pub redo: Option<EditStep>,
 }
 
 /// What activating a link or outline entry did.
@@ -401,6 +448,11 @@ impl State {
     }
 }
 
+/// Page positions as the session takes them.
+fn positions(pages: &[u32]) -> Vec<usize> {
+    pages.iter().map(|&p| p as usize).collect()
+}
+
 /// Flattens the outline tree in reading order.
 fn flatten_outline(
     items: Vec<OutlineItem>,
@@ -408,15 +460,12 @@ fn flatten_outline(
     out: &mut Vec<(OutlineEntry, Option<Target>)>,
 ) {
     for item in items {
-        let page = match &item.target {
-            Some(Target::Destination(d)) => Some(d.page as u32),
-            _ => None,
-        };
         out.push((
             OutlineEntry {
                 title: item.title,
                 depth,
-                page,
+                // Where the page is now: filled in when asked for.
+                page: None,
                 has_children: !item.children.is_empty(),
             },
             item.target,
@@ -649,7 +698,6 @@ pub fn claim_tile(session: u64, tile: u64, write: impl FnOnce(&Bitmap) -> bool) 
 #[derive(uniffi::Object)]
 pub struct ViewSession {
     id: u64,
-    page_count: u32,
     shared: Arc<Shared>,
 }
 
@@ -763,7 +811,6 @@ impl ViewSession {
         let session = Session::open(&scheduler, data, password.as_deref(), options)?;
         let mut outline = Vec::new();
         flatten_outline(session.outline(), 0, &mut outline);
-        let page_count = session.viewer.page_count() as u32;
         let shared = Arc::new(Shared {
             scheduler,
             listener,
@@ -782,11 +829,7 @@ impl ViewSession {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id, Arc::downgrade(&shared));
-        Ok(Arc::new(Self {
-            id,
-            page_count,
-            shared,
-        }))
+        Ok(Arc::new(Self { id, shared }))
     }
 }
 
@@ -797,8 +840,9 @@ impl ViewSession {
         self.id
     }
 
+    /// How many pages the document has now (deleting pages changes it).
     pub fn page_count(&self) -> u32 {
-        self.page_count
+        self.shared.lock().session.viewer.page_count() as u32
     }
 
     /// The pages' printed numbers ("i", "ii", "1", "A-3", …), one per page,
@@ -808,7 +852,7 @@ impl ViewSession {
         let state = self.shared.lock();
         let labels = state.session.labels()?;
         Some(
-            (0..self.page_count as usize)
+            (0..state.session.viewer.page_count())
                 .map(|i| labels.label(i))
                 .collect(),
         )
@@ -842,7 +886,20 @@ impl ViewSession {
     /// The outline (table of contents), flattened in reading order. Empty if
     /// the document has none.
     pub fn outline(&self) -> Vec<OutlineEntry> {
-        self.shared.outline.iter().map(|(e, _)| e.clone()).collect()
+        let state = self.shared.lock();
+        let entries = self.shared.outline.iter().map(|(entry, target)| {
+            // Destinations name pages of the file, which may have moved or
+            // been deleted.
+            let page = match target {
+                Some(Target::Destination(d)) => state.session.position_of(MAIN, d.page),
+                _ => None,
+            };
+            OutlineEntry {
+                page: page.map(|p| p as u32),
+                ..entry.clone()
+            }
+        });
+        entries.collect()
     }
 
     /// Goes where outline entry `index` (into [`outline`](Self::outline)) leads.
@@ -861,6 +918,111 @@ impl ViewSession {
             Some((source, target)) => state.follow(source, &target),
             None => Activated::Nothing,
         }
+    }
+
+    // --- editing ---------------------------------------------------------------
+    //
+    // Pages are named by their position at the time of the call, from 0.
+    // Every edit can be undone. After one, positions have changed: ask
+    // again for the page count, sizes, labels and outline, and plan a new
+    // frame. A selection is dropped, and a search runs again by itself.
+
+    /// Turns `pages` by a quarter, clockwise or the other way. Returns
+    /// whether anything changed.
+    pub fn rotate_pages(&self, pages: Vec<u32>, clockwise: bool) -> bool {
+        let by = if clockwise {
+            pdfrs_geom::Rotation::Cw90
+        } else {
+            pdfrs_geom::Rotation::Cw270
+        };
+        self.shared.lock().session.rotate(&positions(&pages), by)
+    }
+
+    /// Removes `pages` from the document. Not all of them: a document
+    /// keeps at least one page. Returns whether anything changed.
+    pub fn delete_pages(&self, pages: Vec<u32>) -> bool {
+        self.shared.lock().session.delete(&positions(&pages))
+    }
+
+    /// Moves `pages`, in their order in the document, to before the page
+    /// now at position `to` (the page count: to the end). Returns the
+    /// position the first of them ends up at, or `None` if nothing moved.
+    pub fn move_pages(&self, pages: Vec<u32>, to: u32) -> Option<u32> {
+        let moved = self
+            .shared
+            .lock()
+            .session
+            .move_pages(&positions(&pages), to as usize)?;
+        Some(moved.start as u32)
+    }
+
+    /// Takes back the last edit. Returns what it was, or `None` if there
+    /// was nothing to undo.
+    pub fn undo(&self) -> Option<EditStep> {
+        self.shared.lock().session.undo().map(EditStep::from)
+    }
+
+    /// Does again what [`undo`](Self::undo) took back.
+    pub fn redo(&self) -> Option<EditStep> {
+        self.shared.lock().session.redo().map(EditStep::from)
+    }
+
+    pub fn edit_state(&self) -> EditState {
+        let state = self.shared.lock();
+        let edit = state.session.edit();
+        EditState {
+            modified: edit.is_modified(),
+            undo: edit.undo_edit().map(EditStep::from),
+            redo: edit.redo_edit().map(EditStep::from),
+        }
+    }
+
+    /// Writes the document as edited, as a new PDF, to the open file
+    /// descriptor `fd` (from `ParcelFileDescriptor.detachFd()`, opened for
+    /// writing), which is closed either way. Once written, the document
+    /// counts as saved; edits made meanwhile stay unsaved. Takes a while
+    /// for a large document: call it off the main thread.
+    ///
+    /// The session goes on reading the file it was opened from. That file
+    /// may be the one written to only if it isn't mapped
+    /// ([`PdfFile::is_mapped`]): a mapped file must not change while open.
+    pub fn save_to_fd(&self, fd: i32) -> Result<(), PdfError> {
+        if fd < 0 {
+            return Err(PdfError::Save {
+                reason: "invalid file descriptor".into(),
+            });
+        }
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::fd::FromRawFd;
+            // SAFETY: the caller hands over ownership of an open descriptor
+            // (detachFd), so nothing else closes or uses it.
+            #[allow(unsafe_code)]
+            let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+            let job = self.shared.lock().session.save_job();
+            // All of it in memory first, so that a failure writes nothing.
+            let data = job.write().map_err(|e| PdfError::Save {
+                reason: e.to_string(),
+            })?;
+            file.write_all(&data)
+                .and_then(|()| file.flush())
+                .map_err(|e| PdfError::Save {
+                    reason: e.to_string(),
+                })?;
+            // Cuts off what a longer file had beyond this, and gets it onto
+            // the disk. Neither works on everything a descriptor can be (a
+            // pipe to a document provider), and neither is needed there.
+            let _ = file.set_len(data.len() as u64);
+            let _ = file.sync_all();
+            drop(file);
+            self.shared.lock().session.mark_saved(job.version);
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        Err(PdfError::Save {
+            reason: "file descriptors are not supported here".into(),
+        })
     }
 
     // --- text selection ------------------------------------------------------
