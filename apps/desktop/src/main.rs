@@ -102,18 +102,21 @@ fn debug_screenshot() -> gio::ActionEntry<adw::Application> {
         .build()
 }
 
-/// On macOS also registers each `<Primary>` shortcut with `<Meta>` (Cmd),
-/// in case GTK maps `<Primary>` to Ctrl there.
+/// On macOS, registers each `<Primary>` shortcut with `<Meta>` (Cmd) first:
+/// GTK's macOS backend maps `<Primary>` to Ctrl, and menus display the first
+/// shortcut of an action, so Cmd must come first to show as "⌘O". The Ctrl
+/// version stays as a second, undisplayed shortcut.
 fn platform_accels(accels: &[&str]) -> Vec<String> {
-    let mut out: Vec<String> = accels.iter().map(|a| a.to_string()).collect();
-    if cfg!(target_os = "macos") {
-        out.extend(
-            accels
-                .iter()
-                .filter_map(|a| a.strip_prefix("<Primary>"))
-                .map(|key| format!("<Meta>{key}")),
-        );
+    let primary: Vec<String> = accels.iter().map(|a| a.to_string()).collect();
+    if !cfg!(target_os = "macos") {
+        return primary;
     }
+    let mut out: Vec<String> = accels
+        .iter()
+        .filter_map(|a| a.strip_prefix("<Primary>"))
+        .map(|key| format!("<Meta>{key}"))
+        .collect();
+    out.extend(primary);
     out
 }
 
