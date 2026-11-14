@@ -1,0 +1,15 @@
+[package]
+name = "gtk-canvas"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "M0 spike: tiled PDF canvas in GTK4. Throwaway code."
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
+async-channel = "2"
+pdfrs-render.workspace = true
+
+[lints]
+workspace = true

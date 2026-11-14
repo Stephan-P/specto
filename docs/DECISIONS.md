@@ -2,7 +2,7 @@
 
 Status legend: **Proposed** (recommendation, not validated), **Spike** (needs a prototype before deciding), **Decided**.
 
-## D1: Rendering engine: `hayro` (Proposed, Spike)
+## D1: Rendering engine: `hayro` (Decided, 2026-11-14, after the M0 spike)
 
 | Option | Pros | Cons |
 |---|---|---|
@@ -13,9 +13,9 @@ Status legend: **Proposed** (recommendation, not validated), **Spike** (needs a 
 
 **Recommendation:** hayro behind the `Renderer` trait, with a `PdfiumRenderer` used in CI as a reference for render regression tests and kept as an emergency fallback. The `Device` abstraction in `hayro-interpret` is also exactly what we need for text extraction.
 
-**Spike (M0):** render ~200 diverse PDFs and compare against PDFium. Measure time per page at 2× scale. Check whether hayro renders annotation appearance streams and whether we can suppress them, since we draw annotations ourselves (see ARCHITECTURE.md).
+**M0 result:** 1095 pdf.js test files, 0 crashes, median 2.8 ms per page at 2×. It decrypts encrypted files, and `RenderContent::PAGE` renders pages without annotations. Known gaps: knockout groups, transfer functions, and no cancellation. Details in [M0-FINDINGS.md](M0-FINDINGS.md).
 
-## D2: PDF object model / writer (Proposed, Spike)
+## D2: PDF object model / writer: lopdf (Decided, 2026-11-14, after the M0 spike)
 
 Rendering only needs read access. Editing and saving need a mutable object model and a writer.
 
@@ -27,7 +27,7 @@ Rendering only needs read access. Editing and saving need a mutable object model
 
 **Concern:** lopdf for editing + hayro-syntax for rendering means two parsers seeing the same file. That's acceptable because the edit model never re-parses (sources are immutable). But the two parsers may disagree on malformed files.
 
-**Recommendation:** start with lopdf in `pdfrs-source`/`pdfrs-write` for the object model and saving. Revisit `hayro-syntax + pdf-writer` once we know how lopdf handles broken files and large documents. Keep it behind `pdfrs-source` either way.
+**Decision:** lopdf in `pdfrs-write` for the object model and saving, with hayro for viewing. In M0, lopdf loaded 1092/1095 corpus files and passed every editing scenario (delete, merge, reorder, incremental annotation, encryption). Merging needs our own page-import code (renumber objects, push down inherited attributes), because lopdf has none. See [M0-FINDINGS.md](M0-FINDINGS.md).
 
 ## D3: Desktop UI toolkit: GTK4 + libadwaita (Decided, 2026-11-14)
 
@@ -42,7 +42,7 @@ The desktop app targets **Linux only**. That removes gpui's main advantage (cons
 | Platforms | Linux great; macOS/Windows functional but look foreign | macOS + Linux good, Windows maturing |
 | Look | Native GNOME look | Custom look (whatever you design) |
 
-Because `pdfrs-view` is UI-agnostic, a later port (e.g. to gpui) would only replace `apps/desktop`. The remaining risk is GSK canvas performance with many tiles during fast scroll and zoom, so M0 has a small GTK-only canvas spike instead of the two-toolkit comparison.
+Because `pdfrs-view` is UI-agnostic, a later port (e.g. to gpui) would only replace `apps/desktop`. The M0 canvas spike measured about 55 fps during sustained fast scroll and zoom of a 384-page PDF, with negligible snapshot cost. See [M0-FINDINGS.md](M0-FINDINGS.md).
 
 ## D4: Android UI: Kotlin + Jetpack Compose with Rust core via UniFFI (Proposed)
 
@@ -59,9 +59,9 @@ Because `pdfrs-view` is UI-agnostic, a later port (e.g. to gpui) would only repl
 
 UniFFI (Mozilla) generates Kotlin bindings with callback interfaces, which we need for `ViewHost`/tile-ready events. Alternative: hand-written `jni` crate code for the hot path (bitmap rendering) if UniFFI overhead shows up in profiles.
 
-## D6: License (Open)
+## D6: License: MIT OR Apache-2.0 (Decided, 2026-11-14)
 
-Must be compatible with all dependencies. hayro and lopdf are MIT/Apache-2.0, and PDFium is BSD-style. Avoid mupdf unless the app itself will be AGPL. Pick before publishing.
+Dual license, the Rust ecosystem convention, matching hayro and lopdf. Users can pick either. Apache-2.0 adds an explicit patent grant, and MIT keeps us compatible with GPLv2 projects. Avoid mupdf (AGPL) and other copyleft dependencies.
 
 ## D7: Prior art to study
 
@@ -85,7 +85,7 @@ Goal is to match Preview. My understanding of Preview's behavior, still **to be 
 Implications:
 
 - We need to **write** encrypted PDFs, not just read them: RC4-40/128 for legacy files, AES-128 (V4) and AES-256 (V5/R6). Re-saving keeps the original algorithm, and new encryption uses AES-256.
-- lopdf's encryption *writing* support must be checked in the M0 lopdf spike. If it's missing or incomplete, we implement the security handler in `pdfrs-write` (the crypto itself comes from RustCrypto crates: `aes`, `cbc`, `sha2`, `md-5`, `rc4`).
+- ✅ M0: lopdf 0.47 handles all of this. It writes RC4 through AES-256, and `IncrementalDocument` re-encrypts appended objects with the original key. Decrypt → edit → re-encrypt with the original `EncryptionState` works for full rewrites. hayro 0.9 decrypts for viewing.
 - Honoring permission flags is policy: the file is technically readable without the owner password. We honor them anyway, like Preview.
 
 ## Open questions

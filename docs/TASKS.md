@@ -8,17 +8,26 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M0: Spikes & foundations
 
-- [ ] **S** Create Cargo workspace skeleton (`crates/`, `apps/`, `tools/`), CI (fmt, clippy, test), license decision (D6)
-- [ ] **M** Assemble test corpus (pdf.js + PDFium test files + hand-picked: forms, rotated pages, CropBox ≠ MediaBox, huge pages, scanned, encrypted, broken xref)
-- [ ] **M** hayro spike: `pdfrs-cli render` over corpus, compare with PDFium output, record failures + timing (D1)
-- [ ] **S** hayro spike: does it render annotations/widgets? Can we render page content *without* annotations?
-- [ ] **M** lopdf spike: open corpus, delete a page, merge two files, add a highlight annotation, save, then validate with `qpdf --check` (D2)
-- [ ] **S** lopdf spike: decrypt RC4/AES-128/AES-256 files, and check whether it can *write* encrypted output (D9)
+- [x] **S** Create Cargo workspace skeleton (`crates/`, `tools/`, `spikes/`)
+- [x] **S** CI (fmt, clippy, test): GitHub Actions in a `fedora:44` container, with deps in `ci/install-deps-fedora.sh` for reuse in GitLab CI
+- [ ] **S** GitLab CI equivalent, if the repo moves there
+- [x] **S** License decision (D6): MIT OR Apache-2.0
+- [x] **S** Test corpus, part 1: pdf.js test PDFs (`corpus/fetch.sh`)
+- [ ] **M** Test corpus, part 2: PDFium test files + hand-picked fixtures (forms, rotated pages, CropBox ≠ MediaBox, huge pages, scanned, encrypted)
+- [x] **M** hayro spike: `pdfrs corpus` over the corpus, compared with Poppler, recording failures and timing (D1, see M0-FINDINGS.md)
+- [ ] **M** PDFium reference renders for `pdfrs corpus`. Poppler turned out to be wrong in about half of the worst cases.
+- [x] **S** hayro spike: render page content without annotations (`Content::PageOnly`, tested)
+- [x] **M** lopdf spike: delete, merge, reorder, incremental highlight (D2). Validated with hayro and Poppler; qpdf isn't installed.
+- [x] **S** lopdf spike: AES-256 encrypt, encrypted incremental save, decrypt → edit → re-encrypt (D9)
 - [ ] **S** Verify Preview's encryption behavior on a Mac (user password, owner-password restrictions, Export → Encrypt) and update D9
-- [ ] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + pinch zoom on a 500-page PDF, then check frame times (D3)
-- [ ] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap` (D4/D5)
+- [x] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + zoom, about 55 fps (D3, see M0-FINDINGS.md)
+- [ ] **S** Manual check of the canvas spike on a real HiDPI display with a touchpad (pinch, fractional scale)
+- [ ] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap` (D4/D5). Do this on the other machine.
 
 ## M1: Core viewer (desktop)
+
+- [ ] **M** Render guards: per-render deadline (drop late results), memory cap for huge images and decompression bombs, from the M0 timeouts
+- [ ] **S** Per-thread hayro `RenderCache` (it's `!Send` and borrows the `Pdf`); measure the speedup on text-heavy pages
 
 - [ ] **S** `pdfrs-geom`: coordinate-space newtypes, page rotation/CropBox transform, tests
 - [ ] **M** `pdfrs-source`: open file (mmap), page count, page sizes/rotation, outline, metadata, password prompt hook

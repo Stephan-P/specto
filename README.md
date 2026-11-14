@@ -16,6 +16,13 @@ The goal is rough feature parity with macOS Preview, not Adobe Acrobat:
 
 Explicit **non-goals** (at least initially): editing existing page content (text reflow), XFA forms, digital signature creation, JavaScript, OCR, PDF/A conversion.
 
+## Similar Projects
+
+- [Censor](https://codeberg.org/censor/Censor)
+- [GNOME Papers/Document Viewer](https://apps.gnome.org/Papers/)
+- [Evince](https://gitlab.gnome.org/GNOME/evince)
+- [Apple Preview](https://en.wikipedia.org/wiki/Preview_(Apple))
+
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate layout, data model, rendering pipeline, how the frontends plug in
@@ -24,4 +31,22 @@ Explicit **non-goals** (at least initially): editing existing page content (text
 
 ## Status
 
-Planning. No code yet.
+M0 (spikes) is mostly done. See [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md).
+
+```sh
+cargo build --release
+target/release/pdfrs info file.pdf
+target/release/pdfrs render file.pdf -o out -s 2          # pages → PNG
+target/release/pdfrs corpus corpus/files/... --reference  # regression run, see corpus/README.md
+```
+
+## Layout
+
+- `crates/pdfrs-render`: `Document` trait + hayro backend (full pages, tiles, with or without annotations)
+- `tools/pdfrs-cli`: the `pdfrs` dev tool
+- `spikes/`: throwaway prototype code from M0 (to be deleted once ported): `lopdf-spike` (editing/saving), `gtk-canvas` (tiled GTK viewer, `cargo run --release -p gtk-canvas -- file.pdf`)
+- `corpus/`: test corpus fetch script (files are git-ignored)
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
