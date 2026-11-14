@@ -781,3 +781,61 @@ fn view_state_round_trips_in_swipe_mode() {
     assert_eq!((b.current_page(), b.zoom_mode()), (1, ZoomMode::FitPage));
     assert!(close(b.zoom(), 980.0 / 792.0));
 }
+
+#[test]
+fn swiping_through_two_page_spreads() {
+    // Five letter pages, two side by side, in a wide 1400 × 800 viewport.
+    let mut v = viewer(letters(5));
+    v.set_viewport(ViewSize::new(1400.0, 800.0), 1.0);
+    v.set_layout_mode(LayoutMode::TwoPage);
+    v.set_zoom_mode(ZoomMode::FitPage);
+    v.set_swipe(true);
+
+    // The spread is fitted as a whole: two pages and the gap between them.
+    let fit = f64::min((1400.0 - 20.0 - 10.0) / 1224.0, 780.0 / 792.0);
+    assert!(close(v.zoom(), fit));
+    let (a, b) = (v.page_rect(0).unwrap(), v.page_rect(1).unwrap());
+    assert!(close(b.origin.x - a.max_x(), 10.0) && close(a.origin.y, b.origin.y));
+    // Centred as a pair.
+    assert!(close(a.origin.x, 1400.0 - b.max_x()), "{a:?} {b:?}");
+    assert_eq!(v.current_page(), 0);
+
+    // A flick turns to the next spread, not the next page.
+    v.scroll_by(ViewVector::new(100.0, 0.0));
+    let rest = v.snap_delta(ViewVector::new(500.0, 0.0)).unwrap();
+    v.scroll_by(rest);
+    assert_eq!(v.current_page(), 2);
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+    // Both of its pages are drawn, and nothing of the neighbours.
+    let frame = v.frame(Instant::now(), all_cached);
+    assert_eq!(
+        frame.pages.iter().map(|p| p.page).collect::<Vec<_>>(),
+        vec![2, 3]
+    );
+
+    // The last page is alone in its spread and centred.
+    v.go_to_page(4);
+    assert_eq!(v.current_page(), 4);
+    let last = v.page_rect(4).unwrap();
+    assert!(close(last.origin.x, 1400.0 - last.max_x()));
+    // A page in the middle of a spread shows that spread.
+    v.go_to_page(3);
+    assert_eq!(v.current_page(), 2);
+
+    // With the cover alone, pairs shift by one: [0] [1 2] [3 4]. The page
+    // the reader was on (2) is now the right-hand one of its spread.
+    v.set_cover_alone(true);
+    assert_eq!(v.current_page(), 1);
+    assert!(v.page_rect(2).is_some_and(|r| r.origin.x > 700.0));
+    v.go_to_page(0);
+    let cover = v.page_rect(0).unwrap();
+    assert!(close(cover.origin.x, 1400.0 - cover.max_x()));
+    v.next_page();
+    assert_eq!(v.current_page(), 1);
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+
+    // Back to single pages keeps the page.
+    v.set_layout_mode(LayoutMode::SinglePage);
+    assert_eq!(v.current_page(), 1);
+    assert!(close(v.zoom(), 780.0 / 792.0));
+}

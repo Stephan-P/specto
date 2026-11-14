@@ -16,6 +16,10 @@ class ViewFrame private constructor(
     val settled: Boolean,
     /** One page at a time, swiped left and right (otherwise: one scrolling column). */
     val paged: Boolean,
+    /** Pages are shown two side by side. */
+    val twoPages: Boolean,
+    /** With two pages: the first page stands on its own. */
+    val coverAlone: Boolean,
     /** Zoom relative to the fitted state of the view mode: 1.0 when fitted. */
     val zoomFactor: Double,
     /** Zero-based index of the page the user is looking at. */
@@ -117,6 +121,8 @@ class ViewFrame private constructor(
                 complete = flags and 1 != 0,
                 settled = flags and 2 != 0,
                 paged = flags and 4 != 0,
+                twoPages = flags and 8 != 0,
+                coverAlone = flags and 16 != 0,
                 zoomFactor = zoomFactor,
                 currentPage = currentPage,
                 settlesInMs = settlesInMs,

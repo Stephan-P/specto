@@ -75,6 +75,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -263,7 +264,8 @@ private suspend fun Context.open(
     val cacheBytes = tileCacheBytes()
     val key = withContext(Dispatchers.Default) { DocumentStore.fingerprint(pdf) }
     val restore = store.find(key)?.view
-    val state = withContext(Dispatchers.Default) { PdfViewState(pdf, password, cacheBytes, restore) }
+    val wide = resources.configuration.screenWidthDp >= WIDE_WINDOW_DP
+    val state = withContext(Dispatchers.Default) { PdfViewState(pdf, password, cacheBytes, restore, wide) }
     store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
     releaseUnused(store)
     Loaded.Ready(state, name, key)
@@ -341,6 +343,8 @@ private fun App(
     val overlay = showPages && !wide
     val immersive = fullScreen && ready != null && !overlay
     val sidebarShown = wide && sidebar && ready != null && !immersive
+    // Two pages side by side need the room, too.
+    ready?.state?.let { SideEffect { it.wideWindow = wide } }
     BackHandler(enabled = overlay) { showPages = false }
     BackHandler(enabled = immersive) { fullScreen = false }
     StatusBar(hidden = immersive)
@@ -437,6 +441,30 @@ private fun App(
                                     ready.state.paged = continuous
                                 },
                             )
+                            if (wide) {
+                                val two = ready.state.twoPages
+                                val cover = ready.state.coverAlone
+                                DropdownMenuItem(
+                                    text = { Text("Two pages") },
+                                    trailingIcon = { if (two) Icon(Icons.Filled.Check, contentDescription = "On") },
+                                    onClick = {
+                                        menu = false
+                                        ready.state.setSpread(!two, cover)
+                                    },
+                                )
+                                if (two) {
+                                    DropdownMenuItem(
+                                        text = { Text("First page alone") },
+                                        trailingIcon = {
+                                            if (cover) Icon(Icons.Filled.Check, contentDescription = "On")
+                                        },
+                                        onClick = {
+                                            menu = false
+                                            ready.state.setSpread(true, !cover)
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 },

@@ -134,6 +134,8 @@ private fun DocumentStore.Entry.toJson(): JSONObject {
     view?.let {
         json.put("page", it.page.toInt()).put("offset", it.pageOffset).put("paged", it.paged)
         it.zoom?.let { zoom -> json.put("zoom", zoom) }
+        if (it.twoPages) json.put("two", true)
+        if (it.coverAlone) json.put("cover", true)
     }
     return json
 }
@@ -150,6 +152,8 @@ private fun JSONObject.toEntry() = DocumentStore.Entry(
             pageOffset = optDouble("offset", 0.0),
             paged = optBoolean("paged", true),
             zoom = if (has("zoom")) getDouble("zoom") else null,
+            twoPages = optBoolean("two", false),
+            coverAlone = optBoolean("cover", false),
         )
     } else {
         null

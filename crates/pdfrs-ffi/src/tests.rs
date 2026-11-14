@@ -442,6 +442,7 @@ fn saved_view_continues_where_the_reader_left_off() {
     // Fresh documents are continuous and fitted, at the top.
     let fresh = a.saved_view();
     assert_eq!((fresh.page, fresh.paged, fresh.zoom), (0, false, None));
+    assert!(!fresh.two_pages && !fresh.cover_alone);
 
     // Paged, on page 6, zoomed in and scrolled down a little.
     a.set_view_mode(ViewMode::Paged);
@@ -480,6 +481,62 @@ fn saved_view_continues_where_the_reader_left_off() {
     short.set_viewport(216.0, 316.0, 2.0);
     short.restore_view(SavedView { page: 7, ..saved });
     assert_eq!(short.frame().current_page, 1);
+}
+
+#[test]
+fn two_pages_side_by_side() {
+    let (session, rx) = open(5, 64 << 20);
+    // Wide enough for two 200 × 300 pt pages at 1 dp per point:
+    // 8 + 200 + 8 + 200 + 8 by 8 + 300 + 8.
+    session.set_viewport(424.0, 316.0, 2.0);
+    session.set_view_mode(ViewMode::Paged);
+    session.go_to_page(2);
+    session.set_spread(true, false);
+    let (frame, _) = settle(&session, &rx);
+    assert!(frame.two_pages && !frame.cover_alone && frame.paged);
+    // Pages 3 and 4 as a pair, fitted; the reader's page stays on screen.
+    assert_eq!(
+        (frame.current_page, frame.zoom, frame.zoom_factor),
+        (2, 1.0, 1.0)
+    );
+    let pages: Vec<(u32, f32)> = frame.pages.iter().map(|p| (p.page, p.rect.x)).collect();
+    assert_eq!(pages, vec![(2, 16.0), (3, 432.0)]);
+
+    // A flick turns to the next pair (here the last page, alone).
+    hot::scroll_by(session.id(), 50.0, 0.0);
+    let turn = session.snap_delta(500.0, 0.0).unwrap();
+    hot::scroll_by(session.id(), turn.x, turn.y);
+    let frame = session.frame();
+    assert_eq!((frame.current_page, frame.pages.len()), (4, 1));
+
+    // The first page alone shifts the pairs: [1] [2 3] [4 5].
+    session.set_spread(true, true);
+    let frame = session.frame();
+    assert!(frame.cover_alone);
+    assert_eq!(
+        frame.pages.iter().map(|p| p.page).collect::<Vec<_>>(),
+        vec![3, 4]
+    );
+
+    // Scrolling instead of swiping keeps the pairs, fitted to the width.
+    session.set_view_mode(ViewMode::Continuous);
+    let frame = session.frame();
+    assert!(frame.two_pages && !frame.paged);
+    assert_eq!(frame.zoom_mode, ZoomMode::FitWidth);
+
+    // Saved and restored with the rest of the view.
+    let saved = session.saved_view();
+    assert!(saved.two_pages && saved.cover_alone);
+    let (other, _rx) = open(5, 1 << 20);
+    other.set_viewport(424.0, 316.0, 2.0);
+    other.restore_view(saved);
+    let frame = other.frame();
+    assert!(frame.two_pages && frame.cover_alone && !frame.paged);
+    assert_eq!(other.saved_view(), saved);
+
+    // And back to one page at a time.
+    session.set_spread(false, false);
+    assert!(!session.frame().two_pages);
 }
 
 #[test]
@@ -553,6 +610,8 @@ fn decode_frame(mut b: &[u8]) -> Frame {
         complete: flags & 1 != 0,
         settled: flags & 2 != 0,
         paged: flags & 4 != 0,
+        two_pages: flags & 8 != 0,
+        cover_alone: flags & 16 != 0,
         zoom_factor,
         settles_in_ms: u32::try_from(settles).ok(),
         device_scale,
@@ -605,6 +664,8 @@ fn fixture_frame() -> Frame {
         zoom_mode: ZoomMode::FitPage,
         zoom_factor: 1.5,
         paged: true,
+        two_pages: true,
+        cover_alone: false,
         thumbnail_first: 2,
         thumbnails: vec![0, 11, 12],
     }

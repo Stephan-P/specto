@@ -15,7 +15,9 @@ class DocumentStoreTest {
     val folder = TemporaryFolder()
 
     private val file: File by lazy { File(folder.root, "documents.json") }
-    private val view = SavedView(page = 3u, pageOffset = 0.25, paged = false, zoom = 1.5)
+    private val view = SavedView(
+        page = 3u, pageOffset = 0.25, paged = false, zoom = 1.5, twoPages = true, coverAlone = true,
+    )
 
     @Test
     fun remembersAcrossRestarts() {
@@ -32,7 +34,7 @@ class DocumentStoreTest {
 
     @Test
     fun fittedViewHasNoZoom() {
-        val fitted = view.copy(zoom = null, paged = true)
+        val fitted = view.copy(zoom = null, paged = true, twoPages = false, coverAlone = false)
         DocumentStore(file).apply {
             opened("k1", "a.pdf", null, 3)
             saveView("k1", fitted)

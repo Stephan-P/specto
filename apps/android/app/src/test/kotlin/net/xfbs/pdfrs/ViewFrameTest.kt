@@ -25,6 +25,8 @@ class ViewFrameTest {
         assertFalse(frame.complete)
         assertTrue(frame.settled)
         assertTrue(frame.paged)
+        assertTrue(frame.twoPages)
+        assertFalse(frame.coverAlone)
         assertEquals(4, frame.currentPage)
         assertEquals(180, frame.settlesInMs)
         assertEquals(0.6645856618881226, frame.zoom, 0.0)

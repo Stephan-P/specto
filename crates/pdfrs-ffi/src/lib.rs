@@ -120,6 +120,10 @@ pub struct SavedView {
     /// Logical pixels per point if the reader had zoomed in; `None` if the
     /// view was fitted.
     pub zoom: Option<f64>,
+    /// Two pages side by side.
+    pub two_pages: bool,
+    /// With two pages: the first page on its own, like a book's cover.
+    pub cover_alone: bool,
 }
 
 /// A distance in logical pixels (dp).
@@ -201,6 +205,10 @@ pub struct Frame {
     pub zoom_factor: f64,
     /// Whether the view is [`ViewMode::Paged`].
     pub paged: bool,
+    /// Whether pages are shown two side by side.
+    pub two_pages: bool,
+    /// With two pages: whether the first page is on its own.
+    pub cover_alone: bool,
     /// First page of the range set with [`ViewSession::set_thumbnail_range`].
     pub thumbnail_first: u32,
     /// For each page of that range, the id of its thumbnail tile, or 0 while
@@ -356,6 +364,8 @@ impl Shared {
             current_page: viewer.current_page() as u32,
             zoom_factor: viewer.zoom_relative_to(home_fit(viewer)),
             paged: viewer.settings().swipe,
+            two_pages: viewer.layout_mode().is_two_page(),
+            cover_alone: viewer.settings().cover_alone,
             zoom: viewer.zoom(),
             zoom_mode: match viewer.zoom_mode() {
                 pdfrs_view::ZoomMode::Fixed => ZoomMode::Fixed,
@@ -382,6 +392,17 @@ fn home_fit(viewer: &Viewer) -> pdfrs_view::ZoomMode {
         pdfrs_view::ZoomMode::FitPage
     } else {
         pdfrs_view::ZoomMode::FitWidth
+    }
+}
+
+/// The layout for swiping or scrolling through single pages or pairs.
+fn layout_for(paged: bool, two_pages: bool) -> pdfrs_view::LayoutMode {
+    use pdfrs_view::LayoutMode::{Continuous, SinglePage, TwoPage, TwoPageContinuous};
+    match (paged, two_pages) {
+        (true, false) => SinglePage,
+        (true, true) => TwoPage,
+        (false, false) => Continuous,
+        (false, true) => TwoPageContinuous,
     }
 }
 
@@ -600,12 +621,23 @@ impl ViewSession {
         let mut state = self.shared.lock();
         let viewer = &mut state.viewer;
         let paged = mode == ViewMode::Paged;
-        viewer.set_layout_mode(if paged {
-            pdfrs_view::LayoutMode::SinglePage
-        } else {
-            pdfrs_view::LayoutMode::Continuous
-        });
+        viewer.set_layout_mode(layout_for(paged, viewer.layout_mode().is_two_page()));
         viewer.set_swipe(paged);
+        viewer.set_zoom_mode(home_fit(viewer));
+    }
+
+    /// Shows pages two side by side (or one at a time again), in either view
+    /// mode, keeping the page. With `cover_alone`, the first page stands on
+    /// its own, so that a book's left and right pages end up left and right.
+    pub fn set_spread(&self, two_pages: bool, cover_alone: bool) {
+        let mut state = self.shared.lock();
+        let viewer = &mut state.viewer;
+        let layout = layout_for(viewer.settings().swipe, two_pages);
+        if layout == viewer.layout_mode() && cover_alone == viewer.settings().cover_alone {
+            return;
+        }
+        viewer.set_layout_mode(layout);
+        viewer.set_cover_alone(cover_alone);
         viewer.set_zoom_mode(home_fit(viewer));
     }
 
@@ -619,6 +651,8 @@ impl ViewSession {
             page_offset: view.page_offset,
             paged: state.viewer.settings().swipe,
             zoom: (view.zoom_mode == pdfrs_view::ZoomMode::Fixed).then_some(view.zoom),
+            two_pages: view.layout.is_two_page(),
+            cover_alone: view.cover_alone,
         }
     }
 
@@ -631,6 +665,7 @@ impl ViewSession {
         } else {
             ViewMode::Continuous
         });
+        self.set_spread(saved.two_pages, saved.cover_alone);
         let mut state = self.shared.lock();
         let viewer = &mut state.viewer;
         let mut view = viewer.view_state();

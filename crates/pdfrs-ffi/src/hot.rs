@@ -6,7 +6,8 @@
 //! Frame layout (see [`encode_frame`]):
 //!
 //! ```text
-//! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged
+//! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged,
+//!                      bit 3: two pages, bit 4: first page alone
 //! u32 zoom_mode        0 fixed, 1 fit width, 2 fit page
 //! u32 current_page
 //! i32 settles_in_ms    -1: none
@@ -160,7 +161,11 @@ fn put_rect(buf: &mut Vec<u8>, r: &Rect) {
 pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
     put_u32(
         buf,
-        u32::from(frame.complete) | u32::from(frame.settled) << 1 | u32::from(frame.paged) << 2,
+        u32::from(frame.complete)
+            | u32::from(frame.settled) << 1
+            | u32::from(frame.paged) << 2
+            | u32::from(frame.two_pages) << 3
+            | u32::from(frame.cover_alone) << 4,
     );
     put_u32(
         buf,

@@ -80,6 +80,17 @@ class ReaderTest {
         waitForText("1 / 12")
     }
 
+    /** Leaves the app and opens [asset], which [open] put in place, once more. */
+    private fun reopen(asset: String) {
+        scenario?.close()
+        val target = instrumentation.targetContext
+        scenario = ActivityScenario.launch(
+            Intent(target, MainActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setDataAndType(Uri.fromFile(File(target.cacheDir, asset)), "application/pdf"),
+        )
+    }
+
     private fun waitForText(text: String) {
         compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     }
@@ -195,6 +206,56 @@ class ReaderTest {
     }
 
     @Test
+    fun twoPagesSideBySideOnAWideWindow() {
+        assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
+        open("pages.pdf")
+        val more = compose.onNodeWithContentDescription("More")
+        more.performClick()
+        compose.onNodeWithText("Two pages").performClick()
+        compose.waitForIdle()
+        // A swipe now turns a pair of pages: 1–2 to 3–4.
+        page.performTouchInput { swipeLeft() }
+        waitForText("3 / 12")
+        // With the first page alone, the pairs are 2–3, 4–5, …
+        more.performClick()
+        compose.onNodeWithText("First page alone").performClick()
+        waitForText("2 / 12")
+        page.performTouchInput { swipeLeft() }
+        waitForText("4 / 12")
+        // Back to one page at a time, on the same page.
+        more.performClick()
+        compose.onNodeWithText("Two pages").performClick()
+        compose.waitForIdle()
+        page.performTouchInput { swipeLeft() }
+        waitForText("5 / 12")
+    }
+
+    @Test
+    fun twoPagesAreRememberedForTheDocument() {
+        assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
+        open("pages.pdf")
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithText("Two pages").performClick()
+        compose.waitForIdle()
+        page.performTouchInput { swipeLeft() }
+        waitForText("3 / 12")
+        // Leave and come back: still on that pair, still two pages at a time.
+        reopen("pages.pdf")
+        waitForText("3 / 12")
+        page.performTouchInput { swipeLeft() }
+        waitForText("5 / 12")
+    }
+
+    @Test
+    fun noTwoPagesOnANarrowWindow() {
+        assumeTrue("needs a window narrower than $WIDE_WINDOW_DP dp", !wide)
+        open("pages.pdf")
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithText("Continuous scrolling").assertIsDisplayed()
+        compose.onNodeWithText("Two pages").assertDoesNotExist()
+    }
+
+    @Test
     fun aNarrowWindowShowsPagesFullScreen() {
         assumeTrue("needs a window narrower than $WIDE_WINDOW_DP dp", !wide)
         open("pages.pdf")
@@ -215,14 +276,7 @@ class ReaderTest {
         page.performTouchInput { swipeLeft() }
         waitForText("3 / 12")
         // Leaving saves the position; the same file opens there again.
-        scenario?.close()
-        scenario = null
-        val target = instrumentation.targetContext
-        scenario = ActivityScenario.launch(
-            Intent(target, MainActivity::class.java)
-                .setAction(Intent.ACTION_VIEW)
-                .setDataAndType(Uri.fromFile(File(target.cacheDir, "pages.pdf")), "application/pdf"),
-        )
+        reopen("pages.pdf")
         waitForText("3 / 12")
     }
 }

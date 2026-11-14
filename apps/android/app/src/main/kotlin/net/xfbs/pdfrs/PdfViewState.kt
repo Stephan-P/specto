@@ -61,6 +61,8 @@ class PdfViewState(
     cacheBytes: Long,
     /** Where the reader left off last time, to continue there. */
     restore: SavedView? = null,
+    /** Whether the window has room for two pages side by side; see [wideWindow]. */
+    wideWindow: Boolean = false,
 ) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val tilesPosted = AtomicBoolean(false)
@@ -159,13 +161,15 @@ class PdfViewState(
         // it on every frame.
         Native.setViewport(sessionId, widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
         // A position only means something once the view has a size.
-        pendingRestore?.let(session::restoreView)
+        pendingRestore?.let { session.restoreView(it.copy(twoPages = it.twoPages && wideWindow)) }
         pendingRestore = null
         refresh()
     }
 
     /** Where the reader is now, for [DocumentStore]. */
-    fun savedView(): SavedView = pendingRestore ?: session.savedView()
+    fun savedView(): SavedView =
+        // What the reader chose, even if this window is too narrow to show it.
+        (pendingRestore ?: session.savedView()).copy(twoPages = twoPages, coverAlone = coverAlone)
 
     fun scrollBy(delta: Offset) {
         Native.scrollBy(sessionId, delta.x.toDouble(), delta.y.toDouble())
@@ -221,6 +225,39 @@ class PdfViewState(
         if (closed || thumbnailOwner !== owner) return
         thumbnailOwner = null
         Native.setThumbnailRange(sessionId, 0, 0)
+        refresh()
+    }
+
+    /**
+     * Two pages side by side, as the reader asked for. Only takes effect in
+     * a [wideWindow]; on a narrow one the wish is kept (and saved) but pages
+     * are shown one at a time.
+     */
+    var twoPages: Boolean by mutableStateOf(restore?.twoPages ?: false)
+        private set
+
+    /** With two pages: the first page on its own, like a book's cover. */
+    var coverAlone: Boolean by mutableStateOf(restore?.coverAlone ?: false)
+        private set
+
+    /** Whether the window is wide enough for two pages. Follows rotation and split screen. */
+    var wideWindow: Boolean = wideWindow
+        set(value) {
+            if (field == value) return
+            field = value
+            applySpread()
+        }
+
+    fun setSpread(twoPages: Boolean, coverAlone: Boolean) {
+        this.twoPages = twoPages
+        this.coverAlone = coverAlone
+        applySpread()
+    }
+
+    private fun applySpread() {
+        if (closed) return
+        stopMotion()
+        session.setSpread(twoPages && wideWindow, coverAlone)
         refresh()
     }
 
