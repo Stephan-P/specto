@@ -181,6 +181,28 @@ hayro can't be cancelled, so the scheduler limits the damage instead (`Limits`, 
 
 What this doesn't fix: one tile at 100% still needs 4.5 GB and 10 s. That needs region- and resolution-aware image decoding in hayro (TASKS.md).
 
+## Text extraction check (M2)
+
+Question: can the text layer use hayro, or do we need our own font and `ToUnicode` handling? `spikes/text-check` implements hayro-interpret's `Device`, collects glyphs from `draw_glyph_run`, builds words with naive gap/baseline rules, and compares the words of the first pages with `pdftotext -raw` (Poppler): *recall* is the share of Poppler's words we also find (NFKC-normalized, lowercase).
+
+hayro exposes what a text layer needs: per glyph `as_unicode()` (`ToUnicode` → Adobe Glyph List → `uniXXXX` names; for CID fonts `ToUnicode` only), `char_code()`, the placement (`props.transform * glyph.transform()`), `advance_width()` and `outline()` (1000 units per em), the run's writing mode, and marked-content callbacks.
+
+| Documents | Recall |
+|---|---|
+| Everyday PDFs in `/usr/share` (manuals from FOP, pdfTeX and Doxygen, specs, CUPS forms incl. Russian) | 0.99–1.00 |
+| Complex-script font specimens (Arabic, Myanmar) | 0.94–0.95 |
+| pdf.js corpus, 163 files with ≥ 20 words | median 1.00, 72% ≥ 0.99, 83% ≥ 0.9 |
+
+6% of all corpus glyphs had no Unicode. The files where *nothing* mapped while Poppler found the text fall into three groups:
+
+- **CID TrueType without `ToUnicode`** (`ThuluthFeatures`, `issue19802`, `perf_text_cmap_mixed`): Poppler and pdf.js reverse-map glyph IDs through the embedded font's own `cmap` table. hayro doesn't, but `OutlineGlyph::font_data()` gives us the font bytes to do it ourselves.
+- **Type 3 fonts without `ToUnicode`** and non-standard glyph names (`french_diacritics`, `issue918`, `perf_text_type3_*`): Poppler falls back to the character code as Latin-1 / the font's encoding.
+- **Fonts *with* `ToUnicode` that hayro doesn't apply** (`complex_ttf_font`, `issue16538`): probably a hayro bug; to investigate and report upstream.
+
+The other low scores come from the spike's naive word building (rotated text, Chinese without spaces, unusual spacing), which the real text layer replaces.
+
+**Conclusion:** build `pdfrs-text` on hayro's `Device` interface and `as_unicode`, plus two fallbacks of our own (font `cmap` reverse lookup, char-code fallback), and report the third group upstream. No font parsing of our own beyond the `cmap` table.
+
 ## Not done yet
 
 - Verify Preview's encryption behavior on a Mac (D9).

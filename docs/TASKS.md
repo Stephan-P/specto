@@ -59,7 +59,10 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M2: Text
 
-- [ ] **L** `pdfrs-text`: glyph extraction via interpreter device, ToUnicode handling, word/line grouping, reading order
+- [x] **S** Spike: hayro's glyph → Unicode mapping is good enough to build on (recall 0.99–1.00 on everyday PDFs vs `pdftotext`; M0-FINDINGS.md, "Text extraction check")
+- [ ] **L** `pdfrs-text`: glyph extraction via hayro's `Device`, word/line grouping (rotation-aware, CJK without spaces), reading order
+- [ ] **M** `pdfrs-text` fallbacks for glyphs without Unicode: reverse lookup in the embedded TrueType `cmap` (CID TrueType without `ToUnicode`); character code as Latin-1 / font encoding (Type 3)
+- [ ] **S** Investigate and report upstream: hayro ignores existing `ToUnicode` tables in `complex_ttf_font.pdf` and `issue16538.pdf`
 - [ ] **M** Text selection (drag, double-click word, triple-click line) + copy
 - [ ] **M** Search: find bar, incremental results across pages (background), highlight matches, next/prev
 - [ ] **S** Text-layer cache per page (lazy, evictable)

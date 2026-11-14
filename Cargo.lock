@@ -2222,6 +2222,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "text-check"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "hayro",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "textwrap"
 version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
