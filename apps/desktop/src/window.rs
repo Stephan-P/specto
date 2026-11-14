@@ -1038,6 +1038,18 @@ impl Window {
         let (px, py) = inner.canvas.pointer();
         json.raw("canvas", &format!("[{}, {}]", origin.0, origin.1))
             .raw("pointer", &format!("[{px}, {py}]"));
+        // Thumbnails on screen, [page, x, y, width, height] in the window,
+        // and the pages selected in the sidebar.
+        if let Some(s) = inner.sidebar.borrow().as_ref() {
+            let shown: Vec<String> = s
+                .visible(&inner.window)
+                .iter()
+                .map(|(p, r)| format!("[{p}, {}, {}, {}, {}]", r.x(), r.y(), r.width(), r.height()))
+                .collect();
+            let selected: Vec<String> = s.selected().iter().map(usize::to_string).collect();
+            json.raw("thumbnails", &format!("[{}]", shown.join(", ")))
+                .raw("thumbnails_selected", &format!("[{}]", selected.join(", ")));
+        }
         let maps = inner.canvas.with_viewer(|v| {
             let current = v.current_page();
             (current.saturating_sub(2)..(current + 4).min(v.page_count()))
@@ -1105,9 +1117,37 @@ impl Window {
         json.finish()
     }
 
-    /// Turns the current page (both pages of a spread) by `by`, unless a
+    /// The pages an edit applies to: those selected in the sidebar if there
+    /// are several, else the current page (both pages of a spread).
+    fn pages_to_edit(&self) -> Vec<usize> {
+        let selected = self
+            .0
+            .sidebar
+            .borrow()
+            .as_ref()
+            .map(Sidebar::selected)
+            .unwrap_or_default();
+        if selected.len() > 1 {
+            return selected;
+        }
+        self.0
+            .canvas
+            .with_viewer(|v| v.current_spread().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// Whether the sidebar has the keyboard focus.
+    fn sidebar_has_focus(&self) -> bool {
+        let focus = gtk::prelude::GtkWindowExt::focus(&self.0.window);
+        let sidebar = self.0.sidebar.borrow();
+        matches!((focus, sidebar.as_ref()), (Some(f), Some(s)) if s.contains(&f))
+    }
+
+    /// Turns the pages to edit (see [`pages_to_edit`]) by `by`, unless a
     /// text field has the focus: there the shortcut (Ctrl+Left/Right) moves
     /// by a word, as it would without this action.
+    ///
+    /// [`pages_to_edit`]: Self::pages_to_edit
     fn rotate(&self, by: Rotation) {
         if let Some(text) = gtk::prelude::GtkWindowExt::focus(&self.0.window)
             .and_then(|f| f.downcast::<gtk::Text>().ok())
@@ -1116,10 +1156,9 @@ impl Window {
             text.emit_by_name::<()>("move-cursor", &[&gtk::MovementStep::Words, &count, &false]);
             return;
         }
-        let Some(pages) = self.0.canvas.with_viewer(|v| v.current_spread().to_vec()) else {
-            return;
-        };
-        self.edit(|d| d.rotate(&pages, by));
+        let pages = self.pages_to_edit();
+        // The pages stay selected, so they can be turned again.
+        self.edit(|d| d.rotate(&pages, by).then_some(pages.clone()));
     }
 
     /// Asks for a PDF and inserts its pages.
@@ -1182,9 +1221,10 @@ impl Window {
             .with_viewer(|v| v.current_spread().last().map_or(0, |&p| p + 1))
             .unwrap_or(0);
         let mut inserted = None;
+        // The new pages are selected, ready to be moved or turned.
         self.edit(|d| {
             inserted = d.insert(at, source, 0..count);
-            inserted.is_some()
+            inserted.clone().map(Iterator::collect)
         });
         if let Some(range) = inserted {
             self.0.canvas.update_viewer(|v| v.go_to_page(range.start));
@@ -1353,17 +1393,18 @@ impl Window {
     }
 
     /// Applies an edit to the document, then updates the view, the sidebar
-    /// and the menus if it changed anything.
-    fn edit(&self, f: impl FnOnce(&mut Document) -> bool) {
+    /// and the menus if it changed anything. `f` returns `None` if nothing
+    /// changed, else the pages to select in the sidebar.
+    fn edit(&self, f: impl FnOnce(&mut Document) -> Option<Vec<usize>>) {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return;
         };
-        if !f(&mut doc.borrow_mut()) {
+        let Some(selected) = f(&mut doc.borrow_mut()) else {
             return;
-        }
+        };
         if let Some(s) = inner.sidebar.borrow().as_ref() {
-            s.pages_changed();
+            s.pages_changed(&selected);
         }
         inner.last_page.set(usize::MAX);
         // Scrollbars, redraw, page number.
@@ -1503,8 +1544,12 @@ impl Window {
                 .build(),
             gio::ActionEntry::builder("select-all")
                 .activate(with(|w| {
-                    if !w.forward_to_entry("selection.select-all") {
-                        w.0.canvas.select_all();
+                    if w.forward_to_entry("selection.select-all") {
+                        return;
+                    }
+                    match w.0.sidebar.borrow().as_ref() {
+                        Some(s) if w.sidebar_has_focus() => s.select_all(),
+                        _ => w.0.canvas.select_all(),
                     }
                 }))
                 .build(),
@@ -1551,14 +1596,14 @@ impl Window {
             gio::ActionEntry::builder("undo")
                 .activate(with(|w| {
                     if !w.forward_to_entry("text.undo") {
-                        w.edit(|d| d.undo().is_some());
+                        w.edit(|d| d.undo().map(|_| Vec::new()));
                     }
                 }))
                 .build(),
             gio::ActionEntry::builder("redo")
                 .activate(with(|w| {
                     if !w.forward_to_entry("text.redo") {
-                        w.edit(|d| d.redo().is_some());
+                        w.edit(|d| d.redo().map(|_| Vec::new()));
                     }
                 }))
                 .build(),

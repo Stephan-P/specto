@@ -35,6 +35,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
   the original as it was, and the copy opens where the original was left
 - close_prompt: quitting with unsaved changes asks first; Cancel keeps the
   window, Discard closes without saving, Save saves and closes
+- thumbnail_selection: clicking a thumbnail goes to its page; Shift+click
+  and Ctrl+click select several, which stay selected while the view moves
+  and are what Rotate turns; Ctrl+A in the sidebar selects every page
 - insert_file: pages of another file inserted after the current page, shown
   and searched; undo; saved, they're in the file
 
@@ -414,16 +417,17 @@ class Input:
         if wait > 0:
             time.sleep(wait)
 
-    def click(self, x, y, times=1, shift=False):
+    def click(self, x, y, times=1, shift=False, control=False):
         self.new_sequence()
         self.move(x, y)
-        if shift:
-            self.key_down(self.SHIFT)
+        held = [k for k, on in ((self.SHIFT, shift), (self.CONTROL, control)) if on]
+        for k in held:
+            self.key_down(k)
         for _ in range(times):
             self.button(True)
             self.button(False)
-        if shift:
-            self.key_up(self.SHIFT)
+        for k in reversed(held):
+            self.key_up(k)
 
     def drag(self, start, end, steps=10, release=True, press=True):
         """Presses at `start` (unless the button is already down there) and
@@ -1073,6 +1077,71 @@ def test_close_prompt(ctx):
         raise CheckFailed("the app didn't quit after discarding")
     s = ctx.app([path]).window().settled()
     check(turned(s, 0), "the discarded rotation was saved")
+
+
+def click_thumbnail(w, inp, page, **keys):
+    """Clicks the middle of `page`'s thumbnail (on screen in the sidebar)."""
+    s = w.state()
+    rect = next((t[1:] for t in s["thumbnails"] if t[0] == page), None)
+    check(rect is not None, f"no thumbnail of page {page} on screen: {s['thumbnails']}")
+    x, y, width, height = rect
+    # From a place on the canvas, where the pointer's position is checked,
+    # so the move into the sidebar starts from a known point.
+    inp.move(s["width"] * 0.75, s["height"] / 2)
+    inp.click(x + width / 2, y + height / 2, **keys)
+
+
+def selected_thumbnails(w, pages):
+    return w.wait(
+        f"thumbnails {pages} selected", lambda s: s.get("thumbnails_selected") == pages
+    )
+
+
+def test_thumbnail_selection(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    w.maximize()
+    s = w.settled("maximized")
+    inp = ctx.input().attach(w)
+    check(s["thumbnails_selected"] == [0], s)
+    # A click goes to the page.
+    click_thumbnail(w, inp, 1)
+    selected_thumbnails(w, [1])
+    w.settled("page 2", lambda s: s["page"] == 1)
+    # Shift+click and Ctrl+click select more, without going there. (Only
+    # three thumbnails fit at scale 2.)
+    click_thumbnail(w, inp, 2, shift=True)
+    selected_thumbnails(w, [1, 2])
+    click_thumbnail(w, inp, 0, control=True)
+    selected_thumbnails(w, [0, 1, 2])
+    click_thumbnail(w, inp, 1, control=True)
+    s = selected_thumbnails(w, [0, 2])
+    check(s["page"] == 1, f"the view moved to page {s['page'] + 1}")
+    # Rotate turns the selected pages, which stay selected.
+    w.action("rotate-right")
+    s = w.wait("the selected pages rotated", lambda s: rotations(s)[:3] == [90, 0, 90])
+    check(sum(rotations(s)) == 180 and s["thumbnails_selected"] == [0, 2], s)
+    # Moving the view keeps the selection.
+    w.action("last-page")
+    w.settled("the last page", lambda s: s["page"] == PAGES - 1)
+    check(w.state()["thumbnails_selected"] == [0, 2], "the selection didn't stay")
+    w.action("first-page")
+    w.settled("page 1", lambda s: s["page"] == 0)
+    # A plain click selects one again; then Rotate turns the current page.
+    click_thumbnail(w, inp, 1)
+    selected_thumbnails(w, [1])
+    w.settled("page 2", lambda s: s["page"] == 1)
+    w.action("rotate-right")
+    s = w.wait("page 2 rotated", lambda s: rotations(s)[1] == 90)
+    check(sum(rotations(s)) == 270, s["edit_pages"])
+    # With the sidebar focused, Ctrl+A selects every page, not the text.
+    inp.keys(Input.CONTROL, Input.KEY_A)
+    s = selected_thumbnails(w, list(range(PAGES)))
+    check(s["selection"] == "", f"text selected: {s['selection']!r}")
+    # Undo: the selection goes back to following the current page.
+    w.action("undo")
+    w.wait("page 2 turned back", lambda s: rotations(s)[1] == 0)
+    selected_thumbnails(w, [w.state()["page"]])
 
 
 def test_insert_file(ctx):

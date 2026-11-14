@@ -35,6 +35,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Page labels (e.g. "iv", "A-3") in the page entry and thumbnails; labels can be typed too
 - Keyboard: Page Up/Down, Space, Backspace, arrow keys, Home, End
 - Thumbnail sidebar (F9); the current page is highlighted and kept in view
+- Several thumbnails can be selected: Shift+click for a range, *Primary*+click to add or remove one, *Primary*+A with the sidebar focused for all. A selection of several stays while you move around the document; a plain click selects one page again and goes there
 - Contents tab with the document's outline, when it has one: titles wrap to up to three lines, with the page number (or label) right-aligned in grey; entries jump to the exact position
 - Links: in-document links and named actions (next page, …) are followed; web and mail links open in the default app; other kinds are refused
 
@@ -61,8 +62,8 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Editing
 
-- Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main menu) turn the current page, or both pages of a two-page spread
-- Insert Pages from File (main menu): all pages of another PDF go after the current page (or spread), and the view goes to the first of them. Encrypted files ask for their password
+- Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main menu) turn the pages selected in the sidebar if there are several, otherwise the current page, or both pages of a two-page spread
+- Insert Pages from File (main menu): all pages of another PDF go after the current page (or spread), and the view goes to the first of them, with the new pages selected in the sidebar. Encrypted files ask for their password
 - Undo and Redo (*Primary*+Z, Shift+*Primary*+Z, or the main menu, which names the edit: "Undo Rotate Page")
 - "Edited" in the title while there are changes; undoing back to the state as opened removes it
 - Selection, search, links and the table of contents keep working on edited pages, inserted ones included

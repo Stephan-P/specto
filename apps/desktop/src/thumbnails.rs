@@ -1,5 +1,10 @@
 //! The thumbnail sidebar: a `GtkListView` of pages, so only visible rows exist.
 //!
+//! Several thumbnails can be selected (click, Shift+click, *Primary*+click),
+//! for editing them together. Selecting a single one goes to its page, and
+//! a single selection follows the current page; a selection of several
+//! stays until the user changes it.
+//!
 //! Thumbnails draw the viewer's placeholder tiles from the shared cache, so
 //! each page is rendered once for both the sidebar and the canvas.
 
@@ -113,7 +118,7 @@ pub struct Sidebar {
     /// One item per page; the items only stand for positions.
     model: gtk::StringList,
     document: SharedDocument,
-    selection: gtk::SingleSelection,
+    selection: gtk::MultiSelection,
     /// Set while the selection follows the canvas, so it doesn't jump back.
     following: std::rc::Rc<Cell<bool>>,
 }
@@ -124,8 +129,7 @@ impl Sidebar {
         let count = document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
         let model = gtk::StringList::new(&labels.iter().map(String::as_str).collect::<Vec<_>>());
-        let selection = gtk::SingleSelection::new(Some(model.clone()));
-        selection.set_autoselect(false);
+        let selection = gtk::MultiSelection::new(Some(model.clone()));
 
         let factory = gtk::SignalListItemFactory::new();
         let doc = document.clone();
@@ -183,9 +187,10 @@ impl Sidebar {
 
         let following = std::rc::Rc::new(Cell::new(false));
         let f = following.clone();
-        selection.connect_selected_notify(move |s| {
-            if !f.get() && s.selected() != gtk::INVALID_LIST_POSITION {
-                on_activate(s.selected() as usize);
+        selection.connect_selection_changed(move |s, _, _| {
+            let selected = s.selection();
+            if !f.get() && selected.size() == 1 {
+                on_activate(selected.nth(0) as usize);
             }
         });
 
@@ -204,31 +209,88 @@ impl Sidebar {
     }
 
     /// Shows the document's pages again after an edit: every row is bound
-    /// anew, so thumbnails get their new size, rotation and label.
-    pub fn pages_changed(&self) {
+    /// anew, so thumbnails get their new size, rotation and label. Then
+    /// `selected` are selected (none: the current page will be, through
+    /// [`follow`](Self::follow)).
+    pub fn pages_changed(&self, selected: &[usize]) {
         let count = self.document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         let scroll = self.widget.vadjustment().value();
         self.following.set(true);
         self.model.splice(0, self.model.n_items(), &labels);
-        self.selection.set_selected(gtk::INVALID_LIST_POSITION);
+        self.set_selected(selected);
         self.following.set(false);
         self.widget.vadjustment().set_value(scroll);
     }
 
-    /// Selects `page` and scrolls it into view, without reporting it back.
+    /// The selected pages, in order.
+    pub fn selected(&self) -> Vec<usize> {
+        let set = self.selection.selection();
+        (0..set.size())
+            .map(|i| set.nth(i as u32) as usize)
+            .collect()
+    }
+
+    /// Selects every page (*Primary*+A in the sidebar).
+    pub fn select_all(&self) {
+        self.selection.select_all();
+    }
+
+    /// Selects `pages` (and nothing else) without going to them.
+    pub fn select(&self, pages: &[usize]) {
+        self.following.set(true);
+        self.set_selected(pages);
+        self.following.set(false);
+    }
+
+    fn set_selected(&self, pages: &[usize]) {
+        let set = gtk::Bitset::new_empty();
+        for &p in pages {
+            set.add(p as u32);
+        }
+        let all = gtk::Bitset::new_range(0, self.model.n_items());
+        self.selection.set_selection(&set, &all);
+    }
+
+    /// Whether `widget` is in the sidebar (to tell if it has the focus).
+    pub fn contains(&self, widget: &gtk::Widget) -> bool {
+        widget.is_ancestor(&self.widget)
+    }
+
+    /// Selects `page` and scrolls it into view, without reporting it back,
+    /// unless several pages are selected: that selection stays.
     pub fn follow(&self, page: usize) {
-        if self.selection.selected() as usize == page {
+        let selected = self.selected();
+        if selected.len() > 1 || selected == [page] {
             return;
         }
-        self.following.set(true);
-        self.selection.set_selected(page as u32);
-        self.following.set(false);
+        self.select(&[page]);
         if self.widget.is_mapped() {
             self.list
                 .scroll_to(page as u32, gtk::ListScrollFlags::NONE, None);
         }
+    }
+
+    /// The thumbnails on screen: page and bounds relative to `to`, for tests.
+    pub fn visible(&self, to: &impl IsA<gtk::Widget>) -> Vec<(usize, graphene::Rect)> {
+        let mut out = Vec::new();
+        let mut child = self.list.first_child();
+        while let Some(row) = child {
+            if let Some(t) = row
+                .first_child()
+                .and_then(|col| col.first_child())
+                .and_downcast::<Thumbnail>()
+                && let Some(page) = t.imp().page.get()
+                && t.is_mapped()
+                && let Some(bounds) = t.compute_bounds(to)
+            {
+                out.push((page, bounds));
+            }
+            child = row.next_sibling();
+        }
+        out.sort_by_key(|(p, _)| *p);
+        out
     }
 
     /// Redraws visible thumbnails (after new tiles arrived).
