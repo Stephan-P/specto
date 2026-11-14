@@ -27,6 +27,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - remembers_state: page, layout, zoom and sidebar survive closing the app
 - broken_file: an error message, and the app keeps running
 - two_windows: one window per file, navigated independently
+- rotate_and_undo: Ctrl+Right and Ctrl+Left turn the current page, both
+  pages of a spread in the two-page layout; "Edited" in the title; Ctrl+Z
+  and Shift+Ctrl+Z; in the page entry, Ctrl+Left moves the cursor instead
 
 With the virtual pointer and keyboard, on a Courier text PDF:
 
@@ -41,6 +44,7 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - select_across_pages: holding a drag at the bottom edge scrolls, and the
   selection continues onto the next page
 - select_rotated_page: selecting on a page rotated by 90°
+- select_after_rotating: selecting and searching on a page the user rotated
 - search: Ctrl+F and typing; case, a line break, a hyphenated word and
   accents don't stop a match; Enter, Shift+Enter and wrapping around; the
   view follows; "No matches"; Escape ends the search
@@ -300,6 +304,7 @@ class Input:
     # Keys as Linux input key codes (linux/input-event-codes.h), which
     # don't depend on the keyboard layout.
     ESCAPE, CONTROL, SHIFT, ENTER, KEY_A, KEY_C, KEY_F = 1, 29, 42, 28, 30, 46, 33
+    LEFT, RIGHT, KEY_Z = 105, 106, 44
     # Key codes for typing, on a US layout (mutter's default).
     TYPING = {
         **{c: 16 + i for i, c in enumerate("qwertyuiop")},
@@ -910,6 +915,72 @@ def test_search_indexes_in_background(ctx):
     inp.keys(Input.SHIFT, Input.ENTER)
     status(w, "1 of 4")
     w.wait("page 1", lambda s: s["page"] == 0)
+
+
+def rotations(s):
+    """The rotation of each page, in degrees."""
+    return [r for _, r in s["edit_pages"]]
+
+
+def test_rotate_and_undo(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    inp = ctx.input().attach(w)
+    w.action("next-page")
+    w.settled("page 2", lambda s: s["page"] == 1)
+    unrotated = [0] * PAGES
+    check(rotations(w.state()) == unrotated, w.state()["edit_pages"])
+    inp.keys(Input.CONTROL, Input.RIGHT)
+    s = w.wait("page 2 rotated", lambda s: rotations(s)[1] == 90)
+    check(rotations(s) == [0, 90] + [0] * (PAGES - 2), s["edit_pages"])
+    check(s["modified"] and s["subtitle"].endswith("— Edited"), s["subtitle"])
+    check(s["undo"] == "Rotate Page" and s["redo"] == "", s)
+    # The page stays current, now landscape: its x axis runs down the screen.
+    s = w.settled("the rotated page", lambda s: s["page"] == 1)
+    a, b = next(p[1:3] for p in s["pages"] if p[0] == 1)
+    check(abs(a) < 1e-6 and b > 0, f"page 2 isn't turned clockwise: {s['pages']}")
+    w.showing(1, "rotated")
+    inp.keys(Input.CONTROL, Input.LEFT)
+    inp.keys(Input.CONTROL, Input.LEFT)
+    w.wait("page 2 turned back past 0", lambda s: rotations(s)[1] == 270)
+    # Undo all three, then redo one.
+    for _ in range(3):
+        inp.keys(Input.CONTROL, Input.KEY_Z)
+    s = w.wait("everything undone", lambda s: rotations(s) == unrotated and s["undo"] == "")
+    check(not s["modified"] and "Edited" not in s["subtitle"], s)
+    check(s["redo"] == "Rotate Page", s)
+    inp.keys(Input.SHIFT, Input.CONTROL, Input.KEY_Z)
+    w.wait("the first rotation redone", lambda s: rotations(s)[1] == 90 and s["modified"])
+    # Two pages side by side turn together.
+    w.action("layout", gvariant_str("two-page"))
+    w.action("debug-go-to", gvariant_str(LABELS[5]))
+    # Pages 5 and 6 side by side; the left one counts as current.
+    s = w.settled("pages 5 and 6", lambda s: s["page"] == 4)
+    w.action("rotate-right")
+    s = w.wait("a spread rotated", lambda s: sum(r == 90 for r in rotations(s)) == 3)
+    check(rotations(s)[4] == 90 and rotations(s)[5] == 90, s["edit_pages"])
+    # In the page entry, Ctrl+Left moves the cursor by a word instead.
+    w.action("go-to-page")
+    w.wait("the page entry", lambda s: s["focus"] == "GtkText")
+    before = w.state()["edit_pages"]
+    inp.keys(Input.CONTROL, Input.LEFT)
+    time.sleep(0.5)
+    check(w.state()["edit_pages"] == before, "Ctrl+Left in the page entry rotated a page")
+
+
+def test_select_after_rotating(ctx):
+    w, inp = selection_window(ctx)
+    inp.keys(Input.CONTROL, Input.RIGHT)
+    w.wait("page 1 rotated", lambda s: rotations(s)[0] == 90)
+    s = w.stable()
+    # The text runs downwards on screen now; drag along it.
+    inp.drag(w.char(0, 0, 4, state=s), w.char(0, 0, 14, before=False, state=s))
+    selected(w, "quick brown")
+    # Search highlights still find their page.
+    search_for(w, inp, "lazy")
+    s = status(w, "1 of 1")
+    check(s["match_page"] == 0, s)
+    w.screenshot("rotated-search")
 
 
 TESTS = [v for k, v in list(globals().items()) if k.startswith("test_")]

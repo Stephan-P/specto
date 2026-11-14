@@ -69,7 +69,8 @@ fn main() -> Result<()> {
 }
 
 pub(crate) fn open(file: &Path, password: Option<&str>) -> Result<HayroDocument> {
-    let data = std::fs::read(file).with_context(|| format!("reading {}", file.display()))?;
+    let data =
+        pdfrs_source::PdfData::open(file).with_context(|| format!("reading {}", file.display()))?;
     match HayroDocument::open(data, password) {
         Ok(doc) => Ok(doc),
         Err(OpenError::PasswordRequired) if password.is_none() => {
@@ -85,7 +86,7 @@ fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
     println!("version:  {:?}", pdf.version());
     println!("pages:    {}", doc.page_count());
     if outline {
-        let data = std::fs::read(file)?;
+        let data = pdfrs_source::PdfData::open(file)?;
         let source = pdfrs_source::SourceDocument::open(data, password)?;
         let m = source.metadata();
         for (k, v) in [
@@ -144,7 +145,7 @@ fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
 }
 
 fn text(file: &Path, pages: Option<&str>, password: Option<&str>, annotations: bool) -> Result<()> {
-    let source = pdfrs_source::SourceDocument::open(std::fs::read(file)?, password)?;
+    let source = pdfrs_source::SourceDocument::open(pdfrs_source::PdfData::open(file)?, password)?;
     let pages = match pages {
         Some(spec) => parse_pages(spec, source.page_count())?,
         None => (0..source.page_count()).collect(),

@@ -34,7 +34,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Keep hayro's `RenderCache` across renders (`self_cell`), reset per worker after 32 pages. Measured 1.4–6× faster tiles.
 
 - [x] **S** `pdfrs-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p pdfrs-render -- --ignored`).
-- [x] **M** `pdfrs-source`: opening and decryption (`open_pdf`, `OpenError`, now shared with `pdfrs-render`), metadata with text-string decoding (UTF-16BE, UTF-8, PDFDocEncoding), outline, links (destinations, URIs, named actions), named destinations via `/Dests` and the `/Names` tree. Every walk is bounded (cycles, depth, item caps). Corpus: 1,077 files, no panics, 0.2 s; 153 with an outline, 49 with links. `pdfrs info --outline` prints both. (No mmap: files are read into memory, as both apps already do.)
+- [x] **M** `pdfrs-source`: opening and decryption (`open_pdf`, `OpenError`, now shared with `pdfrs-render`), metadata with text-string decoding (UTF-16BE, UTF-8, PDFDocEncoding), outline, links (destinations, URIs, named actions), named destinations via `/Dests` and the `/Names` tree. Every walk is bounded (cycles, depth, item caps). Corpus: 1,077 files, no panics, 0.2 s; 153 with an outline, 49 with links. `pdfrs info --outline` prints both. Files of 64 MB and up are memory-mapped (`PdfData`), smaller ones read: a 100 MB file opens with 5 MB of memory instead of 105.
 - [x] **S** Page labels (`pdfrs_source::PageLabels`: all five styles, prefixes, start numbers, number trees split over kids; reverse lookup). Desktop: the page entry shows the label with "(3 of 120)" and accepts labels ("iv") or numbers; thumbnail captions show labels. Documents whose labels are just 1, 2, 3 are treated as unlabelled
 - [x] **S** Android: page labels through `pdfrs-ffi` (`ViewSession::page_labels`; the indicator, grid and Contents show them, and "Go to page…" accepts them)
 - [x] **M** `pdfrs-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
@@ -77,13 +77,15 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M3: Page editing
 
-- [ ] **M** `pdfrs-doc`: `EditDoc` with `PageRef`s, `Command` trait, undo/redo stack
-- [ ] **S** Commands: delete pages, move pages, rotate pages
+- [x] **M** `pdfrs-doc`: `EditDoc` with `PageRef`s and undo/redo. Page edits keep a snapshot of the page list instead of inverse commands; a version number tracks "modified" relative to the last save
+- [x] **S** Edits in the model: delete pages, move pages, rotate pages, insert pages
+- [x] **S** Desktop: rotate left and right (current page or spread), undo and redo with the edit's name in the main menu, "Edited" in the title; text, search and links keyed by page of the file so they survive edits. Headless checks `rotate_and_undo`, `select_after_rotating`
+- [ ] **S** Desktop: delete and move pages (with the page organizer below)
 - [ ] **M** Commands: insert pages from another PDF / merge (multi-source sessions)
 - [ ] **L** `pdfrs-write`: full rewrite save (object copying across sources, resource dedup, unreferenced-object GC, xref/object streams)
 - [ ] **M** Desktop: page organizer (multi-select thumbnails, drag to reorder, drop PDF to insert, delete key)
 - [ ] **S** Save / Save As / "Export selected pages", atomic write, dirty-state tracking + close prompt
-- [ ] **S** Property test: random command sequence followed by undo-all restores the original state
+- [x] **S** Property test: random edit sequence followed by undo-all restores the original state, and redo-all every state after it
 - [ ] **M** Round-trip harness, in CI from the first save path on: open → edit → save → reopen with our own parser and with an external validator (`qpdf --check`, which needs installing in `ci/install-deps-fedora.sh`), and compare renders of the untouched pages before and after
 - [ ] **S** File changed on disk while open: notice it (file monitor), and never save over a file that changed since it was read without asking; the unedited case can simply reload
 
@@ -141,7 +143,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
 - [x] **M** Reading position and recent documents: page, offset, mode and zoom are saved per document (recognised by a fingerprint of its content, since the same file arrives under different URIs) when the app stops or the document is closed, and restored on open; the start screen lists the last 20 documents that can be reopened (those with a persistable read permission, i.e. picked in the app). "Close" in the ⋮ menu returns to the start screen.
 - [x] **S** Share: "Share…" in the ⋮ menu offers the open document through the system's share sheet. The receiving app reads the document where it is (the app passes its read permission on); where that isn't possible (a plain file path, or a provider that doesn't allow it) it gets a copy from the app's cache, served by a `FileProvider`. Both routes checked by hand against the system's Print; the UI tests cover the copy.
-- [ ] **M** SAF fd-based I/O instead of reading the file into memory, and save (in the ⋮ menu)
+- [ ] **M** SAF fd-based I/O instead of reading the file into memory, and save (in the ⋮ menu). The Rust side is ready: `PdfFile.fromFd(pfd.detachFd())` and `ViewSession.openFile` (mapped above 64 MB, pipes read)
 - [ ] **M** Page organizer: drag to reorder, delete and rotate in the thumbnail grid (with M3)
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME
@@ -175,7 +177,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** `cargo-deny` in CI: security advisories and licence compatibility with MIT OR Apache-2.0
 - [ ] **M** Performance regression checks in CI: tile render times, frame times and peak memory on a few fixed documents (starting from the gtk-canvas spike's benchmark mode), compared against stored numbers with a tolerance
 - [ ] **S** Preferences: default layout and zoom for documents opened for the first time (desktop: a preferences window; Android: also persist paged or continuous)
-- [ ] **M** Desktop: large files without reading them into memory (mmap or ranged reads), re-opened safely after a save
+- [x] **M** Desktop: large files without reading them into memory: mapped from 64 MB (`PdfData`). Re-opening safely after a save is part of the save task
 - [ ] **L** Decide whether page content is exposed to screen readers (the text layer through AT-SPI and TalkBack, reading order, tagged PDF structure), and if so, plan it
 - [ ] **S** Crash handling: a panic hook that writes a log file the user can attach to a bug report (no telemetry); desktop and Android
 - [ ] **S–M** Touch on Linux (2-in-1 laptops, phones): drag to scroll, long-press to select, a layout for narrow windows; touch input in the headless checks

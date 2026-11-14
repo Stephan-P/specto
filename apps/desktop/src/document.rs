@@ -1,5 +1,10 @@
 //! An open document: scheduler, viewer state and tile cache, shared by the
 //! canvas and the thumbnail sidebar of one window.
+//!
+//! The pages shown come from an [`EditDoc`], so they can be rotated (and
+//! later deleted, moved and inserted). Positions in the viewer are where a
+//! page is now; caches of what doesn't change with editing (text, search
+//! text, links) are keyed by the page of the file it comes from.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -9,11 +14,12 @@ use std::sync::{Arc, OnceLock};
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use pdfrs_geom::ViewPoint;
+use pdfrs_doc::{Edit, EditDoc, Rotation, SourceId};
+use pdfrs_geom::{PageGeometry, ViewPoint};
 use pdfrs_render::OpenError;
 use pdfrs_render::scheduler::{Client, Scheduler};
 use pdfrs_render::tile::{DocId, TileCache, TileKey};
-use pdfrs_source::{Link, PageLabels, SourceDocument, Target};
+use pdfrs_source::{Link, PageLabels, PdfData, SourceDocument, Target};
 use pdfrs_text::{Extractor, Query, SearchText, TextPage};
 use pdfrs_view::{
     SearchMatch, SearchResults, Selection, Settings, TextPages, ViewPage, Viewer, placeholder_level,
@@ -42,10 +48,17 @@ pub struct Document {
     pub name: String,
     /// Structure (outline, links, metadata), separate from rendering.
     pub source: SourceDocument,
-    /// Links per page, parsed on first use.
+    /// Links per page of the file, parsed on first use.
     links: HashMap<usize, Vec<Link>>,
     /// Page labels, if the document has any that differ from 1, 2, 3, …
+    /// and its pages are still in their original order.
     pub labels: Option<PageLabels>,
+    /// The file's page labels, whatever the order.
+    file_labels: Option<PageLabels>,
+    /// The pages as edited.
+    pub edit: EditDoc,
+    /// The geometry of each page of the file.
+    geometries: Vec<PageGeometry>,
     pub viewer: Viewer,
     pub cache: TileCache<gdk::Texture>,
     doc_id: DocId,
@@ -61,9 +74,10 @@ pub struct Document {
     /// The text selection, if any.
     pub selection: Option<Selection>,
     /// The file and its password, for the search indexer's own copy.
-    data: Arc<[u8]>,
+    data: PdfData,
     password: Option<String>,
-    /// Every page's text prepared for searching, filled in the background.
+    /// Every page's text prepared for searching (by page of the file),
+    /// filled in the background.
     index: Vec<Option<SearchText>>,
     /// Stops the indexer thread, if one is running.
     indexer: Option<Arc<AtomicBool>>,
@@ -80,8 +94,8 @@ struct Search {
     start: usize,
 }
 
-/// Text pages by page number, with the least recently used dropped beyond
-/// [`TEXT_PAGES`].
+/// Text pages by page of the file, with the least recently used dropped
+/// beyond [`TEXT_PAGES`].
 #[derive(Default)]
 struct TextCache {
     pages: HashMap<usize, (Arc<TextPage>, u64)>,
@@ -114,11 +128,14 @@ impl TextCache {
 /// The document's text pages, extracted on demand (see [`Document::text`]).
 pub struct TextLayer<'a> {
     source: &'a SourceDocument,
+    pages: &'a [ViewPage],
     cache: &'a mut TextCache,
 }
 
 impl TextPages for TextLayer<'_> {
+    /// The text of the page at position `page`.
     fn text_page(&mut self, page: usize) -> Option<Arc<TextPage>> {
+        let page = self.pages.get(page)?.page as usize;
         if let Some(t) = self.cache.get(page) {
             return Some(t);
         }
@@ -130,7 +147,8 @@ impl TextPages for TextLayer<'_> {
     }
 }
 
-/// What the search indexer sends back: a page and its search text.
+/// What the search indexer sends back: a page of the file and its search
+/// text.
 pub type Indexed = (usize, SearchText);
 
 /// How a search stands, for the search bar.
@@ -149,11 +167,10 @@ impl Document {
     /// [`receive_tiles`](Self::receive_tiles).
     pub fn open(
         name: String,
-        data: Vec<u8>,
+        data: PdfData,
         password: Option<&str>,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, OpenError> {
-        let data: Arc<[u8]> = data.into();
         let opened = scheduler().open(data.clone(), password)?;
         let page_count = opened.pages.len();
         let source = match SourceDocument::open(data.clone(), password) {
@@ -165,17 +182,8 @@ impl Document {
         };
         let labels = source.page_labels().filter(|l| !l.is_plain());
         let client = scheduler().client(wake);
-        let pages: Vec<ViewPage> = opened
-            .pages
-            .iter()
-            .enumerate()
-            .map(|(i, &geometry)| ViewPage {
-                doc: opened.id,
-                page: i as u32,
-                geometry,
-                rotation: pdfrs_geom::Rotation::None,
-            })
-            .collect();
+        let edit = EditDoc::from_source(SOURCE, page_count as u32);
+        let pages = view_pages(&edit, opened.id, &opened.pages);
         // Placeholders double as thumbnails: evict them only after everything else.
         let levels: BTreeSet<i32> = pages
             .iter()
@@ -184,7 +192,10 @@ impl Document {
         Ok(Self {
             name,
             source,
+            file_labels: labels.clone(),
             labels,
+            edit,
+            geometries: opened.pages,
             links: HashMap::new(),
             viewer: Viewer::new(pages, Settings::default()),
             cache: TileCache::new(CACHE_BUDGET)
@@ -211,6 +222,7 @@ impl Document {
             &self.viewer,
             TextLayer {
                 source: &self.source,
+                pages: self.viewer.pages(),
                 cache: &mut self.texts,
             },
             &mut self.selection,
@@ -328,6 +340,7 @@ impl Document {
         if self.indexer.is_some() || self.index.iter().all(Option::is_some) {
             return None;
         }
+        let from = self.viewer.pages().get(from).map_or(0, |p| p.page as usize);
         let n = self.index.len();
         let pages: Vec<usize> = (from..n)
             .chain(0..from.min(n))
@@ -369,7 +382,12 @@ impl Document {
         let new = match self.search.as_mut() {
             Some(s) => {
                 let had = s.results.current().is_some();
-                s.results.add_page(page, text.find(&s.query));
+                let found = text.find(&s.query);
+                for (i, p) in self.viewer.pages().iter().enumerate() {
+                    if p.page as usize == page {
+                        s.results.add_page(i, found.clone());
+                    }
+                }
                 if !had {
                     s.results.select_from(s.start);
                 }
@@ -393,13 +411,7 @@ impl Document {
             return false;
         };
         let start = self.viewer.current_page();
-        let mut results = SearchResults::new();
-        for (page, t) in self.index.iter().enumerate() {
-            if let Some(t) = t {
-                results.add_page(page, t.find(&query));
-            }
-        }
-        results.select_from(start);
+        let results = self.find_all(&query, start);
         let found = results.current().is_some();
         self.search = Some(Search {
             query,
@@ -407,6 +419,19 @@ impl Document {
             start,
         });
         found
+    }
+
+    /// The matches of `query` on the pages indexed so far, from page
+    /// `start` on.
+    fn find_all(&self, query: &Query, start: usize) -> SearchResults {
+        let mut results = SearchResults::new();
+        for (i, p) in self.viewer.pages().iter().enumerate() {
+            if let Some(Some(t)) = self.index.get(p.page as usize) {
+                results.add_page(i, t.find(query));
+            }
+        }
+        results.select_from(start);
+        results
     }
 
     pub fn end_search(&mut self) {
@@ -466,6 +491,83 @@ impl Document {
             pages_indexed: self.index.iter().filter(|t| t.is_some()).count(),
             pages: self.index.len(),
         })
+    }
+}
+
+/// The one file a document is opened from (until inserting pages from other
+/// files is supported).
+const SOURCE: SourceId = SourceId(0);
+
+/// The viewer's pages for the pages of `edit`.
+fn view_pages(edit: &EditDoc, doc: DocId, geometries: &[PageGeometry]) -> Vec<ViewPage> {
+    edit.pages()
+        .iter()
+        .filter_map(|p| {
+            Some(ViewPage {
+                doc,
+                page: p.page,
+                geometry: *geometries.get(p.page as usize)?,
+                rotation: p.rotation,
+            })
+        })
+        .collect()
+}
+
+impl Document {
+    // --- editing ----------------------------------------------------------
+
+    /// Turns the pages at `which` clockwise by `by`. Returns whether
+    /// anything changed.
+    pub fn rotate(&mut self, which: &[usize], by: Rotation) -> bool {
+        self.edit.rotate(which, by) && self.pages_changed()
+    }
+
+    pub fn undo(&mut self) -> Option<Edit> {
+        let edit = self.edit.undo()?;
+        self.pages_changed();
+        Some(edit)
+    }
+
+    pub fn redo(&mut self) -> Option<Edit> {
+        let edit = self.edit.redo()?;
+        self.pages_changed();
+        Some(edit)
+    }
+
+    /// The position of page `page` of the file (e.g. a link's target), if
+    /// it's still in the document.
+    pub fn position_of(&self, page: usize) -> Option<usize> {
+        self.viewer
+            .pages()
+            .iter()
+            .position(|p| p.page as usize == page)
+    }
+
+    /// Updates everything that depends on the page list. Selections and
+    /// search results hold positions, so the selection is dropped and the
+    /// search runs again.
+    fn pages_changed(&mut self) -> bool {
+        let pages = view_pages(&self.edit, self.doc_id, &self.geometries);
+        let in_order = pages.len() == self.geometries.len()
+            && pages.iter().enumerate().all(|(i, p)| p.page as usize == i);
+        self.labels = if in_order {
+            self.file_labels.clone()
+        } else {
+            None
+        };
+        self.viewer.set_pages(pages);
+        self.selection = None;
+        self.thumbnails_shown.clear();
+        if let Some(s) = self.search.take() {
+            let start = self.viewer.current_page();
+            let results = self.find_all(&s.query, start);
+            self.search = Some(Search {
+                query: s.query,
+                results,
+                start,
+            });
+        }
+        true
     }
 }
 

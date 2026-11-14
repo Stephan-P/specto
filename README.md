@@ -24,7 +24,7 @@ Not planned, at least for now: editing existing page content (reflowing text), X
 
 ## Status
 
-Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text; Android gets both next. Editing (pages, annotations, forms) and saving come after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
+Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and rotate pages; Android gets text selection and search next. Saving and the rest of the editing (pages, annotations, forms) come after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 ## Building
 
@@ -42,8 +42,9 @@ The desktop app needs the GTK 4 and libadwaita development packages; see [apps/d
 ## Layout
 
 - `crates/pdfrs-geom`: typed coordinate spaces and page geometry (crop box, rotation)
-- `crates/pdfrs-source`: opening, metadata, outline, links and page labels
+- `crates/pdfrs-source`: opening (large files are memory-mapped), metadata, outline, links and page labels
 - `crates/pdfrs-text`: text layer (characters with positions, words, lines)
+- `crates/pdfrs-doc`: edit model (the pages of a document being edited, undo and redo)
 - `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
 - `crates/pdfrs-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
 - `crates/pdfrs-ffi`: bindings for Android (UniFFI, plus JNI for the per-frame path)

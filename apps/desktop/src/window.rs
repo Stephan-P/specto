@@ -5,8 +5,9 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
+use pdfrs_doc::{Edit, Rotation};
 use pdfrs_geom::ViewPoint;
-use pdfrs_render::OpenError;
+use pdfrs_render::{OpenError, PdfData};
 use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
@@ -35,6 +36,8 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "find",
     "find-next",
     "find-previous",
+    "rotate-left",
+    "rotate-right",
 ];
 
 #[derive(Clone)]
@@ -67,6 +70,8 @@ pub struct Inner {
     search_entry: gtk::SearchEntry,
     /// "3 of 17", "No matches", …
     search_status: gtk::Label,
+    /// Undo and Redo in the main menu, named after the edit.
+    undo_section: gio::Menu,
 }
 
 impl Window {
@@ -142,6 +147,24 @@ impl Window {
                 .action_name("win.open")
                 .build(),
         );
+
+        // The main menu: editing, for now.
+        let undo_section = gio::Menu::new();
+        let main_menu = gio::Menu::new();
+        main_menu.append_section(None, &undo_section);
+        main_menu.append_section(None, &{
+            let m = gio::Menu::new();
+            m.append(Some("Rotate Left"), Some("win.rotate-left"));
+            m.append(Some("Rotate Right"), Some("win.rotate-right"));
+            m
+        });
+        let main_button = gtk::MenuButton::builder()
+            .icon_name("open-menu-symbolic")
+            .tooltip_text("Main Menu")
+            .menu_model(&main_menu)
+            .primary(true)
+            .build();
+        header.pack_end(&main_button);
 
         let view_menu = gio::Menu::new();
         let layout_section = gio::Menu::new();
@@ -275,6 +298,7 @@ impl Window {
             page_entry,
             page_total,
             document_widgets: vec![
+                main_button.upcast(),
                 sidebar_toggle.upcast(),
                 search_toggle.upcast(),
                 layout_button.upcast(),
@@ -293,6 +317,7 @@ impl Window {
             search_bar,
             search_entry,
             search_status,
+            undo_section,
         }));
         this.setup_actions();
         this.setup_page_entry();
@@ -384,9 +409,9 @@ impl Window {
             .await
             .map(|i| i.display_name().to_string())
             .unwrap_or_else(|_| file.parse_name().to_string());
-        let data = match file.load_contents_future().await {
-            Ok((bytes, _)) => bytes.to_vec(),
-            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {}", e.message())),
+        let data = match read_pdf(&file).await {
+            Ok(data) => data,
+            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
         };
 
         let (tx, rx) = async_channel::unbounded::<()>();
@@ -517,20 +542,9 @@ impl Window {
 
     fn set_document(&self, document: SharedDocument, tiles: async_channel::Receiver<()>) {
         let inner = &self.0;
-        let (name, pages) = {
-            let d = document.borrow();
-            (d.name.clone(), d.viewer.page_count())
-        };
+        let name = document.borrow().name.clone();
         inner.window.set_title(Some(&name));
         inner.title.set_title(&name);
-        inner.title.set_subtitle(&format!(
-            "{pages} page{}",
-            if pages == 1 { "" } else { "s" }
-        ));
-        // With labels the entry shows "iv", so also give the plain position.
-        if document.borrow().labels.is_none() {
-            inner.page_total.set_label(&format!("of {pages}"));
-        }
 
         let weak = Rc::downgrade(&self.0);
         let sidebar = Sidebar::new(document.clone(), move |page| {
@@ -544,10 +558,14 @@ impl Window {
         } else {
             let weak = Rc::downgrade(&self.0);
             let labels = Rc::downgrade(&document);
+            // Outline targets are pages of the file.
             let page_label = move |page: usize| {
                 labels
                     .upgrade()
-                    .map(|d| d.borrow().page_label(page))
+                    .and_then(|d| {
+                        let d = d.borrow();
+                        Some(d.page_label(d.position_of(page)?))
+                    })
                     .unwrap_or_default()
             };
             let outline = OutlineView::new(&outline, page_label, move |target| {
@@ -977,6 +995,27 @@ impl Window {
         let width = inner.window.width();
         json.num("width", width as f64)
             .num("height", inner.window.height() as f64);
+        if let Some(doc) = inner.document.borrow().as_ref() {
+            let d = doc.borrow();
+            let pages: Vec<String> = d
+                .edit
+                .pages()
+                .iter()
+                .map(|p| format!("[{}, {}]", p.page, p.rotation.degrees()))
+                .collect();
+            // [page of the file, rotation in degrees] per position.
+            json.raw("edit_pages", &format!("[{}]", pages.join(", ")))
+                .bool("modified", d.edit.is_modified())
+                .str("subtitle", &inner.title.subtitle())
+                .str(
+                    "undo",
+                    &d.edit.undo_edit().map(edit_name).unwrap_or_default(),
+                )
+                .str(
+                    "redo",
+                    &d.edit.redo_edit().map(edit_name).unwrap_or_default(),
+                );
+        }
         inner.canvas.with_viewer(|v| {
             json.num("page", v.current_page() as f64)
                 .num("page_count", v.page_count() as f64)
@@ -986,6 +1025,84 @@ impl Window {
                 .num("zoom", v.zoom());
         });
         json.finish()
+    }
+
+    /// Turns the current page (both pages of a spread) by `by`, unless a
+    /// text field has the focus: there the shortcut (Ctrl+Left/Right) moves
+    /// by a word, as it would without this action.
+    fn rotate(&self, by: Rotation) {
+        if let Some(text) = gtk::prelude::GtkWindowExt::focus(&self.0.window)
+            .and_then(|f| f.downcast::<gtk::Text>().ok())
+        {
+            let count = if by == Rotation::Cw90 { 1 } else { -1 };
+            text.emit_by_name::<()>("move-cursor", &[&gtk::MovementStep::Words, &count, &false]);
+            return;
+        }
+        let Some(pages) = self.0.canvas.with_viewer(|v| v.current_spread().to_vec()) else {
+            return;
+        };
+        self.edit(|d| d.rotate(&pages, by));
+    }
+
+    /// Applies an edit to the document, then updates the view, the sidebar
+    /// and the menus if it changed anything.
+    fn edit(&self, f: impl FnOnce(&mut Document) -> bool) {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return;
+        };
+        if !f(&mut doc.borrow_mut()) {
+            return;
+        }
+        if let Some(s) = inner.sidebar.borrow().as_ref() {
+            s.pages_changed();
+        }
+        inner.last_page.set(usize::MAX);
+        // Scrollbars, redraw, page number.
+        inner.canvas.update_viewer(|_| {});
+        self.update_edit_state();
+        self.update_search_status();
+    }
+
+    /// Updates what depends on the edits: Undo and Redo, the title, the
+    /// page count.
+    fn update_edit_state(&self) {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return;
+        };
+        let d = doc.borrow();
+        let (undo, redo) = (d.edit.undo_edit(), d.edit.redo_edit());
+        for (name, edit) in [("undo", undo), ("redo", redo)] {
+            if let Some(a) = inner
+                .window
+                .lookup_action(name)
+                .and_downcast::<gio::SimpleAction>()
+            {
+                a.set_enabled(edit.is_some());
+            }
+        }
+        let section = &inner.undo_section;
+        section.remove_all();
+        section.append(
+            Some(&undo.map_or_else(|| "Undo".to_owned(), |e| format!("Undo {}", edit_name(e)))),
+            Some("win.undo"),
+        );
+        section.append(
+            Some(&redo.map_or_else(|| "Redo".to_owned(), |e| format!("Redo {}", edit_name(e)))),
+            Some("win.redo"),
+        );
+
+        let pages = d.viewer.page_count();
+        let mut subtitle = format!("{pages} page{}", if pages == 1 { "" } else { "s" });
+        if d.edit.is_modified() {
+            subtitle.push_str(" — Edited");
+        }
+        inner.title.set_subtitle(&subtitle);
+        // With labels, `show_page_number` gives the position instead.
+        if d.labels.is_none() {
+            inner.page_total.set_label(&format!("of {pages}"));
+        }
     }
 
     fn set_document_actions_enabled(&self, enabled: bool) {
@@ -1000,6 +1117,20 @@ impl Window {
                 .and_downcast::<gio::SimpleAction>()
             {
                 a.set_enabled(enabled);
+            }
+        }
+        if enabled {
+            self.update_edit_state();
+        } else {
+            for name in ["undo", "redo"] {
+                if let Some(a) = self
+                    .0
+                    .window
+                    .lookup_action(name)
+                    .and_downcast::<gio::SimpleAction>()
+                {
+                    a.set_enabled(false);
+                }
             }
         }
     }
@@ -1082,6 +1213,26 @@ impl Window {
                 .build(),
             gio::ActionEntry::builder("find-previous")
                 .activate(with(|w| w.search_step(false)))
+                .build(),
+            gio::ActionEntry::builder("rotate-left")
+                .activate(with(|w| w.rotate(Rotation::Cw270)))
+                .build(),
+            gio::ActionEntry::builder("rotate-right")
+                .activate(with(|w| w.rotate(Rotation::Cw90)))
+                .build(),
+            gio::ActionEntry::builder("undo")
+                .activate(with(|w| {
+                    if !w.forward_to_entry("text.undo") {
+                        w.edit(|d| d.undo().is_some());
+                    }
+                }))
+                .build(),
+            gio::ActionEntry::builder("redo")
+                .activate(with(|w| {
+                    if !w.forward_to_entry("text.redo") {
+                        w.edit(|d| d.redo().is_some());
+                    }
+                }))
                 .build(),
             gio::ActionEntry::builder("next-page")
                 .activate(with(|w| w.0.canvas.update_viewer(Viewer::next_page)))
@@ -1261,4 +1412,40 @@ fn primary_key() -> &'static str {
 
 fn centre(v: &Viewer) -> ViewPoint {
     ViewPoint::new(v.viewport().width / 2.0, v.viewport().height / 2.0)
+}
+
+/// Reads `file`, mapping it if it's large and local (see [`PdfData`]).
+/// Files without a local path (remote locations) are read through GIO.
+async fn read_pdf(file: &gio::File) -> Result<PdfData, String> {
+    if let Some(path) = file.path() {
+        return gio::spawn_blocking(move || PdfData::open(path))
+            .await
+            .map_err(|_| "reading failed".to_owned())?
+            .map_err(|e| {
+                // "No such file or directory (os error 2)" → without the code.
+                let text = e.to_string();
+                text.split(" (os error").next().unwrap_or(&text).to_owned()
+            });
+    }
+    let (bytes, _) = file
+        .load_contents_future()
+        .await
+        .map_err(|e| e.message().to_owned())?;
+    Ok(bytes.to_vec().into())
+}
+
+/// An edit's name for the Undo and Redo menu items: "Rotate Page",
+/// "Delete 3 Pages", …
+fn edit_name(edit: Edit) -> String {
+    let (verb, n) = match edit {
+        Edit::Rotate { pages } => ("Rotate", pages),
+        Edit::Delete { pages } => ("Delete", pages),
+        Edit::Move { pages } => ("Move", pages),
+        Edit::Insert { pages } => ("Insert", pages),
+    };
+    if n == 1 {
+        format!("{verb} Page")
+    } else {
+        format!("{verb} {n} Pages")
+    }
 }

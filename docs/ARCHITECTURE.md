@@ -13,10 +13,10 @@
 pdfrs/
 ├── crates/
 │   ├── pdfrs-geom      # typed coordinate spaces (euclid), PageGeometry: CropBox, /Rotate
-│   ├── pdfrs-source    # opening/decryption, metadata, outline, links (hayro-syntax)
+│   ├── pdfrs-source    # opening/decryption (PdfData: read or mapped), metadata, outline, links (hayro-syntax)
 │   ├── pdfrs-render    # Document trait, hayro backend, TileCache<T>, render scheduler
 │   ├── pdfrs-text      # text layer via hayro's Device: char quads (PDF space), words, lines
-│   ├── pdfrs-doc       # (M3) edit model: page list, annotations, form values, undo/redo, commands
+│   ├── pdfrs-doc       # edit model: page list and undo/redo (later annotations, form values)
 │   ├── pdfrs-annot     # (M4) annotation types + appearance-stream generation
 │   ├── pdfrs-forms     # (M5) AcroForm model, field values, appearance regeneration
 │   ├── pdfrs-write     # (M3) serialization: full rewrite + incremental update
@@ -30,27 +30,32 @@ pdfrs/
     └── headless/       # the desktop app in a headless compositor: end-to-end checks (CI)
 ```
 
-Crates marked (M3)–(M5) don't exist yet. Dependency direction: `apps → pdfrs-view / pdfrs-ffi → pdfrs-doc → {pdfrs-annot, pdfrs-forms, pdfrs-text, pdfrs-render} → pdfrs-source → pdfrs-geom`. `pdfrs-write` depends on `pdfrs-doc` + `pdfrs-source`.
+Crates marked (M3)–(M5) don't exist yet. Planned dependency direction: `apps → pdfrs-view / pdfrs-ffi → pdfrs-doc → {pdfrs-annot, pdfrs-forms, pdfrs-text, pdfrs-render} → pdfrs-source → pdfrs-geom`. `pdfrs-write` depends on `pdfrs-doc` + `pdfrs-source`. For now `pdfrs-doc` only holds the page list and depends on `pdfrs-geom` alone; the desktop app turns its pages into the viewer's `ViewPage`s.
+
+### File data
+
+`pdfrs-source::PdfData` holds a file's bytes, shared between threads (hayro needs the whole file as one slice). Files under 64 MB are read into memory; larger ones are memory-mapped, so they open at once and only the parts in use take memory. A mapped file must not be truncated while open (reading the missing part is a `SIGBUS`), so saving always writes a new file and renames it into place, never over the open file. On Android, `PdfFile.fromFd` takes a file descriptor from the Storage Access Framework; a pipe (as some document providers hand out) is read instead.
 
 ## Data model
 
 ```
-Session
- ├── sources: Vec<SourceDoc>          # immutable, parsed PDFs (Arc), one per opened/merged file
- └── document: EditDoc
+Session (in the frontend for now: the desktop's Document)
+ ├── sources                          # immutable, parsed PDFs, one per opened/merged file
+ └── EditDoc                          # pdfrs-doc
       ├── pages: Vec<PageRef>         # ordered; this is what the user sees
-      │     PageRef { source: SourceId, index: u32, extra_rotation: Rotation,
-      │               annotations: Vec<AnnotId>, ... }
-      ├── annotations: SlotMap<AnnotId, Annotation>   # existing (imported) + new
-      ├── form: FormState             # field values keyed by fully-qualified field name
-      └── history: UndoStack<Command>
+      │     PageRef { source: SourceId, page: u32, rotation: Rotation }
+      ├── undo, redo: Vec<Step>       # earlier page lists, each with the Edit that changed it
+      ├── annotations                 # (M4) existing (imported) + new
+      └── form                        # (M5) field values keyed by fully-qualified field name
 ```
 
 Why this shape:
 
 - **Delete / reorder / rotate / merge** are just edits to `pages`. Merging another PDF adds a `SourceDoc` and splices its `PageRef`s in. Nothing gets re-parsed or re-rendered except what becomes newly visible.
 - **Rendering** a `PageRef` renders the original page from its source *without* its annotations. The viewer then draws annotations from the edit model, so new or edited annotations look the same as existing ones and stay editable. Existing annotations are imported into the model on load (keeping their original appearance stream when we don't modify them).
-- **Undo/redo** works on `Command`s (`DeletePages`, `MovePages`, `AddAnnotation`, `SetFieldValue`, ...). Each command is a small diff against `EditDoc`.
+- **Undo/redo** for pages keeps a copy of the page list from before each edit (12 bytes a page, so 120 KB a step for 10,000 pages; 100 steps are kept). Undo can't drift out of step with redo, as hand-written inverse commands can. Each step records what the edit was (`Edit::Rotate { pages }`, …), which the frontends name in their menus ("Undo Rotate Page"). Annotations and form values are larger and will get commands of their own.
+- **Modified** compares a version number of the current page list with the one last saved, so undoing back to the saved state counts as unmodified.
+- **Positions and pages of the file**: the viewer, selections and search results work with positions in the edited list; what doesn't change with editing (text layers, search text, links, outline destinations) is keyed by the page of the file, and mapped to its current position when needed.
 
 ### Annotations
 
@@ -176,7 +181,7 @@ GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew'
 - `pdfrs-ffi` exposes a coarse API via **UniFFI** (`ViewSession`: viewport, zoom, layout, outline, labels, links). Avoid chatty per-glyph calls across the FFI boundary.
 - The per-frame path (frame layout, tile copies) uses hand-written JNI instead, because UniFFI's per-call overhead was too high (M0-FINDINGS.md).
 - Tiles are copied from Rust into an `android.graphics.Bitmap` through the NDK bitmap API, and Compose draws them on a `Canvas`.
-- File access via the Storage Access Framework. Today Kotlin reads the file into memory; planned: Kotlin opens a `ParcelFileDescriptor` and Rust reads from the fd, with saving through the same mechanism.
+- File access via the Storage Access Framework. Today Kotlin reads the file into memory. Ready on the Rust side: `PdfFile.fromFd(pfd.detachFd())` reads or maps the file, and `ViewSession.openFile` opens it (reusable for a password retry). Saving will go through the same mechanism, writing to a temporary file first (see File data).
 - Build with `cargo-ndk` for `arm64-v8a` (+ `x86_64` for the emulator).
 
 ## Testing strategy
@@ -187,4 +192,4 @@ GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew'
 - **Android:** Kotlin unit tests in CI; Compose UI tests on an emulator.
 - **Round-trip:** open → op → save → reopen with our parser *and* with an external validator (qpdf `--check`, and pdf.js/PDFium render).
 - **Fuzzing:** `cargo-fuzz` on parsing and on the save path.
-- **Property tests:** command sequences followed by full undo should return the original `EditDoc`.
+- **Property tests:** random edit sequences, then undoing everything, return the original page list, and redoing walks forward through the same states (`crates/pdfrs-doc/tests/edit.rs`).

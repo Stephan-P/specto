@@ -65,7 +65,7 @@ pub struct Bitmap {
     pub data: Vec<u8>,
 }
 
-pub use pdfrs_source::OpenError;
+pub use pdfrs_source::{OpenError, PdfData};
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum RenderError {

@@ -106,6 +106,16 @@ Resetting saved state:
 - GIANT: searching doesn't freeze the window (the page has no text: "No matches").
 - macOS: Edit → Find, Find Next, Find Previous work, and so do Cmd+F, Cmd+G and Shift+Cmd+G.
 
+### Editing
+
+- LONG: *Primary*+Right on a page turns it clockwise, sharp after a moment; its thumbnail turns too, and the title says "Edited". *Primary*+Left twice turns it the other way.
+- In Two Pages, rotating turns both pages of the spread.
+- The main menu shows "Undo Rotate Page" and "Redo Rotate Page" as appropriate; undoing every edit removes "Edited".
+- On a rotated page: selecting text, searching (highlights on the words), links and Contents entries still work.
+- Typing in the page entry, *Primary*+Left moves the cursor by a word and *Primary*+Z undoes the typing; no page is rotated or edit undone.
+- macOS: Edit → Undo and Redo, and Tools → Rotate Left and Rotate Right, with Cmd+Z, Shift+Cmd+Z, Cmd+Left and Cmd+Right.
+- A PDF over 64 MB (a scanned book, say) opens at once, and the app's memory use stays well below the file's size.
+
 ### Remembering state
 
 - LONG: go to page 200, switch to Two Pages, zoom to 150%, open the Contents tab, close, reopen. All of it is restored, at the same spot on page 200.
@@ -122,7 +132,7 @@ Resetting saved state:
 
 ## Platform notes
 
-- macOS: the app has a menu bar (File, View, Go) in the system menu bar, with the shortcuts shown; GTK draws its own window decorations. Shortcuts should work with Cmd (and also with Ctrl). Opening PDFs from Finder with "Open With" isn't expected to work yet, since there's no app bundle; use the command line, the dialog or drag-and-drop. Retina screens are scale 2.
+- macOS: the app has a menu bar (File, Edit, View, Go, Tools) in the system menu bar, with the shortcuts shown; GTK draws its own window decorations. Shortcuts should work with Cmd (and also with Ctrl). Opening PDFs from Finder with "Open With" isn't expected to work yet, since there's no app bundle; use the command line, the dialog or drag-and-drop. Retina screens are scale 2.
 - Linux: fractional scaling needs to be enabled in GNOME (Settings → Displays). Recently opened PDFs should also appear in GNOME Files under Recent.
 
 ## Reporting

@@ -11,6 +11,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - One window per document; opening a file while a document is shown opens a new window
 - Password prompt for encrypted PDFs, with a retry on a wrong password
 - Error message for files that aren't valid PDFs
+- Large files (64 MB and up) are mapped into memory rather than read: they open at once, and only the parts in use take memory
 - Opened files are added to the system's recent files (shown in GNOME Files too)
 
 ## Viewing
@@ -58,9 +59,19 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Long documents are searched in the background: the first matches show up at once, and the count grows ("17…") until every page is done
 - Escape closes the bar and removes the highlights
 
+## Editing
+
+- Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main menu) turn the current page, or both pages of a two-page spread
+- Undo and Redo (*Primary*+Z, Shift+*Primary*+Z, or the main menu, which names the edit: "Undo Rotate Page")
+- "Edited" in the title while there are changes; undoing back to the state as opened removes it
+- Selection, search, links and the table of contents keep working on edited pages
+- In the page entry or the search field, the shortcuts act on the text instead (Undo, moving by words)
+
+Edits can't be saved yet.
+
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Close Window, Quit), Edit (Copy, Select All, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page)
+- Menu bar in the system menu bar: File (Open, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
 - Shortcuts with Cmd
 
 ## Remembering state
@@ -76,7 +87,6 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Not yet
 
-- Printing, saving, page editing, annotations, form filling
-- Rotating pages from the app
+- Printing, saving, deleting and moving pages, annotations, form filling
 - Highlighting the current outline entry
 - Dark mode for page content

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use hayro::hayro_interpret::{InterpreterSettings, RenderContent};
 use hayro::hayro_syntax::Pdf;
 use hayro::hayro_syntax::object::Rect as HayroRect;
@@ -12,6 +10,7 @@ use hayro::vello_cpu::color::palette::css::TRANSPARENT;
 use hayro::vello_cpu::{Pixmap, RasterizerSettings, RenderContext, Resources, TargetInit};
 use hayro::{RenderCache, RenderSettings, render_into};
 use pdfrs_geom::{DeviceIntRect, PageGeometry, PdfBox, PdfPoint, Rotation};
+use pdfrs_source::PdfData;
 
 use crate::{Bitmap, Content, Document, OpenError, RenderError, RenderRequest};
 
@@ -40,7 +39,7 @@ pub struct HayroDocument {
 }
 
 impl HayroDocument {
-    pub fn open(data: impl Into<Arc<[u8]>>, password: Option<&str>) -> Result<Self, OpenError> {
+    pub fn open(data: impl Into<PdfData>, password: Option<&str>) -> Result<Self, OpenError> {
         let pdf = pdfrs_source::open_pdf(data.into(), password)?;
         let geometries = pdf.pages().iter().map(geometry_of).collect();
         Ok(Self {

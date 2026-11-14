@@ -77,6 +77,28 @@ fn rejects_garbage() {
     ));
 }
 
+#[cfg(unix)]
+#[test]
+fn opens_from_a_file_descriptor() {
+    use std::os::fd::IntoRawFd;
+    let path = std::env::temp_dir().join(format!("pdfrs-ffi-fd-{}.pdf", std::process::id()));
+    std::fs::write(&path, sample_pdf(3)).unwrap();
+    let fd = std::fs::File::open(&path).unwrap().into_raw_fd();
+    std::fs::remove_file(&path).unwrap();
+    let file = PdfFile::from_fd(fd).unwrap();
+    assert!(!file.is_mapped(), "small files are read");
+    assert_eq!(file.size(), sample_pdf(3).len() as u64);
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    // The same file serves several attempts (e.g. with passwords).
+    for _ in 0..2 {
+        let session =
+            ViewSession::open_file(file.clone(), None, 1 << 20, listener.clone()).unwrap();
+        assert_eq!(session.page_count(), 3);
+    }
+    assert!(matches!(PdfFile::from_fd(-1), Err(PdfError::Io { .. })));
+}
+
 #[test]
 fn frame_becomes_sharp_and_covers_the_page() {
     let (session, rx) = open(3, 64 << 20);

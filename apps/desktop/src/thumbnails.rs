@@ -110,6 +110,9 @@ impl Thumbnail {
 pub struct Sidebar {
     pub widget: gtk::ScrolledWindow,
     list: gtk::ListView,
+    /// One item per page; the items only stand for positions.
+    model: gtk::StringList,
+    document: SharedDocument,
     selection: gtk::SingleSelection,
     /// Set while the selection follows the canvas, so it doesn't jump back.
     following: std::rc::Rc<Cell<bool>>,
@@ -121,7 +124,7 @@ impl Sidebar {
         let count = document.borrow().viewer.page_count();
         let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
         let model = gtk::StringList::new(&labels.iter().map(String::as_str).collect::<Vec<_>>());
-        let selection = gtk::SingleSelection::new(Some(model));
+        let selection = gtk::SingleSelection::new(Some(model.clone()));
         selection.set_autoselect(false);
 
         let factory = gtk::SignalListItemFactory::new();
@@ -193,9 +196,25 @@ impl Sidebar {
         Self {
             widget,
             list,
+            model,
+            document,
             selection,
             following,
         }
+    }
+
+    /// Shows the document's pages again after an edit: every row is bound
+    /// anew, so thumbnails get their new size, rotation and label.
+    pub fn pages_changed(&self) {
+        let count = self.document.borrow().viewer.page_count();
+        let labels: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let scroll = self.widget.vadjustment().value();
+        self.following.set(true);
+        self.model.splice(0, self.model.n_items(), &labels);
+        self.selection.set_selected(gtk::INVALID_LIST_POSITION);
+        self.following.set(false);
+        self.widget.vadjustment().set_value(scroll);
     }
 
     /// Selects `page` and scrolls it into view, without reporting it back.

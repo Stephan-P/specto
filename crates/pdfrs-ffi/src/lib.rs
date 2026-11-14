@@ -29,7 +29,7 @@ use std::time::Instant;
 use pdfrs_geom::{DeviceRect, Rotation, ViewPoint, ViewVector};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::{Bitmap, OpenError};
-use pdfrs_source::{Link, NamedAction, OutlineItem, PageLabels, SourceDocument, Target};
+use pdfrs_source::{Link, NamedAction, OutlineItem, PageLabels, PdfData, SourceDocument, Target};
 use pdfrs_view::{Settings, ViewPage, Viewer};
 
 use tiles::TileBook;
@@ -44,6 +44,8 @@ pub enum PdfError {
     UnsupportedEncryption,
     #[error("not a valid PDF file")]
     Invalid,
+    #[error("couldn't read the file: {message}")]
+    Io { message: String },
 }
 
 impl From<OpenError> for PdfError {
@@ -472,6 +474,59 @@ pub struct ViewSession {
     shared: Arc<Shared>,
 }
 
+/// The bytes of a file to open, read once and reusable, e.g. to try again
+/// with a password.
+#[derive(uniffi::Object)]
+pub struct PdfFile(PdfData);
+
+#[uniffi::export]
+impl PdfFile {
+    /// Takes over the open file descriptor `fd` (from
+    /// `ParcelFileDescriptor.detachFd()`) and reads the file, or maps it if
+    /// it's large; see [`PdfData`]. The descriptor is closed either way.
+    /// Pipes, as some document providers hand out, are read.
+    #[uniffi::constructor]
+    pub fn from_fd(fd: i32) -> Result<Arc<Self>, PdfError> {
+        if fd < 0 {
+            return Err(PdfError::Io {
+                message: "invalid file descriptor".into(),
+            });
+        }
+        #[cfg(unix)]
+        {
+            use std::os::fd::FromRawFd;
+            // SAFETY: the caller hands over ownership of an open descriptor
+            // (detachFd), so nothing else closes or uses it.
+            #[allow(unsafe_code)]
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
+            PdfData::from_file(file)
+                .map(|d| Arc::new(Self(d)))
+                .map_err(|e| PdfError::Io {
+                    message: e.to_string(),
+                })
+        }
+        #[cfg(not(unix))]
+        Err(PdfError::Io {
+            message: "file descriptors are not supported here".into(),
+        })
+    }
+
+    /// Bytes already in memory.
+    #[uniffi::constructor]
+    pub fn from_bytes(data: Vec<u8>) -> Arc<Self> {
+        Arc::new(Self(data.into()))
+    }
+
+    pub fn size(&self) -> u64 {
+        self.0.len() as u64
+    }
+
+    /// Whether the file is mapped rather than read into memory.
+    pub fn is_mapped(&self) -> bool {
+        self.0.is_mapped()
+    }
+}
+
 #[uniffi::export]
 impl ViewSession {
     /// Opens a PDF. `cache_bytes` is the budget for tile bitmaps.
@@ -482,9 +537,30 @@ impl ViewSession {
         cache_bytes: u64,
         listener: Arc<dyn ViewListener>,
     ) -> Result<Arc<Self>, PdfError> {
+        Self::open_data(data.into(), password, cache_bytes, listener)
+    }
+
+    /// Opens `file`, as [`open`](Self::open) does.
+    #[uniffi::constructor]
+    pub fn open_file(
+        file: Arc<PdfFile>,
+        password: Option<String>,
+        cache_bytes: u64,
+        listener: Arc<dyn ViewListener>,
+    ) -> Result<Arc<Self>, PdfError> {
+        Self::open_data(file.0.clone(), password, cache_bytes, listener)
+    }
+}
+
+impl ViewSession {
+    fn open_data(
+        data: PdfData,
+        password: Option<String>,
+        cache_bytes: u64,
+        listener: Arc<dyn ViewListener>,
+    ) -> Result<Arc<Self>, PdfError> {
         let threads = std::thread::available_parallelism().map_or(2, |n| n.get().clamp(2, 4));
         let scheduler = Scheduler::new(threads, move || listener.tiles_ready());
-        let data: Arc<[u8]> = data.into();
         let opened = scheduler.open(data.clone(), password.as_deref())?;
         let source = SourceDocument::open(data, password.as_deref())?;
         let mut outline = Vec::new();
@@ -533,7 +609,10 @@ impl ViewSession {
             shared,
         }))
     }
+}
 
+#[uniffi::export]
+impl ViewSession {
     /// Identifies this session to the JNI functions in `Native`.
     pub fn id(&self) -> u64 {
         self.id

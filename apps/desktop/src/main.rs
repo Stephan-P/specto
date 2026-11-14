@@ -40,6 +40,10 @@ fn main() -> glib::ExitCode {
             ("win.find", &["<Primary>f"]),
             ("win.find-next", &["<Primary>g"]),
             ("win.find-previous", &["<Shift><Primary>g"]),
+            ("win.undo", &["<Primary>z"]),
+            ("win.redo", &["<Shift><Primary>z"]),
+            ("win.rotate-left", &["<Primary>Left"]),
+            ("win.rotate-right", &["<Primary>Right"]),
             ("win.layout::single", &["<Primary>1"]),
             ("win.layout::continuous", &["<Primary>2"]),
             ("win.layout::two-page", &["<Primary>3"]),
@@ -98,7 +102,8 @@ fn platform_accels(accels: &[&str]) -> Vec<String> {
     out
 }
 
-/// The application menu bar (macOS only): File, Edit, View and Go, like Preview.
+/// The application menu bar (macOS only): File, Edit, View, Go and Tools,
+/// like Preview.
 fn menubar() -> gio::Menu {
     let section = |items: &[(&str, &str)]| {
         let m = gio::Menu::new();
@@ -121,6 +126,7 @@ fn menubar() -> gio::Menu {
         section(&[("Quit pdfrs", "app.quit")]),
     ]);
     let edit = submenu(&[
+        section(&[("Undo", "win.undo"), ("Redo", "win.redo")]),
         section(&[("Copy", "win.copy"), ("Select All", "win.select-all")]),
         section(&[
             ("Find…", "win.find"),
@@ -161,10 +167,16 @@ fn menubar() -> gio::Menu {
         section(&[("Go to Page…", "win.go-to-page")]),
     ]);
 
+    let tools = submenu(&[section(&[
+        ("Rotate Left", "win.rotate-left"),
+        ("Rotate Right", "win.rotate-right"),
+    ])]);
+
     let bar = gio::Menu::new();
     bar.append_submenu(Some("File"), &file);
     bar.append_submenu(Some("Edit"), &edit);
     bar.append_submenu(Some("View"), &view);
     bar.append_submenu(Some("Go"), &go);
+    bar.append_submenu(Some("Tools"), &tools);
     bar
 }

@@ -254,7 +254,15 @@ impl Canvas {
     pub fn follow(&self, target: &Target) {
         match target {
             Target::Destination(d) => {
-                self.update_viewer(|v| v.go_to_pdf_position(d.page, d.left, d.top))
+                // Destinations name pages of the file; pages may have moved
+                // or been deleted since.
+                let Some(doc) = self.imp().document.borrow().clone() else {
+                    return;
+                };
+                let Some(page) = doc.borrow().position_of(d.page) else {
+                    return;
+                };
+                self.update_viewer(|v| v.go_to_pdf_position(page, d.left, d.top))
             }
             Target::Named(NamedAction::NextPage) => self.update_viewer(Viewer::next_page),
             Target::Named(NamedAction::PrevPage) => self.update_viewer(Viewer::previous_page),

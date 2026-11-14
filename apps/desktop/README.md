@@ -18,11 +18,12 @@ What it can do today:
 - Thumbnails, the table of contents, links, and printed page numbers ("iv", "A-3")
 - Selecting and copying text: drag, double-click a word, triple-click a line, select all
 - Searching, ignoring case and accents, with all matches highlighted
+- Rotating pages, with undo and redo
 - Password-protected PDFs
 - Recent files, and remembering where you were in each file
 - Staying responsive on huge or very complex pages
 
-Coming next, the editing: rotating, reordering and deleting pages, merging documents, annotations (highlights, notes, drawings), filling in forms, and saving.
+Coming next, more editing: saving, reordering and deleting pages, merging documents, annotations (highlights, notes, drawings) and filling in forms.
 
 The full list of features is in [FEATURES.md](FEATURES.md).
 
@@ -34,6 +35,7 @@ The core of pdfrs is implemented in Rust and shared with the Android app. The GT
 - `pdfrs-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
 - `pdfrs-source`: reading the table of contents, links and page labels
 - `pdfrs-text`: the text on each page, for selection and search
+- `pdfrs-doc`: the pages of a document being edited, with undo and redo
 
 The app itself draws the rendered tiles, handles input, and provides the windows, menus and sidebar with GTK 4 and libadwaita. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 
@@ -62,7 +64,7 @@ target/release/pdfrs-gtk file.pdf        # open a file
 - `src/main.rs`: application, shortcuts, the macOS menu bar
 - `src/window.rs`: a document window: header bar, start page, actions, opening files
 - `src/canvas.rs`: the page view, a `GtkScrollable` widget that draws `pdfrs-view` frames
-- `src/document.rs`: an open document: its view, tile cache and render client
+- `src/document.rs`: an open document: its view, edits, tile cache and render client
 - `src/thumbnails.rs`, `src/outline.rs`: the two sidebar tabs
 - `src/state.rs`: saved view state per file
 - `src/debug.rs`: test hooks, only enabled with `PDFRS_DEBUG=1`

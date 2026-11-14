@@ -40,6 +40,8 @@ use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use pdfrs_source::PdfData;
+
 use crate::tile::{DocId, TileKey};
 use crate::{Bitmap, Document, HayroDocument, OpenError, PageGeometry, RenderError, RenderRequest};
 
@@ -90,7 +92,7 @@ pub struct OpenedDocument {
 }
 
 struct Source {
-    data: Arc<[u8]>,
+    data: PdfData,
     password: Option<String>,
 }
 
@@ -255,10 +257,10 @@ impl Scheduler {
     /// Opens a document, validating it on the calling thread.
     pub fn open(
         &self,
-        data: impl Into<Arc<[u8]>>,
+        data: impl Into<PdfData>,
         password: Option<&str>,
     ) -> Result<OpenedDocument, OpenError> {
-        let data: Arc<[u8]> = data.into();
+        let data: PdfData = data.into();
         let doc = HayroDocument::open(data.clone(), password)?;
         let pages = (0..doc.page_count())
             .map(|i| doc.page_geometry(i).expect("index in range"))

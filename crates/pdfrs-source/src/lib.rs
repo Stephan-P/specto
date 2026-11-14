@@ -5,6 +5,7 @@
 //! viewer reads from the file. Everything here is defensive: outline and name
 //! trees in broken files can be cyclic or huge, so every walk is bounded.
 
+mod data;
 mod labels;
 mod text;
 
@@ -19,6 +20,7 @@ use hayro_syntax::object::{Array, DateTime, Dict, MaybeRef, Name, Object, Object
 use hayro_syntax::{DecryptionError, LoadPdfError, Pdf, PdfVersion};
 use pdfrs_geom::{PdfBox, PdfPoint};
 
+pub use data::{MAP_THRESHOLD, PdfData};
 pub use hayro_syntax;
 pub use labels::{LabelRange, LabelStyle, PageLabels};
 pub use text::decode_text;
@@ -40,20 +42,10 @@ pub enum OpenError {
     Invalid,
 }
 
-/// Lets hayro read from an `Arc<[u8]>` shared between threads without copying.
-struct SharedBytes(Arc<[u8]>);
-
-impl AsRef<[u8]> for SharedBytes {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
 /// Parses (and if needed decrypts) a PDF. Parsing is lazy: this reads the
 /// cross-reference table and page tree, not the page contents.
-pub fn open_pdf(data: Arc<[u8]>, password: Option<&str>) -> Result<Pdf, OpenError> {
-    Pdf::new_with_password(Arc::new(SharedBytes(data)), password.unwrap_or("")).map_err(|e| match e
-    {
+pub fn open_pdf(data: PdfData, password: Option<&str>) -> Result<Pdf, OpenError> {
+    Pdf::new_with_password(Arc::new(data), password.unwrap_or("")).map_err(|e| match e {
         LoadPdfError::Decryption(DecryptionError::PasswordProtected) => OpenError::PasswordRequired,
         LoadPdfError::Decryption(DecryptionError::UnsupportedAlgorithm) => {
             OpenError::UnsupportedEncryption
@@ -200,7 +192,7 @@ pub struct SourceDocument {
 }
 
 impl SourceDocument {
-    pub fn open(data: impl Into<Arc<[u8]>>, password: Option<&str>) -> Result<Self, OpenError> {
+    pub fn open(data: impl Into<PdfData>, password: Option<&str>) -> Result<Self, OpenError> {
         Ok(Self::from_pdf(open_pdf(data.into(), password)?))
     }
 

@@ -15,6 +15,7 @@ pdfrs-source = { path = "crates/pdfrs-source" }
 pdfrs-render = { path = "crates/pdfrs-render" }
 pdfrs-view = { path = "crates/pdfrs-view" }
 pdfrs-text = { path = "crates/pdfrs-text" }
+pdfrs-doc = { path = "crates/pdfrs-doc" }
 hayro = "0.9"
 anyhow = "1"
 thiserror = "2"

@@ -8,6 +8,7 @@ description = "Read access to PDF structure for pdfrs: opening, metadata, outlin
 
 [dependencies]
 hayro-syntax = "0.9"
+memmap2 = "0.9"
 pdfrs-geom.workspace = true
 thiserror.workspace = true
 
