@@ -9,7 +9,14 @@ use pdfrs_render::tile::{
     DocId, TILE_SIZE, TileKey, TileScale, level_for_scale, level_scale, tiles_covering,
 };
 
-use crate::layout::{Layout, LayoutMode, LayoutParams, group_spreads, layout, spread_points};
+use crate::layout::{
+    LaidSpread, Layout, LayoutMode, LayoutParams, StripParams, group_spreads, layout, layout_strip,
+    spread_points,
+};
+
+/// A release faster than this (logical px/s) turns the page in swipe mode,
+/// however short the drag was.
+const FLICK_VELOCITY: f64 = 250.0;
 
 /// A page as the viewer sees it: which page of which document, and how it is
 /// shown. In M3 these come from the edit model, so reordering or merging is
@@ -90,6 +97,13 @@ pub struct Settings {
     pub content: Content,
     /// Prefetch tiles this many viewport heights above and below.
     pub prefetch: f64,
+    /// Swipe paging for the paged layout modes (touch screens): all spreads
+    /// are laid out side by side, each fitted to the viewport on its own, and
+    /// scrolling can slide to the neighbouring spread. The frontend lets the
+    /// view come to rest with [`Viewer::snap_delta`]. Without it, paged modes
+    /// lay out only the current spread and change it with
+    /// [`Viewer::next_page`] / [`Viewer::previous_page`].
+    pub swipe: bool,
     /// How long the zoom must stay unchanged (and no zoom gesture be active)
     /// before the view counts as settled and switches from √2-level tiles to
     /// tiles at the exact device scale.
@@ -106,6 +120,7 @@ impl Default for Settings {
             cover_alone: false,
             content: Content::PageAndAnnotations,
             prefetch: 0.5,
+            swipe: false,
             settle_delay: Duration::from_millis(250),
         }
     }
@@ -185,6 +200,48 @@ pub struct Viewer {
     /// Whether `frame` has run yet. The first frame is settled right away:
     /// nothing is zooming, so there's no reason to render levels first.
     framed: bool,
+    /// Swipe mode: logical px per point of each spread. `zoom` is the
+    /// current spread's.
+    spread_zoom: Vec<f64>,
+    /// Swipe mode with `ZoomMode::Fixed`: zoom relative to fitting the page
+    /// (1 = the whole page is visible), shared by all spreads.
+    factor: f64,
+    /// Whether the last layout was a swipe strip.
+    was_strip: bool,
+}
+
+/// The tile scales one page is drawn with.
+struct Scales {
+    /// Device px per point the page is shown at (quantized).
+    device: TileScale,
+    /// The √2 level at or above `device`.
+    level: TileScale,
+    /// What sharp tiles are: `device` once settled, `level` while zooming.
+    target: TileScale,
+    /// What to show where sharp tiles are missing, coarsest first.
+    fallbacks: [TileScale; 4],
+}
+
+impl Scales {
+    fn new(device_px_per_point: f64, settled: bool) -> Self {
+        let device = TileScale::exact(device_px_per_point);
+        let l = level_for_scale(device.get());
+        let level = TileScale::from_level(l);
+        // Exact tiles only when they differ from the level (they're the same
+        // key when the zoom lands on a level, e.g. 100% at scale 2).
+        let target = if settled { device } else { level };
+        let fallbacks = if target == level {
+            [l - 2, l - 1, l + 1, l + 2]
+        } else {
+            [l - 2, l - 1, l, l + 1]
+        };
+        Self {
+            device,
+            level,
+            target,
+            fallbacks: fallbacks.map(TileScale::from_level),
+        }
+    }
 }
 
 impl Viewer {
@@ -208,6 +265,9 @@ impl Viewer {
             zoom_changed_at: None,
             gesture: false,
             framed: false,
+            spread_zoom: Vec::new(),
+            factor: 1.0,
+            was_strip: false,
         };
         v.set_pages(pages);
         v
@@ -258,24 +318,42 @@ impl Viewer {
         self.scroll
     }
 
-    /// Where page `i` is on screen, or `None` if it isn't laid out (paged modes).
+    /// Where page `i` is on screen, or `None` if it isn't laid out (paged
+    /// modes without swiping).
     pub fn page_rect(&self, i: usize) -> Option<ViewRect> {
         let r = (*self.layout.page_rects.get(i)?)?;
+        let o = self.offset_of(self.page_spread[i]);
         Some(ViewRect::new(
-            ViewPoint::new(r.origin.x - self.scroll.x, r.origin.y - self.scroll.y),
+            ViewPoint::new(r.origin.x - o.x, r.origin.y - o.y),
             ViewSize::new(r.size.width, r.size.height),
         ))
     }
 
     /// The page the user is looking at: in continuous modes the one with the
-    /// largest visible area, in paged modes the first of the current spread.
+    /// largest visible area (the last page once scrolled to the very end), in
+    /// paged modes the first of the current spread, and while swiping the
+    /// first of the spread under the middle of the viewport.
     pub fn current_page(&self) -> usize {
+        if self.is_strip() {
+            let centre = self.scroll.x + self.viewport.width / 2.0;
+            let spreads = &self.layout.spreads;
+            let i = spreads
+                .partition_point(|s| s.slot.max_x() < centre)
+                .min(spreads.len().saturating_sub(1));
+            return spreads.get(i).map_or(0, |s| s.pages[0]);
+        }
         if !self.mode.is_continuous() {
             return self.spreads.get(self.current).map_or(0, |s| s[0]);
         }
         let view = self.view_layout_rect();
-        self.visible_spreads(view.min_y(), view.max_y())
-            .flat_map(|s| s.pages.iter().copied())
+        // At the end of the document the last page may never get the largest
+        // share of the viewport, but it is where the user has arrived.
+        let scrollable = self.layout.size.height - self.viewport.height;
+        if scrollable > 0.0 && self.scroll.y >= scrollable - 0.5 {
+            return self.pages.len().saturating_sub(1);
+        }
+        self.spreads_near(0.0)
+            .flat_map(|(_, s)| s.pages.iter().copied())
             .filter_map(|i| {
                 let r = self.layout.page_rects[i]?;
                 let area = r.intersection(&view).map_or(0.0, |r| r.area());
@@ -290,30 +368,29 @@ impl Viewer {
 
     /// The page under `p` and the position on it, in page space (points).
     pub fn hit_test(&self, p: ViewPoint) -> Option<(usize, PagePoint)> {
-        let lp = self.to_layout(p);
-        let view = self.view_layout_rect();
-        self.visible_spreads(view.min_y(), view.max_y())
-            .flat_map(|s| s.pages.iter().copied())
-            .find_map(|i| {
+        self.spreads_near(0.0).find_map(|(s, spread)| {
+            let o = self.offset_of(s);
+            let lp = LayoutPoint::new(p.x + o.x, p.y + o.y);
+            let zoom = self.zoom_of(s);
+            spread.pages.iter().find_map(|&i| {
                 let r = self.layout.page_rects[i]?;
                 r.contains(lp).then(|| {
                     (
                         i,
-                        PagePoint::new(
-                            (lp.x - r.origin.x) / self.zoom,
-                            (lp.y - r.origin.y) / self.zoom,
-                        ),
+                        PagePoint::new((lp.x - r.origin.x) / zoom, (lp.y - r.origin.y) / zoom),
                     )
                 })
             })
+        })
     }
 
     /// Where a point on page `i` is on screen.
     pub fn page_to_view(&self, i: usize, p: PagePoint) -> Option<ViewPoint> {
         let r = self.page_rect(i)?;
+        let zoom = self.zoom_of(self.page_spread[i]);
         Some(ViewPoint::new(
-            r.origin.x + p.x * self.zoom,
-            r.origin.y + p.y * self.zoom,
+            r.origin.x + p.x * zoom,
+            r.origin.y + p.y * zoom,
         ))
     }
 
@@ -343,6 +420,17 @@ impl Viewer {
             view: ViewPoint::new(size.width / 2.0, 0.0),
             ..a
         }));
+        self.confine_to_current();
+    }
+
+    /// Turns swipe paging on or off (see [`Settings::swipe`]), keeping the page.
+    pub fn set_swipe(&mut self, swipe: bool) {
+        if swipe == self.settings.swipe {
+            return;
+        }
+        let page = self.current_page();
+        self.settings.swipe = swipe;
+        self.go_to_page(page);
     }
 
     pub fn set_layout_mode(&mut self, mode: LayoutMode) {
@@ -369,13 +457,25 @@ impl Viewer {
         self.zoom_mode = mode;
         let anchor = self.anchor_at(ViewPoint::new(self.viewport.width / 2.0, 0.0));
         self.relayout(anchor);
+        self.confine_to_current();
     }
 
     /// Sets a fixed zoom, keeping the content under `anchor` in place.
+    ///
+    /// While swiping, `zoom` is that of the current page, the other pages
+    /// follow in proportion, and a page can't be made smaller than fitting
+    /// the viewport.
     pub fn set_zoom(&mut self, zoom: f64, anchor: ViewPoint) {
         let a = self.anchor_at(anchor);
         self.zoom_mode = ZoomMode::Fixed;
-        self.zoom = zoom.clamp(self.settings.min_zoom, self.settings.max_zoom);
+        if self.is_strip() {
+            let fit = self
+                .spread_fit(self.current, ZoomMode::FitPage)
+                .unwrap_or(1.0);
+            self.factor = (zoom / fit).clamp(1.0, (self.settings.max_zoom / fit).max(1.0));
+        } else {
+            self.zoom = zoom.clamp(self.settings.min_zoom, self.settings.max_zoom);
+        }
         self.relayout(a);
     }
 
@@ -387,12 +487,16 @@ impl Viewer {
     /// The current position and view settings, to restore later.
     pub fn view_state(&self) -> ViewState {
         let top = self.scroll.y.max(0.0);
-        // The first laid-out page whose bottom is below the viewport top.
-        let page = self
-            .visible_spreads(top, top)
-            .flat_map(|s| s.pages.iter().copied())
-            .find(|&i| self.layout.page_rects[i].is_some_and(|r| r.max_y() > top))
-            .unwrap_or_else(|| self.current_page());
+        let page = if self.is_strip() {
+            // Vertical scrolling belongs to the current spread.
+            self.spreads.get(self.current).map_or(0, |s| s[0])
+        } else {
+            // The first laid-out page whose bottom is below the viewport top.
+            self.spreads_near(0.0)
+                .flat_map(|(_, s)| s.pages.iter().copied())
+                .find(|&i| self.layout.page_rects[i].is_some_and(|r| r.max_y() > top))
+                .unwrap_or_else(|| self.current_page())
+        };
         let page_offset = self
             .layout
             .page_rects
@@ -426,6 +530,10 @@ impl Viewer {
         self.zoom_mode = state.zoom_mode;
         if state.zoom.is_finite() {
             self.zoom = state.zoom;
+            // Swipe mode zooms relative to the fitted page; have the layout
+            // derive that from `zoom` for the restored page, as it does when
+            // the mode is entered.
+            self.was_strip = false;
         }
         let page = state.page.min(self.pages.len() - 1);
         self.go_to_page(page);
@@ -459,7 +567,7 @@ impl Viewer {
             && !self.zoom_dirty
             && self
                 .last_device_scale
-                .is_none_or(|s| s == self.device_scale())
+                .is_none_or(|s| s == self.settle_signature())
             && self
                 .zoom_changed_at
                 .is_none_or(|t| now.saturating_duration_since(t) >= self.settings.settle_delay)
@@ -475,6 +583,7 @@ impl Viewer {
     pub fn set_scroll_offset(&mut self, offset: LayoutVector) {
         self.scroll = offset;
         self.clamp_scroll();
+        self.adopt_slot();
     }
 
     /// The low-resolution whole-page tile for page `i`, shown while sharp
@@ -492,9 +601,63 @@ impl Viewer {
         })
     }
 
+    /// Scrolls by `delta`. While swiping, this can slide to the neighbouring
+    /// spreads; call [`snap_delta`](Self::snap_delta) when the drag ends.
     pub fn scroll_by(&mut self, delta: ViewVector) {
         self.scroll += LayoutVector::new(delta.x, delta.y);
         self.clamp_scroll();
+        self.adopt_slot();
+    }
+
+    /// Like [`scroll_by`](Self::scroll_by), but while swiping it stops at the
+    /// edges of the current spread: for flings, which shouldn't turn pages.
+    pub fn scroll_in_page_by(&mut self, delta: ViewVector) {
+        self.scroll += LayoutVector::new(delta.x, delta.y);
+        self.clamp_scroll();
+        self.confine_to_current();
+    }
+
+    /// While swiping: how far the view still has to scroll to come to rest
+    /// after a drag or pinch that left it between two spreads, or `None` if
+    /// it rests where it is. `velocity` is that of the scrolling at release,
+    /// in logical px/s with the sign of [`scroll_by`](Self::scroll_by) deltas:
+    /// a flick turns the page even after a short drag, and otherwise the
+    /// spread covering more than half of the viewport wins.
+    ///
+    /// The frontend animates [`scroll_by`](Self::scroll_by) over this
+    /// distance. At most one page is turned per drag.
+    pub fn snap_delta(&self, velocity: ViewVector) -> Option<ViewVector> {
+        if !self.is_strip() {
+            return None;
+        }
+        let spreads = &self.layout.spreads;
+        let (x0, x1) = self.rest_range(spreads.get(self.current)?);
+        let x = self.scroll.x;
+        let half = self.viewport.width / 2.0;
+        let target = if x > x1 + 0.01 {
+            match spreads.get(self.current + 1) {
+                Some(next)
+                    if velocity.x > FLICK_VELOCITY
+                        || (x - x1 > half && velocity.x > -FLICK_VELOCITY) =>
+                {
+                    self.rest_range(next).0
+                }
+                _ => x1,
+            }
+        } else if x < x0 - 0.01 {
+            match self.current.checked_sub(1).and_then(|p| spreads.get(p)) {
+                Some(previous)
+                    if velocity.x < -FLICK_VELOCITY
+                        || (x0 - x > half && velocity.x < FLICK_VELOCITY) =>
+                {
+                    self.rest_range(previous).1
+                }
+                _ => x0,
+            }
+        } else {
+            return None;
+        };
+        Some(ViewVector::new(target - x, 0.0))
     }
 
     /// Shows page `i` at the top of the viewport.
@@ -504,6 +667,13 @@ impl Viewer {
         };
         self.current = spread;
         self.relayout(None);
+        if self.is_strip() {
+            if let Some(s) = self.layout.spreads.get(spread) {
+                self.scroll = LayoutVector::new(s.slot.origin.x, 0.0);
+            }
+            self.clamp_scroll();
+            return;
+        }
         if let Some(r) = self.layout.page_rects[i] {
             let spread_top = self.layout.spreads[spread - self.layout.first_spread]
                 .rect
@@ -576,30 +746,22 @@ impl Viewer {
     /// `settle_delay` and no gesture in progress), it requests tiles at the
     /// exact device scale and draws them 1:1, with level tiles as fallback.
     pub fn frame(&mut self, now: Instant, cached: impl Fn(&TileKey) -> bool) -> Frame {
-        let device = self.device_scale();
-        let rescaled = self.last_device_scale.replace(device) != Some(device);
+        let signature = self.settle_signature();
+        let rescaled = self.last_device_scale.replace(signature) != Some(signature);
         if (std::mem::take(&mut self.zoom_dirty) || rescaled) && self.framed {
             self.zoom_changed_at = Some(now);
         }
         self.framed = true;
         let settled = self.is_settled(now);
-        let level = level_for_scale(device.get());
-        let level_scale = TileScale::from_level(level);
-        // Exact tiles only when they differ from the level (they're the same
-        // key when the zoom lands on a level, e.g. 100% at scale 2).
-        let target = if settled { device } else { level_scale };
-        let fallbacks: Vec<TileScale> = if target == level_scale {
-            [level - 2, level - 1, level + 1, level + 2]
-                .map(TileScale::from_level)
-                .to_vec()
-        } else {
-            [level - 2, level - 1, level, level + 1]
-                .map(TileScale::from_level)
-                .to_vec()
-        };
 
-        let view = self.view_layout_rect();
-        let band = self.settings.prefetch * self.viewport.height;
+        // What to prepare beyond the viewport: while swiping, the spreads to
+        // the left and right, so that a swipe shows them at once; otherwise a
+        // band above and below.
+        let (band_x, band_y) = if self.is_strip() {
+            (self.viewport.width, 0.0)
+        } else {
+            (0.0, self.settings.prefetch * self.viewport.height)
+        };
         let viewport_dev = DeviceRect::new(
             DevicePoint::zero(),
             (
@@ -608,22 +770,24 @@ impl Viewer {
             )
                 .into(),
         );
+        let band_dev = viewport_dev.inflate(band_x * self.scale, band_y * self.scale);
 
         let mut frame = Frame {
             complete: true,
-            settles_at: match self.zoom_changed_at {
-                Some(t) if !settled && !self.gesture && device != level_scale => {
-                    Some(t + self.settings.settle_delay)
-                }
-                _ => None,
-            },
             ..Frame::default()
         };
+        // Whether some visible page would look different once settled.
+        let mut sharpens = false;
         let mut missing_sharp = Vec::new();
         let mut prefetch = Vec::new();
         let mut visible_pages = Vec::new();
 
-        for spread in self.visible_spreads(view.min_y() - band, view.max_y() + band) {
+        for (s, spread) in self.spreads_near(band_x.max(band_y)) {
+            let offset = self.offset_of(s);
+            // Every page of a spread has the spread's zoom; spreads differ
+            // while swiping, where each is fitted to the viewport on its own.
+            let scales = Scales::new(self.zoom_of(s) * self.scale, settled);
+            let target = scales.target;
             for &i in &spread.pages {
                 let Some(r) = self.layout.page_rects[i] else {
                     continue;
@@ -631,12 +795,12 @@ impl Viewer {
                 let page = &self.pages[i];
                 let displayed = page.displayed();
                 let origin = DevicePoint::new(
-                    ((r.origin.x - self.scroll.x) * self.scale).round(),
-                    ((r.origin.y - self.scroll.y) * self.scale).round(),
+                    ((r.origin.x - offset.x) * self.scale).round(),
+                    ((r.origin.y - offset.y) * self.scale).round(),
                 );
                 // Sized from the quantized device scale, exactly like an
                 // exact-scale page bitmap.
-                let px = displayed.pixel_size(device.get());
+                let px = displayed.pixel_size(scales.device.get());
                 let rect = DeviceRect::new(origin, (px.width as f64, px.height as f64).into());
                 let placeholder = placeholder_level(&displayed)
                     .map(TileScale::from_level)
@@ -653,7 +817,6 @@ impl Viewer {
 
                 let Some(on_screen) = rect.intersection(&viewport_dev) else {
                     // In the prefetch band only.
-                    let band_dev = viewport_dev.inflate(0.0, band * self.scale);
                     if let Some(area) = rect.intersection(&band_dev) {
                         if let Some(p) = placeholder
                             && !cached(&key(p, (0, 0)))
@@ -670,6 +833,7 @@ impl Viewer {
                     continue;
                 };
                 visible_pages.push(i);
+                sharpens |= scales.device != scales.level;
 
                 let mut layers = Vec::new();
                 // The placeholder is drawn only under gaps (below), but kept
@@ -702,7 +866,7 @@ impl Viewer {
                     layers.extend(placeholder_layer);
                     // Fill gaps with whatever neighbouring levels are cached,
                     // coarser first so finer ones end up on top.
-                    for &f in &fallbacks {
+                    for &f in &scales.fallbacks {
                         if placeholder.is_some_and(|p| f <= p) {
                             continue;
                         }
@@ -723,12 +887,22 @@ impl Viewer {
                 });
             }
         }
+        frame.settles_at = match self.zoom_changed_at {
+            Some(t) if !settled && !self.gesture && sharpens => {
+                Some(t + self.settings.settle_delay)
+            }
+            _ => None,
+        };
 
         // Placeholders for visible pages first (already queued), then sharp
         // visible tiles, then neighbouring placeholders and the prefetch band.
         frame.requests.extend(missing_sharp);
-        if let (Some(&first), Some(&last)) = (visible_pages.first(), visible_pages.last()) {
+        if let (Some(&first), Some(&last)) =
+            (visible_pages.iter().min(), visible_pages.iter().max())
+        {
             for i in first.saturating_sub(2)..(last + 3).min(self.pages.len()) {
+                let target =
+                    Scales::new(self.zoom_of(self.page_spread[i]) * self.scale, settled).target;
                 if let Some(k) = self.placeholder_key(i).filter(|k| k.scale < target)
                     && !cached(&k)
                     && !frame.requests.contains(&k)
@@ -762,7 +936,23 @@ impl Viewer {
         self.current = self.current.min(self.spreads.len().saturating_sub(1));
     }
 
+    /// The zoom relative to what `fit` (`FitWidth` or `FitPage`) would give
+    /// here: 1.0 when the view is fitted that way, 2.0 when zoomed in to
+    /// twice that. For "zoom in / back to fit" toggles such as double tap.
+    pub fn zoom_relative_to(&self, fit: ZoomMode) -> f64 {
+        let fitted = if self.is_strip() {
+            self.spread_fit(self.current, fit)
+        } else {
+            self.fit_zoom_for(fit)
+        };
+        fitted.map_or(1.0, |f| self.zoom / f)
+    }
+
     fn fit_zoom(&self) -> Option<f64> {
+        self.fit_zoom_for(self.zoom_mode)
+    }
+
+    fn fit_zoom_for(&self, mode: ZoomMode) -> Option<f64> {
         let spreads: &[Vec<usize>] = if self.mode.is_continuous() {
             &self.spreads
         } else {
@@ -774,14 +964,160 @@ impl Viewer {
             let (w, h) = spread_points(s, &self.sizes);
             let gaps = self.settings.gap * (s.len().saturating_sub(1)) as f64;
             zoom = zoom.min((self.viewport.width - 2.0 * m - gaps) / w);
-            if self.zoom_mode == ZoomMode::FitPage {
+            if mode == ZoomMode::FitPage {
                 zoom = zoom.min((self.viewport.height - 2.0 * m) / h);
             }
         }
         zoom.is_finite().then_some(zoom)
     }
 
+    /// Whether the spreads are laid out side by side for swiping.
+    fn is_strip(&self) -> bool {
+        self.settings.swipe && !self.mode.is_continuous()
+    }
+
+    /// Logical px per point of spread `s` (an index into `self.spreads`).
+    fn zoom_of(&self, s: usize) -> f64 {
+        if self.is_strip() {
+            self.spread_zoom.get(s).copied().unwrap_or(self.zoom)
+        } else {
+            self.zoom
+        }
+    }
+
+    /// What to subtract from layout coordinates of spread `s` to get view
+    /// coordinates. While swiping, vertical scrolling belongs to the current
+    /// spread; its neighbours are shown from their top, wherever the current
+    /// one has been panned to.
+    fn offset_of(&self, s: usize) -> LayoutVector {
+        if self.is_strip() && s != self.current {
+            LayoutVector::new(self.scroll.x, 0.0)
+        } else {
+            self.scroll
+        }
+    }
+
+    /// What a change of restarts the settle delay: the device scale, or
+    /// while swiping the zoom relative to fitting the page (turning to a
+    /// page of another size changes the scale, but nothing is zooming).
+    fn settle_signature(&self) -> TileScale {
+        if self.is_strip() {
+            let factor = match self.zoom_mode {
+                ZoomMode::Fixed => self.factor,
+                _ => 1.0,
+            };
+            TileScale::exact(factor * self.scale)
+        } else {
+            self.device_scale()
+        }
+    }
+
+    /// The zoom at which spread `s` fits the viewport: its width, or for
+    /// `FitPage` all of it.
+    fn spread_fit(&self, s: usize, mode: ZoomMode) -> Option<f64> {
+        let pages = self.spreads.get(s)?;
+        let m = self.settings.margin;
+        let (w, h) = spread_points(pages, &self.sizes);
+        let gaps = self.settings.gap * (pages.len().saturating_sub(1)) as f64;
+        let mut zoom = (self.viewport.width - 2.0 * m - gaps) / w;
+        if mode == ZoomMode::FitPage {
+            zoom = zoom.min((self.viewport.height - 2.0 * m) / h);
+        }
+        (zoom.is_finite() && zoom > 0.0).then_some(zoom)
+    }
+
+    /// The scroll positions at which the viewport lies within `spread`'s slot.
+    fn rest_range(&self, spread: &LaidSpread) -> (f64, f64) {
+        let x0 = spread.slot.origin.x;
+        (x0, (spread.slot.max_x() - self.viewport.width).max(x0))
+    }
+
+    /// While swiping: keeps the viewport within the current spread's slot.
+    fn confine_to_current(&mut self) {
+        if self.is_strip()
+            && let Some(s) = self.layout.spreads.get(self.current)
+        {
+            let (x0, x1) = self.rest_range(s);
+            self.scroll.x = self.scroll.x.clamp(x0, x1);
+        }
+    }
+
+    /// While swiping: once the viewport lies entirely within another
+    /// spread's slot, that spread becomes the current one. It was shown from
+    /// its top while sliding in, so that is where its scrolling starts.
+    fn adopt_slot(&mut self) {
+        if !self.is_strip() {
+            return;
+        }
+        let (x0, x1) = (self.scroll.x, self.scroll.x + self.viewport.width);
+        let spreads = &self.layout.spreads;
+        let j = spreads.partition_point(|s| s.slot.max_x() < x1 - 0.5);
+        if j != self.current
+            && let Some(s) = spreads.get(j)
+            && s.slot.min_x() <= x0 + 0.5
+        {
+            self.current = j;
+            self.scroll.y = 0.0;
+            self.zoom = self.zoom_of(j);
+            self.clamp_scroll();
+        }
+    }
+
+    fn relayout_strip(&mut self, anchor: Option<Anchor>) {
+        let (min, max) = (self.settings.min_zoom, self.settings.max_zoom);
+        let fit_page: Vec<f64> = (0..self.spreads.len())
+            .map(|s| self.spread_fit(s, ZoomMode::FitPage).unwrap_or(1.0))
+            .collect();
+        if !self.was_strip
+            && self.zoom_mode == ZoomMode::Fixed
+            && let Some(fit) = fit_page.get(self.current)
+        {
+            // Coming from a layout with one zoom for everything: keep it for
+            // the current page.
+            self.factor = (self.zoom / fit).max(1.0);
+        }
+        self.was_strip = true;
+        self.spread_zoom = fit_page
+            .iter()
+            .enumerate()
+            .map(|(s, &fit)| {
+                let zoom = match self.zoom_mode {
+                    ZoomMode::FitPage => fit,
+                    ZoomMode::FitWidth => self.spread_fit(s, ZoomMode::FitWidth).unwrap_or(fit),
+                    ZoomMode::Fixed => fit * self.factor,
+                };
+                zoom.clamp(min, max)
+            })
+            .collect();
+        if let Some(&zoom) = self.spread_zoom.get(self.current) {
+            self.zoom = zoom;
+        }
+        self.layout = layout_strip(&StripParams {
+            sizes: &self.sizes,
+            spreads: &self.spreads,
+            zooms: &self.spread_zoom,
+            gap: self.settings.gap,
+            margin: self.settings.margin,
+            viewport: (self.viewport.width, self.viewport.height),
+        });
+        if let Some(a) = anchor
+            && let Some(s) = self.layout.spreads.get(a.spread)
+        {
+            let zoom = self.spread_zoom[a.spread];
+            self.scroll.x = s.rect.origin.x + a.rel.0 * zoom + a.outside.0 - a.view.x;
+            if a.spread == self.current {
+                self.scroll.y = s.rect.origin.y + a.rel.1 * zoom + a.outside.1 - a.view.y;
+            }
+        }
+        self.clamp_scroll();
+    }
+
     fn relayout(&mut self, anchor: Option<Anchor>) {
+        if self.is_strip() {
+            self.relayout_strip(anchor);
+            return;
+        }
+        self.was_strip = false;
         if self.zoom_mode != ZoomMode::Fixed
             && let Some(z) = self.fit_zoom()
         {
@@ -824,6 +1160,14 @@ impl Viewer {
     fn clamp_scroll(&mut self) {
         let size = self.layout.size;
         let (vw, vh) = (self.viewport.width, self.viewport.height);
+        if self.is_strip() {
+            self.scroll.x = self.scroll.x.clamp(0.0, (size.width - vw).max(0.0));
+            // Vertical scrolling stays within the current spread's slot.
+            let slot = self.layout.spreads.get(self.current);
+            let height = slot.map_or(vh, |s| s.slot.size.height);
+            self.scroll.y = self.scroll.y.clamp(0.0, (height - vh).max(0.0));
+            return;
+        }
         self.scroll.x = if size.width <= vw {
             0.0
         } else {
@@ -848,35 +1192,64 @@ impl Viewer {
         )
     }
 
-    /// Laid-out spreads overlapping the vertical range `[y0, y1]`.
-    fn visible_spreads(
-        &self,
-        y0: f64,
-        y1: f64,
-    ) -> impl Iterator<Item = &crate::layout::LaidSpread> {
+    /// Laid-out spreads within `band` logical px of the viewport along the
+    /// direction they are arranged in, with their index into `self.spreads`.
+    fn spreads_near(&self, band: f64) -> impl Iterator<Item = (usize, &LaidSpread)> {
         let spreads = &self.layout.spreads;
-        let first = spreads.partition_point(|s| s.rect.max_y() < y0);
-        spreads[first..]
+        let (first, end) = if self.is_strip() {
+            let (x0, x1) = (
+                self.scroll.x - band,
+                self.scroll.x + self.viewport.width + band,
+            );
+            (
+                spreads.partition_point(|s| s.slot.max_x() < x0),
+                spreads.partition_point(|s| s.slot.origin.x <= x1),
+            )
+        } else {
+            let (y0, y1) = (
+                self.scroll.y - band,
+                self.scroll.y + self.viewport.height + band,
+            );
+            (
+                spreads.partition_point(|s| s.rect.max_y() < y0),
+                spreads.partition_point(|s| s.rect.origin.y <= y1),
+            )
+        };
+        let offset = self.layout.first_spread + first;
+        spreads[first..end.max(first)]
             .iter()
-            .take_while(move |s| s.rect.origin.y <= y1)
+            .enumerate()
+            .map(move |(k, s)| (offset + k, s))
     }
 
     fn anchor_at(&self, view: ViewPoint) -> Option<Anchor> {
-        let lp = self.to_layout(view);
         let spreads = &self.layout.spreads;
         if spreads.is_empty() || self.zoom <= 0.0 {
             return None;
         }
-        // The spread containing the point, or the next one below it (gaps).
-        let i = spreads
-            .partition_point(|s| s.rect.max_y() < lp.y)
-            .min(spreads.len() - 1);
+        let (i, lp) = if self.is_strip() {
+            // The spread whose slot contains the point, or the next one (gaps).
+            let x = view.x + self.scroll.x;
+            let i = spreads
+                .partition_point(|s| s.slot.max_x() < x)
+                .min(spreads.len() - 1);
+            (i, LayoutPoint::new(x, view.y + self.offset_of(i).y))
+        } else {
+            // The spread containing the point, or the next one below it (gaps).
+            let lp = self.to_layout(view);
+            let i = spreads
+                .partition_point(|s| s.rect.max_y() < lp.y)
+                .min(spreads.len() - 1);
+            (i, lp)
+        };
+        let spread = self.layout.first_spread + i;
+        let zoom = self.zoom_of(spread);
         let r = spreads[i].rect;
         let (dx, dy) = (lp.x - r.origin.x, lp.y - r.origin.y);
         let (cx, cy) = (dx.clamp(0.0, r.size.width), dy.clamp(0.0, r.size.height));
         Some(Anchor {
-            spread: self.layout.first_spread + i,
-            rel: (cx / self.zoom, cy / self.zoom),
+            spread,
+            rel: (cx / zoom, cy / zoom),
             outside: (dx - cx, dy - cy),
             view,
         })

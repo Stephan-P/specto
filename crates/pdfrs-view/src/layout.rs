@@ -79,6 +79,9 @@ pub(crate) fn spread_points(spread: &[usize], sizes: &[PageSize]) -> (f64, f64) 
 pub(crate) struct LaidSpread {
     pub pages: Vec<usize>,
     pub rect: LayoutRect,
+    /// In a strip ([`layout_strip`]): the cell this spread is centred in, at
+    /// least as large as the viewport. Otherwise the same as `rect`.
+    pub slot: LayoutRect,
 }
 
 /// The document laid out at a particular zoom, in logical pixels.
@@ -136,12 +139,14 @@ pub(crate) fn layout(p: &LayoutParams<'_>) -> Layout {
             ));
             x += pw + p.gap;
         }
+        let rect = LayoutRect::new(
+            LayoutPoint::new(((content_width - w) / 2.0).max(p.margin), y),
+            LayoutSize::new(w, h),
+        );
         spreads.push(LaidSpread {
             pages: pages.clone(),
-            rect: LayoutRect::new(
-                LayoutPoint::new(((content_width - w) / 2.0).max(p.margin), y),
-                LayoutSize::new(w, h),
-            ),
+            rect,
+            slot: rect,
         });
         y += h + p.gap;
     }
@@ -155,6 +160,70 @@ pub(crate) fn layout(p: &LayoutParams<'_>) -> Layout {
         first_spread: p.range.start,
         page_rects,
         size: LayoutSize::new(content_width, height),
+    }
+}
+
+pub(crate) struct StripParams<'a> {
+    pub sizes: &'a [PageSize],
+    pub spreads: &'a [Vec<usize>],
+    /// Logical px per point for each spread: every spread has its own zoom,
+    /// so pages of different sizes can each fit the viewport.
+    pub zooms: &'a [f64],
+    /// Gap between slots and between the pages of a spread, logical px.
+    pub gap: f64,
+    /// Space around a spread within its slot, logical px.
+    pub margin: f64,
+    pub viewport: (f64, f64),
+}
+
+/// Lays all spreads out side by side for swiping between them. Each spread
+/// is centred in a slot that is at least as large as the viewport (larger
+/// when the spread is zoomed in), so a viewport aligned with a slot shows
+/// that spread and nothing else.
+pub(crate) fn layout_strip(p: &StripParams<'_>) -> Layout {
+    let (vw, vh) = p.viewport;
+    let mut page_rects = vec![None; p.sizes.len()];
+    let mut spreads = Vec::with_capacity(p.spreads.len());
+    let mut x = 0.0;
+    let mut height: f64 = vh;
+    for (pages, &zoom) in p.spreads.iter().zip(p.zooms) {
+        let (pw, ph) = spread_points(pages, p.sizes);
+        let w = pw * zoom + p.gap * (pages.len().saturating_sub(1)) as f64;
+        let h = ph * zoom;
+        let slot = LayoutRect::new(
+            LayoutPoint::new(x, 0.0),
+            LayoutSize::new(
+                f64::max(vw, w + 2.0 * p.margin),
+                f64::max(vh, h + 2.0 * p.margin),
+            ),
+        );
+        let origin = LayoutPoint::new(
+            x + (slot.size.width - w) / 2.0,
+            (slot.size.height - h) / 2.0,
+        );
+        let mut px = origin.x;
+        for &i in pages {
+            let (iw, ih) = (p.sizes[i].width * zoom, p.sizes[i].height * zoom);
+            page_rects[i] = Some(LayoutRect::new(
+                LayoutPoint::new(px, origin.y + (h - ih) / 2.0),
+                LayoutSize::new(iw, ih),
+            ));
+            px += iw + p.gap;
+        }
+        spreads.push(LaidSpread {
+            pages: pages.clone(),
+            rect: LayoutRect::new(origin, LayoutSize::new(w, h)),
+            slot,
+        });
+        x += slot.size.width + p.gap;
+        height = height.max(slot.size.height);
+    }
+    let width = if spreads.is_empty() { vw } else { x - p.gap };
+    Layout {
+        spreads,
+        first_spread: 0,
+        page_rects,
+        size: LayoutSize::new(width.max(vw), height),
     }
 }
 
@@ -177,6 +246,37 @@ mod tests {
             vec![vec![0], vec![1, 2], vec![3, 4]]
         );
         assert_eq!(group_spreads(0, true, true), Vec::<Vec<usize>>::new());
+    }
+
+    #[test]
+    fn strip_centres_each_spread_in_a_viewport_sized_slot() {
+        // A portrait page, and a wide one zoomed past the viewport.
+        let sizes = [PageSize::new(200.0, 300.0), PageSize::new(400.0, 100.0)];
+        let spreads = group_spreads(2, false, false);
+        let l = layout_strip(&StripParams {
+            sizes: &sizes,
+            spreads: &spreads,
+            zooms: &[1.0, 3.0],
+            gap: 10.0,
+            margin: 20.0,
+            viewport: (500.0, 400.0),
+        });
+        // Slot 0 is the viewport; the page is centred in it.
+        assert_eq!(
+            l.spreads[0].slot,
+            LayoutRect::new(LayoutPoint::new(0.0, 0.0), LayoutSize::new(500.0, 400.0))
+        );
+        let a = l.page_rects[0].unwrap();
+        assert_eq!((a.origin.x, a.origin.y), (150.0, 50.0));
+        // Slot 1 starts after a gap and grows with its 1200 × 300 page.
+        let slot = l.spreads[1].slot;
+        assert_eq!(
+            (slot.origin.x, slot.size.width, slot.size.height),
+            (510.0, 1240.0, 400.0)
+        );
+        let b = l.page_rects[1].unwrap();
+        assert_eq!((b.origin.x, b.origin.y), (530.0, 50.0));
+        assert_eq!(l.size, LayoutSize::new(1750.0, 400.0));
     }
 
     #[test]

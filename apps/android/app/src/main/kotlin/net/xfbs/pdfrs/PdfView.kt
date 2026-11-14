@@ -37,8 +37,9 @@ import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.abs
 
 /**
- * Draws the frames planned by [state] and turns touches into scrolling
- * (with fling), pinch zoom and double-tap zoom. No layout maths happens here.
+ * Draws the frames planned by [state] and turns touches into scrolling or
+ * swiping between pages, pinch zoom and double-tap zoom. No layout maths
+ * happens here.
  */
 @Composable
 fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
@@ -118,7 +119,7 @@ fun PdfView(state: PdfViewState, modifier: Modifier = Modifier) {
                     if (zooming) state.endZoomGesture()
                     if (dragging) {
                         val v = velocity.calculateVelocity()
-                        state.fling(scope, Offset(-v.x, -v.y), density, decay)
+                        state.release(scope, Offset(-v.x, -v.y), density, decay)
                     }
                 }
             },

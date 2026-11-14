@@ -36,6 +36,20 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollBy(
     });
 }
 
+/// `Native.scrollInPageBy(session: Long, dx: Double, dy: Double)`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollInPageBy(
+    _env: *mut JNIEnv,
+    _class: jclass,
+    session: jlong,
+    dx: jdouble,
+    dy: jdouble,
+) {
+    guarded((), || {
+        hot::scroll_in_page_by(session as u64, dx, dy);
+    });
+}
+
 /// `Native.zoomBy(session: Long, factor: Double, x: Double, y: Double)`
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_xfbs_pdfrs_Native_zoomBy(

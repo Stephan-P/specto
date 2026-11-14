@@ -6,12 +6,13 @@
 //! Frame layout (see [`encode_frame`]):
 //!
 //! ```text
-//! u32 flags            bit 0: complete, bit 1: settled
+//! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged
 //! u32 zoom_mode        0 fixed, 1 fit width, 2 fit page
 //! u32 current_page
 //! i32 settles_in_ms    -1: none
 //! f64 zoom
 //! f64 device_scale
+//! f64 zoom_factor
 //! u32 evicted_count
 //! u32 page_count
 //! evicted_count × { u64 id }
@@ -50,6 +51,19 @@ pub fn set_thumbnail_range(session: u64, first: u32, count: u32) -> bool {
     let pages = state.viewer.page_count() as u32;
     let first = first.min(pages);
     state.thumbnails = (first, count.min(pages - first));
+    true
+}
+
+/// Scrolls like a fling: in paged mode it stops at the edges of the current
+/// page instead of sliding on to the next. `false` if the session is closed.
+pub fn scroll_in_page_by(session: u64, dx: f64, dy: f64) -> bool {
+    let Some(session) = find_session(session) else {
+        return false;
+    };
+    session
+        .lock()
+        .viewer
+        .scroll_in_page_by(pdfrs_geom::ViewVector::new(dx, dy));
     true
 }
 
@@ -133,7 +147,7 @@ fn put_rect(buf: &mut Vec<u8>, r: &Rect) {
 pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
     put_u32(
         buf,
-        u32::from(frame.complete) | u32::from(frame.settled) << 1,
+        u32::from(frame.complete) | u32::from(frame.settled) << 1 | u32::from(frame.paged) << 2,
     );
     put_u32(
         buf,
@@ -150,6 +164,7 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
     buf.extend_from_slice(&settles.to_ne_bytes());
     buf.extend_from_slice(&frame.zoom.to_ne_bytes());
     buf.extend_from_slice(&frame.device_scale.to_ne_bytes());
+    buf.extend_from_slice(&frame.zoom_factor.to_ne_bytes());
     put_u32(buf, frame.evicted.len() as u32);
     put_u32(buf, frame.pages.len() as u32);
     for id in &frame.evicted {

@@ -145,6 +145,8 @@ Design points:
 - **Request order**: visible placeholders, visible sharp tiles, neighbouring pages' placeholders, then a prefetch band of half a viewport above and below.
 - `TileKey` is plain data: `TileKey::to_raw()` is `[u32; 7]` (doc, page, rotation, content, scale, tx, ty), where the scale is a `TileScale` in fixed point (2^-20 px/pt). √2 levels are particular values (`TileScale::from_level`). Page rectangles are sized from the same quantized scale, so exact tiles always map 1:1. The Android `Bitmap` cache can live on the Kotlin side, keyed by these numbers.
 
+- **Swipe paging** (`Settings::swipe`, used on Android): in the paged modes all spreads are laid out side by side, each centred in a slot at least as large as the viewport and fitted to it on its own, so pages of different sizes each fill the screen. Scrolling can slide to the neighbouring spread, and `Viewer::snap_delta` tells the frontend where the view should come to rest after a drag (a flick or more than half way turns the page). Vertical scrolling and the zoom anchor belong to the current spread; the neighbours' tiles are prepared at their own exact scale, and turning a page does not restart the settle delay.
+
 Still to come: a `ViewHost`-style callback for redraws and native text inputs (form fields, M5), and pointer/key handling for tools (ink smoothing, highlight snapping to text, moving and resizing annotations, M4). Those are implemented once here, and frontends only translate native events.
 
 ## Saving

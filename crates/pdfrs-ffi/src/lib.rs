@@ -73,6 +73,22 @@ pub enum LayoutMode {
     TwoPageContinuous,
 }
 
+/// How the document is presented, as offered in the app's menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ViewMode {
+    /// One page at a time, each fitted to the screen; swipe left and right.
+    Paged,
+    /// All pages in one column fitted to the width; scroll up and down.
+    Continuous,
+}
+
+/// A distance in logical pixels (dp).
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
+pub struct Offset {
+    pub x: f64,
+    pub y: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ZoomMode {
     Fixed,
@@ -140,6 +156,11 @@ pub struct Frame {
     /// Logical pixels (dp) per PDF point.
     pub zoom: f64,
     pub zoom_mode: ZoomMode,
+    /// The zoom relative to the view mode's fitted state (the whole page
+    /// when paged, the width when continuous): 1.0 when fitted.
+    pub zoom_factor: f64,
+    /// Whether the view is [`ViewMode::Paged`].
+    pub paged: bool,
     /// First page of the range set with [`ViewSession::set_thumbnail_range`].
     pub thumbnail_first: u32,
     /// For each page of that range, the id of its thumbnail tile, or 0 while
@@ -242,6 +263,8 @@ impl Shared {
                 .map(|at| at.saturating_duration_since(now).as_millis() as u32),
             device_scale: viewer.device_scale().get(),
             current_page: viewer.current_page() as u32,
+            zoom_factor: viewer.zoom_relative_to(home_fit(viewer)),
+            paged: viewer.settings().swipe,
             zoom: viewer.zoom(),
             zoom_mode: match viewer.zoom_mode() {
                 pdfrs_view::ZoomMode::Fixed => ZoomMode::Fixed,
@@ -258,6 +281,16 @@ impl Shared {
         tiles.add_finished(finished, |key| {
             viewer.placeholder_key(key.page as usize) == Some(*key)
         })
+    }
+}
+
+/// The zoom mode a view returns to: the whole page when swiping through
+/// pages, the width when scrolling.
+fn home_fit(viewer: &Viewer) -> pdfrs_view::ZoomMode {
+    if viewer.settings().swipe {
+        pdfrs_view::ZoomMode::FitPage
+    } else {
+        pdfrs_view::ZoomMode::FitWidth
     }
 }
 
@@ -396,6 +429,41 @@ impl ViewSession {
             .lock()
             .viewer
             .zoom_by(factor, ViewPoint::new(x, y));
+    }
+
+    /// Switches between swiping through pages and scrolling, keeping the
+    /// page. Sessions start out [`ViewMode::Continuous`].
+    pub fn set_view_mode(&self, mode: ViewMode) {
+        let mut state = self.shared.lock();
+        let viewer = &mut state.viewer;
+        let paged = mode == ViewMode::Paged;
+        viewer.set_layout_mode(if paged {
+            pdfrs_view::LayoutMode::SinglePage
+        } else {
+            pdfrs_view::LayoutMode::Continuous
+        });
+        viewer.set_swipe(paged);
+        viewer.set_zoom_mode(home_fit(viewer));
+    }
+
+    /// Back to the view mode's fitted zoom (after zooming in).
+    pub fn fit(&self) {
+        let mut state = self.shared.lock();
+        let fit = home_fit(&state.viewer);
+        state.viewer.set_zoom_mode(fit);
+    }
+
+    /// Call when a drag or pinch ends in paged mode: how far the view still
+    /// has to scroll to come to rest on a page (animate `scrollBy` over it),
+    /// or `None` if it rests where it is. (`vx`, `vy`) is the scrolling
+    /// velocity at release in logical px/s; a flick turns the page.
+    pub fn snap_delta(&self, vx: f64, vy: f64) -> Option<Offset> {
+        let state = self.shared.lock();
+        let delta = state.viewer.snap_delta(ViewVector::new(vx, vy))?;
+        Some(Offset {
+            x: delta.x,
+            y: delta.y,
+        })
     }
 
     /// A pinch (or zoom animation) starts. Until [`end_zoom_gesture`](Self::end_zoom_gesture),

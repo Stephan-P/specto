@@ -14,7 +14,10 @@ class ViewFrame private constructor(
     val complete: Boolean,
     /** Pages are drawn 1:1 from tiles at the exact device scale. */
     val settled: Boolean,
-    val fitsWidth: Boolean,
+    /** One page at a time, swiped left and right (otherwise: one scrolling column). */
+    val paged: Boolean,
+    /** Zoom relative to the fitted state of the view mode: 1.0 when fitted. */
+    val zoomFactor: Double,
     /** Zero-based index of the page the user is looking at. */
     val currentPage: Int,
     /** Plan another frame after this many milliseconds, or -1. */
@@ -70,11 +73,12 @@ class ViewFrame private constructor(
         fun decode(b: ByteBuffer, length: Int): ViewFrame {
             b.position(0)
             val flags = b.getInt()
-            val zoomMode = b.getInt()
+            b.getInt() // zoom mode
             val currentPage = b.getInt()
             val settlesInMs = b.getInt()
             val zoom = b.getDouble()
             val deviceScale = b.getDouble()
+            val zoomFactor = b.getDouble()
             val evicted = LongArray(b.getInt())
             val pages = b.getInt()
             for (i in evicted.indices) evicted[i] = b.getLong()
@@ -108,7 +112,8 @@ class ViewFrame private constructor(
             return ViewFrame(
                 complete = flags and 1 != 0,
                 settled = flags and 2 != 0,
-                fitsWidth = zoomMode == 1,
+                paged = flags and 4 != 0,
+                zoomFactor = zoomFactor,
                 currentPage = currentPage,
                 settlesInMs = settlesInMs,
                 zoom = zoom,

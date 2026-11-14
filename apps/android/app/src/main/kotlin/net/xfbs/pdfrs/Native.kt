@@ -20,6 +20,13 @@ object Native {
     @JvmStatic
     external fun scrollBy(session: Long, dx: Double, dy: Double)
 
+    /**
+     * Scrolls by dp like a fling: in paged mode it stops at the edges of the
+     * current page instead of sliding on to the next.
+     */
+    @JvmStatic
+    external fun scrollInPageBy(session: Long, dx: Double, dy: Double)
+
     /** Multiplies the zoom, keeping the content at ([x], [y]) dp in place. */
     @JvmStatic
     external fun zoomBy(session: Long, factor: Double, x: Double, y: Double)

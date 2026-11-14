@@ -7,6 +7,7 @@ import android.util.Log
 import android.util.LongSparseArray
 import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDecay
@@ -24,15 +25,18 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import uniffi.pdfrs_ffi.ViewListener
 import uniffi.pdfrs_ffi.ViewSession
-import uniffi.pdfrs_ffi.ZoomMode
+import uniffi.pdfrs_ffi.ViewMode
 
 private const val TAG = "pdfrs"
 
 private fun newBuffer(bytes: Int): ByteBuffer =
     ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
 
-/** How far a double tap zooms in, relative to fit width. */
+/** How far a double tap zooms in, relative to the fitted view. */
 private const val DOUBLE_TAP_ZOOM = 2.5
+
+/** Duration of the slide that brings a swiped page to rest. */
+private const val SLIDE_MS = 260
 
 /**
  * One open document: the Rust [ViewSession] (layout, zoom, scrolling, tile
@@ -69,7 +73,6 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     private var buffer = newBuffer(16 * 1024)
     private var motion: Job? = null
     private val settle = Runnable { refresh() }
-    private var fitWidthZoom = 1.0
 
     val pageCount: Int = session.pageCount().toInt()
 
@@ -79,6 +82,23 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
     }
 
     fun pageAspect(page: Int): Float = aspects[page]
+
+    init {
+        // On a phone, swiping through fitted pages is the default.
+        session.setViewMode(ViewMode.PAGED)
+    }
+
+    /**
+     * One page at a time, swiped left and right, or else one continuously
+     * scrolling column. Keeps the current page.
+     */
+    var paged: Boolean
+        get() = frame?.paged ?: true
+        set(value) {
+            stopMotion()
+            session.setViewMode(if (value) ViewMode.PAGED else ViewMode.CONTINUOUS)
+            refresh()
+        }
 
     /** What to draw. Changes whenever the view or the available tiles change. */
     var frame: ViewFrame? by mutableStateOf(null)
@@ -144,23 +164,51 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
         motion = null
     }
 
-    /** Keeps scrolling after a drag. [velocityPx] is the content's velocity in px/s. */
-    fun fling(scope: CoroutineScope, velocityPx: Offset, density: Float, decay: DecayAnimationSpec<Offset>) {
+    /**
+     * The fingers lifted after a drag or pinch. [velocityPx] is the scrolling
+     * velocity at that moment in px/s. In paged mode a view left between two
+     * pages slides on to one of them (a flick turns the page); otherwise the
+     * scrolling carries on and slows down, within the page when paged.
+     */
+    fun release(scope: CoroutineScope, velocityPx: Offset, density: Float, decay: DecayAnimationSpec<Offset>) {
         stopMotion()
+        val current = frame ?: return
+        if (current.paged) {
+            val snap = session.snapDelta((velocityPx.x / density).toDouble(), (velocityPx.y / density).toDouble())
+            if (snap != null) {
+                motion = scope.launch { slideBy(Offset(snap.x.toFloat(), snap.y.toFloat())) }
+                return
+            }
+            // A fitted page has nowhere to go.
+            if (current.zoomFactor < 1.01) return
+        }
         motion = scope.launch {
             var last = Offset.Zero
             AnimationState(Offset.VectorConverter, Offset.Zero, velocityPx).animateDecay(decay) {
-                scrollBy((value - last) / density)
+                val step = (value - last) / density
                 last = value
+                Native.scrollInPageBy(sessionId, step.x.toDouble(), step.y.toDouble())
+                refresh()
             }
         }
     }
 
-    /** Zooms in around [anchor], or back out to fit width if already zoomed in. */
+    /** Slides the view by [delta] dp and makes sure it ends at rest. */
+    private suspend fun slideBy(delta: Offset) {
+        var done = 0f
+        animate(0f, 1f, animationSpec = tween(SLIDE_MS, easing = LinearOutSlowInEasing)) { t, _ ->
+            scrollBy(delta * (t - done))
+            done = t
+        }
+        // Rounding along the way may leave a fraction of a pixel.
+        session.snapDelta(0.0, 0.0)?.let { scrollBy(Offset(it.x.toFloat(), it.y.toFloat())) }
+    }
+
+    /** Zooms in around [anchor], or back out to the fitted view if already zoomed in. */
     fun doubleTap(scope: CoroutineScope, anchor: Offset) {
         val current = frame ?: return
-        val zoomIn = current.zoom < fitWidthZoom * 1.05
-        val ratio = (if (zoomIn) fitWidthZoom * DOUBLE_TAP_ZOOM else fitWidthZoom) / current.zoom
+        val zoomIn = current.zoomFactor < 1.05
+        val ratio = (if (zoomIn) DOUBLE_TAP_ZOOM else 1.0) / current.zoomFactor
         stopMotion()
         motion = scope.launch {
             beginZoomGesture()
@@ -171,8 +219,8 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
                     zoomBy((target / applied).toFloat(), anchor)
                     applied = target
                 }
-                // Back to following the window width (e.g. on rotation).
-                if (!zoomIn) session.setZoomMode(ZoomMode.FIT_WIDTH)
+                // Back to following the window size (e.g. on rotation).
+                if (!zoomIn) session.fit()
             } finally {
                 // Also when a touch interrupts the animation.
                 if (!closed) endZoomGesture()
@@ -227,7 +275,6 @@ class PdfViewState(pdf: ByteArray, password: String?, cacheBytes: Long) : AutoCl
             bitmaps[id]?.recycle()
             bitmaps.remove(id)
         }
-        if (next.fitsWidth) fitWidthZoom = next.zoom
         frame = next
         // After zooming, the view sharpens (switches to exact-scale tiles)
         // only when a frame is planned once the zoom has been still for a while.

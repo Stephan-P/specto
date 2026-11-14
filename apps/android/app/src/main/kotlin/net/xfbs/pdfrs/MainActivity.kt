@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -220,6 +221,18 @@ private fun App(document: Uri?, onPicked: (Uri) -> Unit, onViewState: (PdfViewSt
                                 onClick = {
                                     menu = false
                                     showGoTo = true
+                                },
+                            )
+                            // Not remembered: every document opens paged.
+                            val continuous = !ready.state.paged
+                            DropdownMenuItem(
+                                text = { Text("Continuous scrolling") },
+                                trailingIcon = {
+                                    if (continuous) Icon(Icons.Filled.Check, contentDescription = "On")
+                                },
+                                onClick = {
+                                    menu = false
+                                    ready.state.paged = continuous
                                 },
                             )
                         }

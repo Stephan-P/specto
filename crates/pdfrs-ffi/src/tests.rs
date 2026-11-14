@@ -262,6 +262,73 @@ fn thumbnails_reuse_placeholders_and_survive_eviction_while_shown() {
 }
 
 #[test]
+fn paged_mode_swipes_one_fitted_page_at_a_time() {
+    let (session, rx) = open(5, 64 << 20);
+    // 200 × 300 pt pages in a 216 × 316 dp view: fitted, 1 dp per point.
+    session.set_viewport(216.0, 316.0, 2.0);
+    session.go_to_page(2);
+    session.set_view_mode(ViewMode::Paged);
+    let (frame, _) = settle(&session, &rx);
+    assert!(frame.paged);
+    assert_eq!(
+        (frame.current_page, frame.zoom, frame.zoom_factor),
+        (2, 1.0, 1.0)
+    );
+    assert_eq!(frame.pages.len(), 1);
+    let rect = frame.pages[0].rect;
+    assert_eq!(
+        (rect.x, rect.y, rect.width, rect.height),
+        (16.0, 16.0, 400.0, 600.0)
+    );
+    assert_eq!(session.snap_delta(0.0, 0.0), None);
+
+    // Dragging a third of the way and letting go returns to the page; a
+    // flick turns it. Through the per-frame path, as the app does.
+    let id = session.id();
+    assert!(hot::scroll_by(id, 72.0, 0.0));
+    assert_eq!(session.frame().pages.len(), 2);
+    assert_eq!(
+        session.snap_delta(0.0, 0.0),
+        Some(Offset { x: -72.0, y: 0.0 })
+    );
+    let turn = session.snap_delta(500.0, 0.0).unwrap();
+    assert_eq!(
+        turn,
+        Offset {
+            x: 216.0 + 8.0 - 72.0,
+            y: 0.0
+        }
+    );
+    hot::scroll_by(id, turn.x, turn.y);
+    let (frame, _) = settle(&session, &rx);
+    assert_eq!((frame.current_page, frame.pages.len()), (3, 1));
+    assert_eq!(session.snap_delta(0.0, 0.0), None);
+
+    // Zoomed in, a fling stays on the page, and `fit` returns to the page.
+    session.zoom_by(2.0, 108.0, 158.0);
+    assert_eq!(session.frame().zoom_factor, 2.0);
+    assert!(hot::scroll_in_page_by(id, 10_000.0, 0.0));
+    assert_eq!(session.frame().current_page, 3);
+    assert_eq!(session.snap_delta(0.0, 0.0), None);
+    session.fit();
+    let frame = session.frame();
+    assert_eq!(
+        (frame.current_page, frame.zoom_factor, frame.zoom_mode),
+        (3, 1.0, ZoomMode::FitPage)
+    );
+    assert_eq!(session.snap_delta(0.0, 0.0), None);
+
+    // Back to scrolling: same page, fitted to the width.
+    session.set_view_mode(ViewMode::Continuous);
+    let frame = session.frame();
+    assert!(!frame.paged);
+    assert_eq!(
+        (frame.current_page, frame.zoom_mode),
+        (3, ZoomMode::FitWidth)
+    );
+}
+
+#[test]
 fn closed_sessions_are_not_found() {
     let (session, _rx) = open(1, 1 << 20);
     let id = session.id();
@@ -291,6 +358,7 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     let settles = i32::from_ne_bytes(take(&mut b));
     let zoom = f64::from_ne_bytes(take(&mut b));
     let device_scale = f64::from_ne_bytes(take(&mut b));
+    let zoom_factor = f64::from_ne_bytes(take(&mut b));
     let evicted_count = u32_(&mut b);
     let page_count = u32_(&mut b);
     let evicted = (0..evicted_count)
@@ -330,6 +398,8 @@ fn decode_frame(mut b: &[u8]) -> Frame {
         evicted,
         complete: flags & 1 != 0,
         settled: flags & 2 != 0,
+        paged: flags & 4 != 0,
+        zoom_factor,
         settles_in_ms: u32::try_from(settles).ok(),
         device_scale,
         current_page,

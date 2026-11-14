@@ -473,3 +473,286 @@ fn view_state_at_the_document_start_keeps_the_margin() {
     b.restore_view_state(&state);
     assert!(close(b.scroll_offset().y, 0.0), "{:?}", b.scroll_offset());
 }
+
+#[test]
+fn the_end_of_a_continuous_document_is_its_last_page() {
+    let mut v = viewer(letters(10));
+    v.set_zoom(0.5, ViewPoint::origin()); // two pages per viewport
+    v.scroll_by(ViewVector::new(0.0, 1e6));
+    // Page 8 shows as much as page 9, but the user has reached the end.
+    assert_eq!(v.current_page(), 9);
+    v.scroll_by(ViewVector::new(0.0, -100.0));
+    assert_eq!(v.current_page(), 8);
+}
+
+/// Letter portrait, letter landscape, and a small page, swiped one at a time
+/// in a 1000 × 800 viewport (margin and gap 10).
+fn swiper() -> Viewer {
+    let mut v = viewer(vec![
+        page(0, 612.0, 792.0),
+        page(1, 792.0, 612.0),
+        page(2, 300.0, 400.0),
+    ]);
+    v.set_layout_mode(LayoutMode::SinglePage);
+    v.set_zoom_mode(ZoomMode::FitPage);
+    v.set_swipe(true);
+    v
+}
+
+#[test]
+fn swipe_fits_each_page_on_its_own() {
+    let mut v = swiper();
+    // Portrait: limited by the height.
+    let z0 = 780.0 / 792.0;
+    assert!(close(v.zoom(), z0));
+    let r0 = v.page_rect(0).unwrap();
+    assert!(close(r0.origin.x, (1000.0 - 612.0 * z0) / 2.0) && close(r0.origin.y, 10.0));
+    // The next page waits just beyond the right edge, already at its own fit.
+    let z1 = 980.0 / 792.0;
+    let r1 = v.page_rect(1).unwrap();
+    assert!(close(r1.origin.x, 1000.0 + 10.0 + 10.0), "{r1:?}");
+    assert!(close(r1.size.width, 792.0 * z1));
+
+    // Landscape: limited by the width, centred vertically.
+    v.go_to_page(1);
+    assert_eq!(v.current_page(), 1);
+    assert!(close(v.zoom(), z1));
+    let r1 = v.page_rect(1).unwrap();
+    assert!(close(r1.origin.x, 10.0) && close(r1.origin.y, (800.0 - 612.0 * z1) / 2.0));
+    assert!(v.page_rect(0).unwrap().max_x() < 0.0);
+
+    // A small page is enlarged to fit, too.
+    v.next_page();
+    assert_eq!(v.current_page(), 2);
+    assert!(close(v.zoom(), 780.0 / 400.0));
+    v.previous_page();
+    assert_eq!(v.current_page(), 1);
+
+    // Rotating the device refits every page and stays on the current one.
+    v.set_viewport(ViewSize::new(800.0, 1000.0), 1.0);
+    assert_eq!(v.current_page(), 1);
+    assert!(close(v.zoom(), 780.0 / 792.0));
+    assert!(close(v.page_rect(1).unwrap().origin.x, 10.0));
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+}
+
+#[test]
+fn swiping_slides_between_pages_and_snaps() {
+    let mut v = swiper();
+    let still = ViewVector::zero();
+    assert_eq!(v.snap_delta(still), None);
+
+    // A short drag: both pages move with the finger, and letting go returns.
+    let before = v.page_rect(0).unwrap().origin.x;
+    v.scroll_by(ViewVector::new(300.0, 0.0));
+    assert!(close(v.page_rect(0).unwrap().origin.x, before - 300.0));
+    assert!(close(v.page_rect(1).unwrap().origin.x, 1020.0 - 300.0));
+    assert_eq!(v.current_page(), 0);
+    assert_eq!(v.snap_delta(still), Some(ViewVector::new(-300.0, 0.0)));
+    // The neighbour can be hit while it is partly on screen.
+    assert_eq!(
+        v.hit_test(ViewPoint::new(900.0, 400.0)).map(|h| h.0),
+        Some(1)
+    );
+
+    // The same drag ending in a flick turns the page. Slots are a viewport
+    // wide plus the gap.
+    let flick = ViewVector::new(400.0, 0.0);
+    assert_eq!(v.snap_delta(flick), Some(ViewVector::new(710.0, 0.0)));
+    // So does dragging more than half way.
+    v.scroll_by(ViewVector::new(250.0, 0.0));
+    assert_eq!(v.current_page(), 1);
+    let rest = v.snap_delta(still).unwrap();
+    assert!(close(rest.x, 460.0));
+    // ... unless the finger was moving back.
+    assert_eq!(v.snap_delta(-flick), Some(ViewVector::new(-550.0, 0.0)));
+
+    // Arriving: page 1 is current and at rest.
+    v.scroll_by(rest);
+    assert_eq!(v.current_page(), 1);
+    assert_eq!(v.snap_delta(still), None);
+    assert!(close(v.zoom(), 980.0 / 792.0));
+    assert!(close(v.page_rect(1).unwrap().origin.x, 10.0));
+
+    // Backwards, with a flick.
+    v.scroll_by(ViewVector::new(-40.0, 0.0));
+    let back = v.snap_delta(-flick).unwrap();
+    assert!(close(back.x, -970.0));
+    v.scroll_by(back);
+    assert_eq!(v.current_page(), 0);
+
+    // There is nothing before the first or after the last page.
+    v.scroll_by(ViewVector::new(-500.0, 0.0));
+    assert!(close(v.scroll_offset().x, 0.0));
+    assert_eq!(v.snap_delta(-flick), None);
+    v.go_to_page(2);
+    v.scroll_by(ViewVector::new(500.0, 0.0));
+    assert_eq!(v.snap_delta(flick), None);
+    assert_eq!(v.current_page(), 2);
+}
+
+#[test]
+fn swipe_zoom_pans_within_the_page() {
+    let mut v = swiper();
+    let fit = v.zoom();
+    let anchor = ViewPoint::new(600.0, 300.0);
+    let (page, before) = v.hit_test(anchor).unwrap();
+    v.zoom_by(2.0, anchor);
+    assert_eq!(v.zoom_mode(), ZoomMode::Fixed);
+    assert!(close(v.zoom(), 2.0 * fit));
+    let after = v.page_to_view(page, before).unwrap();
+    assert!(
+        close(after.x, anchor.x) && close(after.y, anchor.y),
+        "{after:?}"
+    );
+    // The zoomed page is larger than the viewport, so it rests anywhere
+    // within its slot, and the other pages are zoomed in proportion.
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+    assert!(close(v.page_rect(1).unwrap().size.width, 2.0 * 980.0));
+
+    // A fling stops at the page's edge instead of turning the page ...
+    v.scroll_in_page_by(ViewVector::new(1e6, 1e6));
+    assert_eq!(v.current_page(), 0);
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+    let r0 = v.page_rect(0).unwrap();
+    assert!(
+        close(r0.max_x(), 1000.0 - 10.0) && close(r0.max_y(), 800.0 - 10.0),
+        "{r0:?}"
+    );
+    // ... while a drag beyond it starts sliding to the next page, which is
+    // shown from its top however far down this one was scrolled.
+    v.scroll_by(ViewVector::new(600.0, 0.0));
+    assert!(close(v.page_rect(1).unwrap().origin.y, 10.0));
+    let rest = v.snap_delta(ViewVector::zero()).unwrap();
+    v.scroll_by(rest);
+    assert_eq!(v.current_page(), 1);
+    assert!(close(v.scroll_offset().y, 0.0));
+    // Going back lands on the near edge of the previous page.
+    v.scroll_by(ViewVector::new(-20.0, 0.0));
+    let back = v.snap_delta(ViewVector::new(-400.0, 0.0)).unwrap();
+    v.scroll_by(back);
+    assert_eq!(v.current_page(), 0);
+    assert!(close(v.page_rect(0).unwrap().max_x(), 1000.0 - 10.0));
+
+    // Pages can't be made smaller than fitting the viewport. Pinching out
+    // around a point off-centre can leave the page slightly aside; letting
+    // go centres it again.
+    v.zoom_by(0.01, anchor);
+    assert!(close(v.zoom(), fit));
+    let centre = v.snap_delta(ViewVector::zero()).unwrap();
+    assert!(centre.x.abs() < 20.0, "{centre:?}");
+    v.scroll_by(centre);
+    assert_eq!(v.current_page(), 0);
+    assert!(close(
+        v.page_rect(0).unwrap().origin.x,
+        (1000.0 - 612.0 * fit) / 2.0
+    ));
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+
+    // Leaving swipe mode keeps the page and its zoom.
+    v.go_to_page(1);
+    v.zoom_by(1.5, anchor);
+    let zoom = v.zoom();
+    v.set_swipe(false);
+    assert_eq!(v.current_page(), 1);
+    assert!(close(v.zoom(), zoom));
+    assert!(v.page_rect(0).is_none());
+    v.set_swipe(true);
+    assert!(close(v.zoom(), zoom));
+}
+
+#[test]
+fn swipe_frames_use_each_pages_own_scale_and_prepare_the_neighbours() {
+    let mut v = swiper();
+    v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
+    v.go_to_page(1);
+    let scale = |v: &Viewer, i: usize| {
+        TileScale::exact(
+            v.page_rect(i).unwrap().size.width / v.pages()[i].displayed().size().width * 2.0,
+        )
+    };
+    let (s0, s1, s2) = (scale(&v, 0), scale(&v, 1), scale(&v, 2));
+    assert!(s0 != s1 && s1 != s2);
+
+    // At rest only the current page is drawn, but both neighbours' tiles are
+    // requested, each at its own exact scale.
+    let f = v.frame(Instant::now(), |_| false);
+    assert_eq!(f.pages.iter().map(|p| p.page).collect::<Vec<_>>(), vec![1]);
+    let sharp = |page: u32, s: TileScale| {
+        f.requests
+            .iter()
+            .filter(|k| k.page == page && k.scale == s)
+            .count()
+    };
+    assert!(sharp(1, s1) > 0 && sharp(0, s0) > 0 && sharp(2, s2) > 0);
+    // The visible page's tiles come before the neighbours'.
+    let first_neighbour = f.requests.iter().position(|k| k.page != 1).unwrap();
+    assert!(f.requests[..first_neighbour].iter().any(|k| k.scale == s1));
+
+    // Turning the page changes the scale, but nothing is zooming: the view
+    // stays settled and draws exact tiles 1:1 right away.
+    let now = Instant::now();
+    v.frame(now, all_cached);
+    v.go_to_page(2);
+    let f = v.frame(now, all_cached);
+    assert!(f.complete && f.settles_at.is_none());
+    assert!(v.is_settled(now));
+    assert_eq!(f.pages.len(), 1);
+    assert!(
+        f.pages[0]
+            .layers
+            .iter()
+            .all(|l| l.exact && l.key.scale == s2)
+    );
+
+    // While sliding, both pages are drawn, each from its own tiles.
+    v.scroll_by(ViewVector::new(-400.0, 0.0));
+    let f = v.frame(now, all_cached);
+    let drawn: Vec<(usize, TileScale)> = f
+        .pages
+        .iter()
+        .map(|p| (p.page, p.layers[0].key.scale))
+        .collect();
+    assert_eq!(drawn, vec![(1, s1), (2, s2)]);
+    assert!(f.pages.iter().all(|p| p.layers.iter().all(|l| l.exact)));
+
+    // Zooming still goes through levels and settles afterwards.
+    let rest = v.snap_delta(ViewVector::zero()).unwrap();
+    v.scroll_by(rest);
+    v.zoom_by(1.3, ViewPoint::new(500.0, 400.0));
+    let f = v.frame(now, all_cached);
+    assert!(f.settles_at.is_some());
+    assert!(
+        f.pages[0]
+            .layers
+            .iter()
+            .all(|l| l.key.scale.level().is_some())
+    );
+}
+
+#[test]
+fn view_state_round_trips_in_swipe_mode() {
+    let mut a = swiper();
+    a.go_to_page(1);
+    a.zoom_by(2.0, ViewPoint::new(500.0, 400.0));
+    a.scroll_by(ViewVector::new(0.0, 150.0));
+    let state = a.view_state();
+    assert_eq!((state.page, state.zoom_mode), (1, ZoomMode::Fixed));
+    assert!(state.page_offset > 0.0, "{state:?}");
+
+    // Restored in a viewer that was on another page at another zoom.
+    let mut b = swiper();
+    b.go_to_page(2);
+    b.restore_view_state(&state);
+    assert_eq!(b.current_page(), 1);
+    assert!(close(b.zoom(), a.zoom()));
+    assert!(close(b.scroll_offset().y, a.scroll_offset().y));
+    assert_eq!(b.snap_delta(ViewVector::zero()), None);
+
+    // A fitted page comes back fitted.
+    a.set_zoom_mode(ZoomMode::FitPage);
+    let state = a.view_state();
+    b.restore_view_state(&state);
+    assert_eq!((b.current_page(), b.zoom_mode()), (1, ZoomMode::FitPage));
+    assert!(close(b.zoom(), 980.0 / 792.0));
+}
