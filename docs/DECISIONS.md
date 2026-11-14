@@ -93,7 +93,7 @@ Implications:
 
 - We need to **write** encrypted PDFs, not just read them: RC4-40/128 for legacy files, AES-128 (V4) and AES-256 (V5/R6). Re-saving keeps the original algorithm, and new encryption uses AES-256.
 - ✅ M0: lopdf 0.47 handles all of this. It writes RC4 through AES-256, and `IncrementalDocument` re-encrypts appended objects with the original key. Decrypt → edit → re-encrypt with the original `EncryptionState` works for full rewrites. hayro 0.9 decrypts for viewing.
-- Honoring permission flags is policy: the file is technically readable without the owner password. We honor them anyway, like Preview.
+- Honoring permission flags is policy: the file is technically readable without the owner password. We honor them like Preview, but only as a default: a setting turns that off (2026-11-14), as Evince and Okular allow too. Whether honoring should be the default at all is open.
 
 ## D10: Other document formats: images on desktop later, PDF only on Android (Decided, 2026-11-14)
 

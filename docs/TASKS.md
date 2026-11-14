@@ -58,6 +58,11 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Headless checks with pointer input: a virtual pointer and keyboard through mutter's RemoteDesktop D-Bus API (relative motion, with the window maximized so window and screen coordinates agree), and the clipboard read back through it. Link clicks, all the selection gestures, copy, select all, autoscroll, a rotated page
 - [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
 - [x] **S** Android: outline and links through `pdfrs-ffi` (flattened outline with targets; in-document, web and mail links)
+- [ ] **S** Back and forward after a jump (a link, an outline entry, "go to page", later a search result): `pdfrs-view` keeps the position left behind. The cheap answer to "look at the footnote, then carry on reading"
+- [ ] **M** Trim margins ("fit to content"): a view option that lays pages out by the box of what is drawn on them instead of the CropBox. Matters most on a phone, where white margins take up to a third of the width. A crop in the view only (on `ViewPage`); cropping pages for good would be an M3 command. Open: where the box comes from (the text layer's quads are cheap but miss figures, and scans entirely; candidates are the bounds of everything drawn, collected through hayro's `Device` the way `pdfrs-text` collects glyphs, or the non-background pixels of the placeholder tile, which is rendered anyway), and how to keep it steady from page to page (one box per document, or one each for left and right pages, rather than one per page)
+- [ ] **S** Document properties dialog (desktop): the metadata `pdfrs-source` already parses, plus dates, PDF version, file size, page count and page size, and how the file is protected (D9). Fonts as a follow-up: they need a walk over every page's resources, in the background
+- [ ] **S** Bookmarks set by the reader, listed with the contents. Decide where they live: kept by the app per document (nothing to save, but they stay on the device), or written as outline entries (they travel with the file, but need M3's save). Kept by the app, they need a way to recognise a document that survives saving it, such as the trailer's `/ID`; so will the reading positions, once there is editing
+- [ ] **M** Link preview (desktop): hovering over an in-document link shows a popover with the area around its target, for footnotes and citations in papers. Works where destinations carry a position (LaTeX's do); for a bare page there is only its top to show. After back and forward, which serve the same need
 
 ## M2: Text
 
@@ -91,8 +96,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **M** Select / move / resize / recolor / delete annotations, properties popover
 - [ ] **M** `pdfrs-write`: incremental-update save path (used when only annotations/forms changed)
 - [ ] **S** Annotation sidebar/list (jump to annotation)
-- [ ] **M** Signature and image stamps: a Stamp kind in the annotation model (decide before the model settles) with an image appearance stream; saved signatures kept in the app's data directory; placed, moved and resized like other annotations
-- [ ] **M** Creating a signature on the desktop: drawn with the pointer in a signature box (relative motion, smoothed), with a stylus or touchscreen (`GtkGestureStylus`, shared with the ink tool), or imported from an image with the paper background made transparent. No raw trackpad access: Linux offers apps no absolute finger positions
+- [ ] **M** Signature and image stamps: `AnnotKind::Stamp` in the annotation model (decide before the model settles), whose appearance is an image or, for a drawn signature, vector paths; image embedding in `pdfrs-write` (JPEG as it is, anything else deflated with a soft mask for transparency); saved signatures kept in the app's data directory, never in a document until placed; placed, moved and resized like other annotations. This is a picture of a signature, not a digital signature, and the UI shouldn't suggest otherwise
+- [ ] **M** Creating a signature on the desktop: drawn with the pointer in a signature box (relative motion, smoothed), with a stylus or touchscreen (`GtkGestureStylus`, shared with the ink tool), or imported from an image with the paper background made transparent. A drawn signature is kept as paths, so it stays sharp. No raw trackpad access: Linux offers apps no absolute finger positions
 - [ ] **S** Android: draw a signature by finger or stylus; a way to bring it to the desktop (export/import as an image)
 
 ## M5: Forms
@@ -112,7 +117,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Kotlin unit tests (`./gradlew :app:testDebugUnitTest` in `apps/android`): the frame decoder against `crates/pdfrs-ffi/fixtures/frame.bin`, which a Rust test keeps current, so the two sides can't drift apart; the document store; the outline's collapse logic. CI builds the app and runs them (job `android`).
 - [x] **S** UI tests, first slice (`ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest` in `apps/android`; the run reinstalls the app, hence the serial): opening, page turns by swipe, a slow short drag returning and a short flick turning, the page grid, "Go to page…", full screen, and continuing where the reader left off. Compose's test clock makes the gestures deterministic, unlike adb swipes. Test PDFs are fixtures in `app/src/androidTest/assets`, written by `make-fixtures.py`.
 - [x] **M** UI tests for most of `apps/android/FEATURES.md`: 25 tests in `ReaderTest` (paging, keys, strip, full screen, sidebar, two pages, rotation, what is remembered) and `DocumentTest` (printed page numbers, Contents, links, password), passing on the phone emulator (Android 17) and the tablet emulator (Android 16). A third fixture, `locked.pdf`, is RC4-encrypted by `make-fixtures.py`.
-- [x] **S** UI tests in CI: the job `android-ui` runs them on an Android 15 emulator (x86-64 runner) for pushes to `main` and on request. Green in a phone shape; a tablet shape was added afterwards and has not run yet.
+- [x] **S** UI tests in CI: the job `android-ui` runs them on an Android 15 emulator (x86-64 runner) for pushes to `main` and on request. Green in a phone and a tablet shape (`pixel_7`, `pixel_tablet`).
 - [x] **S** Release build measured on the phone (`./gradlew :app:assembleRelease`, signed with the debug key, no code shrinking): page turns at median 5 ms, 99th percentile 10–11 ms, with or without the strip; numbers in M0-FINDINGS.md. A build for distribution still needs its own key and code shrinking with keep rules for the UniFFI bindings.
 - [x] **S** CI: `cargo clippy -p pdfrs-ffi --all-targets --target aarch64-linux-android` lints the Android-only JNI code too (check only, no NDK needed; clean with `-D warnings`)
 - [x] **S** Top bar: pages button (top left) opening a thumbnail grid, ⋮ menu (top right) with "Open…" and "Go to page…"; password prompt for encrypted files. Thumbnails are the pages' placeholder tiles, requested after the page view's own tiles.
@@ -143,13 +148,20 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** Text selection with Android selection handles + copy/share
 - [ ] **M** Search on Android: the text layer and search results through `pdfrs-ffi` (coarse calls: matches with their quads per page, not per glyph), a search bar with next/previous and highlighted matches
 - [ ] **M** F-Droid: check that the Gradle dependencies are all free software, make the build reproducible, write the metadata
+- [ ] **S** Back after a jump: the system's Back returns to where a link or outline entry was followed from (with M1's back and forward)
+- [ ] **S** Trim margins: a switch in the ⋮ menu, remembered per document (with M1's)
+- [ ] **S** Document properties, and bookmarks in the Pages/Contents view (with M1's, through `pdfrs-ffi`)
+- [ ] **M** Top bar: three actions instead of one menu (idea, 2026-11-14). A view menu behind a pages icon, choosing one of single page, continuous, and on wide windows two pages and two pages continuous, with "First page alone" below; the fit choices (fit page, fit width, actual size) and later "Trim margins" sit in the same menu or behind an icon of their own (open: a magnifying glass means search on Android, and search will want that place). ⋮ keeps the rest: Open…, Share…, Go to page…, Properties, Settings, Close. What a document remembers lives in the view menu; what holds for the whole app lives in Settings
+- [ ] **S** Settings screen, from the ⋮ menu: app-wide switches, kept across launches. First entries below
+- [ ] **S** Keep the screen on while reading: a switch in Settings, off by default, and only for some minutes after the last touch, so a phone left lying on the table still goes dark
+- [ ] **S** Volume keys turn pages, in paged mode: a switch in Settings, off by default, since it takes the volume keys from someone listening to music while reading
 
 ## M7: Polish & hardening
 
 - [ ] **M** Printing (desktop; Android via `PrintManager`)
 - [x] **S** Encrypted PDFs: password prompt on open (desktop + Android)
 - [ ] **L** Encrypted save: keep the original security handler on incremental + full-rewrite saves, and encrypt merged-in objects with the target key (D9)
-- [ ] **M** Permission flags: honor owner-password restrictions (edit/annotate/print), with an "unlock" prompt for the owner password
+- [ ] **M** Permission flags: honor owner-password restrictions (edit/annotate/print), with an "unlock" prompt for the owner password. A setting in both apps turns honouring off (D9); what a restriction blocks should say so and point there
 - [ ] **S** Document security dialog (like Preview's, from the File menu): add / change / remove user and owner passwords (AES-256), saved with the document
 - [ ] **M** Fuzzing (`cargo-fuzz`) for parser and save path; fix crashes
 - [ ] **M** Performance pass: profile big/complex docs, startup time, memory

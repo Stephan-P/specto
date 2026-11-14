@@ -58,7 +58,8 @@ Why this shape:
 Annotation { page: PageId, kind: AnnotKind, rect, color, opacity, author, modified,
              contents, appearance: Appearance }
 AnnotKind = Highlight{quads} | Underline{quads} | StrikeOut{quads} | Ink{paths}
-          | Square | Circle | Line | FreeText{text, font, size} | Text(note) | Other(raw)
+          | Square | Circle | Line | FreeText{text, font, size} | Text(note)
+          | Stamp{image | paths} | Other(raw)
 Appearance = Original(ObjRef) | Generated(Cached<Stream>) | Dirty
 ```
 
