@@ -3,6 +3,9 @@
 //!   gtk-canvas <file.pdf>                 # interactive (keys below)
 //!   gtk-canvas <file.pdf> --bench [dir]   # scripted scroll + zoom, prints frame stats,
 //!                                         # optionally saves screenshots into dir
+//!   gtk-canvas <file.pdf> --probe out.png # HiDPI check: prints the device-pixel mapping and
+//!                                         # saves a device-resolution screenshot
+//!                                         # (PDFRS_ZOOM=1.0 sets a fixed zoom)
 //!
 //! Keys: 1 single page · 2 continuous · 3 two-page · 4 two-page continuous ·
 //! c toggle cover page alone · w fit width · p fit page · 0 actual size ·
@@ -29,7 +32,7 @@ use canvas::{PdfCanvas, State};
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let Some(path) = args.get(1).map(PathBuf::from) else {
-        eprintln!("usage: gtk-canvas <file.pdf> [--bench [screenshot-dir]]");
+        eprintln!("usage: gtk-canvas <file.pdf> [--bench [screenshot-dir] | --probe out.png]");
         return glib::ExitCode::FAILURE;
     };
     let bench = args.iter().any(|a| a == "--bench");
@@ -218,7 +221,94 @@ fn build(app: &adw::Application, path: &PathBuf, bench: bool, shots: Option<Path
 
     if bench {
         run_bench(&window, &canvas, state, shots);
+    } else if let Some(i) = std::env::args().position(|a| a == "--probe") {
+        let out = std::env::args().nth(i + 1).map(PathBuf::from);
+        run_probe(&window, &canvas, state, out.expect("--probe <out.png>"));
     }
+}
+
+/// HiDPI diagnostics: waits until the view is sharp, prints how the frame maps
+/// onto device pixels, saves a screenshot at device resolution and quits.
+/// `PDFRS_ZOOM=<logical px per point>` sets a fixed zoom first.
+fn run_probe(
+    window: &adw::ApplicationWindow,
+    canvas: &PdfCanvas,
+    state: Rc<RefCell<State>>,
+    out: PathBuf,
+) {
+    let window = window.clone();
+    let start = Instant::now();
+    let zoom_set = std::cell::Cell::new(false);
+    canvas.add_tick_callback(move |canvas, _| {
+        let mut s = state.borrow_mut();
+        if !zoom_set.get() && canvas.width() > 0 {
+            zoom_set.set(true);
+            if let Some(z) = std::env::var("PDFRS_ZOOM").ok().and_then(|z| z.parse().ok()) {
+                s.viewer.set_zoom(z, ViewPoint::origin());
+            }
+        }
+        let s = &*s;
+        let frame = s.viewer.frame(|k| s.cache.contains(k));
+        if start.elapsed().as_secs_f64() < 1.5 || !frame.complete || s.scheduler.pending() > 0 {
+            // Not on the last tick: a queued draw drops the render node that
+            // the screenshot below reads.
+            canvas.queue_draw();
+            return glib::ControlFlow::Continue;
+        }
+
+        let native = canvas.native().expect("realized");
+        let surface = native.surface().expect("surface");
+        let scale = surface.scale();
+        let origin = canvas
+            .compute_point(&native, &gtk::graphene::Point::new(0.0, 0.0))
+            .expect("origin");
+        let (sx, sy) = native.surface_transform();
+        let dev_zoom = s.viewer.zoom() * s.viewer.scale_factor();
+        let level = pdfrs_render::tile::level_for_scale(dev_zoom);
+        println!(
+            "renderer {} · surface scale {} (integer scale_factor {}) · surface {}×{} logical",
+            native.renderer().map(|r| r.type_().name().to_string()).unwrap_or_default(),
+            scale,
+            surface.scale_factor(),
+            surface.width(),
+            surface.height(),
+        );
+        println!(
+            "canvas {}×{} logical at ({}, {}) in the window, surface transform ({sx}, {sy}) → device origin ({}, {})",
+            canvas.width(),
+            canvas.height(),
+            origin.x(),
+            origin.y(),
+            (origin.x() as f64 + sx) * scale,
+            (origin.y() as f64 + sy) * scale,
+        );
+        println!(
+            "zoom {:.6} logical px/pt → {:.6} device px/pt → level {level} ({:.6} px/pt, drawn at {:.1}%)",
+            s.viewer.zoom(),
+            dev_zoom,
+            pdfrs_render::tile::level_scale(level),
+            dev_zoom / pdfrs_render::tile::level_scale(level) * 100.0,
+        );
+        for page in &frame.pages {
+            println!("page {} rect {:?}", page.page, page.rect);
+            for l in &page.layers {
+                println!("  level {} tile ({}, {}) exact {} dest {:?}", l.key.level, l.key.tx, l.key.ty, l.exact, l.dest);
+            }
+        }
+
+        // Render the widget's own node at device resolution, like the window does.
+        let paintable = gtk::WidgetPaintable::new(Some(canvas));
+        let snap = gtk::Snapshot::new();
+        snap.scale(scale as f32, scale as f32);
+        paintable.snapshot(&snap, canvas.width() as f64, canvas.height() as f64);
+        if let (Some(node), Some(renderer)) = (snap.to_node(), native.renderer()) {
+            let texture = renderer.render_texture(&node, None);
+            println!("screenshot {}×{} px → {}", texture.width(), texture.height(), out.display());
+            texture.save_to_png(&out).expect("save screenshot");
+        }
+        window.close();
+        glib::ControlFlow::Break
+    });
 }
 
 /// Scripted interaction. Phases (in seconds since start):

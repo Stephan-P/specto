@@ -86,6 +86,20 @@ Run on the 384-page Valgrind manual under a headless `mutter` (1100×854 window,
 
 **Caveats:** this was headless (no real display or vsync from a physical monitor) at scale 1. Fractional HiDPI (`Surface::scale()`) is wired up but untested, as is touchpad pinch, which needs real hardware. Worth a manual run: `cargo run --release -p gtk-canvas -- some.pdf`.
 
+**HiDPI follow-up (M1, macOS, surface scale 2, GTK 4.24, `GskGLRenderer`):** `gtk-canvas file.pdf --probe out.png` prints how the frame maps to device pixels and saves the widget's render node at device resolution. Compared against hayro renders of the same page at the same device scale (edge contrast = mean luminance step across edges, higher is sharper):
+
+| Zoom | Drawn with | Edge contrast | Exact hayro render |
+|---|---|---|---|
+| 1.0 (level 2, tiles 1:1) | `append_scaled_texture` | 38.2 | 90.5 |
+| 1.0 (level 2, tiles 1:1) | `append_texture` | 89.8, pixel-identical (max channel difference 1) | 90.5 |
+| Fit width (level 5 drawn at 90.6%) | `append_scaled_texture` | 40.2 | 86.1 |
+| Fit width (level 5 drawn at 90.6%) | `append_texture` | 64.6 | 86.1 |
+
+- GSK renders a scaled-texture node at logical resolution on a scaled surface and stretches the result, even with the `Nearest` filter. That halved the sharpness at scale 2. The spike now uses plain texture nodes. This happens in GSK, not in the macOS backend, so it should also hit HiDPI Linux surfaces, but that is untested.
+- The surface reports scale 2, and the canvas and page origins land on whole device pixels, so part 1 of the fix works as intended.
+- What remains at non-level zooms is the downsampling of √2-level tiles, which is independent of the toolkit (TASKS.md, "HiDPI, part 3").
+- Not covered: the probe reads GSK's output, not the screen, so anything the macOS window server does afterwards is not measured.
+
 ## Android (D4/D5)
 
 `apps/android` is a Gradle project (AGP 9.2, Kotlin + Compose) with one activity. `crates/pdfrs-ffi` wraps `pdfrs-render` with UniFFI proc macros, and the Gradle build runs `cargo ndk` and `uniffi-bindgen` (`tools/uniffi-bindgen`) as generated-source tasks, so "Run" in Android Studio picks up Rust changes. The app renders page 1 of a bundled sample (or a file from the system picker) at screen width.

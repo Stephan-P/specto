@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{gdk, glib, graphene, gsk};
+use gtk::{gdk, glib, graphene};
 use pdfrs_geom::{DeviceRect, ViewSize};
 use pdfrs_render::scheduler::Scheduler;
 use pdfrs_render::tile::TileCache;
@@ -138,12 +138,12 @@ fn draw(s: &mut State, snap: &gtk::Snapshot, size: ViewSize, scale: f64) {
         snap.push_clip(&rect);
         for layer in &page.layers {
             if let Some(texture) = s.cache.get(&layer.key) {
-                let filter = if layer.exact {
-                    gsk::ScalingFilter::Nearest
-                } else {
-                    gsk::ScalingFilter::Linear
-                };
-                snap.append_scaled_texture(texture, filter, &logical(layer.dest, scale));
+                // Not `append_scaled_texture`: on a HiDPI surface GSK renders
+                // that node at logical resolution and scales the result up,
+                // which blurs every tile (measured on macOS at scale 2, see
+                // M0-FINDINGS.md). A plain texture node is sampled at device
+                // resolution, and is pixel-exact when `layer.exact`.
+                snap.append_texture(texture, &logical(layer.dest, scale));
             }
         }
         snap.pop();
