@@ -147,7 +147,8 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
 - [x] **M** Reading position and recent documents: page, offset, mode and zoom are saved per document (recognised by a fingerprint of its content, since the same file arrives under different URIs) when the app stops or the document is closed, and restored on open; the start screen lists the last 20 documents that can be reopened (those with a persistable read permission, i.e. picked in the app). "Close" in the ⋮ menu returns to the start screen.
 - [x] **S** Share: "Share…" in the ⋮ menu offers the open document through the system's share sheet. The receiving app reads the document where it is (the app passes its read permission on); where that isn't possible (a plain file path, or a provider that doesn't allow it) it gets a copy from the app's cache, served by a `FileProvider`. Both routes checked by hand against the system's Print; the UI tests cover the copy.
-- [ ] **M** SAF fd-based I/O instead of reading the file into memory, and save (in the ⋮ menu). The Rust side is ready: `PdfFile.fromFd(pfd.detachFd())` and `ViewSession.openFile` (mapped above 64 MB, pipes read)
+- [x] **S** Opening through a file descriptor instead of reading the file into the app's memory: `PdfFile.fromFd(pfd.detachFd())` and `ViewSession.openFile` (mapped from 64 MB, pipes read). The file's bytes no longer pass through the Java heap, a password retry reuses the `PdfFile`, and documents are still recognised by the same fingerprint (`PdfFile.read` for both ends of the file)
+- [ ] **M** Save (in the ⋮ menu), through the storage access framework
 - [ ] **M** Page organizer: drag to reorder, delete and rotate in the thumbnail grid (with M3)
 - [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
 - [ ] **M** Forms with native `TextField` overlay + IME

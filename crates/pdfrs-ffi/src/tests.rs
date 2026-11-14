@@ -88,6 +88,12 @@ fn opens_from_a_file_descriptor() {
     let file = PdfFile::from_fd(fd).unwrap();
     assert!(!file.is_mapped(), "small files are read");
     assert_eq!(file.size(), sample_pdf(3).len() as u64);
+    // Parts of it can be read back, clamped to what is there.
+    assert_eq!(file.read(0, 8), b"%PDF-1.7");
+    assert_eq!(file.read(file.size() - 6, 100), b"%%EOF\n");
+    assert_eq!(file.read(file.size() + 5, 100), b"");
+    assert_eq!(file.read(1, 0), b"");
+    assert_eq!(file.read(0, u32::MAX).len() as u64, file.size());
     let (tx, _rx) = mpsc::channel();
     let listener = Arc::new(Listener(Mutex::new(tx)));
     // The same file serves several attempts (e.g. with passwords).

@@ -678,6 +678,16 @@ impl PdfFile {
     pub fn is_mapped(&self) -> bool {
         self.0.is_mapped()
     }
+
+    /// Up to `length` bytes starting at `offset`: fewer at the end of the
+    /// file, none beyond it. For recognising a file by parts of its content
+    /// without copying all of it.
+    pub fn read(&self, offset: u64, length: u32) -> Vec<u8> {
+        let size = self.0.len() as u64;
+        let start = offset.min(size);
+        let end = start.saturating_add(u64::from(length)).min(size);
+        self.0[start as usize..end as usize].to_vec()
+    }
 }
 
 #[uniffi::export]

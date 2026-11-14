@@ -113,6 +113,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import uniffi.pdfrs_ffi.Activated
+import uniffi.pdfrs_ffi.PdfFile
 import uniffi.pdfrs_ffi.PdfException
 
 class MainActivity : ComponentActivity() {
@@ -288,7 +289,8 @@ private sealed interface Loaded {
 
     /** [key] identifies the document in the [DocumentStore]. */
     class Ready(val state: PdfViewState, val name: String, val key: String, val bytes: Long) : Loaded
-    class Locked(val pdf: ByteArray, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
+    /** Keeps the [file], so that trying a password doesn't read it again. */
+    class Locked(val file: PdfFile, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
     class Failed(val message: String) : Loaded
 }
 
@@ -318,30 +320,50 @@ private fun Context.releaseUnused(store: DocumentStore) {
 }
 
 /**
- * Opens [pdf], continuing where the reader left off if it was open before; a
- * missing or wrong [password] leads to [Loaded.Locked].
+ * Hands the document at [uri] to Rust, which reads it straight from the
+ * file, or for a large one maps it and reads only the parts it shows. Either
+ * way its bytes never pass through this app's own (much smaller) Java memory.
+ * Throws if it can't be read.
+ */
+private fun Context.pdfFile(uri: Uri): PdfFile {
+    val descriptor = checkNotNull(contentResolver.openFileDescriptor(uri, "r")) { "cannot open $uri" }
+    // Rust takes the descriptor over and closes it.
+    return PdfFile.fromFd(descriptor.detachFd())
+}
+
+/**
+ * Opens [file], continuing where the reader left off if it was open before;
+ * a missing or wrong [password] leads to [Loaded.Locked]. Unless it ends
+ * there, [file] is closed: an open document keeps its own hold on the bytes.
  */
 private suspend fun Context.open(
-    pdf: ByteArray,
+    file: PdfFile,
     name: String,
     uri: Uri,
     password: String?,
     store: DocumentStore,
-): Loaded = try {
-    val cacheBytes = tileCacheBytes()
-    val key = withContext(Dispatchers.Default) { DocumentStore.fingerprint(pdf) }
-    val known = store.find(key)
-    val wide = resources.configuration.screenWidthDp >= WIDE_WINDOW_DP
-    val state = withContext(Dispatchers.Default) {
-        PdfViewState(pdf, password, cacheBytes, known?.view, wide, known?.sidebar ?: true)
+): Loaded {
+    val opened = try {
+        val cacheBytes = tileCacheBytes()
+        val size = file.size().toLong()
+        val key = withContext(Dispatchers.Default) {
+            DocumentStore.fingerprint(size) { offset, length -> file.read(offset.toULong(), length.toUInt()) }
+        }
+        val known = store.find(key)
+        val wide = resources.configuration.screenWidthDp >= WIDE_WINDOW_DP
+        val state = withContext(Dispatchers.Default) {
+            PdfViewState(file, password, cacheBytes, known?.view, wide, known?.sidebar ?: true)
+        }
+        store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
+        releaseUnused(store)
+        Loaded.Ready(state, name, key, size)
+    } catch (e: PdfException.PasswordRequired) {
+        return Loaded.Locked(file, name, uri, wrongPassword = password != null)
+    } catch (e: Exception) {
+        Loaded.Failed(e.message ?: e.toString())
     }
-    store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
-    releaseUnused(store)
-    Loaded.Ready(state, name, key, pdf.size.toLong())
-} catch (e: PdfException.PasswordRequired) {
-    Loaded.Locked(pdf, name, uri, wrongPassword = password != null)
-} catch (e: Exception) {
-    Loaded.Failed(e.message ?: e.toString())
+    file.close()
+    return opened
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -391,15 +413,12 @@ private fun App(
         show(
             try {
                 val name = context.displayName(document)
-                val pdf = withContext(Dispatchers.IO) {
-                    checkNotNull(context.contentResolver.openInputStream(document)) { "cannot open $document" }
-                        .use { it.readBytes() }
-                }
-                context.open(pdf, name, document, password = null, store)
+                val file = withContext(Dispatchers.IO) { context.pdfFile(document) }
+                context.open(file, name, document, password = null, store)
             } catch (e: Exception) {
                 // Moved, deleted, or the permission to read it is gone.
                 store.unreachable(document.toString())
-                Loaded.Failed(e.message ?: e.toString())
+                Loaded.Failed((e as? PdfException.Io)?.reason ?: e.message ?: e.toString())
             },
         )
     }
@@ -582,10 +601,13 @@ private fun App(
                     key(l) { PasswordDialog(
                         name = l.name,
                         wrongPassword = l.wrongPassword,
-                        onDismiss = { show(Loaded.Failed("A password is needed to open ${l.name}.")) },
+                        onDismiss = {
+                            l.file.close()
+                            show(Loaded.Failed("A password is needed to open ${l.name}."))
+                        },
                         onPassword = { password ->
                             loaded = Loaded.Loading
-                            scope.launch { show(context.open(l.pdf, l.name, l.uri, password, store)) }
+                            scope.launch { show(context.open(l.file, l.name, l.uri, password, store)) }
                         },
                     ) }
                 }

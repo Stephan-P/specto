@@ -124,6 +124,36 @@ class DocumentStoreTest {
     }
 
     @Test
+    fun fingerprintsStayWhatTheyWere() {
+        // Documents are remembered by these: a change would forget every
+        // reading position. (Values from the first version of the scheme.)
+        val long = ByteArray(200_000) { (it % 251).toByte() }
+        val short = ByteArray(1_000) { (it % 251).toByte() }
+        assertEquals("6caa9d845c5241f43224ca33bc7dcc7d", DocumentStore.fingerprint(long))
+        assertEquals("27fced0fcd13304e896beaab3088e259", DocumentStore.fingerprint(short))
+    }
+
+    @Test
+    fun aFingerprintReadsOnlyBothEndsOfAFile() {
+        val long = ByteArray(200_000) { (it % 251).toByte() }
+        val reads = mutableListOf<Pair<Long, Int>>()
+        val key = DocumentStore.fingerprint(long.size.toLong()) { offset, length ->
+            reads += offset to length
+            long.copyOfRange(offset.toInt(), offset.toInt() + length)
+        }
+        assertEquals(DocumentStore.fingerprint(long), key)
+        assertEquals(listOf(0L to 65_536, 200_000L - 65_536 to 65_536), reads)
+
+        // A file shorter than one such span is read once, whole.
+        reads.clear()
+        DocumentStore.fingerprint(1_000) { offset, length ->
+            reads += offset to length
+            ByteArray(length)
+        }
+        assertEquals(listOf(0L to 1_000), reads)
+    }
+
+    @Test
     fun fingerprintFollowsContentNotOrigin() {
         val a = ByteArray(300_000) { (it % 251).toByte() }
         assertEquals(DocumentStore.fingerprint(a), DocumentStore.fingerprint(a.copyOf()))

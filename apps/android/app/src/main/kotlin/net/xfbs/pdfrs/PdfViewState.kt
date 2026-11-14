@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import uniffi.pdfrs_ffi.Activated
 import uniffi.pdfrs_ffi.DocumentInfo
 import uniffi.pdfrs_ffi.PageSize
+import uniffi.pdfrs_ffi.PdfFile
 import uniffi.pdfrs_ffi.OutlineEntry
 import uniffi.pdfrs_ffi.SavedView
 import uniffi.pdfrs_ffi.ViewListener
@@ -69,7 +70,7 @@ private const val SLIDE_MS = 260
  * `PdfException.PasswordRequired` for a missing or wrong [password].
  */
 class PdfViewState(
-    pdf: ByteArray,
+    file: PdfFile,
     password: String?,
     cacheBytes: Long,
     /** Where the reader left off last time, to continue there. */
@@ -93,7 +94,7 @@ class PdfViewState(
             }
         }
     }
-    private val session = ViewSession.open(pdf, password, cacheBytes.toULong(), listener)
+    private val session = ViewSession.openFile(file, password, cacheBytes.toULong(), listener)
     private val sessionId = session.id().toLong()
     private val bitmaps = LongSparseArray<Bitmap>()
     private var buffer = newBuffer(16 * 1024)

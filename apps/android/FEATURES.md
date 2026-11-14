@@ -157,6 +157,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Dark mode | Switch the system between light and dark, with the app open and closed | Bars, backgrounds and dialogs follow (on Android 12+ with the system's colours); pages stay as the document defines them |
 | Background | Switch to another app and back | Same place; pages may re-render briefly |
 | Large documents | Scroll quickly through several hundred pages | Pages appear blurry first, then sharp; the app stays responsive |
+| Large files | Open a file of a few hundred megabytes (a long scan), from the file picker and from another app | It opens about as quickly as a small one and reads on normally; reopened later, it continues where it was left. Files from 64 MB are not loaded into memory but read piece by piece as pages are shown |
 
 ## Not there yet
 

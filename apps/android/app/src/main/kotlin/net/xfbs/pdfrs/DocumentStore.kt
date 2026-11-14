@@ -119,16 +119,22 @@ class DocumentStore(private val file: File) {
 
     companion object {
         /**
-         * Identifies a file by its length and both ends: quick even for huge
-         * files, and stable however the file reaches the app.
+         * Identifies a file of [size] bytes by its length and both ends:
+         * quick even for huge files, which needn't be read for it, and
+         * stable however the file reaches the app. [read] returns the given
+         * number of bytes from the given offset.
          */
-        fun fingerprint(pdf: ByteArray): String {
+        fun fingerprint(size: Long, read: (offset: Long, length: Int) -> ByteArray): String {
             val digest = MessageDigest.getInstance("SHA-256")
-            digest.update(pdf.size.toString().toByteArray())
-            digest.update(pdf, 0, minOf(FINGERPRINT_SPAN, pdf.size))
-            if (pdf.size > FINGERPRINT_SPAN) digest.update(pdf, pdf.size - FINGERPRINT_SPAN, FINGERPRINT_SPAN)
+            digest.update(size.toString().toByteArray())
+            digest.update(read(0, minOf(FINGERPRINT_SPAN.toLong(), size).toInt()))
+            if (size > FINGERPRINT_SPAN) digest.update(read(size - FINGERPRINT_SPAN, FINGERPRINT_SPAN))
             return digest.digest().take(16).joinToString("") { "%02x".format(it) }
         }
+
+        /** The same for a file held in memory. */
+        fun fingerprint(pdf: ByteArray): String =
+            fingerprint(pdf.size.toLong()) { offset, length -> pdf.copyOfRange(offset.toInt(), offset.toInt() + length) }
     }
 }
 
