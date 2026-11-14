@@ -608,9 +608,10 @@ fn swipe_zoom_pans_within_the_page() {
         "{after:?}"
     );
     // The zoomed page is larger than the viewport, so it rests anywhere
-    // within its slot, and the other pages are zoomed in proportion.
+    // within its slot. Its neighbours stay fitted.
     assert_eq!(v.snap_delta(ViewVector::zero()), None);
-    assert!(close(v.page_rect(1).unwrap().size.width, 2.0 * 980.0));
+    let z1 = 980.0 / 792.0;
+    assert!(close(v.page_rect(1).unwrap().size.width, 980.0));
 
     // A fling stops at the page's edge instead of turning the page ...
     v.scroll_in_page_by(ViewVector::new(1e6, 1e6));
@@ -621,29 +622,57 @@ fn swipe_zoom_pans_within_the_page() {
         close(r0.max_x(), 1000.0 - 10.0) && close(r0.max_y(), 800.0 - 10.0),
         "{r0:?}"
     );
-    // ... while a drag beyond it starts sliding to the next page, which is
-    // shown from its top however far down this one was scrolled.
+    // ... while a drag beyond it starts sliding to the next page, which
+    // comes in fitted and centred, however far down this one was scrolled.
     v.scroll_by(ViewVector::new(600.0, 0.0));
-    assert!(close(v.page_rect(1).unwrap().origin.y, 10.0));
+    let next = v.page_rect(1).unwrap();
+    assert!(close(next.origin.y, (800.0 - 612.0 * z1) / 2.0), "{next:?}");
+    let on_screen = next.origin.x;
     let rest = v.snap_delta(ViewVector::zero()).unwrap();
     v.scroll_by(rest);
+    // Arriving turns the page: the view is fitted again, and the page that
+    // slid in is where the slide left it.
     assert_eq!(v.current_page(), 1);
+    assert_eq!(v.zoom_mode(), ZoomMode::FitPage);
+    assert!(close(v.zoom(), z1));
     assert!(close(v.scroll_offset().y, 0.0));
-    // Going back lands on the near edge of the previous page.
+    let arrived = v.page_rect(1).unwrap();
+    assert!(close(arrived.origin.x, on_screen - rest.x) && close(arrived.origin.x, 10.0));
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
+    // The page left behind is fitted again, too.
     v.scroll_by(ViewVector::new(-20.0, 0.0));
     let back = v.snap_delta(ViewVector::new(-400.0, 0.0)).unwrap();
     v.scroll_by(back);
     assert_eq!(v.current_page(), 0);
-    assert!(close(v.page_rect(0).unwrap().max_x(), 1000.0 - 10.0));
+    assert!(close(v.zoom(), fit));
+    assert!(close(
+        v.page_rect(0).unwrap().origin.x,
+        (1000.0 - 612.0 * fit) / 2.0
+    ));
 
-    // Pages can't be made smaller than fitting the viewport. Pinching out
-    // around a point off-centre can leave the page slightly aside; letting
-    // go centres it again.
+    // So does going to a page any other way.
+    v.zoom_by(2.0, anchor);
+    v.next_page();
+    assert_eq!((v.current_page(), v.zoom_mode()), (1, ZoomMode::FitPage));
+    v.zoom_by(2.0, anchor);
+    v.go_to_page(1);
+    assert_eq!(
+        v.zoom_mode(),
+        ZoomMode::Fixed,
+        "staying on the page keeps the zoom"
+    );
+    v.go_to_page(0);
+    assert_eq!(v.zoom_mode(), ZoomMode::FitPage);
+
+    // Pages can't be made smaller than fitting the viewport.
     v.zoom_by(0.01, anchor);
     assert!(close(v.zoom(), fit));
-    let centre = v.snap_delta(ViewVector::zero()).unwrap();
-    assert!(centre.x.abs() < 20.0, "{centre:?}");
-    v.scroll_by(centre);
+    if let Some(centre) = v.snap_delta(ViewVector::zero()) {
+        // Pinching out around a point off-centre can leave the page
+        // slightly aside; letting go centres it again.
+        assert!(centre.x.abs() < 20.0, "{centre:?}");
+        v.scroll_by(centre);
+    }
     assert_eq!(v.current_page(), 0);
     assert!(close(
         v.page_rect(0).unwrap().origin.x,
@@ -724,6 +753,18 @@ fn swipe_frames_use_each_pages_own_scale_and_prepare_the_neighbours() {
     v.zoom_by(1.3, ViewPoint::new(500.0, 400.0));
     let f = v.frame(now, all_cached);
     assert!(f.settles_at.is_some());
+    // Turning the page from a zoomed-in one returns to the fitted view, but
+    // nothing zooms on the page that appears: it is sharp at once.
+    let later = now + std::time::Duration::from_secs(1);
+    assert!(v.frame(later, all_cached).settles_at.is_none());
+    v.previous_page();
+    let f = v.frame(later, all_cached);
+    assert_eq!(v.zoom_mode(), ZoomMode::FitPage);
+    assert!(f.complete && f.settles_at.is_none());
+    assert!(f.pages[0].layers.iter().all(|l| l.exact));
+    v.next_page();
+    v.zoom_by(1.3, ViewPoint::new(500.0, 400.0));
+    let f = v.frame(later, all_cached);
     assert!(
         f.pages[0]
             .layers
@@ -741,18 +782,23 @@ fn destinations_in_swipe_mode_stay_on_their_page() {
     assert_eq!(v.snap_delta(ViewVector::zero()), None);
     assert!(close(v.page_rect(1).unwrap().origin.x, 10.0));
 
-    // Zoomed in, the position is honoured within the page: PDF y 300 of a
+    // Zoomed in, a position on the same page is honoured: PDF y 300 of the
     // 612 pt tall page is 312 pt from its top.
     v.zoom_by(3.0, ViewPoint::new(500.0, 400.0));
-    v.go_to_pdf_position(2, Some(50.0), Some(300.0));
-    assert_eq!(v.current_page(), 2);
+    v.go_to_pdf_position(1, Some(50.0), Some(300.0));
+    assert_eq!((v.current_page(), v.zoom_mode()), (1, ZoomMode::Fixed));
     assert_eq!(v.snap_delta(ViewVector::zero()), None);
     let on_page = v.hit_test(ViewPoint::new(10.0, 10.0)).unwrap();
-    assert_eq!(on_page.0, 2);
+    assert_eq!(on_page.0, 1);
     assert!(
-        close(on_page.1.x, 50.0) && close(on_page.1.y, 100.0),
+        close(on_page.1.x, 50.0) && close(on_page.1.y, 312.0),
         "{on_page:?}"
     );
+
+    // A destination on another page turns the page, which is shown fitted.
+    v.go_to_pdf_position(2, Some(50.0), Some(300.0));
+    assert_eq!((v.current_page(), v.zoom_mode()), (2, ZoomMode::FitPage));
+    assert_eq!(v.snap_delta(ViewVector::zero()), None);
 }
 
 #[test]
@@ -800,6 +846,8 @@ fn swiping_through_two_page_spreads() {
     assert!(close(a.origin.x, 1400.0 - b.max_x()), "{a:?} {b:?}");
     assert_eq!(v.current_page(), 0);
 
+    assert_eq!(v.current_spread(), [0, 1]);
+
     // A flick turns to the next spread, not the next page.
     v.scroll_by(ViewVector::new(100.0, 0.0));
     let rest = v.snap_delta(ViewVector::new(500.0, 0.0)).unwrap();
@@ -816,6 +864,7 @@ fn swiping_through_two_page_spreads() {
     // The last page is alone in its spread and centred.
     v.go_to_page(4);
     assert_eq!(v.current_page(), 4);
+    assert_eq!(v.current_spread(), [4]);
     let last = v.page_rect(4).unwrap();
     assert!(close(last.origin.x, 1400.0 - last.max_x()));
     // A page in the middle of a spread shows that spread.

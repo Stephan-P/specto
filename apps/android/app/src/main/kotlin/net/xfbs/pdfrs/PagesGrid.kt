@@ -96,8 +96,11 @@ fun PagesGrid(
     state: PdfViewState,
     onPick: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    /** Scroll to keep the current page in view as the reader moves on. */
-    follow: Boolean = false,
+    /**
+     * Shown beside the document rather than in its place: one column of
+     * thumbnails, which scrolls to keep the current page in view.
+     */
+    beside: Boolean = false,
 ) {
     val current = state.currentPage
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = current)
@@ -112,7 +115,7 @@ fun PagesGrid(
     DisposableEffect(state) {
         onDispose { state.hideThumbnails(owner) }
     }
-    if (follow) {
+    if (beside) {
         LaunchedEffect(state, grid) {
             snapshotFlow { state.currentPage }.collectLatest { page ->
                 // Once the page view rests, and only if the page isn't fully in view.
@@ -128,10 +131,12 @@ fun PagesGrid(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 104.dp),
+        columns = if (beside) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 104.dp),
         state = grid,
         modifier = modifier,
-        contentPadding = PaddingValues(16.dp),
+        // One column would make thumbnails as wide as the sidebar: keep them
+        // at a size where a few fit above each other.
+        contentPadding = if (beside) PaddingValues(horizontal = 72.dp, vertical = 16.dp) else PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

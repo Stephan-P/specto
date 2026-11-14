@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-A handful of these are also checked automatically (`ReaderTest`: opening, swiping, the page grid, "Go to page…", full screen, continuing where you left off, the sidebar or full-screen Pages depending on the window, two pages on wide windows, and turning pages with keys), but automated tests can't judge how anything looks or feels.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (`ReaderTest` and `DocumentTest` in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, pinch zoom, dark mode or the camera cutout.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -17,7 +17,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Close | ⋮ → "Close" | Back to the start screen |
 | Pick a file | "Open PDF", or ⋮ → "Open…" | System file picker limited to PDFs; the document opens on page 1 with its file name in the top bar |
 | Open from another app | In Files or a browser, open a PDF and choose pdfrs | The document opens; if another one was open, it is replaced |
-| Password | Open a protected file | Password dialog; a wrong password shows "That password didn't work."; Cancel leaves an explanation and "Open another PDF" |
+| Password | Open a protected file | Password dialog; a wrong password shows "That password didn't work." with the field empty again; Cancel leaves an explanation and "Open another PDF" |
 | Broken file | Open something that isn't a PDF (e.g. renamed) | "Couldn't open this file" with "Open another PDF"; no crash |
 
 ## Reading, one page at a time (default)
@@ -30,7 +30,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Ends | Swipe back on page 1, forward on the last page | Nothing moves |
 | Pinch zoom | Pinch in and out on a page | Zooms around the fingers; a page can't get smaller than fitted and re-centres when released |
 | Pan and fling | Zoom in, drag, then flick | Moves within the page; a flick stops at the page edge and does not turn the page |
-| Turn while zoomed | Zoomed in at the page edge, drag further | The next page slides in from its top; it has the same zoom |
+| Turn while zoomed | Zoomed in at the page edge, drag further | The next page slides in already fitted, and once it arrives the view is fitted again (going back, the page left behind is fitted too). Going to another page any other way (keys, the strip, a link, "Go to page…") also returns to the fitted view |
 | Double tap | Double-tap a fitted page, then again | Zooms to 2.5× around the tap, then back to fitted |
 | Sharpness | Zoom to any level and wait a moment | Text sharpens about a quarter of a second after the zoom stops |
 
@@ -48,7 +48,8 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Feature | How to check | Expected |
 |---|---|---|
 | Page indicator | Turn pages or scroll | "n / total" above the strip follows; it reaches the last page at the end |
-| Thumbnail strip | Look at the bottom of the normal view | Row of page thumbnails, current page outlined and brought to the middle shortly after a page turn; scroll it sideways; tap a thumbnail to go there; absent for one-page documents |
+| Thumbnail strip | Look at the bottom of the normal view | Row of page thumbnails with the current page outlined in the middle; it follows shortly after a page turn; absent for one-page documents |
+| Flip through | Scroll the strip sideways, slowly and with a flick | The page passing the middle of the strip is shown as it passes, so the document flips along; tapping a thumbnail goes straight there |
 | Pages | Top-left button | Grid of all pages, current one outlined, starting near it; tap a page to go there; Back or the arrow returns |
 | Contents | Top-left button, "Contents" tab (documents with an outline) | Collapsible outline with page numbers, the current section highlighted; tap an entry to go there; long outlines start collapsed to their top level |
 | Tabs | Swipe between Pages and Contents, or tap the tab names | Both work; reopening shows the tab used last; documents without an outline show only the grid, without tabs |
@@ -73,11 +74,11 @@ Applies when the app's window is at least 840 dp wide: a tablet in landscape, bu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Sidebar | Open a document on a tablet in landscape | Pages (and Contents, if the document has an outline) are shown in a sidebar on the left, open from the start, with the document beside it; no thumbnail strip |
+| Sidebar | Open a document on a tablet in landscape | Pages, in one column (and Contents, if the document has an outline), are shown in a sidebar on the left, open from the start, with the document beside it; no thumbnail strip |
 | Stays open | Tap a page or an outline entry in the sidebar | The document goes there; the sidebar stays, and its page list scrolls to keep the current page in view as you read on |
-| Fold away | Top-left button | The sidebar slides out, the document takes the room and the thumbnail strip returns; the button brings the sidebar back |
+| Fold away | Top-left button | The sidebar slides out, the document takes the room and the thumbnail strip returns; the button brings the sidebar back. Whether it was open is remembered for the document |
 | Full screen | Tap the page | The sidebar leaves along with the bars, and returns with them |
-| Two pages | ⋮ → "Two pages" | Pages are shown in pairs, fitted together; a swipe turns a pair, and with continuous scrolling the pairs form one column. The menu item only exists on wide windows |
+| Two pages | ⋮ → "Two pages" | Pages are shown in pairs, fitted together, and the page indicator names both ("4–5 / 12"); a swipe turns a pair, and with continuous scrolling the pairs form one column. The menu item only exists on wide windows |
 | First page alone | With two pages on, ⋮ → "First page alone" | The first page stands by itself and the pairs shift by one (2–3, 4–5, …), so a book's left and right pages land left and right |
 | Remembered | Turn on two pages, leave the app, open the document again | Still two pages, on the same pair; other documents are unaffected |
 | Falls back | Rotate to portrait, or put the app in split screen | The phone layout: Pages and Contents full screen on request, the strip at the bottom, one page at a time even if two pages are on (they return with the room); same document and page throughout |
@@ -105,4 +106,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Search, text selection and copy, saving and sharing, annotations and form filling, page reordering, printing, and dragging along the strip to flip pages.
+Search, text selection and copy, saving and sharing, annotations and form filling, page reordering and printing.

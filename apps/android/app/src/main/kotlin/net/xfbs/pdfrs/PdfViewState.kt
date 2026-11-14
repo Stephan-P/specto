@@ -72,6 +72,7 @@ class PdfViewState(
     restore: SavedView? = null,
     /** Whether the window has room for two pages side by side; see [wideWindow]. */
     wideWindow: Boolean = false,
+    sidebarOpen: Boolean = true,
 ) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val tilesPosted = AtomicBoolean(false)
@@ -153,9 +154,16 @@ class PdfViewState(
     var frame: ViewFrame? by mutableStateOf(null)
         private set
 
-    /** Zero-based index of the page being looked at. */
+    /** Zero-based index of the page being looked at; with two pages, the first of the pair. */
     var currentPage: Int by mutableIntStateOf(0)
         private set
+
+    /** The last page shown with [currentPage]: itself, or the second of the pair. */
+    var lastPage: Int by mutableIntStateOf(0)
+        private set
+
+    /** Wide windows: whether the sidebar with Pages and Contents is open. */
+    var sidebarOpen: Boolean by mutableStateOf(sidebarOpen)
 
     /** The frame that last changed which thumbnails are available. */
     private var thumbnails: ViewFrame? by mutableStateOf(null)
@@ -462,6 +470,7 @@ class PdfViewState(
         }
         frame = next
         currentPage = next.currentPage
+        lastPage = next.lastPage
         if (!next.sameThumbnailsAs(thumbnails)) thumbnails = next
         // After zooming, the view sharpens (switches to exact-scale tiles)
         // only when a frame is planned once the zoom has been still for a while.

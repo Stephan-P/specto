@@ -195,8 +195,12 @@ pub struct Frame {
     pub settles_in_ms: Option<u32>,
     /// Device pixels per PDF point that pages are drawn at.
     pub device_scale: f64,
-    /// Zero-based index of the page the user is looking at.
+    /// Zero-based index of the page the user is looking at; with two pages,
+    /// the first of the pair.
     pub current_page: u32,
+    /// The last page shown together with it: the same page, or with two
+    /// pages the second of the pair.
+    pub last_page: u32,
     /// Logical pixels (dp) per PDF point.
     pub zoom: f64,
     pub zoom_mode: ZoomMode,
@@ -361,7 +365,8 @@ impl Shared {
                 .settles_at
                 .map(|at| at.saturating_duration_since(now).as_millis() as u32),
             device_scale: viewer.device_scale().get(),
-            current_page: viewer.current_page() as u32,
+            current_page: viewer.current_spread().first().map_or(0, |&p| p as u32),
+            last_page: viewer.current_spread().last().map_or(0, |&p| p as u32),
             zoom_factor: viewer.zoom_relative_to(home_fit(viewer)),
             paged: viewer.settings().swipe,
             two_pages: viewer.layout_mode().is_two_page(),

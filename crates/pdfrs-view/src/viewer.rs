@@ -210,6 +210,9 @@ pub struct Viewer {
     factor: f64,
     /// Whether the last layout was a swipe strip.
     was_strip: bool,
+    /// Swipe mode: the fit the reader had before zooming in, which a page
+    /// turn returns to.
+    strip_fit: ZoomMode,
 }
 
 /// The tile scales one page is drawn with.
@@ -270,6 +273,7 @@ impl Viewer {
             spread_zoom: Vec::new(),
             factor: 1.0,
             was_strip: false,
+            strip_fit: ZoomMode::default(),
         };
         v.set_pages(pages);
         v
@@ -368,6 +372,15 @@ impl Viewer {
             .map_or(0, |(i, _)| i)
     }
 
+    /// The pages shown together with [`current_page`](Self::current_page):
+    /// the pair it belongs to in the two-page modes, otherwise just itself.
+    pub fn current_spread(&self) -> &[usize] {
+        self.page_spread
+            .get(self.current_page())
+            .and_then(|&s| self.spreads.get(s))
+            .map_or(&[], Vec::as_slice)
+    }
+
     /// The page under `p` and the position on it, in page space (points).
     pub fn hit_test(&self, p: ViewPoint) -> Option<(usize, PagePoint)> {
         self.spreads_near(0.0).find_map(|(s, spread)| {
@@ -406,7 +419,7 @@ impl Viewer {
         self.pages = pages;
         self.regroup();
         if !self.pages.is_empty() {
-            self.go_to_page(keep.min(self.pages.len() - 1));
+            self.show_page(keep.min(self.pages.len() - 1));
         } else {
             self.relayout(None);
         }
@@ -432,7 +445,7 @@ impl Viewer {
         }
         let page = self.current_page();
         self.settings.swipe = swipe;
-        self.go_to_page(page);
+        self.show_page(page);
     }
 
     pub fn set_layout_mode(&mut self, mode: LayoutMode) {
@@ -442,7 +455,7 @@ impl Viewer {
         let page = self.current_page();
         self.mode = mode;
         self.regroup();
-        self.go_to_page(page);
+        self.show_page(page);
     }
 
     pub fn set_cover_alone(&mut self, cover_alone: bool) {
@@ -452,11 +465,14 @@ impl Viewer {
         let page = self.current_page();
         self.settings.cover_alone = cover_alone;
         self.regroup();
-        self.go_to_page(page);
+        self.show_page(page);
     }
 
     pub fn set_zoom_mode(&mut self, mode: ZoomMode) {
         self.zoom_mode = mode;
+        if mode != ZoomMode::Fixed {
+            self.strip_fit = mode;
+        }
         let anchor = self.anchor_at(ViewPoint::new(self.viewport.width / 2.0, 0.0));
         self.relayout(anchor);
         self.confine_to_current();
@@ -464,9 +480,9 @@ impl Viewer {
 
     /// Sets a fixed zoom, keeping the content under `anchor` in place.
     ///
-    /// While swiping, `zoom` is that of the current page, the other pages
-    /// follow in proportion, and a page can't be made smaller than fitting
-    /// the viewport.
+    /// While swiping, only the current page is zoomed: its neighbours stay
+    /// fitted, turning the page returns to the fitted view, and a page can't
+    /// be made smaller than fitting the viewport.
     pub fn set_zoom(&mut self, zoom: f64, anchor: ViewPoint) {
         let a = self.anchor_at(anchor);
         self.zoom_mode = ZoomMode::Fixed;
@@ -538,7 +554,7 @@ impl Viewer {
             self.was_strip = false;
         }
         let page = state.page.min(self.pages.len() - 1);
-        self.go_to_page(page);
+        self.show_page(page);
         if let Some(Some(r)) = self.layout.page_rects.get(page) {
             let offset = if state.page_offset.is_finite() {
                 state.page_offset.clamp(-0.5, 1.0)
@@ -662,8 +678,23 @@ impl Viewer {
         Some(ViewVector::new(target - x, 0.0))
     }
 
-    /// Shows page `i` at the top of the viewport.
+    /// Shows page `i` at the top of the viewport. While swiping, going to
+    /// another page (or pair) leaves a zoomed-in view for the fitted one.
     pub fn go_to_page(&mut self, i: usize) {
+        if self.is_strip()
+            && self.zoom_mode == ZoomMode::Fixed
+            && self.page_spread.get(i).is_some_and(|&s| s != self.current)
+        {
+            self.zoom_mode = self.strip_fit;
+            // Nothing is zooming on the page that comes into view.
+            self.keep_settled();
+        }
+        self.show_page(i);
+    }
+
+    /// [`go_to_page`](Self::go_to_page) without touching the zoom: for
+    /// changes of the layout around a page the reader stays on.
+    fn show_page(&mut self, i: usize) {
         let Some(&spread) = self.page_spread.get(i) else {
             return;
         };
@@ -1063,8 +1094,28 @@ impl Viewer {
         {
             self.current = j;
             self.scroll.y = 0.0;
+            if self.zoom_mode == ZoomMode::Fixed {
+                // The page left behind returns to its fitted size, which
+                // moves everything after it: realign with the new page,
+                // which was fitted all along and so doesn't change.
+                self.zoom_mode = self.strip_fit;
+                self.keep_settled();
+                self.relayout(None);
+                if let Some(s) = self.layout.spreads.get(j) {
+                    self.scroll.x = s.slot.origin.x;
+                }
+            }
             self.zoom = self.zoom_of(j);
             self.clamp_scroll();
+        }
+    }
+
+    /// After a change of zoom that the reader doesn't see as zooming (a
+    /// fitted page taking the place of a zoomed one): don't restart the
+    /// settle delay, so the page isn't drawn from level tiles for a moment.
+    fn keep_settled(&mut self) {
+        if self.last_device_scale.is_some() {
+            self.last_device_scale = Some(self.settle_signature());
         }
     }
 
@@ -1086,10 +1137,16 @@ impl Viewer {
             .iter()
             .enumerate()
             .map(|(s, &fit)| {
-                let zoom = match self.zoom_mode {
-                    ZoomMode::FitPage => fit,
+                let fitted = |mode| match mode {
                     ZoomMode::FitWidth => self.spread_fit(s, ZoomMode::FitWidth).unwrap_or(fit),
-                    ZoomMode::Fixed => fit * self.factor,
+                    _ => fit,
+                };
+                let zoom = match self.zoom_mode {
+                    // Only the current spread is zoomed; the others wait
+                    // fitted, as they will be when turned to.
+                    ZoomMode::Fixed if s == self.current => fit * self.factor,
+                    ZoomMode::Fixed => fitted(self.strip_fit),
+                    mode => fitted(mode),
                 };
                 zoom.clamp(min, max)
             })

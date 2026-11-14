@@ -28,6 +28,16 @@ android {
         }
     }
 
+    buildTypes {
+        release {
+            // Signed with the debug key: good for measuring performance and
+            // for trying the app as users get it, not for distributing it.
+            // A real release needs its own key, and code shrinking with keep
+            // rules for the UniFFI bindings (see docs/TASKS.md).
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     buildFeatures {
         compose = true
     }

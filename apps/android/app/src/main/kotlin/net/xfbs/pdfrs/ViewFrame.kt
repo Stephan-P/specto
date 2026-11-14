@@ -24,6 +24,8 @@ class ViewFrame private constructor(
     val zoomFactor: Double,
     /** Zero-based index of the page the user is looking at. */
     val currentPage: Int,
+    /** The last page shown with [currentPage]: itself, or with two pages the second of the pair. */
+    val lastPage: Int,
     /** Plan another frame after this many milliseconds, or -1. */
     val settlesInMs: Int,
     /** dp per PDF point. */
@@ -84,6 +86,8 @@ class ViewFrame private constructor(
             b.getInt() // zoom mode
             val currentPage = b.getInt()
             val settlesInMs = b.getInt()
+            val lastPage = b.getInt()
+            b.getInt()
             val zoom = b.getDouble()
             val deviceScale = b.getDouble()
             val zoomFactor = b.getDouble()
@@ -125,6 +129,7 @@ class ViewFrame private constructor(
                 coverAlone = flags and 16 != 0,
                 zoomFactor = zoomFactor,
                 currentPage = currentPage,
+                lastPage = lastPage,
                 settlesInMs = settlesInMs,
                 zoom = zoom,
                 deviceScale = deviceScale,

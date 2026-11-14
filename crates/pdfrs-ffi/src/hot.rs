@@ -11,6 +11,8 @@
 //! u32 zoom_mode        0 fixed, 1 fit width, 2 fit page
 //! u32 current_page
 //! i32 settles_in_ms    -1: none
+//! u32 last_page        with two pages, the second of the current pair
+//! u32 unused
 //! f64 zoom
 //! f64 device_scale
 //! f64 zoom_factor
@@ -180,6 +182,8 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
         .settles_in_ms
         .map_or(-1, |ms| ms.min(i32::MAX as u32) as i32);
     buf.extend_from_slice(&settles.to_ne_bytes());
+    put_u32(buf, frame.last_page);
+    put_u32(buf, 0);
     buf.extend_from_slice(&frame.zoom.to_ne_bytes());
     buf.extend_from_slice(&frame.device_scale.to_ne_bytes());
     buf.extend_from_slice(&frame.zoom_factor.to_ne_bytes());

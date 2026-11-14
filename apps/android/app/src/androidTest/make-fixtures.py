@@ -10,8 +10,10 @@ pages.pdf  12 A4 pages, each headed "Page n of 12".
 book.pdf   14 pages with a nested outline, a linked table of contents on
            page 1 (plus one link to a web page), "Back to contents" links,
            and printed page numbers i-iii, 1-9, A-1, A-2.
+locked.pdf 3 pages, encrypted (RC4, 40 bit) with the password "secret".
 """
 
+import hashlib
 from pathlib import Path
 
 OUT = Path(__file__).parent / "assets"
@@ -23,7 +25,7 @@ RESOURCES = "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >>"
 LINE = "the quick brown fox jumps over the lazy dog and keeps running along the page"
 
 
-def write(name, objects, trailer_root=1):
+def write(name, objects, trailer_root=1, trailer_extra=""):
     """Serializes numbered objects with a correct cross-reference table."""
     out = bytearray(b"%PDF-1.7\n")
     offsets = {}
@@ -38,7 +40,12 @@ def write(name, objects, trailer_root=1):
             out += b"%010d 00000 n \n" % offsets[number]
         else:
             out += b"0000000000 65535 f \n"
-    out += b"trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (size, trailer_root, xref)
+    out += b"trailer\n<< /Size %d /Root %d 0 R %s >>\nstartxref\n%d\n%%%%EOF\n" % (
+        size,
+        trailer_root,
+        trailer_extra.encode(),
+        xref,
+    )
     (OUT / name).write_bytes(out)
     print(f"{name}: {len(out)} bytes")
 
@@ -172,7 +179,64 @@ def book_pdf(count=14):
     write("book.pdf", objects)
 
 
+def rc4(key, data):
+    box = list(range(256))
+    j = 0
+    for i in range(256):
+        j = (j + box[i] + key[i % len(key)]) % 256
+        box[i], box[j] = box[j], box[i]
+    out = bytearray()
+    i = j = 0
+    for byte in data:
+        i = (i + 1) % 256
+        j = (j + box[i]) % 256
+        box[i], box[j] = box[j], box[i]
+        out.append(byte ^ box[(box[i] + box[j]) % 256])
+    return bytes(out)
+
+
+def locked_pdf(count=3, user_password=b"secret", owner_password=b"owner"):
+    """The standard security handler, revision 2 (PDF 1.4, 7.6.3): RC4, 40 bit."""
+    padding = bytes.fromhex(
+        "28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9FE6453697A"
+    )
+    file_id = hashlib.md5(b"pdfrs locked fixture").digest()
+    permissions = (-4).to_bytes(4, "little", signed=True)
+
+    def pad(password):
+        return (password + padding)[:32]
+
+    owner = rc4(hashlib.md5(pad(owner_password)).digest()[:5], pad(user_password))
+    key = hashlib.md5(pad(user_password) + owner + permissions + file_id).digest()[:5]
+    user = rc4(key, padding)
+
+    def encrypted_stream(number, content):
+        object_key = hashlib.md5(key + number.to_bytes(3, "little") + b"\0\0").digest()[:10]
+        data = rc4(object_key, content.encode())
+        return b"<< /Length %d >>\nstream\n" % len(data) + data + b"\nendstream"
+
+    objects = dict(FONTS)
+    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    kids = " ".join(f"{page_id(p)} 0 R" for p in range(1, count + 1))
+    objects[2] = f"<< /Type /Pages /Kids [{kids}] /Count {count} >>".encode()
+    for p in range(1, count + 1):
+        objects[page_id(p)] = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+            f"/Contents {page_id(p) + 1} 0 R {RESOURCES} >>"
+        ).encode()
+        objects[page_id(p) + 1] = encrypted_stream(page_id(p) + 1, heading(p, count) + body())
+    objects[9] = (
+        f"<< /Filter /Standard /V 1 /R 2 /O <{owner.hex()}> /U <{user.hex()}> /P -4 >>"
+    ).encode()
+    write(
+        "locked.pdf",
+        objects,
+        trailer_extra=f"/Encrypt 9 0 R /ID [<{file_id.hex()}> <{file_id.hex()}>]",
+    )
+
+
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
     pages_pdf()
     book_pdf()
+    locked_pdf()

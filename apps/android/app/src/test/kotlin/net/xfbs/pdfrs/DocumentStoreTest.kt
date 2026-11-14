@@ -33,6 +33,22 @@ class DocumentStoreTest {
     }
 
     @Test
+    fun remembersAClosedSidebar() {
+        DocumentStore(file).apply {
+            opened("k1", "a.pdf", null, 3)
+            assertEquals(true, find("k1")?.sidebar)
+            saveView("k1", view, sidebar = false)
+        }
+        val store = DocumentStore(file)
+        assertEquals(false, store.find("k1")?.sidebar)
+        // Opening it again doesn't forget.
+        store.opened("k1", "a.pdf", null, 3)
+        assertEquals(false, store.find("k1")?.sidebar)
+        store.saveView("k1", view, sidebar = true)
+        assertEquals(true, DocumentStore(file).find("k1")?.sidebar)
+    }
+
+    @Test
     fun fittedViewHasNoZoom() {
         val fitted = view.copy(zoom = null, paged = true, twoPages = false, coverAlone = false)
         DocumentStore(file).apply {

@@ -36,6 +36,8 @@ class DocumentStore(private val file: File) {
         val opened: Long,
         val pageCount: Int,
         val view: SavedView?,
+        /** On wide windows: whether the sidebar was open. */
+        val sidebar: Boolean = true,
     )
 
     /** Most recently opened first. Observable, so the start screen follows. */
@@ -66,17 +68,23 @@ class DocumentStore(private val file: File) {
     fun opened(key: String, name: String, uri: String?, pageCount: Int) {
         val known = find(key)
         entries.removeAll { it.key == key }
-        entries.add(0, Entry(key, name, uri ?: known?.uri, System.currentTimeMillis(), pageCount, known?.view))
+        entries.add(
+            0,
+            Entry(
+                key, name, uri ?: known?.uri, System.currentTimeMillis(), pageCount,
+                known?.view, known?.sidebar ?: true,
+            ),
+        )
         while (entries.size > MAX_DOCUMENTS) entries.removeAt(entries.lastIndex)
         save()
     }
 
-    /** Remembers where the reader is in [key]. */
-    fun saveView(key: String, view: SavedView) {
+    /** Remembers where the reader is in [key], and whether the sidebar is open. */
+    fun saveView(key: String, view: SavedView, sidebar: Boolean = true) {
         val i = entries.indexOfFirst { it.key == key }
-        if (i < 0 || entries[i].view == view) return
+        if (i < 0 || (entries[i].view == view && entries[i].sidebar == sidebar)) return
         val e = entries[i]
-        entries[i] = Entry(e.key, e.name, e.uri, e.opened, e.pageCount, view)
+        entries[i] = Entry(e.key, e.name, e.uri, e.opened, e.pageCount, view, sidebar)
         save()
     }
 
@@ -86,7 +94,7 @@ class DocumentStore(private val file: File) {
         for (i in entries.indices) {
             val e = entries[i]
             if (e.uri == uri) {
-                entries[i] = Entry(e.key, e.name, null, e.opened, e.pageCount, e.view)
+                entries[i] = Entry(e.key, e.name, null, e.opened, e.pageCount, e.view, e.sidebar)
                 changed = true
             }
         }
@@ -131,6 +139,7 @@ private fun DocumentStore.Entry.toJson(): JSONObject {
         .put("opened", opened)
         .put("pages", pageCount)
     if (uri != null) json.put("uri", uri)
+    if (!sidebar) json.put("sidebar", false)
     view?.let {
         json.put("page", it.page.toInt()).put("offset", it.pageOffset).put("paged", it.paged)
         it.zoom?.let { zoom -> json.put("zoom", zoom) }
@@ -146,6 +155,7 @@ private fun JSONObject.toEntry() = DocumentStore.Entry(
     uri = if (has("uri")) getString("uri") else null,
     opened = getLong("opened"),
     pageCount = optInt("pages", 0),
+    sidebar = optBoolean("sidebar", true),
     view = if (has("page")) {
         SavedView(
             page = getInt("page").coerceAtLeast(0).toUInt(),

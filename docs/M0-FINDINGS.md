@@ -163,7 +163,16 @@ Two ways to get pixels into a `Bitmap`, measured warm on the same document objec
 | JNI (`Native.scrollBy` + `Native.frame` into a `ByteBuffer`) | 0.22–0.35 ms | 13 of 2147 (0.61%) | 7 / 10 / 12 / 16 ms |
 
 - Planning a frame takes about 4 µs in Rust. Through UniFFI even a trivial call (`session.id()`) cost 200–370 µs on both the phone and the emulator, so the bindings, not the work, dominated. Everything that runs per frame (scroll, zoom, frame, finished tiles) now goes through plain JNI (`crates/pdfrs-ffi/src/hot.rs` and `jni.rs`); UniFFI stays for occasional calls. **This extends D5: UniFFI for the coarse API, JNI for pixels and for the per-frame path.**
-- These are debug-build numbers; a release build has not been measured.
+- These are debug-build numbers. **Release build** (same phone, later code: paged mode with the thumbnail strip; 10 scripted page swipes per run, all of which turned the page):
+
+  | Build, view | Median | 90th | 95th | 99th | Slow frames |
+  |---|---|---|---|---|---|
+  | Debug, with strip | 6–7 ms | 10–11 ms | 14–15 ms | 30 ms | 2.3% |
+  | Debug, full screen | 7 ms | 10 ms | 10 ms | 12 ms | 0% |
+  | Release, with strip (two runs) | 5 ms | 6–7 ms | 7–8 ms | 10–11 ms | 0–0.14% |
+  | Release, full screen | 5 ms | 6 ms | 7 ms | 10 ms | 0% |
+
+  The release build is not debuggable but also not shrunk (no R8), so this is the gain from Android compiling the Kotlin side properly; the Rust library is optimised in both. Memory after the run was about 350 MB PSS, as in debug (about 104 MB of it Android's GPU texture cache).
 - Memory after the fling run: about 360 MB PSS, of which about 117 MB is Android's GPU texture cache and about 98 MB native heap (tile bitmaps within a 64 MB budget, plus render caches). The tile budget is now a quarter of `memoryClass` because every drawn bitmap also has a GPU copy.
 
 ## Render guards (M1)

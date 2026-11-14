@@ -501,6 +501,7 @@ fn two_pages_side_by_side() {
     );
     let pages: Vec<(u32, f32)> = frame.pages.iter().map(|p| (p.page, p.rect.x)).collect();
     assert_eq!(pages, vec![(2, 16.0), (3, 432.0)]);
+    assert_eq!((frame.current_page, frame.last_page), (2, 3));
 
     // A flick turns to the next pair (here the last page, alone).
     hot::scroll_by(session.id(), 50.0, 0.0);
@@ -508,6 +509,7 @@ fn two_pages_side_by_side() {
     hot::scroll_by(session.id(), turn.x, turn.y);
     let frame = session.frame();
     assert_eq!((frame.current_page, frame.pages.len()), (4, 1));
+    assert_eq!(frame.last_page, 4);
 
     // The first page alone shifts the pairs: [1] [2 3] [4 5].
     session.set_spread(true, true);
@@ -600,6 +602,8 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     let zoom_mode = [ZoomMode::Fixed, ZoomMode::FitWidth, ZoomMode::FitPage][u32_(&mut b) as usize];
     let current_page = u32_(&mut b);
     let settles = i32::from_ne_bytes(take(&mut b));
+    let last_page = u32_(&mut b);
+    u32_(&mut b);
     let zoom = f64::from_ne_bytes(take(&mut b));
     let device_scale = f64::from_ne_bytes(take(&mut b));
     let zoom_factor = f64::from_ne_bytes(take(&mut b));
@@ -649,6 +653,7 @@ fn decode_frame(mut b: &[u8]) -> Frame {
         settles_in_ms: u32::try_from(settles).ok(),
         device_scale,
         current_page,
+        last_page,
         zoom,
         zoom_mode,
     }
@@ -693,6 +698,7 @@ fn fixture_frame() -> Frame {
         settles_in_ms: Some(180),
         device_scale: 1.744537353515625,
         current_page: 4,
+        last_page: 5,
         zoom: 0.6645856618881226,
         zoom_mode: ZoomMode::FitPage,
         zoom_factor: 1.5,

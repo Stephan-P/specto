@@ -77,6 +77,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -135,7 +136,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // The app may not come back: remember where the reader is.
-        current?.let { store.saveView(it.key, it.state.savedView()) }
+        current?.let { store.saveView(it.key, it.state.savedView(), it.state.sidebarOpen) }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -263,9 +264,11 @@ private suspend fun Context.open(
 ): Loaded = try {
     val cacheBytes = tileCacheBytes()
     val key = withContext(Dispatchers.Default) { DocumentStore.fingerprint(pdf) }
-    val restore = store.find(key)?.view
+    val known = store.find(key)
     val wide = resources.configuration.screenWidthDp >= WIDE_WINDOW_DP
-    val state = withContext(Dispatchers.Default) { PdfViewState(pdf, password, cacheBytes, restore, wide) }
+    val state = withContext(Dispatchers.Default) {
+        PdfViewState(pdf, password, cacheBytes, known?.view, wide, known?.sidebar ?: true)
+    }
     store.opened(key, name, uri.toString().takeIf { canReopen(uri) }, state.pageCount)
     releaseUnused(store)
     Loaded.Ready(state, name, key)
@@ -298,12 +301,10 @@ private fun App(
     // Tapping the page hides everything but the page; tapping again brings
     // the bars back.
     var fullScreen by remember { mutableStateOf(false) }
-    // Wide windows: whether the sidebar is open. It starts open.
-    var sidebar by remember { mutableStateOf(true) }
     var showGoTo by remember { mutableStateOf(false) }
     fun show(next: Loaded?) {
         (loaded as? Loaded.Ready)?.let {
-            store.saveView(it.key, it.state.savedView())
+            store.saveView(it.key, it.state.savedView(), it.state.sidebarOpen)
             it.state.close()
         }
         loaded = next
@@ -342,7 +343,7 @@ private fun App(
     val wide = LocalConfiguration.current.screenWidthDp >= WIDE_WINDOW_DP
     val overlay = showPages && !wide
     val immersive = fullScreen && ready != null && !overlay
-    val sidebarShown = wide && sidebar && ready != null && !immersive
+    val sidebarShown = wide && ready != null && ready.state.sidebarOpen && !immersive
     // Two pages side by side need the room, too.
     ready?.state?.let { SideEffect { it.wideWindow = wide } }
     BackHandler(enabled = overlay) { showPages = false }
@@ -382,7 +383,11 @@ private fun App(
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 navigationIcon = {
                     if (ready != null) {
-                        IconButton(onClick = { if (wide) sidebar = !sidebar else showPages = !showPages }) {
+                        IconButton(
+                            onClick = {
+                                if (wide) ready.state.sidebarOpen = !ready.state.sidebarOpen else showPages = !showPages
+                            },
+                        ) {
                             if (overlay) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to document")
                             } else {
@@ -490,7 +495,9 @@ private fun App(
                 is Loaded.Failed -> Message("Couldn't open this file", l.message, "Open another PDF", pick, safe)
                 is Loaded.Locked -> {
                     Message("${l.name} is password protected", "", "Open another PDF", pick, safe)
-                    PasswordDialog(
+                    // A fresh dialog for every attempt, so a wrong password
+                    // doesn't stay in the field.
+                    key(l) { PasswordDialog(
                         name = l.name,
                         wrongPassword = l.wrongPassword,
                         onDismiss = { show(Loaded.Failed("A password is needed to open ${l.name}.")) },
@@ -498,7 +505,7 @@ private fun App(
                             loaded = Loaded.Loading
                             scope.launch { show(context.open(l.pdf, l.name, l.uri, password, store)) }
                         },
-                    )
+                    ) }
                 }
                 is Loaded.Ready -> {
                     val navigator: @Composable (Modifier, WindowInsetsSides, Boolean) -> Unit =
@@ -658,7 +665,7 @@ private fun Navigator(
         .background(MaterialTheme.colorScheme.surface)
         .windowInsetsPadding(WindowInsets.safeDrawing.only(insets))
     if (state.outline.isEmpty()) {
-        PagesGrid(state, onPage, background, follow)
+        PagesGrid(state, onPage, background, beside = follow)
         return
     }
     val scope = rememberCoroutineScope()
@@ -676,7 +683,7 @@ private fun Navigator(
         }
         HorizontalPager(pager, Modifier.fillMaxSize()) { tab ->
             if (tab == 0) {
-                PagesGrid(state, onPage, Modifier.fillMaxSize(), follow)
+                PagesGrid(state, onPage, Modifier.fillMaxSize(), beside = follow)
             } else {
                 OutlineList(state, onOutlineEntry, Modifier.fillMaxSize())
             }
@@ -810,12 +817,18 @@ private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
     ) {
+        // "4 / 120", or for a pair "4–5 / 120"; with printed page numbers
+        // "iv (4 / 120)" and "iv–v (4–5 / 120)".
+        val last = state.lastPage
+        val positions = if (last > current) "${current + 1}–${last + 1}" else "${current + 1}"
         Text(
-            // With printed page numbers: "iv (4 / 120)".
             if (state.hasPageLabels) {
-                "${state.pageLabel(current)} (${current + 1} / ${state.pageCount})"
+                val labels =
+                    if (last > current) "${state.pageLabel(current)}–${state.pageLabel(last)}"
+                    else state.pageLabel(current)
+                "$labels ($positions / ${state.pageCount})"
             } else {
-                "${current + 1} / ${state.pageCount}"
+                "$positions / ${state.pageCount}"
             },
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
