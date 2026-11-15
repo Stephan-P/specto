@@ -480,7 +480,7 @@ impl Window {
             .build();
         let markup_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
-            .spacing(18)
+            .spacing(10)
             .halign(gtk::Align::Center)
             .css_classes(["toolbar"])
             .build();
@@ -541,8 +541,11 @@ impl Window {
         text_weight.append(&text_italic);
         let text_size = gtk::SpinButton::with_range(6.0, 96.0, 1.0);
         text_size.set_value(12.0);
+        // No wider than two digits need: the bar is full as it is.
+        text_size.set_width_chars(2);
+        text_size.set_max_width_chars(2);
         text_size.set_tooltip_text(Some(&gettext("Text size in points")));
-        let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         text_controls.append(&text_font);
         text_controls.append(&text_weight);
         text_controls.append(&text_size);

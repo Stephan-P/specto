@@ -220,6 +220,8 @@ point to [DECISIONS.md](DECISIONS.md).
 - [ ] Incremental save, used when only annotations or form values changed.
 - [ ] Markup list follow-ups: filling it in the background for very long
   documents, the author and date, filtering by kind, and replies.
+- [ ] Signatures from a photo: the paper isn't taken away cleanly enough yet.
+  Find out on real photos what is left over or lost, and improve it.
 - [ ] Signature follow-ups: a stylus or touchscreen for drawing, naming and
   reordering saved signatures, cropping a picture by hand, placing any image as
   a stamp, and encrypting the saved signatures.
