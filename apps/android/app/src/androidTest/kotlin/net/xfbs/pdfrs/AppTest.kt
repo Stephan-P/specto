@@ -3,8 +3,11 @@ package net.xfbs.pdfrs
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.view.ActionMode
 import android.view.Window
+import android.view.inspector.WindowInspector
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.TouchInjectionScope
 import androidx.compose.ui.test.hasContentDescription
@@ -22,8 +25,11 @@ import java.io.File
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 import org.junit.After
+import org.junit.AssumptionViolatedException
 import org.junit.Before
 import org.junit.Rule
+import org.junit.rules.TestRule
+import org.junit.runners.model.Statement
 
 /**
  * What the UI tests share: opening a document from the test assets, and
@@ -45,6 +51,37 @@ abstract class AppTest {
     protected val instrumentation = InstrumentationRegistry.getInstrumentation()
     protected var scenario: ActivityScenario<MainActivity>? = null
 
+    /** Which window had the focus instead of the app's when the test ended, if another one had. */
+    private var focusElsewhere: String? = null
+
+    /**
+     * Says so when a test fails while another window than the app's has the
+     * focus: Back, real key presses and the clipboard all go by the focus,
+     * and a test that needs one of them fails without it, in a way that
+     * says nothing of the cause (a wait that runs out, or Espresso's
+     * "waited for the root of the view hierarchy to have window focus").
+     * On an emulator in CI it is usually a dialog of the system's.
+     */
+    @get:Rule
+    val focus = TestRule { test, _ ->
+        object : Statement() {
+            override fun evaluate() {
+                try {
+                    test.evaluate()
+                } catch (skipped: AssumptionViolatedException) {
+                    throw skipped
+                } catch (failure: Throwable) {
+                    val elsewhere = focusElsewhere ?: throw failure
+                    throw AssertionError(
+                        "The app's window did not have the focus when this test ended ($elsewhere). " +
+                            "The test failed with: ${failure.message?.lineSequence()?.firstOrNull()}",
+                        failure,
+                    )
+                }
+            }
+        }
+    }
+
     /** The floating menu beside selected text, while one is showing. */
     @Volatile
     private var floatingMenu: ActionMode? = null
@@ -65,7 +102,30 @@ abstract class AppTest {
 
     @After
     fun close() {
+        // Before the app is closed, which changes it.
+        focusElsewhere = if (scenario == null || appHasFocus()) null else focusedWindow()
         scenario?.close()
+    }
+
+    /** Whether one of the app's windows (the activity's, a menu's, a dialog's) has the focus. */
+    private fun appHasFocus(): Boolean {
+        var focused = true
+        instrumentation.runOnMainSync {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                focused = WindowInspector.getGlobalWindowViews().any { it.hasWindowFocus() }
+            }
+        }
+        return focused
+    }
+
+    /** The window that has the focus, in the system's words. */
+    private fun focusedWindow(): String = try {
+        val output = instrumentation.uiAutomation.executeShellCommand("dumpsys window displays")
+        ParcelFileDescriptor.AutoCloseInputStream(output).bufferedReader().useLines { lines ->
+            lines.filter { "mCurrentFocus=" in it || "mFocusedApp=" in it }.joinToString(", ") { it.trim() }
+        }.ifEmpty { "the system did not say which window had it" }
+    } catch (e: Exception) {
+        "asking the system which window had it failed: $e"
     }
 
     /**
