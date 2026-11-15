@@ -10,14 +10,16 @@ rust-version = "1.92" # hayro 0.9 requires 1.92
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-specto-geom = { path = "crates/specto-geom" }
-specto-source = { path = "crates/specto-source" }
-specto-render = { path = "crates/specto-render" }
-specto-view = { path = "crates/specto-view" }
-specto-text = { path = "crates/specto-text" }
-specto-doc = { path = "crates/specto-doc" }
-specto-session = { path = "crates/specto-session" }
-specto-write = { path = "crates/specto-write" }
+# The version only says that these are not "any version" dependencies
+# (cargo-deny checks for those); keep it equal to `version` above.
+specto-geom = { path = "crates/specto-geom", version = "0.1.0" }
+specto-source = { path = "crates/specto-source", version = "0.1.0" }
+specto-render = { path = "crates/specto-render", version = "0.1.0" }
+specto-view = { path = "crates/specto-view", version = "0.1.0" }
+specto-text = { path = "crates/specto-text", version = "0.1.0" }
+specto-doc = { path = "crates/specto-doc", version = "0.1.0" }
+specto-session = { path = "crates/specto-session", version = "0.1.0" }
+specto-write = { path = "crates/specto-write", version = "0.1.0" }
 hayro = "0.9"
 anyhow = "1"
 thiserror = "2"

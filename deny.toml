@@ -1,0 +1,53 @@
+# cargo-deny: checks the dependencies of the whole workspace.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-linux-android",
+    "x86_64-linux-android",
+]
+all-features = true
+
+[advisories]
+ignore = [
+    # Unmaintained, no known vulnerability. Reaches us through askama, which
+    # UniFFI uses to generate the Kotlin bindings while building. It parses
+    # askama's own configuration, never anything from a PDF.
+    {
+        id = "RUSTSEC-2026-0374",
+        reason = "basic-toml: build-time only, via uniffi_bindgen + askama"
+    },
+]
+
+[licenses]
+# What may end up in an app that is itself MIT OR Apache-2.0: permissive
+# licences, and MPL-2.0, whose copyleft stops at the files of the crate that
+# carries it. Anything else (GPL, LGPL, AGPL, no licence) fails the check.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+ignore = true
+
+[bans]
+# Two versions of one crate are common and harmless, but worth seeing.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
