@@ -98,6 +98,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -702,7 +703,7 @@ private fun App(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            ready?.name ?: "pdfrs",
+                            ready?.name ?: stringResource(R.string.app_name),
                             Modifier.weight(1f, fill = false),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

@@ -16,7 +16,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | A recent file is gone | Delete or move a listed file, then tap it | "Couldn't open this file", and it disappears from the list |
 | Close | ⋮ → "Close" | Back to the start screen |
 | Pick a file | "Open PDF", or ⋮ → "Open…" | System file picker limited to PDFs; the document opens on page 1 with its file name in the top bar |
-| Open from another app | In Files or a browser, open a PDF and choose pdfrs | The document opens; if another one was open, it is replaced |
+| Open from another app | In Files or a browser, open a PDF and choose Specto | The document opens; if another one was open, it is replaced |
 | Password | Open a protected file | Password dialog; a wrong password shows "That password didn't work." with the field empty again; Cancel leaves an explanation and "Open another PDF" |
 | Broken file | Open something that isn't a PDF (e.g. renamed) | "Couldn't open this file" with "Open another PDF"; no crash |
 

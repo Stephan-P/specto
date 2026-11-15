@@ -1,14 +1,14 @@
-# pdfrs for Android
+# Specto for Android
 
-A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and Jetpack Compose, it shares its core with the pdfrs desktop app.
+A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and Jetpack Compose, it shares its core with the desktop app. (The project and its code are called pdfrs; the app is called Specto.)
 
 <p align="center">
-  <img src="screenshot-phone.png" width="20%" alt="pdfrs on a phone: a page of a manual with diagrams, the page number, and a strip of page thumbnails along the bottom">
+  <img src="screenshot-phone.png" width="20%" alt="Specto on a phone: a page of a manual with diagrams, the page number, and a strip of page thumbnails along the bottom">
   &nbsp;
-  <img src="screenshot-tablet.png" width="72%" alt="pdfrs on a tablet: two pages side by side, with the table of contents in a sidebar">
+  <img src="screenshot-tablet.png" width="72%" alt="Specto on a tablet: two pages side by side, with the table of contents in a sidebar">
 </p>
 
-Android has few open-source PDF viewers, and the ones there are tend to feel clunky: slow to render, blurry while zooming, or awkward to navigate. pdfrs aims to be a reader that is simply nice to use, with smooth page turns, sharp pages at any zoom, and quick ways to find your way around a long document. Light editing, such as annotations and filling in forms, will follow.
+Android has few open-source PDF viewers, and the ones there are tend to feel clunky: slow to render, blurry while zooming, or awkward to navigate. Specto aims to be a reader that is simply nice to use, with smooth page turns, sharp pages at any zoom, and quick ways to find your way around a long document. Light editing, such as annotations and filling in forms, will follow.
 
 ## Features
 
@@ -32,7 +32,7 @@ The full list of features, with how to check each one, is in [FEATURES.md](FEATU
 
 ## Implementation
 
-The core of pdfrs is implemented in Rust and shared with the desktop app. The Android app is a Kotlin and Compose layer over these shared crates:
+The core is implemented in Rust and shared with the desktop app. The Android app is a Kotlin and Compose layer over these shared crates:
 
 - `pdfrs-view`: page layout, zoom, scrolling, and which parts of which pages to render
 - `pdfrs-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust

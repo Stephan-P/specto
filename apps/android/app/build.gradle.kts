@@ -16,7 +16,9 @@ android {
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "net.xfbs.pdfrs"
+        // What Android and the stores know the app by. The code keeps the
+        // project's name (`namespace` above, the Kotlin package).
+        applicationId = "net.xfbs.specto"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
