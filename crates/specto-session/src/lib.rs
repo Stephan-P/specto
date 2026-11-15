@@ -23,7 +23,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use specto_annot::Annotation;
-use specto_doc::{AnnotId, Edit, EditDoc, PageRef, Rotation, SourceId, Version};
+use specto_doc::{AnnotId, Edit, EditDoc, PageAnnotChanges, PageRef, Rotation, SourceId, Version};
 use specto_geom::{PageGeometry, ViewPoint};
 use specto_render::OpenError;
 use specto_render::scheduler::Scheduler;
@@ -331,6 +331,9 @@ pub struct PageBundle {
     files: Vec<(PdfData, Option<String>)>,
     /// Index in `files`, page of that file, rotation.
     pages: Vec<(usize, u32, Rotation)>,
+    /// What was done to the annotations of those pages: index in `files`,
+    /// page of that file, the changes. Only pages with any.
+    annots: Vec<(usize, u32, PageAnnotChanges)>,
 }
 
 impl PageBundle {
@@ -347,6 +350,33 @@ impl PageBundle {
     /// the rotation the user gave it.
     pub fn pages(&self) -> &[(usize, u32, Rotation)] {
         &self.pages
+    }
+
+    /// The page at `position` of [`pages`](Self::pages) as a file of its
+    /// own, unrotated and not encrypted, if anything was done to its
+    /// annotations: for rendering it as edited, which its own file can't
+    /// give (printing). `None` if the page is as in its file.
+    pub fn annotated_page(
+        &self,
+        position: usize,
+    ) -> Option<Result<Vec<u8>, specto_write::WriteError>> {
+        let &(file, page, _) = self.pages.get(position)?;
+        let (_, _, changes) = self
+            .annots
+            .iter()
+            .find(|(f, p, _)| (*f, *p) == (file, page))?;
+        let (data, password) = &self.files[file];
+        let source = specto_write::Source {
+            id: MAIN,
+            data,
+            password: password.as_deref(),
+        };
+        Some(specto_write::write_edited(
+            &[source],
+            &[PageRef::new(MAIN, page)],
+            &HashMap::from([((MAIN, page), changes.clone())]),
+            false,
+        ))
     }
 }
 
@@ -436,6 +466,7 @@ impl Session {
         let mut files: Vec<(PdfData, Option<String>)> = Vec::new();
         let mut file_of: HashMap<SourceId, usize> = HashMap::new();
         let mut pages = Vec::new();
+        let mut annots: Vec<(usize, u32, PageAnnotChanges)> = Vec::new();
         for p in which.iter().filter_map(|&i| self.edit.pages().get(i)) {
             let file = *file_of.entry(p.source).or_insert_with(|| {
                 let s = &self.sources[p.source.0 as usize];
@@ -443,12 +474,23 @@ impl Session {
                 files.len() - 1
             });
             pages.push((file, p.page, p.rotation));
+            let changes = self.edit.annotation_changes(p.source, p.page);
+            let known = annots.iter().any(|(f, n, _)| (*f, *n) == (file, p.page));
+            if !changes.is_empty() && !known {
+                annots.push((file, p.page, changes));
+            }
         }
-        PageBundle { files, pages }
+        PageBundle {
+            files,
+            pages,
+            annots,
+        }
     }
 
     /// Inserts the pages of `bundle` (from another session) before position
-    /// `at`, as one edit, keeping their rotation. Files the session already
+    /// `at`, as one edit, keeping their rotation and what was done to their
+    /// annotations there (unless this session has edited the annotations of
+    /// the same page of the same file itself). Files the session already
     /// has (the same data) are reused, the others opened with `scheduler`.
     /// Returns where the pages ended up, or the error opening a file (then
     /// nothing is inserted).
@@ -483,9 +525,15 @@ impl Session {
                 rotation,
             })
             .collect();
-        let range = self.edit.insert(at, refs);
+        let annots = bundle
+            .annots
+            .iter()
+            .map(|(file, page, changes)| (ids[*file], *page, changes.clone()))
+            .collect();
+        let range = self.edit.insert_annotated(at, refs, annots);
         if range.is_some() {
             self.pages_changed();
+            self.sync_variants(scheduler);
         }
         Ok(range)
     }

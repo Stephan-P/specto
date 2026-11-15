@@ -249,6 +249,20 @@ impl EditDoc {
         Some(range)
     }
 
+    /// Like [`insert`](Self::insert), for pages copied from another
+    /// document that come with what was done to their annotations there
+    /// (source, page of it, the changes): one edit.
+    pub fn insert_annotated(
+        &mut self,
+        at: usize,
+        pages: Vec<PageRef>,
+        annotations: Vec<(SourceId, u32, PageAnnotChanges)>,
+    ) -> Option<Range<usize>> {
+        let range = self.insert(at, pages)?;
+        self.adopt_annotation_changes(annotations);
+        Some(range)
+    }
+
     /// What [`undo`](Self::undo) would undo.
     pub fn undo_edit(&self) -> Option<Edit> {
         self.undo.last().map(|s| s.edit)

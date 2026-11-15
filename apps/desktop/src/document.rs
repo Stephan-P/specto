@@ -241,6 +241,19 @@ impl Document {
         Ok(removed)
     }
 
+    /// Gives the picked annotation another colour (see the session's
+    /// function of this name).
+    pub fn recolor_picked_annotation(
+        &mut self,
+        color: specto_annot::Color,
+    ) -> Result<bool, specto_write::WriteError> {
+        let changed = self.session.recolor_picked_annotation(scheduler(), color)?;
+        if changed {
+            self.pages_changed();
+        }
+        Ok(changed)
+    }
+
     pub fn undo(&mut self) -> Option<Edit> {
         let edit = self.session.undo(scheduler())?;
         self.pages_changed();

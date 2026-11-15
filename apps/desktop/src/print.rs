@@ -221,6 +221,7 @@ impl Renderer {
     fn start(pages: &PageBundle) -> Self {
         let files = pages.files().to_vec();
         let list = pages.pages().to_vec();
+        let bundle = pages.clone();
         // Sizes come from the files, opened here once more (cheap next to
         // rendering); a file that doesn't open gives letter-sized blanks.
         let mut docs: HashMap<usize, Option<HayroDocument>> = HashMap::new();
@@ -249,13 +250,26 @@ impl Renderer {
                     let Some(&(file, page, rotation)) = list.get(r.position) else {
                         continue;
                     };
-                    let doc = docs.entry(file).or_insert_with(|| {
-                        let (data, password) = &files[file];
-                        HayroDocument::open(data.clone(), password.as_deref()).ok()
+                    // A page whose annotations were edited is printed from
+                    // a copy written with them, as saving would; the others
+                    // from their files.
+                    let edited = bundle.annotated_page(r.position).map(|copy| {
+                        copy.ok()
+                            .and_then(|data| HayroDocument::open(data, None).ok())
                     });
+                    let (doc, page) = match &edited {
+                        Some(copy) => (copy.as_ref(), 0),
+                        None => {
+                            let doc = docs.entry(file).or_insert_with(|| {
+                                let (data, password) = &files[file];
+                                HayroDocument::open(data.clone(), password.as_deref()).ok()
+                            });
+                            (doc.as_ref(), page as usize)
+                        }
+                    };
                     let result = match doc {
                         Some(d) => {
-                            let mut req = RenderRequest::page(page as usize, r.scale);
+                            let mut req = RenderRequest::page(page, r.scale);
                             req.rotation = rotation;
                             d.render(&req).map_err(|e| e.to_string())
                         }

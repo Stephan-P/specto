@@ -44,6 +44,9 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "highlight",
     "underline",
     "strike-out",
+    "show-markup",
+    "markup-tool",
+    "markup-color",
     "save",
     "save-as",
     "insert-file",
@@ -80,6 +83,11 @@ pub struct Inner {
     /// The last message shown as a toast, for tests.
     last_toast: RefCell<String>,
     search_bar: gtk::SearchBar,
+    /// The bar with the markup tools and colours.
+    markup_bar: gtk::Revealer,
+    /// The colour each tool marks in (highlight, underline, strikethrough),
+    /// by name (see `markup_colors`).
+    tool_colors: Cell<[&'static str; 3]>,
     search_entry: gtk::SearchEntry,
     /// "3 of 17", "No matches", …
     search_status: gtk::Label,
@@ -221,13 +229,6 @@ impl Window {
         });
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some(&gettext("Highlight")), Some("win.highlight"));
-            m.append(Some(&gettext("Underline")), Some("win.underline"));
-            m.append(Some(&gettext("Strikethrough")), Some("win.strike-out"));
-            m
-        });
-        main_menu.append_section(None, &{
-            let m = gio::Menu::new();
             m.append(
                 Some(&gettext_f("About {app}", &[("app", &crate::APP_NAME)])),
                 Some("app.about"),
@@ -360,10 +361,75 @@ impl Window {
             .build();
         header.pack_end(&search_toggle);
 
+        // The markup bar, under the header while the pencil is pressed in:
+        // what to mark text with, and in which colour. A tool that is
+        // pressed in marks every selection as it is made; the colours also
+        // recolour the annotation that is picked.
+        let tools = gtk::Box::builder().css_classes(["linked"]).build();
+        for (label, tool, shortcut) in [
+            (gettext("Highlight"), "highlight", "H"),
+            (gettext("Underline"), "underline", "U"),
+            (gettext("Strikethrough"), "strike-out", "X"),
+        ] {
+            tools.append(
+                &gtk::ToggleButton::builder()
+                    .label(label)
+                    .tooltip_text(gettext_f(
+                        "Mark the selected text, and what is selected from now on ({shortcut} marks once)",
+                        &[("shortcut", &primary(&format!("Shift+{shortcut}")))],
+                    ))
+                    .action_name("win.markup-tool")
+                    .action_target(&tool.to_variant())
+                    .build(),
+            );
+        }
+        let colors = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        for (name, label, color) in markup_colors() {
+            let swatch = gtk::Box::builder()
+                .css_classes(["markup-swatch", &format!("markup-{name}")])
+                .valign(gtk::Align::Center)
+                .halign(gtk::Align::Center)
+                .build();
+            let _ = color;
+            colors.append(
+                &gtk::ToggleButton::builder()
+                    .child(&swatch)
+                    .tooltip_text(label)
+                    .css_classes(["flat", "circular"])
+                    .action_name("win.markup-color")
+                    .action_target(&name.to_variant())
+                    .build(),
+            );
+        }
+        let markup_row = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(18)
+            .halign(gtk::Align::Center)
+            .css_classes(["toolbar"])
+            .build();
+        markup_row.append(&tools);
+        markup_row.append(&colors);
+        let markup_bar = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .child(&markup_row)
+            .build();
+        let markup_toggle = gtk::ToggleButton::builder()
+            .icon_name("document-edit-symbolic")
+            .tooltip_text(gettext("Markup"))
+            .build();
+        markup_bar
+            .bind_property("reveal-child", &markup_toggle, "active")
+            .bidirectional()
+            .sync_create()
+            .build();
+        header.pack_end(&markup_toggle);
+        load_css();
+
         let banner = adw::Banner::builder().action_name("win.reload").build();
         let view = adw::ToolbarView::new();
         view.add_top_bar(&header);
         view.add_top_bar(&search_bar);
+        view.add_top_bar(&markup_bar);
         view.add_top_bar(&banner);
         view.set_content(Some(&toasts));
 
@@ -387,6 +453,7 @@ impl Window {
             document_widgets: vec![
                 sidebar_toggle.upcast(),
                 search_toggle.upcast(),
+                markup_toggle.upcast(),
                 layout_button.upcast(),
                 zoom_button.clone().upcast(),
                 page_box.upcast(),
@@ -401,6 +468,8 @@ impl Window {
             last_page: Cell::new(usize::MAX),
             last_toast: RefCell::default(),
             search_bar,
+            markup_bar,
+            tool_colors: Cell::new(["yellow", "red", "red"]),
             search_entry,
             search_status,
             undo_section,
@@ -426,6 +495,28 @@ impl Window {
         this.0.canvas.connect_view_changed(move || {
             if let Some(inner) = weak.upgrade() {
                 Window(inner).view_changed();
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_picked(move || {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).show_markup_color();
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_selected(move || {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).selected();
+            }
+        });
+        // Closing the bar lets go of its tool: nothing gets marked by a bar
+        // that isn't there.
+        let weak = Rc::downgrade(&this.0);
+        this.0.markup_bar.connect_reveal_child_notify(move |bar| {
+            if !bar.reveals_child()
+                && let Some(inner) = weak.upgrade()
+            {
+                Window(inner).set_markup_tool(None);
             }
         });
         let weak = Rc::downgrade(&this.0);
@@ -1434,6 +1525,23 @@ impl Window {
             "selection",
             &inner.canvas.selected_text().unwrap_or_default(),
         )
+        .bool("markup_bar", inner.markup_bar.reveals_child())
+        .str(
+            "markup_tool",
+            &inner
+                .window
+                .action_state("markup-tool")
+                .and_then(|s| s.get::<String>())
+                .unwrap_or_default(),
+        )
+        .str(
+            "markup_color",
+            &inner
+                .window
+                .action_state("markup-color")
+                .and_then(|s| s.get::<String>())
+                .unwrap_or_default(),
+        )
         .bool("search_bar", inner.search_bar.is_search_mode())
         // Mapped once the bar has started sliding in; keys before that are
         // dropped (GTK doesn't deliver them to unmapped widgets).
@@ -1587,14 +1695,96 @@ impl Window {
     /// Deletes the pages selected in the sidebar if there are several,
     /// else the current page. The last page can't be deleted.
     /// Marks the selected text: a highlight, or a line under or through
-    /// it.
-    fn mark(&self, style: MarkupStyle) {
-        let color = match style {
-            MarkupStyle::Highlight => HIGHLIGHT,
-            _ => MARKUP_LINE,
-        };
-        if !self.annotate(|d| d.mark_selection(style, color)) {
+    /// it, in that tool's colour. Returns whether there was text to mark.
+    fn mark(&self, style: MarkupStyle) -> bool {
+        let color = color_named(self.0.tool_colors.get()[tool_index(style)]);
+        self.annotate(|d| d.mark_selection(style, color))
+    }
+
+    /// The Highlight, Underline and Strikethrough actions: marks once.
+    fn mark_once(&self, style: MarkupStyle) {
+        if !self.mark(style) {
             self.toast(&gettext("Select the text to mark first"));
+        }
+    }
+
+    /// The tool that is pressed in on the markup bar, if any.
+    fn markup_tool(&self) -> Option<MarkupStyle> {
+        let state = self.0.window.action_state("markup-tool")?;
+        tool_named(state.str()?)
+    }
+
+    /// Presses a tool of the markup bar in (or none), and shows its colour.
+    fn set_markup_tool(&self, tool: Option<MarkupStyle>) {
+        let name = tool.map_or("none", tool_name);
+        self.0
+            .window
+            .change_action_state("markup-tool", &name.to_variant());
+        self.show_markup_color();
+    }
+
+    /// Shows, on the markup bar, the colour of the picked annotation if it
+    /// is one of the bar's, else that of the tool pressed in (of the
+    /// highlighter if none is).
+    fn show_markup_color(&self) {
+        let inner = &self.0;
+        let picked = inner
+            .document
+            .borrow()
+            .as_ref()
+            .and_then(|d| d.borrow_mut().picked_color())
+            .map(|c| {
+                markup_colors()
+                    .into_iter()
+                    .find(|(_, _, known)| *known == c)
+                    .map_or("other", |(name, _, _)| name)
+            });
+        let tool = self.markup_tool().unwrap_or(MarkupStyle::Highlight);
+        let name = picked.unwrap_or(inner.tool_colors.get()[tool_index(tool)]);
+        inner
+            .window
+            .change_action_state("markup-color", &name.to_variant());
+    }
+
+    /// A colour of the markup bar was chosen: the picked annotation gets
+    /// it, if one is picked; else it is what the tool pressed in (the
+    /// highlighter if none is) marks in from now on.
+    fn choose_markup_color(&self, name: &'static str) {
+        let inner = &self.0;
+        let picked = inner
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| d.borrow().picked.is_some());
+        if picked {
+            let mut failed = None;
+            self.edit(|d| match d.recolor_picked_annotation(color_named(name)) {
+                Ok(changed) => changed.then(Edited::default),
+                Err(e) => {
+                    failed = Some(e);
+                    None
+                }
+            });
+            if let Some(e) = failed {
+                self.toast(&gettext_f(
+                    "Couldn't change the annotation: {error}",
+                    &[("error", &save_error(e))],
+                ));
+            }
+        } else {
+            let tool = self.markup_tool().unwrap_or(MarkupStyle::Highlight);
+            let mut colors = inner.tool_colors.get();
+            colors[tool_index(tool)] = name;
+            inner.tool_colors.set(colors);
+        }
+        self.show_markup_color();
+    }
+
+    /// Text was selected with the pointer: a tool that is pressed in marks
+    /// it.
+    fn selected(&self) {
+        if let Some(tool) = self.markup_tool() {
+            self.mark(tool);
         }
     }
 
@@ -1609,6 +1799,9 @@ impl Window {
         let changed = f(&mut doc.borrow_mut());
         if changed {
             inner.canvas.queue_draw();
+            if let Some(s) = inner.sidebar.borrow().as_ref() {
+                s.refresh();
+            }
             self.update_edit_state();
         }
         changed
@@ -2316,13 +2509,13 @@ impl Window {
                 .activate(with(|w| w.delete_pages()))
                 .build(),
             gio::ActionEntry::builder("highlight")
-                .activate(with(|w| w.mark(MarkupStyle::Highlight)))
+                .activate(with(|w| w.mark_once(MarkupStyle::Highlight)))
                 .build(),
             gio::ActionEntry::builder("underline")
-                .activate(with(|w| w.mark(MarkupStyle::Underline)))
+                .activate(with(|w| w.mark_once(MarkupStyle::Underline)))
                 .build(),
             gio::ActionEntry::builder("strike-out")
-                .activate(with(|w| w.mark(MarkupStyle::StrikeOut)))
+                .activate(with(|w| w.mark_once(MarkupStyle::StrikeOut)))
                 .build(),
             gio::ActionEntry::builder("rotate-left")
                 .activate(with(|w| w.rotate(Rotation::Cw270)))
@@ -2378,6 +2571,55 @@ impl Window {
                 inner.canvas.update_viewer(|v| v.set_layout_mode(mode));
             })
             .build()]);
+        // The markup bar: the tool pressed in ("none" for none; activating
+        // the one that is in lets go of it) and the colour shown ("other"
+        // for a picked annotation in a colour the bar doesn't have).
+        let weak = Rc::downgrade(&self.0);
+        window.add_action_entries([gio::ActionEntry::builder("markup-tool")
+            .parameter_type(Some(&String::static_variant_type()))
+            .state("none".to_variant())
+            .activate(move |_, action, param| {
+                let (Some(inner), Some(name)) =
+                    (weak.upgrade(), param.and_then(|p| p.get::<String>()))
+                else {
+                    return;
+                };
+                let w = Window(inner);
+                let current = action.state().and_then(|s| s.get::<String>());
+                let tool = tool_named(&name).filter(|_| current.as_deref() != Some(&name));
+                w.set_markup_tool(tool);
+                // What is selected already is marked at once.
+                if let Some(tool) = tool {
+                    w.mark(tool);
+                }
+            })
+            .change_state(|_, action, state| {
+                if let Some(state) = state {
+                    action.set_state(state);
+                }
+            })
+            .build()]);
+        let weak = Rc::downgrade(&self.0);
+        window.add_action_entries([gio::ActionEntry::builder("markup-color")
+            .parameter_type(Some(&String::static_variant_type()))
+            .state("yellow".to_variant())
+            .activate(move |_, _, param| {
+                let (Some(inner), Some(name)) =
+                    (weak.upgrade(), param.and_then(|p| p.get::<String>()))
+                else {
+                    return;
+                };
+                let known = markup_colors().into_iter().find(|(n, _, _)| *n == name);
+                if let Some((name, _, _)) = known {
+                    Window(inner).choose_markup_color(name);
+                }
+            })
+            .change_state(|_, action, state| {
+                if let Some(state) = state {
+                    action.set_state(state);
+                }
+            })
+            .build()]);
         let weak = Rc::downgrade(&self.0);
         window.add_action_entries([gio::ActionEntry::builder("cover-alone")
             .state(false.to_variant())
@@ -2417,6 +2659,11 @@ impl Window {
             "show-sidebar",
             &self.0.split,
             "show-sidebar",
+        ));
+        window.add_action(&gio::PropertyAction::new(
+            "show-markup",
+            &self.0.markup_bar,
+            "reveal-child",
         ));
     }
 
@@ -2541,10 +2788,87 @@ thread_local! {
     static DEBUG_WINDOWS: RefCell<Vec<std::rc::Weak<Inner>>> = const { RefCell::new(Vec::new()) };
 }
 
-/// The colours of new markup: a highlighter's yellow, and red for lines
-/// under and through text, as Preview has them.
-const HIGHLIGHT: Color = Color::new(1.0, 0.92, 0.23);
-const MARKUP_LINE: Color = Color::new(0.88, 0.11, 0.14);
+/// The colours of the markup bar: a name (for the action's state and the
+/// style class of the swatch), what a tooltip calls it, and the colour.
+/// Light ones for highlighting first, then a strong red, which is what
+/// lines under and through text start with, as in Preview.
+fn markup_colors() -> [(&'static str, String, Color); 6] {
+    [
+        ("yellow", gettext("Yellow"), Color::new(1.0, 0.92, 0.23)),
+        ("green", gettext("Green"), Color::new(0.56, 0.94, 0.64)),
+        ("blue", gettext("Blue"), Color::new(0.6, 0.76, 0.95)),
+        ("pink", gettext("Pink"), Color::new(0.97, 0.66, 0.82)),
+        ("purple", gettext("Purple"), Color::new(0.86, 0.54, 0.87)),
+        ("red", gettext("Red"), Color::new(0.88, 0.11, 0.14)),
+    ]
+}
+
+/// The colour of the markup bar called `name` (yellow if there is none).
+fn color_named(name: &str) -> Color {
+    let colors = markup_colors();
+    colors
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .map_or(colors[0].2, |(_, _, c)| *c)
+}
+
+/// The markup bar's tools, as the `markup-tool` action names them.
+fn tool_name(tool: MarkupStyle) -> &'static str {
+    match tool {
+        MarkupStyle::Highlight => "highlight",
+        MarkupStyle::Underline | MarkupStyle::Squiggly => "underline",
+        MarkupStyle::StrikeOut => "strike-out",
+    }
+}
+
+fn tool_named(name: &str) -> Option<MarkupStyle> {
+    match name {
+        "highlight" => Some(MarkupStyle::Highlight),
+        "underline" => Some(MarkupStyle::Underline),
+        "strike-out" => Some(MarkupStyle::StrikeOut),
+        _ => None,
+    }
+}
+
+/// Where a tool's colour is in `Inner::tool_colors`.
+fn tool_index(tool: MarkupStyle) -> usize {
+    match tool {
+        MarkupStyle::Highlight => 0,
+        MarkupStyle::Underline | MarkupStyle::Squiggly => 1,
+        MarkupStyle::StrikeOut => 2,
+    }
+}
+
+/// The app's own styles: the colour swatches of the markup bar. Loaded
+/// once, however many windows there are.
+fn load_css() {
+    static LOADED: std::sync::Once = std::sync::Once::new();
+    LOADED.call_once(|| {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        let mut css = String::from(
+            ".markup-swatch { min-width: 18px; min-height: 18px; border-radius: 9999px; \
+             box-shadow: inset 0 0 0 1px alpha(currentColor, 0.25); }\n",
+        );
+        for (name, _, c) in markup_colors() {
+            let byte = |v: f32| (v * 255.0).round() as u8;
+            css.push_str(&format!(
+                ".markup-{name} {{ background-color: rgb({}, {}, {}); }}\n",
+                byte(c.r),
+                byte(c.g),
+                byte(c.b)
+            ));
+        }
+        let provider = gtk::CssProvider::new();
+        provider.load_from_string(&css);
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    });
+}
 
 /// What an edit changed, for [`Window::edit`].
 #[derive(Default)]

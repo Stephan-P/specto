@@ -65,8 +65,11 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 With the virtual pointer and keyboard, on a Courier text PDF:
 
 - link_click: clicking a link follows it
+- markup_bar: with a tool of the markup bar pressed in, text is marked as
+  it is selected, in the tool's colour; a colour chosen while an annotation
+  is picked recolours it; closing the bar lets go of the tool
 - mark_text: Highlight and Underline mark the selected text (and say so
-  when there is none); a click picks an annotation, Delete deletes it and
+  when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
   one the file has is picked and deleted the same way, and the page is
   then shown without it
@@ -905,6 +908,16 @@ def test_mark_text(ctx):
     selected(w, "fox")
     w.action("underline")
     w.wait("the underline", lambda s: s["annotations"] == 2 and s["undo"] == "Add Underline")
+    # Printed before it is saved: the highlight is on the paper.
+    out = os.path.join(ctx.home, "marked-print.pdf")
+    w.action("debug-print-to-file", gvariant_str(out))
+    w.wait("the print", lambda s: s["printed"] == 1)
+    prefix = os.path.join(ctx.home, "marked-print")
+    subprocess.run(["pdftoppm", "-r", "40", "-f", "1", "-l", "1", "-singlefile", out, prefix],
+                   check=True)
+    _, _, pixels = read_ppm(prefix + ".ppm")
+    marked = sum(yellow(tuple(pixels[k:k + 3])) for k in range(0, len(pixels), 3))
+    check(marked > 20, f"the print has {marked} yellow pixels")
     # A click picks the highlight; Delete deletes it, not the page.
     inp.click(*gap)
     w.wait("the highlight picked", lambda s: s["annotation_picked"])
@@ -958,6 +971,62 @@ def test_mark_text(ctx):
     w.maximize()
     check(s["annotations"] == 1, s)
     check(not yellow(pixel(w, "file-saved", *w.char(0, 0, 9))), "the highlight is in the saved file")
+
+
+def test_markup_bar(ctx):
+    w, inp = selection_window(ctx)
+    s = w.state()
+    check(not s["markup_bar"] and s["markup_tool"] == "none" and s["markup_color"] == "yellow", s)
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)  # the bar slides in and moves the page down
+    # With the highlighter pressed in, text is marked as it is selected, by
+    # dragging and by a double click.
+    w.action("markup-tool", gvariant_str("highlight"))
+    w.wait("the highlighter", lambda s: s["markup_tool"] == "highlight")
+    inp.drag(w.char(0, 0, 4), w.char(0, 0, 8, before=False))
+    s = w.wait("quick marked", lambda s: s["annotations"] == 1)
+    check(s["selection"] == "" and s["undo"] == "Add Highlight", s)
+    inp.click(*w.char(0, 1, 1), times=2)
+    w.wait("a word marked", lambda s: s["annotations"] == 2)
+    quick = w.char(0, 0, 6)
+    check(yellow(pixel(w, "yellow", *quick)), "not highlighted in yellow")
+    # Another colour for what is marked next.
+    w.action("markup-color", gvariant_str("green"))
+    w.wait("green", lambda s: s["markup_color"] == "green")
+    inp.drag(w.char(0, 0, 10), w.char(0, 0, 14, before=False))
+    w.wait("brown marked", lambda s: s["annotations"] == 3)
+    brown = w.char(0, 0, 12)
+    c = pixel(w, "green", *brown)
+    check(c[1] > c[0] + 30 and c[1] > c[2] + 30, f"not highlighted in green: {c}")
+    # The underline tool has its own colour, red; the bar shows it.
+    w.action("markup-tool", gvariant_str("underline"))
+    s = w.wait("the underliner", lambda s: s["markup_tool"] == "underline")
+    check(s["markup_color"] == "red", s)
+    # A picked annotation shows its colour, and takes the one chosen then.
+    inp.click(*quick)
+    s = w.wait("quick picked", lambda s: s["annotation_picked"])
+    check(s["markup_color"] == "yellow", s)
+    w.action("markup-color", gvariant_str("blue"))
+    s = w.wait("recoloured", lambda s: s["undo"] == "Change Highlight")
+    check(s["annotations"] == 3 and s["annotation_picked"] and s["markup_color"] == "blue", s)
+    inp.keys(Input.ESCAPE)
+    s = w.wait("let go", lambda s: not s["annotation_picked"])
+    check(s["markup_color"] == "red", s)
+    c = pixel(w, "blue", *quick)
+    check(c[2] > c[0] + 30, f"not recoloured to blue: {c}")
+    w.screenshot("bar")
+    # Activating the tool that is in lets go of it; so does closing the bar.
+    w.action("markup-tool", gvariant_str("underline"))
+    w.wait("no tool", lambda s: s["markup_tool"] == "none")
+    w.action("markup-tool", gvariant_str("strike-out"))
+    w.wait("strike-out", lambda s: s["markup_tool"] == "strike-out")
+    w.action("show-markup")
+    s = w.wait("the bar closed", lambda s: not s["markup_bar"] and s["markup_tool"] == "none")
+    time.sleep(0.4)
+    inp.drag(w.char(0, 1, 6), w.char(0, 1, 9, before=False))
+    time.sleep(0.5)
+    check(w.state()["annotations"] == 3, "text was marked without a tool")
 
 
 def test_select_words_and_lines(ctx):

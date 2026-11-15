@@ -83,6 +83,8 @@ An `EditDoc` doesn't hold the annotations, only what was done to them relative t
 
 hayro draws all of a page's annotations or none; its public interface has no way to draw or leave out just one. So when an annotation of a file is deleted, its page is rendered from a **variant**: a copy of that one page without the annotation, written by `specto-write` exactly as saving would and opened as a scheduler document of its own. Only the tiles come from the copy; text, links, search and saving still use the file. Undo closes the copy and goes back to the file. A page whose copy can't be written keeps its annotation, and the app says so.
 
+The same happens when text markup of a file is recoloured: the copy leaves it out, and the app draws it from then on. Thumbnails draw the same overlay, scaled. Printing, which renders pages from their files on a thread of its own, renders a page with edited annotations from such a copy too, this one written with all the changes in it. Pages copied to another window take the changes to their annotations along.
+
 Saving names a changed or deleted annotation of a file by its `Origin`, and checks that lopdf finds the same object there before touching it.
 
 ### Forms

@@ -35,6 +35,10 @@ pub(crate) struct Variant {
     pub(crate) doc_id: DocId,
 }
 
+/// A variant that is written but not opened yet: its page, the annotations
+/// it leaves out, and the file.
+type WrittenVariant = (FilePage, Vec<Origin>, Vec<u8>);
+
 /// Whether the frontend draws `annotation` (see the module documentation)
 /// rather than the renderer.
 fn floats(annotation: &Annotation) -> bool {
@@ -140,11 +144,7 @@ impl Session {
 
     /// As [`sync_variants`](Self::sync_variants); `ready` is a copy that is
     /// written already: its page, what it leaves out, and the file.
-    fn sync_variants_with(
-        &mut self,
-        scheduler: &Scheduler,
-        mut ready: Option<(FilePage, Vec<Origin>, Vec<u8>)>,
-    ) {
+    fn sync_variants_with(&mut self, scheduler: &Scheduler, mut ready: Option<WrittenVariant>) {
         let wanted: HashMap<FilePage, Vec<Origin>> = self
             .edit
             .pages_with_changed_annotations()
@@ -186,59 +186,39 @@ impl Session {
         }
     }
 
+    /// The annotations of the page at `position` that the frontend draws.
+    fn floating(&mut self, position: usize) -> Vec<Arc<Annotation>> {
+        self.annotations(position)
+            .into_iter()
+            .map(|(_, a)| a)
+            .filter(|a| a.flags.is_visible() && floats(a))
+            .collect()
+    }
+
     /// What to draw over the page at `position`, bottom to top: the
     /// annotations the frontend draws, where they are on screen now.
     pub fn overlay(&mut self, position: usize) -> Vec<ViewShape> {
-        let mut annotations = self.annotations(position);
-        annotations.retain(|(_, a)| a.flags.is_visible() && floats(a));
+        let annotations = self.floating(position);
         let viewer = &self.viewer;
-        let at = |p| viewer.pdf_to_view(position, p);
-        let mut out = Vec::new();
-        for (_, a) in annotations {
-            for shape in shapes(&a).unwrap_or_default() {
-                let on_screen = match shape {
-                    Shape::Fill {
-                        quad,
-                        color,
-                        opacity,
-                        multiply,
-                    } => (|| {
-                        let [a, b, c, d] = quad.points;
-                        Some(ViewShape::Fill {
-                            quad: [at(a)?, at(b)?, at(c)?, at(d)?],
-                            color,
-                            opacity,
-                            multiply,
-                        })
-                    })(),
-                    Shape::Stroke {
-                        from,
-                        to,
-                        width,
-                        color,
-                        opacity,
-                    } => (|| {
-                        let (a, b) = (at(from)?, at(to)?);
-                        // How long a point is on screen, from the line itself.
-                        let length = (to - from).length();
-                        let zoom = if length > 0.0 {
-                            (b - a).length() / length
-                        } else {
-                            1.0
-                        };
-                        Some(ViewShape::Stroke {
-                            from: a,
-                            to: b,
-                            width: width * zoom,
-                            color,
-                            opacity,
-                        })
-                    })(),
-                };
-                out.extend(on_screen);
-            }
-        }
-        out
+        on_screen(&annotations, |p| viewer.pdf_to_view(position, p))
+    }
+
+    /// Like [`overlay`](Self::overlay), for the page drawn `width` by
+    /// `height` with its top left corner at the origin: a thumbnail.
+    pub fn overlay_in(&mut self, position: usize, width: f64, height: f64) -> Vec<ViewShape> {
+        let annotations = self.floating(position);
+        let Some(page) = self.viewer.pages().get(position) else {
+            return Vec::new();
+        };
+        let geometry = page.displayed();
+        let (to_page, size) = (geometry.pdf_to_page(), geometry.size());
+        on_screen(&annotations, |p| {
+            let q = to_page.transform_point(p);
+            Some(ViewPoint::new(
+                q.x * width / size.width,
+                q.y * height / size.height,
+            ))
+        })
     }
 
     /// Marks the selected text in `style` and `color`, as one edit: one
@@ -324,6 +304,29 @@ impl Session {
         ))
     }
 
+    /// For an edit to the picked annotation after which the renderer must
+    /// not draw it any more (it is deleted, or drawn by the frontend from
+    /// then on): the copy of its page without it, written first, so that
+    /// nothing changes if that can't be done. `None` if the renderer
+    /// doesn't draw it now either.
+    fn page_without(
+        &self,
+        id: AnnotId,
+        a: &Annotation,
+    ) -> Result<Option<WrittenVariant>, WriteError> {
+        let (AnnotId::File { source, page, .. }, Some(origin)) = (id, a.origin) else {
+            return Ok(None);
+        };
+        if floats(a) {
+            return Ok(None);
+        }
+        let mut hidden = self.hidden(source, page);
+        hidden.push(origin);
+        hidden.sort_by_key(|o| o.index);
+        let file = self.variant_file((source, page), &hidden)?;
+        Ok(Some(((source, page), hidden, file)))
+    }
+
     /// Deletes the annotation that is picked. Returns whether there was
     /// one, or why it can't be deleted: for one of a file, its page must
     /// be written anew without it (see the module documentation), which
@@ -333,17 +336,7 @@ impl Session {
         let Some((id, a)) = self.picked_one() else {
             return Ok(false);
         };
-        // The copy of the page first: if it can't be made, nothing changes.
-        let mut ready = None;
-        if let (AnnotId::File { source, page, .. }, Some(origin)) = (id, a.origin)
-            && !floats(&a)
-        {
-            let mut hidden = self.hidden(source, page);
-            hidden.push(origin);
-            hidden.sort_by_key(|o| o.index);
-            let file = self.variant_file((source, page), &hidden)?;
-            ready = Some(((source, page), hidden, file));
-        }
+        let ready = self.page_without(id, &a)?;
         self.picked = None;
         let removed = self.edit.remove_annotation(id, &a);
         if removed {
@@ -351,6 +344,92 @@ impl Session {
         }
         Ok(removed)
     }
+
+    /// Gives the picked annotation the colour `color`; it stays picked.
+    /// Returns whether it changed: not if nothing is picked, it has that
+    /// colour already, or it is of a kind only its file knows how to draw.
+    /// Errors as [`remove_picked_annotation`](Self::remove_picked_annotation).
+    pub fn recolor_picked_annotation(
+        &mut self,
+        scheduler: &Scheduler,
+        color: Color,
+    ) -> Result<bool, WriteError> {
+        let Some((id, a)) = self.picked_one() else {
+            return Ok(false);
+        };
+        if a.color == Some(color) || shapes(&a).is_none() {
+            return Ok(false);
+        }
+        let ready = self.page_without(id, &a)?;
+        let mut changed = (*a).clone();
+        changed.color = Some(color);
+        changed.modified = Some(now());
+        // Drawn from its values from now on, and given a new look when saved.
+        changed.appearance = Appearance::Generated;
+        let done = self.edit.change_annotation(id, changed);
+        if done {
+            self.sync_variants_with(scheduler, ready);
+        }
+        Ok(done)
+    }
+
+    /// The colour of the picked annotation, if one is picked and has one.
+    pub fn picked_color(&mut self) -> Option<Color> {
+        self.picked_one()?.1.color
+    }
+}
+
+/// The shapes of `annotations` where `at` puts their points.
+fn on_screen(
+    annotations: &[Arc<Annotation>],
+    at: impl Fn(specto_geom::PdfPoint) -> Option<ViewPoint>,
+) -> Vec<ViewShape> {
+    let mut out = Vec::new();
+    for a in annotations {
+        for shape in shapes(a).unwrap_or_default() {
+            let placed = match shape {
+                Shape::Fill {
+                    quad,
+                    color,
+                    opacity,
+                    multiply,
+                } => (|| {
+                    let [a, b, c, d] = quad.points;
+                    Some(ViewShape::Fill {
+                        quad: [at(a)?, at(b)?, at(c)?, at(d)?],
+                        color,
+                        opacity,
+                        multiply,
+                    })
+                })(),
+                Shape::Stroke {
+                    from,
+                    to,
+                    width,
+                    color,
+                    opacity,
+                } => (|| {
+                    let (a, b) = (at(from)?, at(to)?);
+                    // How long a point is on screen, from the line itself.
+                    let length = (to - from).length();
+                    let zoom = if length > 0.0 {
+                        (b - a).length() / length
+                    } else {
+                        1.0
+                    };
+                    Some(ViewShape::Stroke {
+                        from: a,
+                        to: b,
+                        width: width * zoom,
+                        color,
+                        opacity,
+                    })
+                })(),
+            };
+            out.extend(placed);
+        }
+    }
+    out
 }
 
 /// The time now, in UTC.

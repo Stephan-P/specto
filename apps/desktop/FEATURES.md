@@ -76,13 +76,20 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## Markup
 
-- Highlight, Underline and Strikethrough (the main menu, or Shift+*Primary*+H, U and X) mark the selected text; a selection over several pages is marked on each, as one edit
+- The pencil button in the header bar (or Shift+*Primary*+A) shows the markup bar: Highlight, Underline and Strikethrough, and six colours
+- A tool that is pressed in marks text as it is selected, by dragging or by double and triple clicks, until it is let go of (press it again, or close the bar). Pressing one in with text selected marks that text
+- Each tool has its own colour: yellow for the highlighter and red for the lines to begin with, changed by choosing another while the tool is pressed in
+- Without the bar: Shift+*Primary*+H, U and X mark the selected text once
+- A selection over several pages is marked on each, as one edit
 - A highlight darkens the page beneath it like a highlighter pen, so the text stays black
 - A click on markup picks it (a frame shows around it); Delete or Backspace deletes it, Escape lets go of it. That goes for what the file already had too, of any kind (notes, text boxes, drawings, stamps), except what the file marks as locked or read-only
+- With markup picked, the bar shows its colour, and choosing another recolours it (text markup only, for now)
 - Undo and Redo cover markup like page edits, in the order things were done
+- Thumbnails and printed pages show markup as the page view does, saved or not
+- Thumbnails dragged to another window take their pages' markup along
 - Saved with the document as standard PDF annotations, which other programs show and can edit
 - Markup a file has without a ready-made look (some programs leave that out) is shown where it is text markup
-- Not yet: changing markup (colour, position); new markup in thumbnails and in print before the document is saved
+- Not yet: moving markup, and kinds other than text markup
 
 ## Saving
 
@@ -107,7 +114,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right, Highlight, Underline, Strikethrough), Help (About Specto)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right, Show Markup Toolbar, Highlight, Underline, Strikethrough), Help (About Specto)
 - Shortcuts with Cmd
 
 ## About

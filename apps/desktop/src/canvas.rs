@@ -44,6 +44,8 @@ mod imp {
         /// value-changed handlers don't feed it back.
         pub syncing: Cell<bool>,
         pub on_view_changed: RefCell<Option<Box<dyn Fn()>>>,
+        pub on_selected: RefCell<Option<Box<dyn Fn()>>>,
+        pub on_picked: RefCell<Option<Box<dyn Fn()>>>,
         /// Called with a link's URI; the window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links,
@@ -78,6 +80,8 @@ mod imp {
                 document: RefCell::default(),
                 syncing: Cell::default(),
                 on_view_changed: RefCell::default(),
+                on_selected: RefCell::default(),
+                on_picked: RefCell::default(),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -175,41 +179,21 @@ mod imp {
                     0.0,
                     3.0,
                 );
-                // Annotations made here lie over the page (see
-                // `Session::overlay`). A highlight darkens what is beneath
-                // it, so the page is the bottom of a blend with those.
                 let overlay = d.session.overlay(page.page);
-                let (darkening, covering): (Vec<ViewShape>, Vec<ViewShape>) = overlay
-                    .into_iter()
-                    .partition(|s| matches!(s, ViewShape::Fill { multiply: true, .. }));
-                if !darkening.is_empty() {
-                    snapshot.push_blend(gsk::BlendMode::Multiply);
-                }
-                snapshot.append_color(&gdk::RGBA::WHITE, &rect);
-                snapshot.push_clip(&rect);
-                for layer in &page.layers {
-                    if let Some(texture) = d.cache.get(&layer.key) {
-                        // Not `append_scaled_texture`: on a HiDPI surface GSK
-                        // renders that node at logical resolution and scales
-                        // the result up, blurring every tile (measured on
-                        // macOS, see M0-FINDINGS.md). A plain texture node is
-                        // sampled at device resolution, 1:1 when `layer.exact`.
-                        snapshot.append_texture(texture, &logical(layer.dest, scale));
+                let cache = &mut d.cache;
+                draw_page(snapshot, &rect, overlay, |snapshot| {
+                    for layer in &page.layers {
+                        if let Some(texture) = cache.get(&layer.key) {
+                            // Not `append_scaled_texture`: on a HiDPI surface
+                            // GSK renders that node at logical resolution and
+                            // scales the result up, blurring every tile
+                            // (measured on macOS, see M0-FINDINGS.md). A plain
+                            // texture node is sampled at device resolution,
+                            // 1:1 when `layer.exact`.
+                            snapshot.append_texture(texture, &logical(layer.dest, scale));
+                        }
                     }
-                }
-                snapshot.pop();
-                if !darkening.is_empty() {
-                    snapshot.pop();
-                    snapshot.push_clip(&rect);
-                    draw_shapes(snapshot, &darkening);
-                    snapshot.pop();
-                    snapshot.pop();
-                }
-                if !covering.is_empty() {
-                    snapshot.push_clip(&rect);
-                    draw_shapes(snapshot, &covering);
-                    snapshot.pop();
-                }
+                });
             }
             obj.draw_picked(snapshot, d, &frame.pages, scale);
             obj.draw_matches(snapshot, d, &frame.pages, scale);
@@ -309,6 +293,24 @@ impl Canvas {
         let doc = self.imp().document.borrow().clone()?;
         let mut d = doc.borrow_mut();
         d.link_at(ViewPoint::new(x, y))
+    }
+
+    /// `f` is called when the user has finished selecting text with the
+    /// pointer (the button is up again) and something is selected.
+    pub fn connect_selected(&self, f: impl Fn() + 'static) {
+        self.imp().on_selected.replace(Some(Box::new(f)));
+    }
+
+    /// `f` is called when another annotation is picked, or none any more.
+    pub fn connect_picked(&self, f: impl Fn() + 'static) {
+        self.imp().on_picked.replace(Some(Box::new(f)));
+    }
+
+    fn picked_changed(&self) {
+        self.queue_draw();
+        if let Some(cb) = self.imp().on_picked.borrow().as_ref() {
+            cb();
+        }
     }
 
     pub fn connect_view_changed(&self, f: impl Fn() + 'static) {
@@ -444,7 +446,7 @@ impl Canvas {
         d.picked = picked;
         drop(d);
         if changed {
-            self.queue_draw();
+            self.picked_changed();
         }
         picked.is_some()
     }
@@ -456,7 +458,7 @@ impl Canvas {
         };
         let had = doc.borrow_mut().picked.take().is_some();
         if had {
-            self.queue_draw();
+            self.picked_changed();
         }
         had
     }
@@ -832,6 +834,13 @@ impl Canvas {
             if let Some(id) = imp.autoscroll.take() {
                 id.remove();
             }
+            // Also after a double or triple click, which selects without
+            // dragging.
+            if c.selected_text().is_some()
+                && let Some(cb) = imp.on_selected.borrow().as_ref()
+            {
+                cb();
+            }
         });
         self.add_controller(drag);
 
@@ -942,6 +951,40 @@ impl Canvas {
             glib::Propagation::Stop
         });
         self.add_controller(keys);
+    }
+}
+
+/// Draws a page in `rect`: white, what `content` draws (its tiles),
+/// clipped to the page, and over that the annotations the app draws itself
+/// (`overlay`, see `Session::overlay`). A highlight darkens what is beneath
+/// it, so the page is the bottom of a blend with those.
+pub fn draw_page(
+    snapshot: &gtk::Snapshot,
+    rect: &graphene::Rect,
+    overlay: Vec<ViewShape>,
+    content: impl FnOnce(&gtk::Snapshot),
+) {
+    let (darkening, covering): (Vec<ViewShape>, Vec<ViewShape>) = overlay
+        .into_iter()
+        .partition(|s| matches!(s, ViewShape::Fill { multiply: true, .. }));
+    if !darkening.is_empty() {
+        snapshot.push_blend(gsk::BlendMode::Multiply);
+    }
+    snapshot.append_color(&gdk::RGBA::WHITE, rect);
+    snapshot.push_clip(rect);
+    content(snapshot);
+    snapshot.pop();
+    if !darkening.is_empty() {
+        snapshot.pop();
+        snapshot.push_clip(rect);
+        draw_shapes(snapshot, &darkening);
+        snapshot.pop();
+        snapshot.pop();
+    }
+    if !covering.is_empty() {
+        snapshot.push_clip(rect);
+        draw_shapes(snapshot, &covering);
+        snapshot.pop();
     }
 }
 

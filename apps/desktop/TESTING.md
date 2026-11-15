@@ -152,7 +152,13 @@ Work on copies of the test files.
 - LONG, a highlight deleted on one page: scrolling, zooming, selecting text, links and search on that page work as before.
 - The saved file in other programs (Papers or Evince, Firefox, Preview on macOS): the markup shows, in the same place and colour, and can be selected and deleted there. In a list of annotations it shows the marked text.
 - ENCRYPTED: highlight, save, reopen with the password: the highlight is there.
-- Expected for now: thumbnails and printed pages show new markup only after saving.
+- The markup bar (the pencil in the header bar): with Highlight pressed in, every selection is marked as soon as the button is let go, also a double-clicked word. Scrolling, links and picking markup still work with a tool pressed in. Pressing the tool again, or closing the bar, stops it.
+- Colours: choose green with Highlight pressed in, mark something: green. Switch to Underline: the bar shows red; back to Highlight: green again.
+- Pick a highlight: the bar shows its colour. Choose another: it changes at once, and *Primary*+Z changes it back. The same for a highlight the file already had: nothing else on the page changes.
+- The swatches are easy to tell apart and to hit, in the light and the dark style; the one in use is visibly marked.
+- Thumbnails show new markup at once, and lose it on undo.
+- Print (to a file is enough) with unsaved markup: it is on the printed page, in the same place and colour.
+- Two windows: drag the thumbnail of a marked page into the other window's sidebar: the markup is there too, and one undo there removes page and markup.
 
 ### Saving
 

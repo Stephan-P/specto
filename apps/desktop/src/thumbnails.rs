@@ -63,19 +63,24 @@ mod imp {
                 0.0,
                 2.0,
             );
-            snapshot.append_color(&gdk::RGBA::WHITE, &rect);
             let (Some(doc), Some(page)) = (self.document.borrow().clone(), self.page.get()) else {
+                snapshot.append_color(&gdk::RGBA::WHITE, &rect);
                 return;
             };
             let mut d = doc.borrow_mut();
-            let Some(key) = d.viewer.placeholder_key(page) else {
-                return;
-            };
-            if let Some(texture) = d.cache.get(&key) {
-                // Not `append_scaled_texture`: GSK renders that at logical
-                // resolution on HiDPI surfaces (see canvas.rs).
-                snapshot.append_texture(texture, &rect);
-            }
+            let key = d.viewer.placeholder_key(page);
+            // The annotations the app draws itself, as on the page view.
+            let overlay = d
+                .session
+                .overlay_in(page, obj.width() as f64, obj.height() as f64);
+            let texture = key.and_then(|key| d.cache.get(&key));
+            crate::canvas::draw_page(snapshot, &rect, overlay, |snapshot| {
+                if let Some(texture) = texture {
+                    // Not `append_scaled_texture`: GSK renders that at logical
+                    // resolution on HiDPI surfaces (see canvas.rs).
+                    snapshot.append_texture(texture, &rect);
+                }
+            });
         }
     }
 

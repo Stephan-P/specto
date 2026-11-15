@@ -186,6 +186,45 @@ impl EditDoc {
             .collect()
     }
 
+    /// Takes over what another document did to the annotations of pages
+    /// (source, page of it, the changes), for pages copied from it. Pages
+    /// whose annotations were edited here already keep theirs: a page has
+    /// one set of annotations, wherever it came from. Part of the edit
+    /// being made; nothing is recorded for undo here.
+    pub(crate) fn adopt_annotation_changes(
+        &mut self,
+        changes: Vec<(SourceId, u32, PageAnnotChanges)>,
+    ) {
+        for (source, page, c) in changes {
+            if c.is_empty() || !self.annotation_changes(source, page).is_empty() {
+                continue;
+            }
+            let edits = Arc::make_mut(&mut self.annots);
+            for origin in c.removed {
+                let to = None;
+                edits
+                    .changed
+                    .insert((source, page, origin.index), Changed { origin, to });
+            }
+            for (origin, a) in c.replaced {
+                let to = Some(a);
+                edits
+                    .changed
+                    .insert((source, page, origin.index), Changed { origin, to });
+            }
+            for annotation in c.added {
+                let id = self.next_annot;
+                self.next_annot += 1;
+                edits.added.push(Added {
+                    id,
+                    source,
+                    page,
+                    annotation,
+                });
+            }
+        }
+    }
+
     /// Deletes the annotation `id`, which is `annotation` (as
     /// [`annotations`](Self::annotations) gave it). Returns whether there
     /// was something to delete.

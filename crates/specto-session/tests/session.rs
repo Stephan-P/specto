@@ -665,3 +665,55 @@ fn deleting_an_annotation_the_file_has() {
     saved.close(&scheduler);
     session.close(&scheduler);
 }
+
+#[test]
+fn annotations_go_with_pages_to_another_session() {
+    use specto_annot::{Color, MarkupStyle};
+
+    let scheduler = Scheduler::new(1, || {});
+    let mut from = open(&scheduler, book(3, "alpha"));
+    from.selection = Some(Selection::all(1));
+    assert!(from.mark_selection(MarkupStyle::Highlight, Color::new(1.0, 0.9, 0.0)));
+    let bundle = from.bundle(&[0, 1]);
+    // For printing: the marked page as a file with the highlight in it, the
+    // other one straight from its file.
+    let copy = bundle
+        .annotated_page(0)
+        .expect("page 1 was marked")
+        .unwrap();
+    let mut printed = open(&scheduler, copy);
+    assert_eq!(printed.viewer.page_count(), 1);
+    assert_eq!(printed.annotations(0).len(), 1);
+    printed.close(&scheduler);
+    assert!(bundle.annotated_page(1).is_none());
+
+    // Into another document: the highlight comes along, as part of the
+    // one edit.
+    let mut to = open(&scheduler, book(1, "beta"));
+    assert_eq!(
+        to.insert_bundle(&scheduler, 1, &bundle).unwrap(),
+        Some(1..3)
+    );
+    assert!(to.annotations(0).is_empty());
+    assert_eq!(to.annotations(1).len(), 1);
+    assert_eq!(to.overlay(1).len(), 2);
+    assert!(to.annotations(2).is_empty());
+    assert!(to.undo(&scheduler).is_some());
+    assert_eq!(to.viewer.page_count(), 1);
+    assert!(to.redo(&scheduler).is_some());
+    assert_eq!(to.annotations(1).len(), 1);
+    // Saved from there, it is in the file.
+    let written = to.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    assert_eq!(saved.annotations(1).len(), 1);
+    saved.close(&scheduler);
+
+    // The same pages again: the page has its annotations here already.
+    assert_eq!(
+        to.insert_bundle(&scheduler, 0, &bundle).unwrap(),
+        Some(0..2)
+    );
+    assert_eq!(to.annotations(0).len(), 1);
+    from.close(&scheduler);
+    to.close(&scheduler);
+}

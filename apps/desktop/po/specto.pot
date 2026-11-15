@@ -19,7 +19,7 @@ msgstr ""
 
 #. Translators: {apache} and {mit} are the names of the two licences,
 #. which stay in English and become links.
-#: src/main.rs:118
+#: src/main.rs:119
 #, rust-format
 msgid ""
 "Specto is licensed under either of the {apache} or the {mit}, at your "
@@ -28,211 +28,215 @@ msgid ""
 "It comes with no warranty of any kind."
 msgstr ""
 
-#: src/main.rs:136
+#: src/main.rs:137
 msgid "The Specto contributors"
 msgstr ""
 
-#: src/main.rs:137
+#: src/main.rs:138
 msgid "© 2026 The Specto contributors"
 msgstr ""
 
 #. Translators: what the library is used for stays in brackets.
-#: src/main.rs:146
+#: src/main.rs:147
 msgid "hayro (rendering)"
 msgstr ""
 
 #. Translators: what the library is used for stays in brackets.
-#: src/main.rs:148
+#: src/main.rs:149
 msgid "lopdf (saving)"
 msgstr ""
 
-#: src/main.rs:150
+#: src/main.rs:151
 msgid "Built with"
 msgstr ""
 
-#: src/main.rs:180
+#: src/main.rs:181
 #, rust-format
 msgid "Quit {app}"
 msgstr ""
 
-#: src/main.rs:181 src/window.rs:232
+#: src/main.rs:182 src/window.rs:233
 #, rust-format
 msgid "About {app}"
 msgstr ""
 
-#: src/main.rs:198 src/window.rs:132
+#: src/main.rs:199 src/window.rs:140
 msgid "Open…"
 msgstr ""
 
-#: src/main.rs:200 src/window.rs:193
+#: src/main.rs:201 src/window.rs:201
 msgid "Save"
 msgstr ""
 
-#: src/main.rs:201 src/window.rs:194
+#: src/main.rs:202 src/window.rs:202
 msgid "Save As…"
 msgstr ""
 
-#: src/main.rs:202 src/window.rs:196
+#: src/main.rs:203 src/window.rs:204
 msgid "Export Selected Pages…"
 msgstr ""
 
-#: src/main.rs:204 src/window.rs:199
+#: src/main.rs:205 src/window.rs:207
 msgid "Print…"
 msgstr ""
 
-#: src/main.rs:205
+#: src/main.rs:206
 msgid "Close Window"
 msgstr ""
 
-#: src/main.rs:210 src/window.rs:2144
+#: src/main.rs:211 src/window.rs:2337
 msgid "Undo"
 msgstr ""
 
-#: src/main.rs:211 src/window.rs:2148
+#: src/main.rs:212 src/window.rs:2341
 msgid "Redo"
 msgstr ""
 
-#: src/main.rs:214
+#: src/main.rs:215
 msgid "Copy"
 msgstr ""
 
-#: src/main.rs:215
+#: src/main.rs:216
 msgid "Select All"
 msgstr ""
 
-#: src/main.rs:218 src/window.rs:217
+#: src/main.rs:219 src/window.rs:225
 msgid "Insert Pages from File…"
 msgstr ""
 
-#: src/main.rs:219 src/window.rs:208
+#: src/main.rs:220 src/window.rs:216
 msgid "Delete Pages"
 msgstr ""
 
-#: src/main.rs:222
+#: src/main.rs:223
 msgid "Find…"
 msgstr ""
 
-#: src/main.rs:223
+#: src/main.rs:224
 msgid "Find Next"
 msgstr ""
 
-#: src/main.rs:224
+#: src/main.rs:225
 msgid "Find Previous"
 msgstr ""
 
-#: src/main.rs:229 src/window.rs:248
+#: src/main.rs:230 src/window.rs:249
 msgid "Single Page"
 msgstr ""
 
-#: src/main.rs:230 src/window.rs:249
+#: src/main.rs:231 src/window.rs:250
 msgid "Continuous"
 msgstr ""
 
-#: src/main.rs:231 src/window.rs:250
+#: src/main.rs:232 src/window.rs:251
 msgid "Two Pages"
 msgstr ""
 
-#: src/main.rs:233 src/window.rs:251
+#: src/main.rs:234 src/window.rs:252
 msgid "Two Pages, Continuous"
 msgstr ""
 
-#: src/main.rs:237 src/window.rs:259
+#: src/main.rs:238 src/window.rs:260
 msgid "Show Cover Page Alone"
 msgstr ""
 
-#: src/main.rs:239 src/window.rs:276
+#: src/main.rs:240 src/window.rs:277
 msgid "Actual Size"
 msgstr ""
 
-#: src/main.rs:240 src/window.rs:274
+#: src/main.rs:241 src/window.rs:275
 msgid "Fit Width"
 msgstr ""
 
-#: src/main.rs:241 src/window.rs:275
+#: src/main.rs:242 src/window.rs:276
 msgid "Fit Page"
 msgstr ""
 
-#: src/main.rs:242 src/window.rs:281
+#: src/main.rs:243 src/window.rs:282
 msgid "Zoom In"
 msgstr ""
 
-#: src/main.rs:243 src/window.rs:282
+#: src/main.rs:244 src/window.rs:283
 msgid "Zoom Out"
 msgstr ""
 
-#: src/main.rs:246
+#: src/main.rs:247
 msgid "Show Sidebar"
 msgstr ""
 
-#: src/main.rs:247 src/window.rs:914
+#: src/main.rs:248 src/window.rs:1005
 msgid "Thumbnails"
 msgstr ""
 
-#: src/main.rs:248 src/window.rs:920
+#: src/main.rs:249 src/window.rs:1011
 msgid "Contents"
 msgstr ""
 
-#: src/main.rs:253
+#: src/main.rs:254
 msgid "Previous Page"
 msgstr ""
 
-#: src/main.rs:254
+#: src/main.rs:255
 msgid "Next Page"
 msgstr ""
 
-#: src/main.rs:257
+#: src/main.rs:258
 msgid "First Page"
 msgstr ""
 
-#: src/main.rs:258
+#: src/main.rs:259
 msgid "Last Page"
 msgstr ""
 
-#: src/main.rs:260
+#: src/main.rs:261
 msgid "Go to Page…"
 msgstr ""
 
-#: src/main.rs:265 src/window.rs:205
+#: src/main.rs:266 src/window.rs:213
 msgid "Rotate Left"
 msgstr ""
 
-#: src/main.rs:266 src/window.rs:206
+#: src/main.rs:267 src/window.rs:214
 msgid "Rotate Right"
 msgstr ""
 
-#: src/main.rs:269 src/window.rs:224
+#: src/main.rs:270
+msgid "Show Markup Toolbar"
+msgstr ""
+
+#: src/main.rs:271 src/window.rs:370
 msgid "Highlight"
 msgstr ""
 
-#: src/main.rs:270 src/window.rs:225
+#: src/main.rs:272 src/window.rs:371
 msgid "Underline"
 msgstr ""
 
-#: src/main.rs:271 src/window.rs:226
+#: src/main.rs:273 src/window.rs:372
 msgid "Strikethrough"
 msgstr ""
 
-#: src/main.rs:276
+#: src/main.rs:278
 msgid "File"
 msgstr ""
 
-#: src/main.rs:277
+#: src/main.rs:279
 msgid "Edit"
 msgstr ""
 
-#: src/main.rs:278
+#: src/main.rs:280
 msgid "View"
 msgstr ""
 
-#: src/main.rs:279
+#: src/main.rs:281
 msgid "Go"
 msgstr ""
 
-#: src/main.rs:280
+#: src/main.rs:282
 msgid "Tools"
 msgstr ""
 
-#: src/main.rs:282
+#: src/main.rs:284
 msgid "Help"
 msgstr ""
 
@@ -240,214 +244,230 @@ msgstr ""
 msgid "printing failed"
 msgstr ""
 
-#: src/print.rs:262
+#: src/print.rs:276
 msgid "couldn't open the file"
 msgstr ""
 
-#: src/window.rs:128
+#: src/window.rs:136
 msgid "Open a PDF"
 msgstr ""
 
-#: src/window.rs:129
+#: src/window.rs:137
 msgid "Drop a file here or choose one"
 msgstr ""
 
-#: src/window.rs:142
+#: src/window.rs:150
 msgid "Recent"
 msgstr ""
 
-#: src/window.rs:168
+#: src/window.rs:176
 msgid "Thumbnails (F9)"
 msgstr ""
 
-#: src/window.rs:180
+#: src/window.rs:188
 #, rust-format
 msgid "Open ({shortcut})"
 msgstr ""
 
-#: src/window.rs:239
+#: src/window.rs:240
 msgid "Main Menu"
 msgstr ""
 
-#: src/window.rs:266
+#: src/window.rs:267
 msgid "Page Layout"
 msgstr ""
 
-#: src/window.rs:287
+#: src/window.rs:288
 msgid "Zoom"
 msgstr ""
 
-#: src/window.rs:298
+#: src/window.rs:299
 #, rust-format
 msgid "Go to Page ({shortcut})"
 msgstr ""
 
-#: src/window.rs:311
+#: src/window.rs:312
 msgid "Search"
 msgstr ""
 
-#: src/window.rs:323
+#: src/window.rs:324
 msgid "Previous Match (Shift+Enter)"
 msgstr ""
 
-#: src/window.rs:330
+#: src/window.rs:331
 msgid "Next Match (Enter)"
 msgstr ""
 
-#: src/window.rs:352
+#: src/window.rs:353
 #, rust-format
 msgid "Search ({shortcut})"
 msgstr ""
 
-#: src/window.rs:561 src/window.rs:1860
+#: src/window.rs:378
+#, rust-format
+msgid ""
+"Mark the selected text, and what is selected from now on ({shortcut} marks "
+"once)"
+msgstr ""
+
+#: src/window.rs:418
+msgid "Markup"
+msgstr ""
+
+#: src/window.rs:652 src/window.rs:2053
 #, rust-format
 msgid "Couldn't open “{name}”: {error}"
 msgstr ""
 
-#: src/window.rs:638
+#: src/window.rs:729
 #, rust-format
 msgid "“{name}” was moved or deleted. Saving writes it again."
 msgstr ""
 
-#: src/window.rs:647
+#: src/window.rs:738
 #, rust-format
 msgid "“{name}” was changed by another program. Reloading discards your edits."
 msgstr ""
 
-#: src/window.rs:650
+#: src/window.rs:741
 msgid "_Reload"
 msgstr ""
 
-#: src/window.rs:729
+#: src/window.rs:820
 msgid "File Changed on Disk"
 msgstr ""
 
-#: src/window.rs:731
+#: src/window.rs:822
 #, rust-format
 msgid ""
 "“{name}” was changed by another program after it was opened. Saving replaces "
 "those changes with this document."
 msgstr ""
 
-#: src/window.rs:736 src/window.rs:838 src/window.rs:2075
+#: src/window.rs:827 src/window.rs:929 src/window.rs:2268
 msgid "_Cancel"
 msgstr ""
 
-#: src/window.rs:737
+#: src/window.rs:828
 msgid "_Save Anyway"
 msgstr ""
 
-#: src/window.rs:830
+#: src/window.rs:921
 #, rust-format
 msgid "The password was incorrect. Enter the password for “{name}”."
 msgstr ""
 
-#: src/window.rs:834
+#: src/window.rs:925
 #, rust-format
 msgid "“{name}” is protected with a password."
 msgstr ""
 
-#: src/window.rs:836
+#: src/window.rs:927
 msgid "Password Required"
 msgstr ""
 
-#: src/window.rs:839
+#: src/window.rs:930
 msgid "_Unlock"
 msgstr ""
 
-#: src/window.rs:1014
+#: src/window.rs:1105
 #, rust-format
 msgid "Links of this kind aren't opened: {address}"
 msgstr ""
 
-#: src/window.rs:1023
+#: src/window.rs:1114
 #, rust-format
 msgid "Couldn't open link: {error}"
 msgstr ""
 
-#: src/window.rs:1218
+#: src/window.rs:1309
 msgid "No matches"
 msgstr ""
 
-#: src/window.rs:1219
+#: src/window.rs:1310
 msgid "Searching…"
 msgstr ""
 
-#: src/window.rs:1224
+#: src/window.rs:1315
 #, rust-format
 msgid "{current} of {total}"
 msgstr ""
 
 #. Translators: the search is still running, so there may be
 #. more matches than {total}.
-#: src/window.rs:1228
+#: src/window.rs:1319
 #, rust-format
 msgid "{current} of {total}…"
 msgstr ""
 
-#: src/window.rs:1597
+#: src/window.rs:1707
 msgid "Select the text to mark first"
 msgstr ""
 
-#: src/window.rs:1631
+#: src/window.rs:1770
+#, rust-format
+msgid "Couldn't change the annotation: {error}"
+msgstr ""
+
+#: src/window.rs:1824
 #, rust-format
 msgid "Couldn't delete the annotation: {error}"
 msgstr ""
 
-#: src/window.rs:1682
+#: src/window.rs:1875
 #, rust-format
 msgid "Couldn't copy the pages: {error}"
 msgstr ""
 
-#: src/window.rs:1765
+#: src/window.rs:1958
 #, rust-format
 msgid "Couldn't print: {error}"
 msgstr ""
 
-#: src/window.rs:1773
+#: src/window.rs:1966
 msgid "Insert Pages from File"
 msgstr ""
 
-#: src/window.rs:1902
+#: src/window.rs:2095
 msgid "Export Selected Pages"
 msgstr ""
 
-#: src/window.rs:1935
+#: src/window.rs:2128
 #, rust-format
 msgid "Exported {n} page to “{name}”"
 msgid_plural "Exported {n} pages to “{name}”"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:1982
+#: src/window.rs:2175
 msgid "Save As"
 msgstr ""
 
-#: src/window.rs:2068
+#: src/window.rs:2261
 msgid "Save Changes?"
 msgstr ""
 
-#: src/window.rs:2070
+#: src/window.rs:2263
 #, rust-format
 msgid "“{name}” has unsaved changes. Changes that aren't saved will be lost."
 msgstr ""
 
-#: src/window.rs:2076
+#: src/window.rs:2269
 msgid "_Discard"
 msgstr ""
 
-#: src/window.rs:2077
+#: src/window.rs:2270
 msgid "_Save"
 msgstr ""
 
-#: src/window.rs:2154
+#: src/window.rs:2347
 #, rust-format
 msgid "{n} page — Edited"
 msgid_plural "{n} pages — Edited"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2156 src/window.rs:2824
+#: src/window.rs:2349 src/window.rs:3148
 #, rust-format
 msgid "{n} page"
 msgid_plural "{n} pages"
@@ -455,170 +475,194 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. Translators: follows the box with the page number: "3 of 120".
-#: src/window.rs:2162
+#: src/window.rs:2355
 #, rust-format
 msgid "of {pages}"
 msgstr ""
 
 #. Translators: follows the box with a printed page number:
 #. "iv (4 of 120)".
-#: src/window.rs:2436
+#: src/window.rs:2683
 #, rust-format
 msgid "({position} of {pages})"
 msgstr ""
 
-#: src/window.rs:2497
+#: src/window.rs:2744
 msgid "Open PDF"
 msgstr ""
 
 #. Translators: a keyboard shortcut as tooltips show it, the
 #. Control key with another.
-#: src/window.rs:2516
+#: src/window.rs:2763
 #, rust-format
 msgid "Ctrl+{key}"
 msgstr ""
 
-#: src/window.rs:2522
+#: src/window.rs:2769
 #, rust-format
 msgid "Couldn't read “{name}”: {error}"
 msgstr ""
 
-#: src/window.rs:2529
+#: src/window.rs:2776
 #, rust-format
 msgid "Couldn't save “{name}”: {error}"
 msgstr ""
 
-#: src/window.rs:2590
+#: src/window.rs:2797
+msgid "Yellow"
+msgstr ""
+
+#: src/window.rs:2798
+msgid "Green"
+msgstr ""
+
+#: src/window.rs:2799
+msgid "Blue"
+msgstr ""
+
+#: src/window.rs:2800
+msgid "Pink"
+msgstr ""
+
+#: src/window.rs:2801
+msgid "Purple"
+msgstr ""
+
+#: src/window.rs:2802
+msgid "Red"
+msgstr ""
+
+#: src/window.rs:2914
 msgid "PDF documents"
 msgstr ""
 
-#: src/window.rs:2620
+#: src/window.rs:2944
 msgid "reading failed"
 msgstr ""
 
-#: src/window.rs:2639
+#: src/window.rs:2963
 #, rust-format
 msgid "Undo Rotate Page"
 msgid_plural "Undo Rotate {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2642
+#: src/window.rs:2966
 #, rust-format
 msgid "Undo Delete Page"
 msgid_plural "Undo Delete {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2644
+#: src/window.rs:2968
 #, rust-format
 msgid "Undo Move Page"
 msgid_plural "Undo Move {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2646
+#: src/window.rs:2970
 #, rust-format
 msgid "Undo Insert Page"
 msgid_plural "Undo Insert {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2648
+#: src/window.rs:2972
 msgid "Undo Highlight"
 msgstr ""
 
-#: src/window.rs:2649
+#: src/window.rs:2973
 msgid "Undo Underline"
 msgstr ""
 
-#: src/window.rs:2650
+#: src/window.rs:2974
 msgid "Undo Strikethrough"
 msgstr ""
 
-#: src/window.rs:2651
+#: src/window.rs:2975
 msgid "Undo Add Annotation"
 msgstr ""
 
-#: src/window.rs:2652
+#: src/window.rs:2976
 msgid "Undo Delete Annotation"
 msgstr ""
 
-#: src/window.rs:2653
+#: src/window.rs:2977
 msgid "Undo Change Annotation"
 msgstr ""
 
-#: src/window.rs:2661
+#: src/window.rs:2985
 #, rust-format
 msgid "Redo Rotate Page"
 msgid_plural "Redo Rotate {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2664
+#: src/window.rs:2988
 #, rust-format
 msgid "Redo Delete Page"
 msgid_plural "Redo Delete {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2666
+#: src/window.rs:2990
 #, rust-format
 msgid "Redo Move Page"
 msgid_plural "Redo Move {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2668
+#: src/window.rs:2992
 #, rust-format
 msgid "Redo Insert Page"
 msgid_plural "Redo Insert {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2670
+#: src/window.rs:2994
 msgid "Redo Highlight"
 msgstr ""
 
-#: src/window.rs:2671
+#: src/window.rs:2995
 msgid "Redo Underline"
 msgstr ""
 
-#: src/window.rs:2672
+#: src/window.rs:2996
 msgid "Redo Strikethrough"
 msgstr ""
 
-#: src/window.rs:2673
+#: src/window.rs:2997
 msgid "Redo Add Annotation"
 msgstr ""
 
-#: src/window.rs:2674
+#: src/window.rs:2998
 msgid "Redo Delete Annotation"
 msgstr ""
 
-#: src/window.rs:2675
+#: src/window.rs:2999
 msgid "Redo Change Annotation"
 msgstr ""
 
-#: src/window.rs:2728 src/window.rs:2732
+#: src/window.rs:3052 src/window.rs:3056
 msgid "saving failed"
 msgstr ""
 
-#: src/window.rs:2810
+#: src/window.rs:3134
 #, rust-format
 msgid "page {page}"
 msgstr ""
 
-#: src/window.rs:2822
+#: src/window.rs:3146
 #, rust-format
 msgid "pages {pages}"
 msgstr ""
 
-#: src/window.rs:2838
+#: src/window.rs:3162
 msgid "the document's password is needed"
 msgstr ""
 
-#: src/window.rs:2840
+#: src/window.rs:3164
 #, rust-format
 msgid "{app} can't save this document correctly yet"
 msgstr ""

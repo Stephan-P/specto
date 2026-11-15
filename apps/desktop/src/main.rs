@@ -62,6 +62,7 @@ fn main() -> glib::ExitCode {
             ("win.find-previous", &["<Shift><Primary>g"]),
             ("win.undo", &["<Primary>z"]),
             ("win.redo", &["<Shift><Primary>z"]),
+            ("win.show-markup", &["<Shift><Primary>a"]),
             ("win.highlight", &["<Shift><Primary>h"]),
             ("win.underline", &["<Shift><Primary>u"]),
             ("win.strike-out", &["<Shift><Primary>x"]),
@@ -266,6 +267,7 @@ fn menubar() -> gio::Menu {
             (&gettext("Rotate Right"), "win.rotate-right"),
         ]),
         section(&[
+            (&gettext("Show Markup Toolbar"), "win.show-markup"),
             (&gettext("Highlight"), "win.highlight"),
             (&gettext("Underline"), "win.underline"),
             (&gettext("Strikethrough"), "win.strike-out"),
