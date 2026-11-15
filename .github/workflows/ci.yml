@@ -14,7 +14,7 @@ env:
 jobs:
   check:
     # The Rust code: formatting, lints (also for the Android target) and
-    # tests. Later also cargo-deny.
+    # tests.
     runs-on: ubuntu-latest
     # Same distro as development, so GTK/libadwaita versions match.
     container: fedora:44
@@ -39,6 +39,15 @@ jobs:
         run: cargo clippy -p specto-ffi --all-targets --target aarch64-linux-android
       - name: Test
         run: cargo test --workspace
+
+  deny:
+    # The dependencies, against deny.toml: security advisories, licences,
+    # where crates come from. A new advisory can make this fail without any
+    # change here; deny.toml says how to record one that doesn't apply.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
 
   desktop:
     # The desktop app in a headless compositor, driven over D-Bus: see

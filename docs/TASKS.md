@@ -198,7 +198,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** deb and rpm packages (`cargo-deb`, `cargo-generate-rpm`), with the files from `apps/desktop/data`; they need libadwaita 1.6 or newer from the distribution
 - [ ] **S** Desktop: an About dialog (version, licence, links), from the metainfo
 - [ ] **S–M** macOS app bundle: file association, Dock icon, bundled GTK
-- [ ] **S** `cargo-deny` in CI: security advisories and licence compatibility with MIT OR Apache-2.0
+- [x] **S** `cargo-deny` in CI (`deny.toml`, the `deny` job): security advisories, licence compatibility with MIT OR Apache-2.0, and crates only from crates.io
 - [ ] **M** Performance regression checks in CI: tile render times, frame times and peak memory on a few fixed documents (the gtk-canvas spike had a benchmark mode to start from: `spikes/gtk-canvas` at commit f32a26a, the last one with it), compared against stored numbers with a tolerance
 - [ ] **S** Preferences: default layout and zoom for documents opened for the first time (desktop: a preferences window; Android: also persist paged or continuous)
 - [x] **M** Desktop: large files without reading them into memory: mapped from 64 MB (`PdfData`). Re-opening safely after a save is part of the save task
