@@ -43,18 +43,12 @@ The app itself draws the rendered tiles, handles input, and provides the windows
 
 ## Building
 
-Needs Rust (see `rust-version` in the workspace `Cargo.toml`), GTK 4.14 or newer and libadwaita 1.6 or newer.
-
 ```sh
-# Fedora
-sudo dnf install gtk4-devel libadwaita-devel
-# macOS (Homebrew)
-brew install gtk4 libadwaita adwaita-icon-theme
-
 cargo build --release -p specto-desktop
-target/release/specto-gtk                 # start page
-target/release/specto-gtk file.pdf        # open a file
+target/release/specto-gtk file.pdf
 ```
+
+What to install first on Fedora and macOS, and the Flatpak, are in [BUILDING.md](BUILDING.md).
 
 ## Testing
 

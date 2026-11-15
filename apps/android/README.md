@@ -43,16 +43,12 @@ They're compiled into `libspecto_ffi.so`. The crate `specto-ffi` exposes them to
 
 ## Building
 
-Needs Android Studio or the Android SDK, the NDK version named in `app/build.gradle.kts`, Rust with the Android target, and `cargo-ndk`:
-
 ```sh
-rustup target add aarch64-linux-android
-cargo install cargo-ndk
 cd apps/android
 ./gradlew :app:installDebug      # build and install on a connected device or emulator
 ```
 
-Gradle cross-compiles the Rust library and generates the Kotlin bindings as part of the build. The app runs on Android 8.0 (API 26) and newer.
+What to install first, release builds and emulators on Intel machines are in [BUILDING.md](BUILDING.md). The app runs on Android 8.0 (API 26) and newer.
 
 ## Testing
 

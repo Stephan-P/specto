@@ -28,67 +28,93 @@ Specto is a shared core with two apps on top of it:
 
 ## Why?
 
-I enjoy working with Preview on macOS. When I want to read a PDF, or do some light editing (reorder or delete pages, highlight something, fill in a form), it's what I reach for: it's fast, it stays out of the way, and it does the common things well. On Linux I haven't found anything equivalent, so this is my attempt at one.
+I enjoy working with Preview on macOS. When I want to read a PDF, or do some
+light editing (reorder or delete pages, highlight something, fill in a form),
+it's what I reach for: it's fast, it stays out of the way, and it does the
+common things well. On Linux I haven't found anything equivalent, so this is my
+attempt at one.
 
-I also miss a decent open-source PDF viewer for Android that is pleasant to use. Since the hard parts (rendering, layout, zooming, text) are the same everywhere, they live in a shared Rust core, and each app is a thin native layer on top of it.
+I also miss a decent open-source PDF viewer for Android that is pleasant to
+use. Since the hard parts (rendering, layout, zooming, text) are the same
+everywhere, they live in a shared Rust core, and each app is a thin native
+layer on top of it.
 
 ## Goals
 
 Rough feature parity with Preview, not Adobe Acrobat:
 
-- **Viewing**: sharp rendering on HiDPI screens, zoom, single page, continuous and two pages side by side, thumbnails, table of contents, search, text selection
-- **Page editing**: delete, reorder and rotate pages, insert pages from another PDF, merge documents
-- **Markup**: highlight, underline and strike through text, freehand drawing, shapes, text boxes, sticky notes
-- **Forms**: fill in form fields (text, checkboxes, radio buttons, dropdowns and lists) and save the filled values
+- **Viewing**: sharp rendering on HiDPI screens, zoom, single page, continuous
+  and two pages side by side, thumbnails, table of contents, search, text
+  selection
+- **Page editing**: delete, reorder and rotate pages, insert pages from another
+  PDF, merge documents
+- **Markup**: highlight, underline and strike through text, freehand drawing,
+  shapes, text boxes, sticky notes
+- **Forms**: fill in form fields (text, checkboxes, radio buttons, dropdowns
+  and lists) and save the filled values
+- **Censor**: remove information from documents safely
 
-Not planned, at least for now: editing existing page content (reflowing text), XFA forms, creating digital signatures, JavaScript, OCR, PDF/A conversion.
+Not planned, at least for now: editing existing page content (reflowing text),
+XFA forms, creating digital signatures, JavaScript, OCR, PDF/A conversion.
 
 ## Status
 
-Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. In both you can select, copy and search text, and edit pages: rotate, delete and reorder them, and save the result. The desktop app can also insert pages from other PDFs, export a selection of pages, and print. Annotations and forms come next. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
+Both apps are usable as PDF viewers. They render pages sharply at any zoom and
+on HiDPI screens, and stay responsive on huge documents. They have the usual
+layouts, thumbnails, the table of contents, links and printed page numbers,
+open encrypted files, and remember where you were in each document. In both you
+can select, copy and search text, and edit pages: rotate, delete and reorder
+them, and save the result. The desktop app can also insert pages from other
+PDFs, export a selection of pages, and print. 
+
+The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 ## Building
 
+Each app has its own instructions, with what to install first:
+
+- [apps/desktop/BUILDING.md](apps/desktop/BUILDING.md): Fedora and macOS, and
+  the Flatpak
+- [apps/android/BUILDING.md](apps/android/BUILDING.md): phones and emulators
+
+The shared crates and the tools need only Rust 1.92 or newer:
+
 ```sh
 cargo build --release
-target/release/specto-gtk file.pdf                         # the desktop app
-target/release/specto info file.pdf                        # the command-line dev tool
-target/release/specto render file.pdf -o out -s 2          # pages → PNG
-target/release/specto text file.pdf -p 1                   # the text layer
-target/release/specto save file.pdf -o out.pdf -p 3,1-2    # pick, reorder, rotate (-r 90) pages
-target/release/specto corpus corpus/files/... --reference  # regression run, see corpus/README.md
+cargo test --workspace
 ```
 
-The desktop app needs the GTK 4 and libadwaita development packages; see [apps/desktop/README.md](apps/desktop/README.md). For Android, see [apps/android/README.md](apps/android/README.md). To build a Flatpak and install it, see [packaging/README.md](packaging/README.md).
+The tests check saved files with `qpdf` where it is installed. The `specto`
+development tool is described in [tools/README.md](tools/README.md).
 
 ## Layout
 
-- `crates/specto-geom`: typed coordinate spaces and page geometry (crop box, rotation)
-- `crates/specto-source`: opening (large files are memory-mapped), metadata, outline, links and page labels
-- `crates/specto-text`: text layer (characters with positions, words, lines)
-- `crates/specto-doc`: edit model (the pages of a document being edited, undo and redo)
-- `crates/specto-write`: saving (a full rewrite with lopdf, checked against the original)
-- `crates/specto-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
-- `crates/specto-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
-- `crates/specto-session`: an open document as both apps hold it (its files, the pages as edited, viewer, text, selection, search, saving)
-- `crates/specto-ffi`: bindings for Android (UniFFI, plus JNI for the per-frame path)
-- `apps/desktop`: GTK 4 + libadwaita app (`specto-gtk`)
-- `apps/android`: Android app (Kotlin + Compose)
-- `tools/specto-cli`: the `specto` dev tool
-- `tools/test-files.sh`: copies of the test files for testing by hand, in `target/test-files/`
-- `tools/headless`: run the desktop app under a headless compositor; `check.py` is the automated end-to-end check (also in CI), `smoke.sh` takes screenshots
-- `spikes/`: early prototypes behind the measurements in docs/M0-FINDINGS.md. Only `lopdf-spike` is left (editing and saving, with the incremental and encrypted saving that `specto-write` doesn't do yet); the tiled GTK viewer and the text extraction check were removed once the desktop app and `specto-text` had replaced them
+- `crates/`: the shared Rust core: rendering, page layout, text, editing and
+  saving
+- `apps/desktop`: the desktop app, in Rust with GTK 4 and libadwaita
+- `apps/android`: the Android app, in Kotlin with Jetpack Compose
+- [`tools/`](tools/README.md): development tools: the `specto` command-line
+  tool and the desktop app's automated checks
 - `packaging/`: installable packages of the desktop app (Flatpak)
-- `corpus/`: test corpus fetch script (the files are git-ignored)
+- `corpus/`: fetches the test corpus
+- `spikes/`: early prototypes
+- `docs/`: see below
+
+What each crate does is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate layout, data model, rendering pipeline, how the apps plug in
-- [docs/DECISIONS.md](docs/DECISIONS.md): technology choices, the alternatives considered, and open questions
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate layout, data model,
+  rendering pipeline, how the apps plug in
+- [docs/DECISIONS.md](docs/DECISIONS.md): technology choices, the alternatives
+  considered, and open questions
 - [docs/TASKS.md](docs/TASKS.md): the task list, by milestone
-- [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md): measurements from the prototypes and since (rendering, HiDPI, text, Android)
-- [apps/desktop/FEATURES.md](apps/desktop/FEATURES.md) and [apps/android/FEATURES.md](apps/android/FEATURES.md): what each app does
-- [apps/desktop/TESTING.md](apps/desktop/TESTING.md): testing the desktop app, by hand and automated
+- [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md): measurements from the prototypes
+  and since (rendering, HiDPI, text, Android)
+- [apps/desktop/FEATURES.md](apps/desktop/FEATURES.md) and
+  [apps/android/FEATURES.md](apps/android/FEATURES.md): what each app does
+- [apps/desktop/TESTING.md](apps/desktop/TESTING.md): testing the desktop app,
+  by hand and automated
 - [corpus/README.md](corpus/README.md): the test corpus and regression runs
 
 ## Similar projects
@@ -100,4 +126,5 @@ The desktop app needs the GTK 4 and libadwaita development packages; see [apps/d
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT
+license](LICENSE-MIT), at your option.
