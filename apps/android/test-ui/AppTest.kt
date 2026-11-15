@@ -241,9 +241,9 @@ abstract class AppTest {
     /** The item of an open view menu called [item], if it is the one ticked. */
     protected fun chosen(item: String) = compose.onNode(hasText(item) and hasContentDescription("Chosen"))
 
-    /** "Go to page…" with [text] typed into its field, whose label names the [range]. */
+    /** "Go to page" with [text] typed into its field, whose label names the [range]. */
     protected fun goTo(text: String, range: String) {
-        menu("Go to page…")
+        menu("Go to page")
         compose.onNodeWithText("Page ($range)").performTextInput(text)
         compose.onNodeWithText("Go").performClick()
     }

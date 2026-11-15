@@ -35,7 +35,7 @@ import org.junit.runner.RunWith
  * Editing the pages: picking them in the page grid, turning and deleting
  * them, undo and redo, and saving the result as a new document.
  *
- * Where "Save as…" writes is asked of the system's file dialog, which never
+ * Where "Save as" writes is asked of the system's file dialog, which never
  * opens here: the request is caught on its way out and answered with a file
  * in the app's cache.
  */
@@ -252,7 +252,7 @@ class EditTest : AppTest() {
         page.performKeyInput { pressKey(Key.DirectionRight) }
         waitForText("2 / 11")
 
-        menu("Save as…")
+        menu("Save as")
         // The saved document takes this one's place, where the reader was.
         waitForText("edited.pdf")
         waitForText("2 / 11")
@@ -283,7 +283,7 @@ class EditTest : AppTest() {
         val opened = File(instrumentation.targetContext.cacheDir, "pages.pdf")
         val before = opened.length()
         dialogs.target = opened
-        menu("Save as…")
+        menu("Save as")
         waitUntilGone("Edited")
         waitForText("1 / 11")
         compose.onNodeWithText("pages.pdf").assertIsDisplayed()
@@ -330,7 +330,7 @@ class EditTest : AppTest() {
         // Nothing to save yet.
         compose.onNodeWithContentDescription("More").performClick()
         compose.onAllNodesWithText("Save").assertCountEquals(0)
-        compose.onNodeWithText("Save as…").assertIsDisplayed()
+        compose.onNodeWithText("Save as").assertIsDisplayed()
         Espresso.pressBack()
 
         showGrid()
@@ -415,7 +415,7 @@ class EditTest : AppTest() {
             // Leaving it, the question offers the only way there is.
             compose.onNodeWithText("Close").performClick()
             waitForText("Save changes?")
-            compose.onNodeWithText("Save as…").performClick()
+            compose.onNodeWithText("Save as").performClick()
             waitForText("Recent")
             compose.onNodeWithText("edited.pdf").assertIsDisplayed()
             compose.onNodeWithText("pages.pdf").assertIsDisplayed()

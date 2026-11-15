@@ -14,7 +14,7 @@
     <string name="close">Close</string>
     <string name="open">Open</string>
     <string name="save">Save</string>
-    <string name="save_as">Save as…</string>
+    <string name="save_as">Save as</string>
     <string name="discard">Discard</string>
     <string name="delete">Delete</string>
     <string name="share">Share</string>
@@ -31,10 +31,10 @@
     <string name="search">Search</string>
 
     <!-- The ⋮ menu. -->
-    <string name="menu_open">Open…</string>
-    <string name="menu_share">Share…</string>
-    <string name="menu_print">Print…</string>
-    <string name="menu_go_to_page">Go to page…</string>
+    <string name="menu_open">Open</string>
+    <string name="menu_share">Share</string>
+    <string name="menu_print">Print</string>
+    <string name="menu_go_to_page">Go to page</string>
     <string name="menu_properties">Properties</string>
     <string name="menu_settings">Settings</string>
     <!-- Closes the document and returns to the start screen. -->
@@ -92,7 +92,7 @@
     <string name="link_open_title">Open this link?</string>
     <string name="link_blocked_title">This link can\'t be opened</string>
 
-    <!-- "Go to page…". -->
+    <!-- "Go to page". -->
     <string name="go_to_title">Go to page</string>
     <!-- The field's label, with the first and last page number: "Page (i–240)". -->
     <string name="go_to_label">Page (%1$s–%2$s)</string>

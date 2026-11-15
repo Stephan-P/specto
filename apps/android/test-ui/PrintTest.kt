@@ -18,7 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * "Print…": what the app hands to the system's print dialog. The dialog
+ * "Print": what the app hands to the system's print dialog. The dialog
  * itself belongs to the system; the tests look at the print job it was
  * opened for and at the copy of the document made for it, read here with
  * Android's own PDF reader, as the print service does, and then leave the
@@ -61,7 +61,7 @@ class PrintTest : AppTest() {
         compose.onNodeWithContentDescription("Delete pages").performClick()
         if (!wide) compose.onNodeWithContentDescription("Back to document").performClick()
         waitForText("1 / 11")
-        menu("Print…")
+        menu("Print")
         assertEquals(11, pagesHandedOver("pages.pdf"))
         leavePrintDialog()
         // Printing saved nothing: the edits are still only here.
@@ -75,7 +75,7 @@ class PrintTest : AppTest() {
         compose.onNodeWithText("Password").performTextInput("secret")
         compose.onNodeWithText("Open").performClick()
         waitForText("1 / 3")
-        menu("Print…")
+        menu("Print")
         assertEquals(3, pagesHandedOver("locked.pdf"))
         leavePrintDialog()
         compose.onNodeWithText("1 / 3").assertIsDisplayed()

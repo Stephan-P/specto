@@ -118,7 +118,7 @@ fun SelectionBar(state: PdfViewState) {
 @Composable
 fun UnsavedChangesDialog(
     name: String,
-    /** Whether saving means asking where ("Save as…"), since the document's own file can't be written over. */
+    /** Whether saving means asking where ("Save as"), since the document's own file can't be written over. */
     saveAs: Boolean,
     onSave: () -> Unit,
     onDiscard: () -> Unit,

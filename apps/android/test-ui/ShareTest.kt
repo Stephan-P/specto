@@ -21,7 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * "Share…": what the app hands to the system's share sheet. The sheet itself
+ * "Share": what the app hands to the system's share sheet. The sheet itself
  * belongs to the system and never opens here; the request for it is caught
  * on its way out.
  *
@@ -55,7 +55,7 @@ class ShareTest : AppTest() {
     @Test
     fun sharingOffersTheDocumentToOtherApps() {
         open("pages.pdf", shows = "1 / 12")
-        menu("Share…")
+        menu("Share")
         compose.waitUntil(WAIT_MS) { sheets.last != null }
 
         val send = sheets.last!!.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
@@ -78,7 +78,7 @@ class ShareTest : AppTest() {
     fun aDocumentThatIsGoneCannotBeShared() {
         open("pages.pdf", shows = "1 / 12")
         java.io.File(instrumentation.targetContext.cacheDir, "pages.pdf").delete()
-        menu("Share…")
+        menu("Share")
         // Nothing to hand over: no share sheet, and the reader stays put.
         compose.waitForIdle()
         Thread.sleep(1_000)
@@ -96,7 +96,7 @@ class ShareTest : AppTest() {
         compose.onNodeWithContentDescription("Delete pages").performClick()
         if (!wide) compose.onNodeWithContentDescription("Back to document").performClick()
         waitForText("1 / 11")
-        menu("Share…")
+        menu("Share")
         compose.waitUntil(WAIT_MS) { sheets.last != null }
 
         val send = sheets.last!!.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!

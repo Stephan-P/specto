@@ -439,7 +439,7 @@ private fun App(
     var reloads by remember { mutableStateOf(0) }
     // Where the reader wants to go while the open document has unsaved edits.
     var leaving by remember { mutableStateOf<Leaving?>(null) }
-    // What follows a "Save as…" other than showing the saved document.
+    // What follows a "Save as" other than showing the saved document.
     var afterSaving by remember { mutableStateOf<(() -> Unit)?>(null) }
     var saving by remember { mutableStateOf(false) }
     // The copy for the print service is being written.
@@ -565,7 +565,7 @@ private fun App(
         }
     }
 
-    /** "Print…": the system's print dialog, for the document as it is now. */
+    /** "Print": the system's print dialog, for the document as it is now. */
     fun print() {
         val open = loaded as? Loaded.Ready ?: return
         if (preparingToPrint) return
@@ -584,7 +584,7 @@ private fun App(
         }
     }
 
-    // "Save as…": the system asks where.
+    // "Save as": the system asks where.
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val then = afterSaving
         afterSaving = null

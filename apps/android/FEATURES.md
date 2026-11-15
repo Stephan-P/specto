@@ -10,12 +10,12 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Start screen | Launch the app from the launcher | "Open PDF" button, top bar with only the ⋮ menu (Open… and Settings); below it "Recent", once documents have been opened |
+| Start screen | Launch the app from the launcher | "Open PDF" button, top bar with only the ⋮ menu (Open and Settings); below it "Recent", once documents have been opened |
 | Recent documents | Open a few files with "Open PDF", then relaunch the app (or ⋮ → "Close") | Up to 20 documents, newest first, each with the page it was left on and when; tap one to reopen it. Files handed over by another app are usually not listed, because the app isn't allowed to read them again later |
 | Continue reading | Read to some page, zoom or switch to continuous scrolling, leave the app, open the same file again (by any route) | It opens where it was left: same page and position, same mode and zoom. The file is recognised by its content, so a copy or a renamed file continues too |
 | A recent file is gone | Delete or move a listed file, then tap it | "Couldn't open this file", and it disappears from the list |
 | Close | ⋮ → "Close" | Back to the start screen |
-| Pick a file | "Open PDF", or ⋮ → "Open…" | System file picker limited to PDFs; the document opens on page 1 with its file name in the top bar |
+| Pick a file | "Open PDF", or ⋮ → "Open" | System file picker limited to PDFs; the document opens on page 1 with its file name in the top bar |
 | Open from another app | In Files or a browser, open a PDF and choose Specto | The document opens; if another one was open, it is replaced |
 | Password | Open a protected file | Password dialog; a wrong password shows "That password didn't work." with the field empty again; Cancel leaves an explanation and "Open another PDF" |
 | Broken file | Open something that isn't a PDF (e.g. renamed) | "Couldn't open this file" with "Open another PDF"; no crash |
@@ -24,14 +24,14 @@ Useful documents for a full round: a long book with an outline and links, a docu
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Share | With a document open, ⋮ → "Share…", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app With unsaved edits (see "Editing the pages"), what is shared is the document as edited, and sharing saves nothing |
-| Only for documents | Open the ⋮ menu on the start screen, and after a file failed to open | No "Share…" |
+| Share | With a document open, ⋮ → "Share", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app With unsaved edits (see "Editing the pages"), what is shared is the document as edited, and sharing saves nothing |
+| Only for documents | Open the ⋮ menu on the start screen, and after a file failed to open | No "Share" |
 
 ## Printing
 
 | Feature | How to check | Expected |
 |---|---|---|
-| Print | With a document open, ⋮ → "Print…" | After a moment ("Preparing to print…" for a large document) the system's print dialog, under the document's name, with a preview of every page. Printer, copies, paper, and which pages are the system's to offer; "Save as PDF" writes them to a file. Text stays text: the pages are handed over as they are, not as pictures |
+| Print | With a document open, ⋮ → "Print" | After a moment ("Preparing to print…" for a large document) the system's print dialog, under the document's name, with a preview of every page. Printer, copies, paper, and which pages are the system's to offer; "Save as PDF" writes them to a file. Text stays text: the pages are handed over as they are, not as pictures |
 | As edited | Rotate, delete or move pages, then print without saving | The preview shows the document as edited. Printing saves nothing: the title still says "Edited" |
 | Leave | Back, or cancel in the dialog | Back in the document, on the same page |
 | Wide pages | Print a document whose first page is wider than tall | The dialog starts with the paper lying on its side |
@@ -43,7 +43,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 |---|---|---|
 | Buttons | Open a document | Left: Pages and Contents. Right: search (a magnifying glass), the view button, whose icon is a small picture of the current layout, and ⋮ |
 | View menu | Tap the view button | The layouts, each with its picture ("Single page" and "Continuous"; on wide windows also "Two pages" and "Two pages, continuous"), then "Fit page" and "Fit width". The current layout and fit are ticked. Everything in this menu is remembered for the document |
-| ⋮ menu | Tap ⋮ | Open…, Share…, Print…, Save as…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Save" (where the file can be written over) and "Undo …", and after undoing "Redo …" |
+| ⋮ menu | Tap ⋮ | Open, Share, Print, Save as, Go to page, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Save" (where the file can be written over) and "Undo …", and after undoing "Redo …" |
 | Properties | ⋮ → "Properties" | A dialog with the file name, what the document says about itself (title, author, subject, keywords, the programs it was made with, when it was created and changed; whatever it doesn't state is left out), the number of pages, their size ("210 × 297 mm (A4)"; a note if pages differ), the file size and the PDF version. Values can be selected and copied |
 
 ## Reading, one page at a time (default)
@@ -56,7 +56,7 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Ends | Swipe back on page 1, forward on the last page | Nothing moves |
 | Pinch zoom | Pinch in and out on a page | Zooms around the fingers; a page can't get smaller than fitted and re-centres when released |
 | Pan and fling | Zoom in, drag, then flick | Moves within the page; a flick stops at the page edge and does not turn the page |
-| Turn while zoomed | Zoomed in at the page edge, drag further | The next page slides in already fitted, and once it arrives the view is fitted again (going back, the page left behind is fitted too). Going to another page any other way (keys, the strip, a link, "Go to page…") also returns to the fitted view |
+| Turn while zoomed | Zoomed in at the page edge, drag further | The next page slides in already fitted, and once it arrives the view is fitted again (going back, the page left behind is fitted too). Going to another page any other way (keys, the strip, a link, "Go to page") also returns to the fitted view |
 | Double tap | Double-tap a fitted page, then again | Zooms to 2.5× around the tap, then back to fitted |
 | Sharpness | Zoom to any level and wait a moment | Text sharpens about a quarter of a second after the zoom stops |
 
@@ -89,8 +89,8 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Pages | Top-left button | Grid of all pages, current one outlined, starting near it; tap a page to go there; Back or the arrow returns |
 | Contents | Top-left button, "Contents" tab (documents with an outline) | Collapsible outline with page numbers, the current section highlighted; tap an entry to go there; long outlines start collapsed to their top level |
 | Tabs | Swipe between Pages and Contents, or tap the tab names | Both work; reopening shows the tab used last; documents without an outline show only the grid, without tabs |
-| Go to page | ⋮ → "Go to page…" | Field showing the valid range; "Go" is disabled for input that names no page |
-| Printed page numbers | Open a document numbered i, ii, iii, 1, 2 … (or with an appendix "A-1") | The indicator shows the printed number with the position, e.g. "iii (3 / 240)"; Pages and Contents show printed numbers; "Go to page…" accepts a printed number first ("iii", "A-2", "3") and otherwise a position, and says which page it found |
+| Go to page | ⋮ → "Go to page" | Field showing the valid range; "Go" is disabled for input that names no page |
+| Printed page numbers | Open a document numbered i, ii, iii, 1, 2 … (or with an appendix "A-1") | The indicator shows the printed number with the position, e.g. "iii (3 / 240)"; Pages and Contents show printed numbers; "Go to page" accepts a printed number first ("iii", "A-2", "3") and otherwise a position, and says which page it found |
 | Links in the document | Tap a cross-reference or a table-of-contents line | Jumps to the target |
 | Links to the web | Tap a web or e-mail link | Dialog showing the address; opens only after "Open"; other kinds of links say they can't be opened |
 
@@ -141,10 +141,10 @@ Pages can be turned, removed and put in another order. Nothing changes a file un
 | Reorder several | Pick several pages, then long-press one of them and drag | All of them move to the place shown, in the order they were in |
 | A long press that goes nowhere | Long-press a picked page and lift the finger | It is let go of, as with a tap |
 | Undo and redo | ⋮ → "Undo delete" (or rotate, or move), then "Redo …" | One edit at a time is taken back, or done again, in the order they were made. Back at the document as it was opened or saved, "Edited" goes |
-| Save | With unsaved edits to a document opened with "Open…" (the system's file picker): ⋮ → "Save" | The file is written over with the document as edited (a new PDF is written beside it first, so a failure leaves the file as it was). "Edited" goes; the document stays open where it was, and the edits can still be undone, which makes it "Edited" again |
-| Save only where it can work | Open a PDF from another app (a mail attachment, a download notification), edit it, and look at the ⋮ menu; also look without edits | No "Save" for a document the app was only given to read, and none while there is nothing to save. "Save as…" is always there |
-| Save as… | ⋮ → "Save as…", then choose where and under what name (the document's own is suggested) | The document as edited is written there as a new PDF, and is then the one that is open, where the reader was, with nothing left to undo. The file opened before is untouched, and both are on the start screen. Saving over the file that is open works too: it is then listed once, as saved |
-| Asked before edits are lost | With unsaved edits: ⋮ → "Close", or "Open…" and pick a file, or open a PDF from another app | "Save changes?" with "Save" (or "Save as…", where the file can't be written over), which saves and then goes on to what was asked for, "Discard" (goes on without saving) and "Cancel" (stays) |
+| Save | With unsaved edits to a document opened with "Open" (the system's file picker): ⋮ → "Save" | The file is written over with the document as edited (a new PDF is written beside it first, so a failure leaves the file as it was). "Edited" goes; the document stays open where it was, and the edits can still be undone, which makes it "Edited" again |
+| Save only where it can work | Open a PDF from another app (a mail attachment, a download notification), edit it, and look at the ⋮ menu; also look without edits | No "Save" for a document the app was only given to read, and none while there is nothing to save. "Save as" is always there |
+| Save as | ⋮ → "Save as", then choose where and under what name (the document's own is suggested) | The document as edited is written there as a new PDF, and is then the one that is open, where the reader was, with nothing left to undo. The file opened before is untouched, and both are on the start screen. Saving over the file that is open works too: it is then listed once, as saved |
+| Asked before edits are lost | With unsaved edits: ⋮ → "Close", or "Open" and pick a file, or open a PDF from another app | "Save changes?" with "Save" (or "Save as", where the file can't be written over), which saves and then goes on to what was asked for, "Discard" (goes on without saving) and "Cancel" (stays) |
 | Not asked otherwise | The same without edits, or after saving | No question |
 | Kept only while the app lives | Edit, leave the app, and come back later | The edits are still there unless Android ended the app in the meantime, in which case the document is back as it was last saved. There is no automatic saving yet |
 
@@ -186,8 +186,8 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Zoom | Ctrl with +, − and 0 | Zoom in and out around the middle of the view, and back to the fitted view |
 | Select and copy | Ctrl+A, Ctrl+C, Escape | Selects all text, copies the selection, lets go of it |
 | Undo and redo | Ctrl+Z; Shift+Ctrl+Z or Ctrl+Y | Takes back the last edit of the pages; does it again |
-| Save | Ctrl+S | Saves over the file if there are edits and that is possible, else asks where ("Save as…") |
-| Print | Ctrl+P | The system's print dialog, as with ⋮ → "Print…" |
+| Save | Ctrl+S | Saves over the file if there are edits and that is possible, else asks where ("Save as") |
+| Print | Ctrl+P | The system's print dialog, as with ⋮ → "Print" |
 | Search | Ctrl+F; in the search field Enter, Shift+Enter and Escape | Opens the search; next match, previous match, and leaving it |
 
 ## Settings
