@@ -383,8 +383,9 @@ None of this exists yet. The tasks are in [TASKS.md](TASKS.md).
   digital signatures valid.
 - **Passwords.** A dialog to add, change or remove a document's passwords (see
   D9 in [DECISIONS.md](DECISIONS.md)).
-- **Markup on Android**, on top of the tool logic the session already has, and
-  stylus input in both apps.
+- **More markup on Android.** It marks text today. Drawing, shapes, text boxes
+  and notes would build on the tool logic the session already has. Stylus input
+  is planned for both apps.
 - **Reading order by layout**, for files whose content stream isn't in reading
   order.
 - **Shared resources.** Saving doesn't yet merge resources, such as fonts, that

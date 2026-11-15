@@ -68,7 +68,8 @@ and reordering them.
 
 The desktop app can also insert pages from other PDFs and export a selection of
 pages. It has markup too: highlighting, underlining and striking through text,
-freehand drawing, shapes, text boxes and notes. Forms are still to come.
+freehand drawing, shapes, text boxes, notes and signatures. Forms are still to
+come.
 
 The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 

@@ -1,248 +1,410 @@
-# Task list (draft)
+# Task list
 
-Milestones are ordered by dependency. The desktop app is built first because iteration there is much faster. Android starts once the core API has settled (M4/M5), though the M0 spike de-risks it early.
+Milestones are ordered by dependency. Within each milestone, finished tasks
+come first, in the order they were done, followed by the open ones.
 
-Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
+What the apps do today is described in
+[apps/desktop/FEATURES.md](../apps/desktop/FEATURES.md) and
+[apps/android/FEATURES.md](../apps/android/FEATURES.md). References like D9
+point to [DECISIONS.md](DECISIONS.md).
 
----
+## M0: Evaluations and foundations
 
-## M0: Spikes & foundations
+- [x] Cargo workspace
+- [x] CI on GitHub Actions, in Fedora containers: formatting, lints and tests
+  for the Rust code, and the headless checks of the desktop app
+- [x] License decision: MIT or Apache 2.0 (D6)
+- [x] Test corpus: the pdf.js test PDFs
+- [x] hayro evaluation: rendering the corpus, compared with Poppler, with
+  failures and timing recorded (D1)
+- [x] hayro evaluation: rendering page content without annotations
+- [x] lopdf evaluation: delete, merge, reorder, and an incremental highlight
+  (D2)
+- [x] lopdf evaluation: encrypting, encrypted incremental save, and editing an
+  encrypted file with its encryption kept (D9)
+- [x] Preview's handling of passwords checked on a Mac (D9)
+- [x] GTK 4 canvas evaluation: a custom widget drawing tiles, with continuous
+  scrolling and zooming at about 55 frames per second (D3)
+- [x] Canvas evaluation checked on real hardware
+- [x] Android evaluation: a Compose app in which Rust renders a page into a
+  bitmap, through cargo-ndk and UniFFI (D4, D5)
+- [ ] Remove `spikes/lopdf-spike` once the write crate has the incremental save
+  and can encrypt from scratch. Those are the two things only the evaluation
+  shows how to do. Leave a note of the last commit that has it.
+- [ ] GitLab CI, if the repository moves there.
+- [ ] More of a test corpus: the PDFium test files, and fixtures of our own for
+  forms, rotated pages, crop boxes that differ from the media box, huge pages,
+  scans and encrypted files.
+- [ ] PDFium reference renders for the regression run. Poppler turned out to be
+  wrong in about half of the worst cases.
+- [ ] Check how Preview handles files with only an owner password, where
+  nothing is asked on opening but editing or printing is restricted, and update
+  D9.
 
-- [x] **S** Create Cargo workspace skeleton (`crates/`, `tools/`, `spikes/`)
-- [ ] **S** Remove `spikes/lopdf-spike` once `specto-write` has the incremental save and can encrypt from scratch (the two things only the spike shows how to do), with a note of the last commit that has it
-- [x] **S** CI: GitHub Actions in `fedora:44` containers, with deps in `ci/install-deps-fedora.sh` for reuse in GitLab CI. Job `check` for the Rust code (fmt, clippy for the host and Android, tests), job `desktop` for the headless checks of the running app, side by side
-- [ ] **S** GitLab CI equivalent, if the repo moves there
-- [x] **S** License decision (D6): MIT OR Apache-2.0
-- [x] **S** Test corpus, part 1: pdf.js test PDFs (`corpus/fetch.sh`)
-- [ ] **M** Test corpus, part 2: PDFium test files + hand-picked fixtures (forms, rotated pages, CropBox ≠ MediaBox, huge pages, scanned, encrypted)
-- [x] **M** hayro spike: `specto corpus` over the corpus, compared with Poppler, recording failures and timing (D1)
-- [ ] **M** PDFium reference renders for `specto corpus`. Poppler turned out to be wrong in about half of the worst cases.
-- [x] **S** hayro spike: render page content without annotations (`Content::PageOnly`, tested)
-- [x] **M** lopdf spike: delete, merge, reorder, incremental highlight (D2). Validated with hayro and Poppler; qpdf isn't installed.
-- [x] **S** lopdf spike: AES-256 encrypt, encrypted incremental save, decrypt → edit → re-encrypt (D9)
-- [x] **S** Verify Preview's encryption behavior on a Mac: saving keeps the password; user and owner passwords can be added, changed or removed in a File-menu settings panel (D9)
-- [ ] **S** Check how Preview handles owner-password restrictions (no open password, but editing or printing restricted) and update D9
-- [x] **M** GTK4 canvas spike: custom widget, tiles as `GdkMemoryTexture`, continuous scroll + zoom, about 55 fps (D3)
-- [x] **S** Manual check of the canvas spike on real hardware: works on macOS (GTK), but HiDPI output looks off
-- [x] **M** Android spike: Compose app + `cargo-ndk` + UniFFI, Rust renders page 1 into a `Bitmap`; tile pixels need a JNI path, not UniFFI (D4/D5)
+## M1: Core viewer
 
-## M1: Core viewer (desktop)
-
-- [x] **M** Render guards (`specto_render::scheduler::Limits`): pages with > 100 MP of images (checked at open) or a render > 500 ms are *expensive* and render one tile at a time; workers drop their document copy after a heavy page (frees decoded images); a watchdog starts up to 4 extra workers while renders are stalled > 1 s and other work waits. Giant JPEG 2000 page at fit width: peak memory 1.14 → 0.66 GB at the same speed
-- [x] **S** Desktop: a spinner (`AdwSpinnerPaintable`) over visible pages that are expensive (`Scheduler::is_expensive`) and not sharp yet (`PageDraw::complete`). The paintable only exists while a spinner shows, so there are no idle redraws (0 ms CPU in 3 s once the page is done)
-- [x] **S** Android: the same spinner. A frame's pages say whether they are `busy` (expensive and not sharp yet), and `BusyPages` puts a Material spinner on each, composed only while there is one. The UI tests have `slow.pdf` for it: a page of 768,000 curves whose resources name a 120 MP image that nothing draws, so it is expensive from the start without costing memory
-- [ ] **M** Upstream (hayro): decode images only for the region and resolution being drawn. One tile of a 212 MP JPEG 2000 page still costs 4.5 GB and 10 s at 100%, which no scheduling can fix
-- [x] **S** Keep hayro's `RenderCache` across renders (`self_cell`), reset per worker after 32 pages. Measured 1.4–6× faster tiles.
-
-- [x] **S** `specto-geom`: typed coordinate spaces (euclid), `PageGeometry` (CropBox ∩ MediaBox, `/Rotate`, extra rotation). Matches hayro on every corpus page (`cargo test -p specto-render -- --ignored`).
-- [x] **M** `specto-source`: opening and decryption (`open_pdf`, `OpenError`, now shared with `specto-render`), metadata with text-string decoding (UTF-16BE, UTF-8, PDFDocEncoding), outline, links (destinations, URIs, named actions), named destinations via `/Dests` and the `/Names` tree. Every walk is bounded (cycles, depth, item caps). Corpus: 1,077 files, no panics, 0.2 s; 153 with an outline, 49 with links. `specto info --outline` prints both. Files of 64 MB and up are memory-mapped (`PdfData`), smaller ones read: a 100 MB file opens with 5 MB of memory instead of 105.
-- [x] **S** Page labels (`specto_source::PageLabels`: all five styles, prefixes, start numbers, number trees split over kids; reverse lookup). Desktop: the page entry shows the label with "(3 of 120)" and accepts labels ("iv") or numbers; thumbnail captions show labels. Documents whose labels are just 1, 2, 3 are treated as unlabelled
-- [x] **S** Android: page labels through `specto-ffi` (`ViewSession::page_labels`; the indicator, grid and Contents show them, and "Go to page" accepts them)
-- [x] **M** `specto-render`: `Document` trait + hayro backend, tile rendering at arbitrary scale (done during M0)
-- [x] **M** Render scheduler (`specto_render::scheduler`): worker pool, multiple documents, a priority queue that's replaced every frame, panics isolated per tile. `TileCache<T>` (`specto_render::tile`) has an LRU byte budget, protects tiles used this frame, and is generic over the frontend's texture type.
-- [x] **S** HiDPI fix, part 1: zoom levels round *up* (tiles are only downsampled), and pages and tiles are placed on whole device pixels (gtk-canvas spike)
-- [x] **S** HiDPI, part 2: the blur was `append_scaled_texture`, which GSK renders at logical resolution on a HiDPI surface. With plain `append_texture`, zoom 1.0 at scale 2 is pixel-identical to hayro's own render. Not yet confirmed by eye on the Mac's screen, or on a HiDPI Linux surface.
-- [x] **M** HiDPI, part 3: settled views use tiles at the exact device scale, drawn 1:1 (`TileScale` in `TileKey`, settling in `Viewer::frame(now, …)`, `begin/end_zoom_gesture`); √2 levels remain for zooming and as fallback. Probe at fit width: pixel-identical to `specto render` at the device scale on Linux scales 1.25, 1.5 and 2 (was edge contrast 99 vs 117 with levels). No frame-rate cost.
-- [x] **S** HiDPI, part 4 (found by the part 3 probe on Linux): at fractional scales a non-maximized window puts the canvas on a fractional device pixel (25 px CSD shadow × 1.25 = 31.25), blurring every tile (edge contrast 80.7). Both canvases now translate to snap their origin to a whole device pixel. `apps/desktop` also switched to `append_texture`.
-- [x] **S** Follow-ups from the Android review: `TileCache` evicts placeholders last instead of pinning them (`with_evict_last`; pinning every page of a 1,000-page document would take ~500 MB) and is now `Send`; the scheduler no longer re-renders tiles that are finished but not yet collected; the viewer omits the placeholder layer under fully covered pages; desktop thumbnails use `append_texture`, and the debug screenshot renders at device scale
-- [ ] **S** Confirm parts 3 and 4 by eye on the Mac (scale 2) and on a real fractional-scale Linux display
-- [x] **M** `specto-view`: layout for single page / continuous / two-page / two-page continuous, plus "cover page alone"
-- [x] **M** `specto-view`: viewport, zoom (fit width/page, fixed) anchored at the pointer, scrolling, paging, hit-testing, device-pixel-snapped `Frame` with placeholder and neighbouring-level fallback tiles and prioritized requests. The gtk-canvas spike runs on it at 59.5 fps (headless, quiet machine).
-- [x] **M** Desktop (`apps/desktop`, binary `specto-gtk`): canvas widget drawing `specto-view` frames, implementing `GtkScrollable` (native scrollbars, kinetic scrolling), with ctrl+scroll and pinch zoom
-- [x] **M** Desktop: thumbnail sidebar (`GtkListView`, shares placeholder tiles with the canvas, follows the current page), page number entry, layout and zoom menus, keyboard navigation and shortcuts
-- [x] **S** Desktop: outline sidebar ("Contents" tab next to Thumbnails, shown when the document has an outline; `GtkTreeListModel` with expanders; `win.sidebar-page` action)
-- [x] **S** Desktop: open via dialog, drag-and-drop or command line (one window per document), password prompt, start page
-- [x] **S** Desktop: recent files (GTK `RecentManager`, so they also show up in GNOME; listed on the start page) and per-file view state: page and position, layout, zoom, sidebar (`specto_view::ViewState`, stored in `$XDG_STATE_HOME/specto/view-state.ini`, last 200 files). Ctrl+Q closes windows one by one so each saves.
-- [x] **S** Desktop: one scheduler for the whole app. `Scheduler::client` gives each view its own queue, results and wake-up callback; workers serve clients round-robin. Three windows now share 4 workers instead of starting 4 each.
-- [x] **S** Headless GUI smoke test: `apps/desktop/test-ui/run.sh apps/desktop/test-ui/smoke.sh file.pdf out/` (screenshots via a debug-only screenshot action)
-- [x] **S** Headless desktop checks in CI: `apps/desktop/test-ui/check.py` drives the app over D-Bus (window actions plus debug-only `debug-state`, `debug-screenshot`, `debug-go-to`), with generated PDFs whose pages each have their own colour, so screenshots show which page is on screen. Opening, start page, broken files, navigation, page labels, layouts, zoom and its limits, sidebar, saved state, two windows; at scales 1, 1.25 and 2.
-- [x] **S** Headless checks with pointer input: a virtual pointer and keyboard through mutter's RemoteDesktop D-Bus API (relative motion, with the window maximized so window and screen coordinates agree), and the clipboard read back through it. Link clicks, all the selection gestures, copy, select all, autoscroll, a rotated page
-- [x] **S** Links (desktop): pointer cursor over links; a click follows in-document destinations (`Viewer::go_to_pdf_position`) and named actions, and opens `http`, `https` and `mailto` URIs with `GtkUriLauncher` (other schemes are refused with a toast)
-- [x] **S** Android: outline and links through `specto-ffi` (flattened outline with targets; in-document, web and mail links)
-- [ ] **S** Back and forward after a jump (a link, an outline entry, "go to page", later a search result): `specto-view` keeps the position left behind. The cheap answer to "look at the footnote, then carry on reading"
-- [ ] **M** Trim margins ("fit to content"): a view option that lays pages out by the box of what is drawn on them instead of the CropBox. Matters most on a phone, where white margins take up to a third of the width. A crop in the view only (on `ViewPage`); cropping pages for good would be an M3 command. Open: where the box comes from (the text layer's quads are cheap but miss figures, and scans entirely; candidates are the bounds of everything drawn, collected through hayro's `Device` the way `specto-text` collects glyphs, or the non-background pixels of the placeholder tile, which is rendered anyway), and how to keep it steady from page to page (one box per document, or one each for left and right pages, rather than one per page)
-- [ ] **S** Document properties dialog (desktop): the metadata from `specto-source` (which now has the dates and `SourceDocument::version`), plus file size, page count and page size, and how the file is protected (D9). Android has the dialog already, without the protection. Fonts as a follow-up: they need a walk over every page's resources, in the background
-- [ ] **S** Bookmarks set by the reader, listed with the contents. Decide where they live: kept by the app per document (nothing to save, but they stay on the device), or written as outline entries (they travel with the file, but need M3's save). Kept by the app, they need a way to recognise a document that survives saving it, such as the trailer's `/ID`; so will the reading positions, once there is editing
-- [ ] **M** Link preview (desktop): hovering over an in-document link shows a popover with the area around its target, for footnotes and citations in papers. Works where destinations carry a position (LaTeX's do); for a bare page there is only its top to show. After back and forward, which serve the same need
+- [x] Guards for expensive pages: they render one tile at a time, workers free
+  their decoded images after a heavy page, and extra workers start while
+  renders are stalled
+- [x] A spinner over expensive pages that aren't sharp yet, on the desktop and
+  on Android
+- [x] hayro's render cache kept between renders, which made tiles 1.4 to 6
+  times faster
+- [x] Typed coordinate spaces and page geometry
+- [x] Opening and decryption, metadata, the outline, links and named
+  destinations, with every walk through a file bounded
+- [x] Large files (64 MB and up) memory-mapped instead of read
+- [x] Page labels, in all five numbering styles, shown and accepted by both
+  apps
+- [x] The document trait with its hayro backend, rendering tiles at any scale
+- [x] The render scheduler and the tile cache
+- [x] HiDPI: pages and tiles placed on whole device pixels, and zoom levels
+  that are only ever scaled down
+- [x] HiDPI: tiles drawn as plain texture nodes, which fixed the blur
+- [x] HiDPI: settled views drawn from tiles at the exact device scale
+- [x] HiDPI: the canvas snapped to a whole device pixel at fractional scales
+- [x] Tile cache and scheduler fixes found while reviewing the Android app
+- [x] Viewer: the four layouts, and the cover page alone
+- [x] Viewer: viewport, zoom anchored at the pointer, scrolling, paging,
+  hit-testing, and frames with fallback tiles and prioritized requests
+- [x] Desktop: the canvas widget, with native scrollbars, kinetic scrolling,
+  and zoom by scrolling and pinching
+- [x] Desktop: thumbnail sidebar, page entry, layout and zoom menus, keyboard
+  navigation
+- [x] Desktop: outline sidebar
+- [x] Desktop: opening by dialog, drag and drop or command line, the password
+  prompt and the start page
+- [x] Desktop: recent files, and the view state remembered per file
+- [x] Desktop: one scheduler shared by all windows
+- [x] Desktop: headless checks in CI, at scales 1, 1.25 and 2
+- [x] Desktop: headless checks with a virtual pointer and keyboard
+- [x] Desktop: links
+- [x] Android: outline and links
+- [ ] Upstream in hayro: decode images only for the region and resolution
+  being drawn. One tile of a 212-megapixel JPEG 2000 page still costs 4.5 GB
+  and 10 seconds at 100%, which no scheduling can fix.
+- [ ] Confirm the HiDPI sharpness by eye, on the Mac at scale 2 and on a real
+  Linux display with fractional scaling.
+- [ ] Back and forward after a jump (a link, an outline entry, going to a page,
+  a search result). The viewer keeps the position left behind. This is the
+  cheap answer to looking at a footnote and then carrying on reading.
+- [ ] Trim margins: a view option that lays pages out by the box of what is
+  drawn on them, not by the crop box. It matters most on a phone, where white
+  margins take up to a third of the width. It only crops the view. Open
+  questions:
+  - Where the box comes from. The text layer's positions are cheap but miss
+    figures, and scans entirely. Candidates are the bounds of everything drawn,
+    collected the way the text layer collects glyphs, or the pixels of the
+    placeholder tile that aren't background.
+  - How to keep it steady from page to page. One box per document, or one each
+    for left and right pages, would be steadier than one per page.
+- [ ] Document properties dialog on the desktop: the metadata, file size, page
+  count and page size, and how the file is protected (D9). Android has the
+  dialog already. Fonts would be a follow-up, since they need a walk over every
+  page's resources in the background.
+- [ ] Bookmarks set by the reader, listed with the contents. Decide where they
+  live. Kept by the app per document, there is nothing to save, but they stay
+  on the device. Written as outline entries, they travel with the file, but
+  need a save. Kept by the app, they also need a way to recognize a document
+  that survives saving it, and so will the reading positions.
+- [ ] Link preview on the desktop: hovering over an in-document link shows the
+  area around its target, for footnotes and citations in papers. It works where
+  destinations carry a position, as LaTeX's do. It comes after back and
+  forward, which serve the same need.
 
 ## M2: Text
 
-- [x] **S** Spike: hayro's glyph → Unicode mapping is good enough to build on (recall 0.99–1.00 on everyday PDFs vs `pdftotext`)
-- [x] **L** `specto-text`: glyph extraction via hayro's `Device` (quads in PDF space, rotation and vertical writing), words and lines in content order, RTL (Hebrew/Arabic) in logical order for text output, `text_range`, `char_at`, `word_of`, `line_of`. Character-level match with `pdftotext -raw` on the corpus: median recall and order 1.000, 87% of files ≥ 0.99 recall; everyday PDFs 0.98–1.00. 384 pages in 0.2 s
-- [ ] **M** Reading order by layout (columns, blocks) for files whose content stream isn't in reading order (about 5% of the corpus, mostly forms and flyers)
-- [ ] **M** `specto-text` fallbacks for glyphs without Unicode: reverse lookup in the embedded TrueType `cmap` (CID TrueType without `ToUnicode`); character code as Latin-1 / font encoding (Type 3)
-- [ ] **S** Investigate and report upstream: hayro ignores existing `ToUnicode` tables in `complex_ttf_font.pdf` and `issue16538.pdf`
-- [x] **M** Text selection (drag, double-click word, triple-click line) + copy. `specto-text`: `position_at` (nearest position between characters, also in margins), word and line ranges, highlight quads per line. `specto-view`: `Selection` (anchor and focus as page and character, across pages; character, word or line granularity), `nearest_pdf_point`/`pdf_to_view`. Desktop: drawn in the accent colour, I-beam cursor, Shift+click, autoscroll near the edges, *Primary*+C/A, Escape, primary selection, Edit menu on macOS
-- [x] **M** Search (desktop): `specto_text::SearchText` (per page: folded text, about 5 bytes per character, mapping back to characters; case and accents ignored, typographic quotes made plain, lines joined with a space and hyphenated line ends joined) and `Query`; `specto_view::SearchResults` (document order, current match, wrap-around) and `Viewer::reveal`. Desktop: search bar (*Primary*+F, Enter / Shift+Enter, *Primary*+G / Shift+*Primary*+G, Escape), "3 of 17" status, all matches in yellow and the current one in orange, pages indexed in a background thread from the current page on. Not yet: right-to-left text in visual order, matches spanning pages, options (whole words, match case)
-- [x] **S** Text-layer cache per page (desktop): full text pages extracted on the main thread when first needed (0.1–0.25 s for a whole 300-page manual) and kept for the 64 most recently used pages; search uses the compact `SearchText` of every page, built in the background
+- [x] hayro evaluation: its mapping from glyphs to Unicode is good enough to
+  build on
+- [x] The text layer: glyphs with their positions, words and lines in content
+  order, and right-to-left text in logical order
+- [x] Text selection by dragging, double click and triple click, and copying
+- [x] Search on the desktop, ignoring case and accents, with pages indexed in
+  the background
+- [x] A cache of the text layer per page
+- [ ] Reading order by layout (columns, blocks), for files whose content stream
+  isn't in reading order. That is about 5% of the corpus, mostly forms and
+  flyers.
+- [ ] Fallbacks for glyphs without a Unicode mapping: a reverse lookup in the
+  embedded TrueType font's character map, and the character code read in the
+  font's encoding for Type 3 fonts.
+- [ ] Investigate and report upstream: hayro ignores the existing Unicode
+  tables in `complex_ttf_font.pdf` and `issue16538.pdf`.
+- [ ] Search follow-ups: right-to-left text in visual order, matches spanning
+  pages, and options for whole words and matching case.
 
 ## M3: Page editing
 
-- [x] **M** `specto-doc`: `EditDoc` with `PageRef`s and undo/redo. Page edits keep a snapshot of the page list instead of inverse commands; a version number tracks "modified" relative to the last save
-- [x] **S** Edits in the model: delete pages, move pages, rotate pages, insert pages
-- [x] **S** Desktop: rotate left and right (current page or spread), undo and redo with the edit's name in the main menu, "Edited" in the title; text, search and links keyed by page of the file so they survive edits. Headless checks `rotate_and_undo`, `select_after_rotating`
-- [x] **S** Desktop: Delete Pages (Delete or Backspace on the canvas or in the sidebar, main menu, macOS Edit menu): the selected thumbnails if several, else the current page; never the last page. Headless check `delete_pages`
-- [x] **S** Desktop: move pages by dragging thumbnails (the selection, if the thumbnail dragged is in it), with a drop line and autoscroll; the view stays on the page it showed. Headless check `move_pages` (drops through a test hook: Mutter refuses about one in three drags from the virtual pointer)
-- [x] **M** Desktop: documents with pages from several files (a `Source` per file: scheduler document, parsed file, geometries, links, search text); Insert Pages from File after the current page or spread, with a password prompt; text, links and search keyed by file and page; the search indexer covers inserted pages. Headless check `insert_file`
-- [x] **L** `specto-write`: full rewrite save: flat page tree, rotation, deleted pages removed with what only they used, pages copied in from other sources, object and xref streams, encryption kept. Streams repaired from hayro where lopdf reads them wrong; the result is read back and checked page by page before it's used. Corpus: 1,066 of 1,077 files identical when rendered, 11 refused, none damaged
-- [ ] **M** `specto-write`: save the 11 corpus files it refuses (lopdf can't read damaged cross-reference tables or page trees that hayro recovers; one has an encryption dictionary lopdf re-encrypts wrongly), e.g. by building the objects from hayro's reading of the file
-- [x] **S** Page labels through edits: each page keeps its label from its file (`PageLabels::of_pages`; pages of files without labels numbered by position), in the session (both apps) and in saved files, where `specto-write` writes a new `/PageLabels` when the order changed
-- [ ] **S** `specto-write`: deduplicate resources shared between sources (fonts embedded in both of two merged files)
-- [x] **S** Desktop: several thumbnails selected (Shift+click, *Primary*+click, *Primary*+A in the sidebar); a selection of several stays while the view moves; rotating turns the selection. Headless check `thumbnail_selection`
-- [x] **S** Desktop: PDFs dropped on the thumbnails are inserted there, as one edit (several files in order)
-- [x] **M** Desktop: drag pages between windows: thumbnails dropped on another window's sidebar are copied there, rotation included, as one edit (`Session::bundle`/`insert_bundle`: the files' data is shared, a file the target already has isn't opened again). Headless check `pages_between_windows` (through a test hook)
-- [x] **S** Desktop: Save (*Primary*+S) and Save As (Shift+*Primary*+S) in the main menu and the macOS File menu; written in the background to a temporary file renamed into place; edits made meanwhile stay unsaved; "Save Changes?" when closing or quitting with changes. Headless checks `save`, `close_prompt`
-- [x] **S** "Export Selected Pages" (main menu, macOS File menu): the sidebar selection or the current page, written as a new PDF with the main file's catalog; a suggested name with the page numbers. Headless check `drop_files_and_export`
-- [x] **S** Property test: random edit sequence followed by undo-all restores the original state, and redo-all every state after it
-- [x] **M** Round-trip harness: `crates/specto-write/tests/write.rs` writes edited fixtures (inherited attributes, labels, outline, links, encryption, two sources), reopens them, compares every page's render with its source page, and runs `qpdf --check` (installed in CI). The corpus run is an ignored test
-- [x] **S** File changed on disk while open (desktop): a GIO file monitor plus a fingerprint (entity tag and size) taken when the file is read and after each save, so our own saves don't count. Unedited, the file is reloaded in place (view kept); with edits, a banner offers Reload; Save checks the fingerprint again and asks before overwriting; a deleted file gets a banner and Save writes it again. Headless check `file_changed`
-- [ ] **S** Android: notice a changed file (on resume, compare the fingerprint) and reload or ask, like the desktop
-- [ ] **S** A memory-mapped file (64 MB and up) truncated in place by another program makes reading it fault (`SIGBUS`); programs that save by renaming, as most do, are safe. Catch it, or copy files that live on removable or network storage
+- [x] The edit model: a page list with undo and redo, and a version number that
+  tracks whether the document is modified
+- [x] Edits in the model: delete, move, rotate and insert pages
+- [x] Desktop: rotating, with undo and redo named in the menu
+- [x] Desktop: deleting pages
+- [x] Desktop: moving pages by dragging thumbnails
+- [x] Desktop: documents with pages from several files, and Insert Pages from
+  File
+- [x] Saving as a full rewrite, with the result read back and checked page by
+  page. On the corpus, 1,066 of 1,077 files come out identical, 11 are refused
+  and none is damaged
+- [x] Page labels kept through edits, in the apps and in saved files
+- [x] Desktop: selecting several thumbnails
+- [x] Desktop: PDFs dropped on the thumbnails are inserted there
+- [x] Desktop: dragging pages between windows
+- [x] Desktop: Save and Save As, and the question about unsaved changes
+- [x] Desktop: Export Selected Pages
+- [x] Property test for undo and redo over random edit sequences
+- [x] Round-trip tests for saving, checked with qpdf
+- [x] Desktop: noticing that the open file changed on disk
+- [ ] Save the 11 corpus files that are refused. lopdf can't read damaged
+  cross-reference tables or page trees that hayro recovers, and one file has an
+  encryption dictionary that lopdf encrypts wrongly. Building the objects from
+  hayro's reading of the file would be one way.
+- [ ] Merge resources shared between sources, such as fonts embedded in both of
+  two merged files.
+- [ ] Android: notice a changed file when the app resumes, and reload or ask,
+  like the desktop.
+- [ ] A memory-mapped file that another program truncates in place crashes the
+  app when the missing part is read. Programs that save by renaming, as most
+  do, are safe. See the task on mapped files that shrink in M7.
 
 ## M4: Markup
 
-- [x] **M** `specto-annot`: the annotation model (text markup, ink, square, circle, line, stamp; anything else kept as "other" by its subtype) and `import`, which reads the markup a page has (links, form fields, popups and media are left out). Corpus: 401 annotations in 1,095 files, no panics. `specto info --annotations` lists them. In `specto-doc`, an `EditDoc` keeps what was done to annotations relative to the files (deleted, changed, added), on the same undo history as page edits; annotations belong to a page of a file, so they follow it when it is moved, and copies of one page share them
-- [x] **M** First slice, desktop: Highlight, Underline and Strikethrough mark the selected text (main menu, Shift+*Primary*+H, U and X), one annotation per page as one edit; a click picks an annotation made in this session, Delete deletes it; undo and redo by name; Save and Export write them (`specto-write`, through the full rewrite). Headless check `mark_text`
-- [x] **M** Annotations a file already has can be picked and deleted like new ones (desktop). hayro draws all of a page's annotations or none, so when one is deleted its page is rendered from a *variant*: a copy of that one page without it, written by `specto-write` (about 40 ms for a 350-page book) and opened as a scheduler document of its own (`specto-session/src/annots.rs`); undo goes back to the file. Text, links and search still come from the file. Locked and read-only ones can't be picked. Corpus (`cargo test --release -p specto-write --test annots -- --ignored`): 398 of 400 annotations deleted on their own with the others left as they were; 2 refused, in a fuzzed file lopdf can't read. Annotations without an appearance stream, which hayro doesn't draw at all, are now drawn by the app where it knows how (text markup)
-- [ ] **S** Variants are written while the user waits. Fine for ordinary files; for very large ones (lopdf reads the whole file each time) write them in the background, and keep lopdf's reading of a file between two deletions
-- [ ] **S** A filter for annotations upstream in hayro would make the variants unnecessary: ask
-- [x] **S** Annotations the app draws itself are also in the thumbnails (`Session::overlay_in`), in print (a page whose annotations were edited is printed from a one-page copy written with them, `PageBundle::annotated_page`) and go along with pages dragged to another window, as part of the one edit there (`EditDoc::insert_annotated`; a page whose annotations the other document has edited itself keeps those)
-- [x] **M** Markup toolbar (desktop): a pencil button in the header bar shows a bar with Highlight, Underline and Strikethrough and six colours (Shift+*Primary*+A; the three are gone from the main menu, their shortcuts stay). A tool that is pressed in marks text as it is selected, each tool in its own colour; a colour chosen while an annotation is picked recolours it (`Session::recolor_picked_annotation`, also for text markup of the file, which the app then draws instead of hayro), and the bar shows the picked one's colour. Headless check `markup_bar`. The bar is where the further tools go (drawing, shapes, text, notes)
-- [x] **M** Drawing tools on the markup bar (desktop): freehand, rectangle, ellipse and line. A drag draws on the page it starts on, with a live preview, and each tool keeps its own color. Strokes are thinned out and smoothed. Headless check `draw_tools`
-- [ ] **S** Markup toolbar follow-ups: line width and opacity, a fill color for shapes, a custom color, and remembering the colors and the last tool between runs
-- [ ] **S** Drawing follow-ups: several strokes as one annotation (handwriting), stylus pressure, arrowheads for lines, Shift for squares, circles and straight angles
-- [x] **S** Saving checks that a changed or deleted annotation of a file is where the import found it (`Origin`: its index in the page's `/Annots` and its object number) and refuses to write otherwise, so that a file hayro and lopdf read differently can't lose the wrong annotation
-- [ ] **S** By hand, after the first slice (apps/desktop/TESTING.md, "Markup"): how highlights look on a real screen and on the Mac, and that Preview, Papers and a browser show and can delete what was saved
-- [ ] **S** Android: build the app with the three new `EditKind`s (`Editing.kt`, `strings.xml`); they were added without a Kotlin build
-- [ ] **L** Appearance streams: done for highlight, underline, strikeout, ink, rectangle, ellipse and line. Screen and saved file are drawn from the same shapes, and tests render saved files with hayro to compare. Still to do: squiggly as a wavy line, text boxes, notes
-- [ ] **M** Overlay rendering of annotations (separate from page tiles): done on the desktop for annotations made in the session (`Session::overlay`, drawn by the canvas, highlights through a blend node). On Android in the page view (`Frame::shapes`), not in its thumbnails. Not yet: the file's own annotations (see above)
-- [x] **M** Text boxes and notes (desktop): the text tool asks for text where the page is clicked and makes a text box of it, the note tool puts a note there and asks for its text. A double click or Enter asks again, also for a comment on any other markup. Text boxes are set in Helvetica, which needs no embedding, and wrap to their width
-- [x] **M** Typing on the page (desktop): a text field stands where the text box is, in its font, size and color, and the box is out of the page meanwhile. The field uses Helvetica or a font with the same widths, so lines break as they will in the box
-- [ ] **M** Text follow-ups: text size and alignment, typing on pages shown rotated, and characters beyond Windows Latin, which need a font embedded (they are saved as question marks now)
-- [ ] **S** A text box being dragged shows only its frame until it is dropped, because the renderer draws its text. Draw the text in the overlay during the drag
-- [x] **M** Moving and resizing (desktop): a drag on a drawing or a shape moves it, and the handles of the picked one resize it (corners of its frame, or the ends of a line). Escape gives a drag up. Text markup stays with its text
-- [x] **S** Markup written by Specto is recognized when a file is opened again, so it can be moved and recolored like new markup. The annotation carries a number that matches its appearance stream as long as no other program has changed it
-- [ ] **S** Adjusting follow-ups: handles on the sides, Shift to keep proportions, arrow keys to nudge, snapping, and moving several at once
-- [ ] **M** `specto-write`: incremental-update save path (used when only annotations/forms changed)
-- [x] **S** Markup list (desktop): a third page of the sidebar lists every annotation with its color, text, kind and page. A row picks its annotation and scrolls to it. The sidebar now always has its switcher, also for documents without an outline
-- [ ] **S** Markup list follow-ups: filling it in the background for very long documents (it reads the annotations of every page when it is first shown), the author and date, filtering by kind, and replies
-- [x] **M** Signatures (desktop): made once and kept with the app's data, then placed by a click from the signature button on the markup bar. A drawn one is placed as a drawing, one from a photo as a picture (a stamp annotation with the image and its transparency). These are pictures of a signature, not digital signatures, and the UI says "Signature" and nothing more
-- [x] **M** New Signature dialog (desktop): draw with the mouse or touchpad, or choose a picture of a signature on paper. For a picture, the paper is taken away by comparing each pixel with the brightness of the paper around it, which copes with uneven light, and a slider sets how dark a stroke must be. The ink can stay as photographed or become black or blue
-- [ ] **S** Signature follow-ups: a stylus or touchscreen for drawing, naming and reordering saved signatures, cropping a picture by hand before the paper is taken away, placing any image as a stamp, and encrypting the saved signatures
-- [ ] **S** Android: draw a signature by finger or stylus; a way to bring it to the desktop (export/import as an image)
+- [x] The annotation model, and reading the markup a file has
+- [x] Annotation edits in the edit model, on the same undo history as page
+  edits
+- [x] Desktop: Highlight, Underline and Strikethrough on the selected text,
+  saved as annotations
+- [x] Desktop: annotations a file already has can be picked and deleted. The
+  page is then rendered from a copy without the annotation
+- [x] Annotations the app draws are also in thumbnails and in print, and go
+  along with pages dragged to another window
+- [x] Desktop: the markup toolbar, with a color per tool
+- [x] Desktop: drawing tools for freehand, rectangle, ellipse and line
+- [x] Saving checks that a changed or deleted annotation is where it was found
+- [x] Desktop: text boxes and notes
+- [x] Desktop: typing a text box on the page, in its font, size and color
+- [x] Desktop: moving and resizing drawings and shapes
+- [x] Markup written by Specto is recognized when a file is opened again, so it
+  can still be changed
+- [x] Desktop: a list of all markup in the sidebar
+- [x] Desktop: signatures, drawn or taken from a photo, kept with the app's
+  data and placed with a click
+- [ ] Page copies for deleted annotations are written while the user waits.
+  That is fine for ordinary files. For very large ones, write them in the
+  background, and keep lopdf's reading of a file between two deletions.
+- [ ] Ask upstream for a way to leave out single annotations in hayro, which
+  would make the page copies unnecessary.
+- [ ] Markup toolbar follow-ups: line width and opacity, a fill color for
+  shapes, a custom color, and remembering the colors and the last tool between
+  runs.
+- [ ] Drawing follow-ups: several strokes as one annotation, stylus pressure,
+  arrowheads for lines, and Shift for squares, circles and straight angles.
+- [ ] Check by hand how highlights look on a real screen and on the Mac, and
+  that Preview, Papers and a browser show and can delete what was saved.
+- [ ] Android: build the app with the annotation edit kinds that were added to
+  the shared code without a Kotlin build.
+- [ ] Squiggly underlines drawn as a wavy line.
+- [ ] Android: show markup in the thumbnails too. The page view already draws
+  it.
+- [ ] Text follow-ups: text size and alignment, typing on pages shown rotated,
+  and characters beyond Windows Latin, which need an embedded font. They are
+  saved as question marks now.
+- [ ] A text box being dragged shows only its frame until it is dropped. Draw
+  its text in the overlay during the drag.
+- [ ] Adjusting follow-ups: handles on the sides, Shift to keep proportions,
+  arrow keys to nudge, snapping, and moving several at once.
+- [ ] Incremental save, used when only annotations or form values changed.
+- [ ] Markup list follow-ups: filling it in the background for very long
+  documents, the author and date, filtering by kind, and replies.
+- [ ] Signature follow-ups: a stylus or touchscreen for drawing, naming and
+  reordering saved signatures, cropping a picture by hand, placing any image as
+  a stamp, and encrypting the saved signatures.
+- [ ] Android: draw a signature by finger or stylus, and a way to bring it to
+  the desktop.
 
 ## M5: Forms
 
-- [ ] **M** `specto-forms`: AcroForm field tree, inheritance, widget→page mapping, flags (read-only, required, multiline, comb, password)
-- [ ] **M** Field interaction: text (native input overlay), checkbox, radio groups, combo/list box
-- [ ] **L** Widget appearance regeneration (`/DA` parsing, font selection, fallback font embedding for non-Latin text)
-- [ ] **S** Tab order, field highlighting toggle, reset form
-- [ ] **S** Save filled forms (incremental); optional "flatten" export
+- [ ] A forms crate: the AcroForm field tree, inheritance, the mapping of
+  widgets to pages, and field flags (read-only, required, multiline, comb,
+  password).
+- [ ] Field interaction: text through a native input overlay, checkboxes, radio
+  groups, combo and list boxes.
+- [ ] New widget appearances when values change, including font selection and
+  an embedded fallback font for text outside Latin.
+- [ ] Tab order, a toggle for highlighting fields, and resetting a form.
+- [ ] Saving filled forms incrementally, and an optional flattened export.
 
 ## M6: Android
 
-- [x] **M** `specto-ffi`: `ViewSession` over `specto-view` and the scheduler (viewport, scroll, zoom, layout and zoom modes, frames, `tiles_ready` callback). Tiles cross the FFI as opaque ids, so `TileKey` can change without touching Kotlin.
-- [x] **M** `specto-session`: the open document as one type for both apps (2026-11-14). What was the desktop's `Document` apart from its textures (files, `EditDoc`, viewer, text cache, selection, search and indexer, links, labels, `SaveJob`) moved to `crates/specto-session`; the desktop's `Document` and `specto-ffi`'s session each hold one, and the second copies of the search session and text cache in `specto-ffi` are gone. Tests in `crates/specto-session/tests/session.rs`
-- [x] **M** `specto-ffi`: editing commands (2026-11-14). `ViewSession` can rotate, delete and move pages, undo and redo, say where it stands (`edit_state`: modified, and what undo and redo would do), and write the edited document to a file descriptor (`save_to_fd`). Page count, page labels and outline entries follow the edits; tiles need nothing, since they are keyed by page of the file and rotation. No events: edits come from Kotlin, which asks again afterwards. Rust tests `editing_pages` and `saving_what_was_edited`; nothing in the app calls these yet
-- [ ] **S** `specto-ffi`: pages of other files (the session's `add_source`, `insert`, and bundles between sessions), when the app gets a way to ask for them
-- [x] **M** Tile path: Kotlin owns one `Bitmap` per tile and fills it through JNI; the cache bookkeeping (LRU, byte budget from `memoryClass`) lives in Rust and reports evictions; `onTrimMemory` keeps only what is on screen
-- [x] **M** Compose viewer: canvas, scroll with fling, pinch zoom, double-tap zoom, page indicator, rotation without reload. Settles to exact-scale tiles after zooming; pixel-identical to `specto render` on the emulator. Works on a Pixel 9a, including pinch. The per-frame path uses JNI instead of UniFFI.
-- [x] **S** Kotlin unit tests (`./gradlew testDebugUnitTest` in `apps/android`): the frame decoder against `crates/specto-ffi/fixtures/frame.bin`, which a Rust test keeps current, so the two sides can't drift apart; the document store; the outline's collapse logic. CI builds the app and runs them (job `android`).
-- [x] **S** UI tests, first slice (`ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest` in `apps/android`; the run reinstalls the app, hence the serial): opening, page turns by swipe, a slow short drag returning and a short flick turning, the page grid, "Go to page", full screen, and continuing where the reader left off. Compose's test clock makes the gestures deterministic, unlike adb swipes. Test PDFs are fixtures in `test-ui/assets`, written by `make-fixtures.py`.
-- [x] **M** UI tests for most of `apps/android/FEATURES.md`: 25 tests in `ReaderTest` (paging, keys, strip, full screen, sidebar, two pages, rotation, what is remembered) and `DocumentTest` (printed page numbers, Contents, links, password), passing on the phone emulator (Android 17) and the tablet emulator (Android 16). A third fixture, `locked.pdf`, is RC4-encrypted by `make-fixtures.py`.
-- [x] **S** UI tests in CI: the job `android-ui` runs them on an Android 15 emulator (x86-64 runner) for pushes to `main` and on request. Green in a phone and a tablet shape (`pixel_7`, `pixel_tablet`).
-- [x] **S** Release build measured on the phone (`./gradlew assembleRelease`, signed with the debug key, no code shrinking): page turns at median 5 ms, 99th percentile 10–11 ms, with or without the strip. A build for distribution still needs its own key and code shrinking with keep rules for the UniFFI bindings.
-- [x] **S** CI: `cargo clippy -p specto-ffi --all-targets --target aarch64-linux-android` lints the Android-only JNI code too (check only, no NDK needed; clean with `-D warnings`)
-- [x] **S** Top bar: pages button (top left) opening a thumbnail grid, ⋮ menu (top right) with "Open" and "Go to page"; password prompt for encrypted files. Thumbnails are the pages' placeholder tiles, requested after the page view's own tiles.
-- [x] **L** Paged mode as the phone default (UX decision, 2026-11-14): swipe left/right, one page at a time, each page fitted to the screen on its own. `specto-view` got swipe paging for the paged layout modes (`Settings::swipe`, off by default, so the desktop is unchanged): all spreads side by side in viewport-sized slots, one zoom per spread, `snap_delta` to decide where a drag comes to rest, `scroll_in_page_by` for flings that stay on a zoomed page. Continuous vertical scrolling is an option in the ⋮ menu; the choice is not persisted. Checked on the emulator; the feel still needs judging on a phone.
-- [x] **S** `Viewer::current_page` in continuous modes is the last page once scrolled to the very end (before, the page above could keep the larger share of the viewport forever)
-- [x] **S** Printed page numbers (`/PageLabels` via `specto-source`): page indicator ("iii (3 / 240)"), page grid, Contents, and "Go to page", which takes a printed number first and a position otherwise
-- [x] **S** Paged mode: turning the page returns to the fitted view. In swipe mode only the current spread is zoomed and its neighbours wait fitted, so the next page slides in at its final size (`specto-view`).
-- [ ] **S** Investigate what Preview does with the zoom when turning a page while zoomed in (iOS, and macOS in single-page mode), and decide whether we keep returning to the fitted view (the current behaviour) or carry the zoom over to the next page (what we did before; `specto-view` would need both as a setting)
-- [ ] **S** Paged mode follow-up: rubber-band at the first and last page
-- [x] **M** Thumbnail strip along the bottom: scrollable, the current page highlighted and kept in the middle (it follows once the page view rests), tap to jump. Bars read their own `currentPage` and thumbnail state rather than the per-frame `ViewFrame`, which brought page turns with the strip back to the frame times without it on a Pixel 9a (median 6–7 ms, debug build).
-- [x] **S** Full screen: a tap on the page (not on a link) hides the top bar, the strip and the status bar; a tap or Back brings them back. The navigation bar stays, since hiding it triggers Android's "viewing full screen" explanation.
-- [x] **S** Strip: scrolling it flips through the document (the page passing the middle is shown)
-- [ ] **S** Strip follow-up: the occasional slow frame when it loads new thumbnails after a page turn (99th percentile 30 ms against 12 ms in full screen)
-- [x] **S** Outline: the top-left button opens "Pages" and, for documents with an outline, "Contents" as a second tab (a collapsible tree from `specto-source`, the reader's position highlighted); the tabs can be swiped, and the last one used is reopened
-- [x] **S** Links: a tap follows internal links and named actions (`Viewer::go_to_pdf_position`, which now stays on the target page in swipe mode); external links show their address and open only after confirmation, and only http, https and mailto
-- [x] **M** Tablet layout, minimal: windows at least 840 dp wide show Pages and Contents in a sidebar beside the document, open by default and folded away with the top-left button; narrower ones (tablet portrait, split screen) keep the phone layout. The strip is hidden while the sidebar is open, and full screen hides the sidebar. UI tests run on the phone and tablet emulators (Android 17 and 16).
-- [x] **M** Two-page view on wide windows: "Two pages" and "First page alone" in the ⋮ menu, with swiping (pairs turn together) and with continuous scrolling; saved per document, and shown one page at a time while the window is narrow. `specto-view` needed no change, only a test for swiping through spreads.
-- [x] **S** Keyboard, as on the desktop: arrows, Page Up/Down, Space, Backspace, Home and End turn pages or scroll, Ctrl with +, − and 0 zooms. The page view takes the focus when a document opens.
-- [x] **S** Tablet polish: the page indicator names both pages of a pair ("4–5 / 12"), the sidebar shows one column of thumbnails, and whether it was open is remembered per document
-- [ ] **S** Tablet follow-up: the page number in the top bar, as on the desktop
-- [x] **S** Open from the system file picker and via "Open with" (`ACTION_VIEW`)
-- [x] **M** Reading position and recent documents: page, offset, mode and zoom are saved per document (recognised by a fingerprint of its content, since the same file arrives under different URIs) when the app stops or the document is closed, and restored on open; the start screen lists the last 20 documents that can be reopened (those with a persistable read permission, i.e. picked in the app). "Close" in the ⋮ menu returns to the start screen.
-- [x] **S** Share: "Share" in the ⋮ menu offers the open document through the system's share sheet. The receiving app reads the document where it is (the app passes its read permission on); where that isn't possible (a plain file path, or a provider that doesn't allow it) it gets a copy from the app's cache, served by a `FileProvider`. Both routes checked by hand against the system's Print; the UI tests cover the copy.
-- [x] **S** Opening through a file descriptor instead of reading the file into the app's memory: `PdfFile.fromFd(pfd.detachFd())` and `ViewSession.openFile` (mapped from 64 MB, pipes read). The file's bytes no longer pass through the Java heap, a password retry reuses the `PdfFile`, and documents are still recognised by the same fingerprint (`PdfFile.read` for both ends of the file)
-- [x] **M** "Save as" in the ⋮ menu (2026-11-14): the system asks where, the document as edited is written to the app's cache first (`ViewSession.save_to_fd`) and copied from there, and the saved document is then the one that is open, at the same place. A document with unsaved edits says "Edited" in its title, asks before it is left ("Save changes?"), and is shared as edited. A mapped original (from 64 MB) is closed before the copy, since the reader may be saving over it; should the copy then fail, the edited copy in the cache is what opens. UI tests in `EditTest`
-- [x] **S** "Save" (2026-11-14): over the file the document was opened from, in the ⋮ menu while there are edits and with Ctrl+S, for documents the app may write to (it takes the write permission the system file picker offers along with the read one; documents handed over by other apps mostly come without, and get "Save as" only). Written to the cache first and copied over the file, then `ViewSession.written_is_saved`; the document stays open with its undo history, and moves to its new fingerprint in the document store. A mapped file (from 64 MB) is closed and read afresh instead, which loses the undo history, as "Save as" does
-- [ ] **S** Unsaved edits survive the app being ended in the background: keep the edited page list (and what it refers to) in the document store and offer it again when the document is next opened. Today they last as long as the process does
-- [x] **M** Page organizer, first part (2026-11-14): a long press in the page grid picks pages (on phones and in the tablet's sidebar), and the top bar turns into a selection bar with rotate left and right, delete and "Select all"; undo and redo in the ⋮ menu and with Ctrl+Z. `PdfViewState` reads page count, sizes, labels and outline again after every edit
-- [x] **M** Page organizer, second part (2026-11-14): drag to reorder. A long press that moves on drags the picked pages; a bar between thumbnails marks where they would go (`pageDrop`, unit-tested), the grid scrolls at its top and bottom edge, and the drop is one `movePages`. The gesture is the grid's own (taken before the grid's scrolling sees it), so thumbnails are plain clickables with a long-click action for screen readers
-- [ ] **S** Page organizer follow-ups: thumbnails that make room while pages are dragged over them (today a bar marks the place); "Undo" offered right after a delete (a snackbar), since the ⋮ menu is a step away; dragging pages out to another app or in from one
-- [x] **M** Text markup on Android: "Highlight", "Underline" and "Strike through" in the floating menu beside selected text (`ViewSession::mark_selection`, in the colours the desktop starts out with), and "Delete" in the same menu for an annotation a tap picked (`pick_annotation_at`, `remove_picked_annotation`; a link under the tap wins, as on the desktop). Each frame carries the shapes the frontend draws (`Frame::shapes`, from `Session::overlay`) and the box around the picked annotation; Kotlin draws highlights into a layer multiplied with the page. Not yet: marks in the thumbnails (`Session::overlay_in`), colours, and the other kinds of annotation (a toolbar, like the desktop's, when those come)
-- [ ] **M** Markup tools with stylus support (pressure, palm rejection, finger-scrolls-while-pen-draws)
-- [ ] **M** Forms with native `TextField` overlay + IME
-- [x] **M** Text selection with Android's handles and copy: a long press selects a word (and, moving on, further words), a handle at each end moves it by characters, dragging to the edge scrolls on in continuous mode, and the system's floating text menu offers Copy and Select all. `specto-ffi` uses `specto-view`'s `Selection` and reports the highlights and handle positions in each frame (the frame layout has a kind per highlight, for search matches later). Its text-page cache is a second copy of the desktop app's `TextCache`: one to share when the search session moves into a crate
-- [x] **S** Share the selected text: "Share" in the floating menu beside the selection, between "Copy" and "Select all", offers it as plain text through the share sheet. The menu is now the app's own use of the system's floating menu (`TextMenu`, an `ActionMode`), since Compose's `TextToolbar` knows only cut, copy, paste and select all. Up to 100,000 characters, as a shared text travels inside the requests
-- [x] **M** Search on Android: a magnifying glass in the top bar turns it into a search field; matches follow the typing, are highlighted (the current one differently) and counted ("3 of 17"), with arrows to the next and previous one. Through `specto-ffi`: `search`, `search_step`, `search_status`, matches as highlights in each frame, and `ViewListener::search_changed` while the document is still being read. Matching and the list of matches are the shared `SearchText` and `SearchResults`; the session around them (the per-page search text, the background indexer, the search in progress) is in `specto-ffi/src/search.rs`, a second copy of what the desktop app has in `document.rs`: one to share
-- [ ] **M** F-Droid: check that the Gradle dependencies are all free software, make the build reproducible, write the metadata
-- [ ] **S** Back after a jump: the system's Back returns to where a link or outline entry was followed from (with M1's back and forward)
-- [ ] **S** Trim margins: a switch in the ⋮ menu, remembered per document (with M1's)
-- [x] **S** Document properties: "Properties" in the ⋮ menu shows the file name, what the document states (title, author, subject, keywords, programs, dates), page count, page size by name ("210 × 297 mm (A4)"), file size and PDF version, through `ViewSession::info`. Not yet: how the file is protected, and fonts
-- [ ] **S** Bookmarks in the Pages/Contents view (with M1's, through `specto-ffi`)
-- [x] **M** Top bar: a view button next to ⋮ (2026-11-14). Its icon pictures the current layout; its menu chooses one of single page, continuous, and on wide windows two pages and two pages continuous, with "First page alone" below, then "Fit page" or "Fit width" (`ViewSession::set_fit_width`; each layout starts with its own fit, and the choice is saved with the document). ⋮ keeps the rest: Open, Share, Go to page, Properties, Settings, Close. Fitted to the width, a page taller than the view scrolls before Page Down, Space and the arrows turn it. The magnifying glass is left for search; "Trim margins" will join the view menu
-- [x] **S** Settings screen, from the ⋮ menu: app-wide switches, kept across launches (`SharedPreferences`), apart from what is remembered per document
-- [x] **S** Keep the screen on while reading: a switch in Settings, off by default; for ten minutes after the last touch or key, so a phone left lying on the table still goes dark
-- [x] **S** Volume keys move through the document like Page Down and Page Up (in every layout, not only paged): a switch in Settings, off by default, since it takes the volume keys from someone listening to music while reading
+- [x] The view session over the viewer and the scheduler, through UniFFI
+- [x] The session crate: one type for the open document, shared by both apps
+- [x] Editing commands through the FFI: rotate, delete, move, undo, redo and
+  saving
+- [x] Tiles: Kotlin owns a bitmap per tile and fills it through JNI, with the
+  cache bookkeeping in Rust
+- [x] The Compose viewer: scrolling with fling, pinch and double-tap zoom, the
+  page indicator, and rotation without reloading
+- [x] The work done on every frame moved from UniFFI to JNI
+- [x] Kotlin unit tests, in CI
+- [x] UI tests for most of the feature list, on a phone and a tablet emulator
+- [x] UI tests in CI, for pushes to the main branch
+- [x] Release build measured on a phone
+- [x] CI lints the JNI code that only compiles for Android
+- [x] Top bar with the page grid, the overflow menu and the password prompt
+- [x] One page at a time with swipes, as the default on phones
+- [x] Printed page numbers
+- [x] Turning the page returns to the fitted view
+- [x] Thumbnail strip along the bottom
+- [x] Full screen
+- [x] Scrolling the strip flips through the document
+- [x] Outline, as a second tab beside the page grid
+- [x] Links
+- [x] Tablet layout, with a sidebar on wide windows
+- [x] Two pages side by side on wide windows
+- [x] Keyboard navigation
+- [x] Tablet polish: the indicator names both pages, and the sidebar is
+  remembered
+- [x] Opening from the file picker and from other apps
+- [x] Reading position and recent documents
+- [x] Sharing the open document
+- [x] Opening through a file descriptor, without reading the file into the
+  app's memory
+- [x] Save as
+- [x] Save, over the file the document was opened from
+- [x] Page organizer: picking pages, rotating and deleting them
+- [x] Page organizer: dragging to reorder
+- [x] Text markup: highlighting, underlining and striking through the selected
+  text, and deleting a picked annotation
+- [x] Text selection with handles, and copying
+- [x] Sharing the selected text
+- [x] Search
+- [x] Document properties
+- [x] The view button and its menu, with fit page and fit width
+- [x] Settings screen
+- [x] Setting: keep the screen on while reading
+- [x] Setting: volume keys turn pages
+- [ ] Pages of other files through the FFI, when the app gets a way to ask for
+  them.
+- [ ] Find out what Preview does with the zoom when turning a page while zoomed
+  in, on iOS and on macOS in the single-page layout. Then decide whether we
+  keep returning to the fitted view or carry the zoom over to the next page.
+- [ ] A rubber band at the first and last page.
+- [ ] The strip causes an occasional slow frame when it loads new thumbnails
+  after a page turn (30 ms at the 99th percentile, against 12 ms in full
+  screen).
+- [ ] The page number in the top bar on tablets, as on the desktop.
+- [ ] Unsaved edits should survive the app being ended in the background. Keep
+  the edited page list in the document store and offer it again when the
+  document is next opened.
+- [ ] Page organizer follow-ups: thumbnails that make room while pages are
+  dragged over them, Undo offered right after a delete, and dragging pages out
+  to another app or in from one.
+- [ ] Markup follow-ups: colors, and the other kinds of annotation, with a
+  toolbar like the desktop's.
+- [ ] Markup tools with stylus support: pressure, palm rejection, and scrolling
+  with a finger while the pen draws.
+- [ ] Forms, with a native text field overlay and input methods.
+- [ ] F-Droid: check that the Gradle dependencies are all free software, make
+  the build reproducible, and write the metadata.
+- [ ] Back after a jump: the system's Back returns to where a link or outline
+  entry was followed from. Depends on back and forward in M1.
+- [ ] Trim margins: a switch in the view menu, remembered per document. Depends
+  on the task in M1.
+- [ ] Bookmarks in the Pages and Contents view. Depends on the task in M1.
+- [ ] Document properties follow-ups: how the file is protected, and its fonts.
 
-## M7: Polish & hardening
+## M7: Polish and hardening
 
-- [x] **M** Printing on the desktop: `GtkPrintOperation` with the print dialog (all, current page, ranges, the sidebar selection), the document as edited, pages fitted and centred, landscape paper for wide pages; rendered at 300 dpi on a thread of its own with deferred drawing; settings remembered while the app runs. Headless check `print_to_file` (export to PDF, read back with poppler)
-- [x] **M** Printing on Android via `PrintManager`: "Print" in the ⋮ menu and Ctrl+P open the system's print dialog. The print service prints PDFs itself, so it is handed the document as edited, written to the app's cache (`ViewSession::print_to_fd`), not rendered pages: text stays text, and the system does the preview, page ranges and paper. It can't be told a password, so the copy is written without the document's encryption (`specto_write::write_unprotected`). UI tests look at the print job and the copy (`PrintTest`)
-- [ ] **S** Vector printing: send the pages themselves (e.g. the saved PDF through the print backend) instead of 300 dpi images, for smaller print-to-file output and selectable text
-- [x] **S** Encrypted PDFs: password prompt on open (desktop + Android)
-- [ ] **L** Encrypted save: keep the original security handler on incremental + full-rewrite saves, and encrypt merged-in objects with the target key (D9)
-- [ ] **M** Permission flags: honor owner-password restrictions (edit/annotate/print), with an "unlock" prompt for the owner password. A setting in both apps turns honouring off (D9); what a restriction blocks should say so and point there
-- [ ] **S** Document security dialog (like Preview's, from the File menu): add / change / remove user and owner passwords (AES-256), saved with the document
-- [ ] **M** Fuzzing (`cargo-fuzz`) for parser and save path; fix crashes
-- [ ] **M** Performance pass: profile big/complex docs, startup time, memory
-- [ ] **M** Accessibility: keyboard-only operation, screen-reader labels for chrome
-- [ ] **S** Dark mode (UI chrome; optional inverted page rendering)
-- [x] **S** Flatpak (`packaging/flatpak`, see packaging/README.md): GNOME 51 runtime, crates downloaded ahead by flatpak-builder (`cargo-sources.py`), no file system access. Checked in the sandbox: opening and saving through the document portal (the temporary file and rename work there), the start page and file dialogs show the real folder (the portal's host path), and a file changed outside is noticed when the window becomes active again (file monitors don't see it through the portal)
-- [ ] **S** Publish on Flathub (steps in packaging/README.md). Ready: the metainfo (links, developer, screenshot, a first release, brand colours) and `packaging/flatpak/flathub.sh`, which writes the manifest and `cargo-sources.json` for the Flathub repository; both pass `flatpak-builder-lint`. Left: the public repository under the address the metainfo names, a tagged release, and the pull request to flathub/flathub
-- [x] **S** Signed APK/AAB (Android): the release build is signed with the key named in `apps/android/keystore.properties` (not in the repository; `apps/android/BUILDING.md` says how to create one), and with the debug key without that file. The key itself is made when the app is first published
-- [x] **S** Android: code shrinking in the release build (R8, with keep rules for the UniFFI bindings, JNA and the JNI class in `proguard-rules.pro`): the APK went from 16.4 to 9.4 MB. CI builds it; the UI tests can't run against it (they share libraries with the app, which R8 strips), so it is tried by hand
-- [x] **S** The app's name and application ID, settled before anything is published (Flathub ID, Android package name; both are painful to change later): "Specto", `net.xfbs.specto`. The crates (`specto-*`), the desktop program (`specto-gtk`), the `specto` dev tool and the `SPECTO_*` environment variables are named after it; only the repository is still called pdfrs. Android: `applicationId` and `namespace` in `apps/android/build.gradle.kts`, the Kotlin package (and with it the JNI function names in `crates/specto-ffi/src/jni.rs`), `app_name` in its `strings.xml`. Desktop: `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, the files in `apps/desktop/data` and `packaging/flatpak`, the ID in `apps/desktop/test-ui`. The desktop keeps its view state in `$XDG_STATE_HOME/specto`
-- [x] **S** Desktop integration files (`apps/desktop/data`): `.desktop` file with the PDF MIME type (so "Open with" lists the app), a placeholder icon, AppStream metainfo (screenshots, homepage and releases still missing)
-- [x] **S** A real icon: a page under a magnifying glass. Desktop: `apps/desktop/data/icons` (full colour and symbolic). Android: an adaptive icon with a themed (monochrome) layer in `res/drawable/ic_launcher_*.xml`, and the 512 px image for store listings in `apps/android/store`
-- [ ] **S** deb and rpm packages (`cargo-deb`, `cargo-generate-rpm`), with the files from `apps/desktop/data`; they need libadwaita 1.6 or newer from the distribution
-- [x] **S** Desktop: an About dialog (`app.about`, `AdwAboutDialog`): version, licence, links to the project and its issues, hayro and lopdf acknowledged. In the main menu, and under Help in the macOS menu bar. Headless check `about`
-- [ ] **S** macOS: check where About Specto shows up. It is under Help in our menu bar; GTK may also put one into the application menu, and then one of the two should go
-- [ ] **S–M** macOS app bundle: file association, Dock icon, bundled GTK
-- [x] **S** `cargo-deny` in CI (`deny.toml`, the `deny` job): security advisories, licence compatibility with MIT OR Apache-2.0, and crates only from crates.io
-- [ ] **M** Performance regression checks in CI: tile render times, frame times and peak memory on a few fixed documents (the gtk-canvas spike had a benchmark mode to start from: `spikes/gtk-canvas` at commit f32a26a, the last one with it), compared against stored numbers with a tolerance
-- [ ] **S** Preferences: default layout and zoom for documents opened for the first time (desktop: a preferences window; Android: also persist paged or continuous)
-- [x] **M** Desktop: large files without reading them into memory: mapped from 64 MB (`PdfData`). Re-opening safely after a save is part of the save task
-- [ ] **L** Decide whether page content is exposed to screen readers (the text layer through AT-SPI and TalkBack, reading order, tagged PDF structure), and if so, plan it
-- [ ] **S** Crash handling on the desktop: a panic hook that writes a log file the user can attach to a bug report (no telemetry)
-- [x] **S** Crash handling on Android: `crash.log` in the app's private storage holds exceptions nothing caught (Kotlin) and panics in the Rust library (`specto_ffi::crash`, a panic hook), newest entries only; Settings shows it, with "Share" and "Delete". No telemetry. Not covered: native crashes that aren't panics (out of memory, `SIGBUS`); Android 11 and later keep a record of those (`ApplicationExitInfo`) that the log could include
-- [ ] **M** Mapped files that shrink: a file of 64 MB or more is mapped (`PdfData`), and if another program truncates it in place while it is open, reading the missing part kills the app with `SIGBUS` (on Android a sync or download app could do that; a panic hook doesn't see it). Decide whether and how to guard against it. Ideas: notice the change first and stop reading (the file monitor of "File changed on disk while open", or checking size and modification time before each render); map only files nobody else can write (on Android, copy large files from other apps into the app's cache first, at the cost of the space); a `SIGBUS` handler that turns the fault into a failed render; or reading by position instead of mapping, which hayro's one-slice input doesn't allow today
-- [ ] **S–M** Touch on Linux (2-in-1 laptops, phones): drag to scroll, long-press to select, a layout for narrow windows; touch input in the headless checks
+- [x] Printing on the desktop, with pages rendered at 300 dpi
+- [x] Printing on Android, by handing the document to the system's print
+  service
+- [x] Password prompt when opening encrypted PDFs, in both apps
+- [x] Flatpak, checked in the sandbox
+- [x] Android: release builds signed with a key of their own
+- [x] Android: code shrinking in the release build, which took the APK from
+  16.4 to 9.4 MB
+- [x] The app's name and ID settled: Specto, `net.xfbs.specto`
+- [x] Desktop integration files: the launcher entry and the AppStream metainfo
+- [x] The icon: a page under a magnifying glass
+- [x] Desktop: the About dialog
+- [x] cargo-deny in CI, for security advisories and license compatibility
+- [x] Desktop: large files opened without reading them into memory
+- [x] Android: a crash log, which Settings shows
+- [ ] Vector printing on the desktop: send the pages themselves instead of
+  images, for smaller files when printing to a file and for selectable text.
+- [ ] Encrypted incremental saves, once the incremental save exists. The full
+  rewrite already keeps a document's encryption (D9).
+- [ ] Permission flags: honor the restrictions of an owner password on editing,
+  annotating and printing, with a prompt for the owner password to unlock them.
+  A setting in both apps turns this off (D9). What a restriction blocks should
+  say so and point to the setting.
+- [ ] Document security dialog, like Preview's: add, change or remove the two
+  passwords, saved with the document.
+- [ ] Fuzzing of the parser and the save path.
+- [ ] Performance pass: profile big and complex documents, startup time and
+  memory.
+- [ ] Accessibility: operation by keyboard alone, and labels for screen
+  readers.
+- [ ] Dark mode for page content, as an option.
+- [ ] Publish on Flathub (steps in
+  [packaging/README.md](../packaging/README.md)). The metainfo and the script
+  that writes the Flathub files are ready. Left to do: a tagged release, and
+  the pull request to Flathub.
+- [ ] deb and rpm packages. They need libadwaita 1.6 or newer from the
+  distribution.
+- [ ] macOS: check where About Specto shows up. It is under Help in our menu
+  bar. GTK may also put one into the application menu, and then one of the two
+  should go.
+- [ ] macOS app bundle: file association, Dock icon, bundled GTK.
+- [ ] Performance regression checks in CI: tile render times, frame times and
+  peak memory on a few fixed documents, compared against stored numbers with a
+  tolerance. The canvas evaluation had a benchmark mode to start from, in
+  `spikes/gtk-canvas` at commit f32a26a.
+- [ ] Preferences: the default layout and zoom for documents opened for the
+  first time.
+- [ ] Decide whether page content is exposed to screen readers (the text
+  layer, reading order, tagged PDF structure), and if so, plan it.
+- [ ] Desktop: a crash log that the user can attach to a bug report.
+- [ ] Android: include native crashes that aren't panics, such as running out
+  of memory, in the crash log. Android 11 and later keep a record of those.
+- [ ] Mapped files that shrink. A file of 64 MB or more is memory-mapped, and
+  if another program truncates it in place while it is open, reading the
+  missing part crashes the app. On Android a sync or download app could do
+  that. Decide whether and how to guard against it. Ideas:
+  - Notice the change first and stop reading, through the file monitor or by
+    checking size and modification time before each render.
+  - Map only files nobody else can write. On Android that means copying large
+    files from other apps into the app's cache first, at the cost of the space.
+  - A signal handler that turns the fault into a failed render.
+  - Reading by position instead of mapping, which hayro's input doesn't allow
+    today.
+- [ ] Touch on Linux, for convertible laptops and phones: drag to scroll, long
+  press to select, a layout for narrow windows, and touch input in the headless
+  checks.
 
 ## M8: Internationalization
 
-Each app uses its platform's own mechanism, and the core crates carry no user-facing text. The first two tasks are worth doing early, before M3–M5 add many more strings.
+Each app uses its platform's own mechanism, and the core crates carry no text
+that users see.
 
-- [x] **S** Desktop: the UI strings go through gettext (`apps/desktop/src/i18n.rs` over `gettext-rs`, the system's libintl; domain `specto`), English only so far. Sentences with something filled in are whole strings with named placeholders (`gettext_f("Couldn't open “{name}”: {error}", …)`), counts use `ngettext_f`, and Undo and Redo have one string per kind of edit. `apps/desktop/po/update-pot.sh` writes the template `po/specto.pot` (116 strings). Catalogues are looked for in `share/locale` next to the program's `bin`; checked with a throwaway German one. Not translated: what the core crates say in error messages (the task below), and numbers
-- [x] **S** Android: the UI's texts are in `strings.xml` (`stringResource`, `plurals` for counts, whole sentences with placeholders); code outside composables that unit tests call takes a `Texts`, which the tests fill from the same file. Still English and not translatable: the reasons in "Couldn't save: …" and "Couldn't open this file", which come from the Rust crates and the system
-- [ ] **S** Core: no user-facing text from the crates. Frontends map error variants (`OpenError`, the `specto-ffi` errors) to their own translated messages instead of showing the `thiserror` text
-- [ ] **S** Numbers through the locale: page counts, the zoom percentage
-- [ ] **S** Desktop: build and install the `.mo` files (also in the Flatpak, which hasn't been rebuilt since gettext came in); check the build on macOS with Homebrew's gettext (`GETTEXT_DIR`, see apps/desktop/BUILDING.md), which nobody has tried yet
-- [ ] **S** CI: fail when `apps/desktop/po/specto.pot` isn't what `update-pot.sh` writes (needs gettext 0.24 or newer in the container)
-- [ ] **S** A first translation (German) on the desktop, to prove the pipeline; a headless check that starts the app under another locale
-- [x] **S** A first translation on Android: German, in `res/values-de/strings.xml`. A unit test (`TranslationsTest`) holds every translation to the English texts: the same names, the same placeholders. The build lists the app's languages (`generateLocaleConfig`), so Android 13 and later offer them per app in the system's settings. Inches in a page size follow the locale ("8,5 × 11 Zoll"). The UI tests find things by their English texts, so the emulator they run on has to be set to English
-- [ ] **S** Right-to-left UI languages: check the chrome of both apps under an RTL locale (GTK and Compose mirror on their own; the sidebar side, the thumbnail strip and icons with a direction need a look). The page canvas does not mirror
-- [ ] **M** Binding direction in `specto-view`: one property for both the order of pages in a two-page spread and the swipe direction. Defaults to the document's `/ViewerPreferences /Direction` (read in `specto-source`), independent of the UI language; a "Right to left" toggle per document, saved with the view state, since many right-to-left PDFs don't set it. Through `specto-ffi` for Android
-- [ ] **S** Decide how translations are contributed (plain `.po`/`strings.xml` in the repo, or a hosted tool such as Weblate)
+- [x] Desktop: the app's texts go through gettext, in English only so far
+- [x] Android: the app's texts are string resources
+- [x] Android: a German translation, with a unit test that holds every
+  translation to the English texts
+- [ ] Core: no text for users from the crates. The frontends map error kinds to
+  their own translated messages instead of showing the crates' English text.
+- [ ] Numbers through the locale: page counts and the zoom percentage.
+- [ ] Desktop: build and install the translation catalogs, also in the Flatpak.
+  Check the build on macOS with Homebrew's gettext, which nobody has tried yet.
+- [ ] CI: fail when the translation template isn't what its script writes.
+- [ ] Desktop: a first translation, German, to prove the pipeline, with a
+  headless check that starts the app under another locale.
+- [ ] Right-to-left UI languages: check both apps under such a locale. GTK and
+  Compose mirror on their own, but the sidebar side, the thumbnail strip and
+  icons with a direction need a look. The page canvas does not mirror.
+- [ ] Binding direction: one property in the viewer for both the order of pages
+  in a two-page spread and the swipe direction. It defaults to what the
+  document states, independent of the UI language, with a toggle per document,
+  since many right-to-left PDFs don't state it.
+- [ ] Decide how translations are contributed: plain files in the repository,
+  or a hosted tool such as Weblate.

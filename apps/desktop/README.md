@@ -33,7 +33,8 @@ The main features are below, and the full list is in
 - **Editing**: rotating, deleting and reordering pages, inserting pages from
   other PDFs, and exporting a selection, with undo and redo
 - **Markup**: highlighting, underlining and striking through text, freehand
-  drawing, shapes, text boxes and notes, saved as standard annotations
+  drawing, shapes, text boxes, notes and signatures, saved as standard
+  annotations
 - **Printing**: with the system's print dialog
 - **Encryption**: opens password-protected PDFs, and keeps them protected when
   saving
