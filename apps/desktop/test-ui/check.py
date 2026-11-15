@@ -84,6 +84,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   click, as a drawing or a picture; the picture moves and keeps its
   proportions when resized; saved, both are in the file, and the picture
   still moves; the dialog for a new signature opens
+- text_style: the size and font controls show with the text tool and a
+  picked text box; what is typed is set as they say; a picked box takes
+  what is set then, and shows its own; saved, it is what it was
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1439,6 +1442,68 @@ def test_signatures(ctx):
     w.screenshot("new-signature")
     inp.keys(Input.ESCAPE)
     w.wait("the dialog closed", lambda s: s["dialog"] == "")
+
+
+def test_text_style(ctx):
+    path = os.path.join(ctx.home, "styled.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)
+    at = lambda x, y: w.screen(0, x, y)
+    closed = lambda s: not s["text_editor"]
+    # The controls for size and font show with the text tool only.
+    check(not w.state()["text_controls"], "text controls without the text tool")
+    w.action("markup-tool", gvariant_str("text"))
+    s = w.wait("the text controls", lambda s: s["text_controls"])
+    check(s["text_style"] == "sans 12", s)
+    # Set to a bold serif of 24 points: what is typed next is that. The
+    # same words take more room than in the 12 points before.
+    w.action("debug-text-style", gvariant_str("serif bold 24"))
+    w.wait("serif bold 24", lambda s: s["text_style"] == "serif bold 24")
+    inp.click(*at(100, 480))
+    w.wait("the editor", lambda s: s["text_editor"])
+    time.sleep(0.4)
+    inp.type("big words")
+    w.screenshot("typing-serif")
+    inp.keys(Input.ESCAPE)
+    w.wait("a text box", lambda s: closed(s) and s["annotations"] == 1)
+    w.settled()
+    big = dark_pixels(w, "big", at(100, 482), at(330, 440))
+    check(big > 150, f"no large text on the page: {big} dark pixels")
+    # Picked, a text box shows its style, and takes what is set then.
+    w.action("markup-tool", gvariant_str("text"))
+    s = w.wait("no tool, the box still picked", lambda s: s["markup_tool"] == "none")
+    check(s["text_controls"] and s["text_style"] == "serif bold 24", s)
+    w.action("debug-text-style", gvariant_str("mono regular 10"))
+    s = w.wait("restyled", lambda s: s["undo"] == "Change FreeText")
+    check(s["text_style"] == "mono 10" and s["annotations"] == 1, s)
+    w.settled()
+    small = dark_pixels(w, "small", at(100, 482), at(330, 440))
+    check(small < big * 0.6, f"the text didn't get smaller: {big} then {small}")
+    # Nothing picked: the controls go, and come back set to the box's
+    # style when it is picked again.
+    inp.keys(Input.ESCAPE)
+    w.wait("the controls gone", lambda s: not s["text_controls"])
+    inp.click(*at(110, 476))
+    s = w.wait("the controls back", lambda s: s["text_controls"])
+    check(s["text_style"] == "mono 10", s)
+    # Saved and opened again, it is what it was.
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    w = ctx.app([path]).window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    inp.click(*w.screen(0, 110, 476))
+    s = w.wait("the saved box picked", lambda s: s["annotation_picked"])
+    check(s["text_style"] == "mono 10" and s["annotation_text"] == "big words", s)
 
 
 def test_select_words_and_lines(ctx):

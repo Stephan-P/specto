@@ -189,14 +189,17 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Desktop: a list of all markup in the sidebar
 - [x] Desktop: signatures, drawn or taken from a photo, kept with the app's
   data and placed with a click
+- [x] Desktop: font, bold, italic and size for text boxes, in the three font
+  families no PDF needs to embed
 - [ ] Page copies for deleted annotations are written while the user waits.
   That is fine for ordinary files. For very large ones, write them in the
   background, and keep lopdf's reading of a file between two deletions.
 - [ ] Ask upstream for a way to leave out single annotations in hayro, which
   would make the page copies unnecessary.
 - [ ] Markup toolbar follow-ups: line width and opacity, a fill color for
-  shapes, a custom color, and remembering the colors and the last tool between
-  runs.
+  shapes, a custom color, remembering the colors, the text style and the last
+  tool between runs, and a layout for narrow windows, where the bar scrolls
+  sideways for now.
 - [ ] Drawing follow-ups: several strokes as one annotation, stylus pressure,
   arrowheads for lines, and Shift for squares, circles and straight angles.
 - [ ] Check by hand how highlights look on a real screen and on the Mac, and
@@ -206,9 +209,10 @@ point to [DECISIONS.md](DECISIONS.md).
 - [ ] Squiggly underlines drawn as a wavy line.
 - [ ] Android: show markup in the thumbnails too. The page view already draws
   it.
-- [ ] Text follow-ups: text size and alignment, typing on pages shown rotated,
-  and characters beyond Windows Latin, which need an embedded font. They are
-  saved as question marks now.
+- [ ] Text follow-ups: alignment, typing on pages shown rotated, and any font
+  of the system together with characters beyond Windows Latin. Both of those
+  need a font embedded in the file and are one piece of work. Such characters
+  are saved as question marks now.
 - [ ] A text box being dragged shows only its frame until it is dropped. Draw
   its text in the overlay during the drag.
 - [ ] Adjusting follow-ups: handles on the sides, Shift to keep proportions,

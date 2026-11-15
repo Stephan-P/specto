@@ -147,10 +147,16 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   is pressed in. The button shows the color in use. The highlighter starts in yellow, and the lines and the drawing
   tools in red
 - Text tool: a click on the page puts a text field there, and what is typed
-  becomes a text box, in Helvetica of 12 points. The text appears as it will
+  becomes a text box, in the font and size the bar is set to (Helvetica of 12
+  points to begin with). The text appears as it will
   stand, in the same place, with the same line breaks. Escape or a click
   elsewhere ends typing. The box is as high as its text needs, and resizing it
   changes its width
+- Font and size: with the text tool, or a text box picked, the bar shows a
+  font menu (sans-serif, serif and monospace, each name in its font), bold and
+  italic, and the size in points. They set what is typed next, and change the
+  picked text box, also while typing into it. These are Helvetica, Times and
+  Courier, the fonts every PDF program has, so nothing is embedded
 - A double click on a text box, or Enter with it picked, types into it again.
   On pages shown rotated, a small editor is used instead
 - Note tool: a click on the page puts a note there and asks for its text
@@ -193,7 +199,7 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   other programs made: its color, its text (what was marked, a note, a
   comment), what kind it is, and its page. A click on a row picks the
   annotation and scrolls to it, and picking one on the page marks its row
-- Not yet: line width, text size, typing directly on the page
+- Not yet: line width, other fonts than these three, text alignment
 
 ## Saving
 

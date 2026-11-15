@@ -960,7 +960,7 @@ fn moving_and_resizing() {
 
 #[test]
 fn notes_and_text_boxes() {
-    use specto_annot::{AnnotType, Color};
+    use specto_annot::{AnnotType, Color, TextFont};
     use specto_doc::Edit;
     use specto_geom::ViewPoint;
 
@@ -993,8 +993,14 @@ fn notes_and_text_boxes() {
     // A text box: no text, no box. With text, the renderer draws it, from
     // a copy of the page with it in.
     let place = at(&session, 20.0, 200.0);
-    assert!(!session.add_text_box(&scheduler, place, "  ", 12.0, black));
-    assert!(session.add_text_box(&scheduler, place, "Some words to wrap", 12.0, black));
+    assert!(!session.add_text_box(&scheduler, place, "  ", (12.0, TextFont::default()), black));
+    assert!(session.add_text_box(
+        &scheduler,
+        place,
+        "Some words to wrap",
+        (12.0, TextFont::default()),
+        black
+    ));
     assert!(session.picked_is_text_box());
     assert_eq!(session.annotations(0).len(), 2);
     let with_box = session.viewer.pages()[0].doc;
@@ -1066,7 +1072,12 @@ fn notes_and_text_boxes() {
 
 #[test]
 fn where_a_text_box_is_typed_into() {
-    use specto_annot::Color;
+    use specto_annot::{Color, FontFamily, TextFont};
+
+    let serif = TextFont {
+        family: FontFamily::Serif,
+        ..TextFont::default()
+    };
 
     let black = Color::new(0.0, 0.0, 0.0);
     let scheduler = Scheduler::new(1, || {});
@@ -1087,7 +1098,7 @@ fn where_a_text_box_is_typed_into() {
         .pdf_to_view(0, PdfPoint::new(20.0, 200.0))
         .unwrap();
     let place = session
-        .new_text_box_place(click, 12.0, black)
+        .new_text_box_place(click, (12.0, TextFont::default()), black)
         .expect("on a page");
     assert_eq!(place.position, 0);
     assert!((place.at - PdfPoint::new(20.0, 200.0)).length() < 1e-6);
@@ -1103,7 +1114,15 @@ fn where_a_text_box_is_typed_into() {
     assert_eq!(session.text_box_corner(&place).map(|(c, _)| c), Some(click));
 
     // Made there, and typed into again: out of the page meanwhile.
-    assert!(session.add_text_box_on(&scheduler, 0, place.at, place.width, "Words", 12.0, black));
+    assert!(session.add_text_box_on(
+        &scheduler,
+        0,
+        place.at,
+        place.width,
+        "Words",
+        (12.0, TextFont::default()),
+        black
+    ));
     let with_box = session.viewer.pages()[0].doc;
     assert_ne!(with_box, file);
     let (again, text) = session
@@ -1118,7 +1137,7 @@ fn where_a_text_box_is_typed_into() {
     assert!(session.begin_text_edit(&scheduler).is_some());
     assert!(
         session
-            .end_text_edit(&scheduler, Some("Other words"))
+            .end_text_edit(&scheduler, Some(("Other words", (14.0, serif))))
             .unwrap()
     );
     assert_eq!(
@@ -1126,5 +1145,45 @@ fn where_a_text_box_is_typed_into() {
         Some("Other words")
     );
     assert_ne!(session.viewer.pages()[0].doc, file);
+    // In another size and font with it, as one edit; and those alone.
+    assert_eq!(session.picked_text_style(), Some((14.0, serif)));
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(
+        session.picked_text_style(),
+        None,
+        "nothing is picked after undo"
+    );
+    assert_eq!(
+        session.annotations(0)[0].1.contents.as_deref(),
+        Some("Words")
+    );
+    assert!(session.redo(&scheduler).is_some());
+    let on_box = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(30.0, 195.0))
+        .unwrap();
+    session.picked = session.annotation_at(on_box);
+    let height = session.annotations(0)[0].1.rect.height();
+    let big = (
+        28.0,
+        TextFont {
+            bold: true,
+            ..serif
+        },
+    );
+    assert!(session.restyle_picked_text_box(&scheduler, big).unwrap());
+    assert!(!session.restyle_picked_text_box(&scheduler, big).unwrap());
+    assert_eq!(session.picked_text_style(), Some(big));
+    assert!(session.annotations(0)[0].1.rect.height() > height + 10.0);
+    // Saved and read again, it is what it was.
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    let on_box = saved
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(30.0, 190.0))
+        .unwrap();
+    saved.picked = saved.annotation_at(on_box);
+    assert_eq!(saved.picked_text_style(), Some(big));
+    saved.close(&scheduler);
     session.close(&scheduler);
 }

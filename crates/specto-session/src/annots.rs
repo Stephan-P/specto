@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use specto_annot::{
     AnnotKind, Annotation, Appearance, Color, Date, MarkupStyle, Origin, Path, Shape, StampArt,
-    shapes,
+    TextFont, shapes,
 };
 use specto_doc::{AnnotId, PageAnnotChanges, PageRef, SourceId};
 use specto_geom::{PdfBox, PdfPoint, ViewPoint, ViewSpace};
@@ -53,8 +53,9 @@ pub struct TextBoxPlace {
     /// Its width in points, and how many pixels a point is on screen.
     pub width: f64,
     pub zoom: f64,
-    /// The size of its text in points, and its colour.
+    /// The size of its text in points, its font and its colour.
     pub size: f64,
+    pub font: TextFont,
     pub color: Color,
 }
 
@@ -1069,7 +1070,7 @@ impl Session {
     pub fn new_text_box_place(
         &self,
         p: ViewPoint,
-        size: f64,
+        (size, font): (f64, TextFont),
         color: Color,
     ) -> Option<TextBoxPlace> {
         let (position, _) = self.viewer.hit_test(p)?;
@@ -1086,6 +1087,7 @@ impl Session {
             width: room.clamp(40.0, 220.0),
             zoom: self.zoom_of_page(position)?,
             size,
+            font,
             color,
         })
     }
@@ -1106,7 +1108,7 @@ impl Session {
     pub fn begin_text_edit(&mut self, scheduler: &Scheduler) -> Option<(TextBoxPlace, String)> {
         let (position, _) = self.picked?;
         let (_, a) = self.picked_one()?;
-        let AnnotKind::FreeText { size } = a.kind else {
+        let AnnotKind::FreeText { size, font } = a.kind else {
             return None;
         };
         let geometry = self.viewer.pages().get(position)?.displayed();
@@ -1124,6 +1126,7 @@ impl Session {
             width: a.rect.width(),
             zoom: self.zoom_of_page(position)?,
             size,
+            font,
             color: a.color.unwrap_or(Color::new(0.0, 0.0, 0.0)),
         };
         self.hold(position, &a);
@@ -1131,18 +1134,18 @@ impl Session {
         Some((place, a.contents.clone().unwrap_or_default()))
     }
 
-    /// Ends typing into the picked text box: with `text` it has that now
-    /// (none deletes it), without it stays as it was. Returns whether it
-    /// changed. Errors as
+    /// Ends typing into the picked text box: with `text` it has that now,
+    /// in the size and font `style` (no text deletes it), without it stays
+    /// as it was. Returns whether it changed. Errors as
     /// [`remove_picked_annotation`](Self::remove_picked_annotation).
     pub fn end_text_edit(
         &mut self,
         scheduler: &Scheduler,
-        text: Option<&str>,
+        text: Option<(&str, (f64, TextFont))>,
     ) -> Result<bool, WriteError> {
         self.held = None;
         let changed = match text {
-            Some(text) => self.set_picked_text(scheduler, text),
+            Some((text, style)) => self.change_picked_text_box(scheduler, Some(text), Some(style)),
             None => Ok(false),
         };
         // Back into its page, if nothing else did that.
@@ -1152,16 +1155,80 @@ impl Session {
         changed
     }
 
-    /// Puts a text box of `text` at `p` (viewport coordinates), in
-    /// Helvetica of `size` points and `color`, and picks it. It is up to
-    /// 220 points wide, less where the page ends. Returns whether it did:
-    /// `p` must be on a page, and there must be text.
+    /// The size and font of the picked annotation, if it is a text box.
+    pub fn picked_text_style(&mut self) -> Option<(f64, TextFont)> {
+        match self.picked_one()?.1.kind {
+            AnnotKind::FreeText { size, font } => Some((size, font)),
+            _ => None,
+        }
+    }
+
+    /// Sets the picked text box in the size and font `style`. Returns
+    /// whether it changed: not if what is picked is no text box that can be
+    /// changed. Errors as
+    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
+    pub fn restyle_picked_text_box(
+        &mut self,
+        scheduler: &Scheduler,
+        style: (f64, TextFont),
+    ) -> Result<bool, WriteError> {
+        self.change_picked_text_box(scheduler, None, Some(style))
+    }
+
+    /// Gives the picked text box another text, another size and font, or
+    /// both, as one edit. A text box left without text is deleted.
+    fn change_picked_text_box(
+        &mut self,
+        scheduler: &Scheduler,
+        text: Option<&str>,
+        style: Option<(f64, TextFont)>,
+    ) -> Result<bool, WriteError> {
+        let Some((id, a)) = self.picked_one() else {
+            return Ok(false);
+        };
+        let AnnotKind::FreeText { size, font } = a.kind else {
+            return Ok(false);
+        };
+        if !a.is_redrawable() || !a.flags.is_editable() {
+            return Ok(false);
+        }
+        let now_text = a.contents.as_deref().unwrap_or("");
+        let text = text.unwrap_or(now_text);
+        let style = style.unwrap_or((size, font));
+        if text == now_text && style == (size, font) {
+            return Ok(false);
+        }
+        if text.trim().is_empty() {
+            return self.remove_picked_annotation(scheduler);
+        }
+        let mut changed = (*a).clone();
+        changed.contents = Some(text.to_owned());
+        changed.kind = AnnotKind::FreeText {
+            size: style.0,
+            font: style.1,
+        };
+        changed.modified = Some(now());
+        // As high as the text needs now, with a new look, and its page a
+        // new copy.
+        changed.fit_text();
+        let ready = self.page_without(id, &a)?;
+        let done = self.edit.change_annotation(id, changed);
+        if done {
+            self.sync_variants_with(scheduler, ready);
+        }
+        Ok(done)
+    }
+
+    /// Puts a text box of `text` at `p` (viewport coordinates), in the
+    /// size and font `style` and `color`, and picks it. It is up to 220
+    /// points wide, less where the page ends. Returns whether it did: `p`
+    /// must be on a page, and there must be text.
     pub fn add_text_box(
         &mut self,
         scheduler: &Scheduler,
         p: ViewPoint,
         text: &str,
-        size: f64,
+        style: (f64, TextFont),
         color: Color,
     ) -> bool {
         let Some((position, _)) = self.viewer.hit_test(p) else {
@@ -1180,7 +1247,7 @@ impl Session {
             at,
             room.clamp(40.0, 220.0),
             text,
-            size,
+            style,
             color,
         )
     }
@@ -1196,7 +1263,7 @@ impl Session {
         at: PdfPoint,
         width: f64,
         text: &str,
-        size: f64,
+        style: (f64, TextFont),
         color: Color,
     ) -> bool {
         if text.trim().is_empty() {
@@ -1205,7 +1272,7 @@ impl Session {
         let Some(&page) = self.edit.pages().get(position) else {
             return false;
         };
-        let mut text_box = Annotation::text_box(at, width, text, size, color);
+        let mut text_box = Annotation::text_box(at, width, text, style, color);
         text_box.modified = Some(now());
         let id = self.edit.add_annotation(page.source, page.page, text_box);
         self.selection = None;
@@ -1245,25 +1312,14 @@ impl Session {
         if !text_is_editable(&a) || a.contents.as_deref().unwrap_or("") == text {
             return Ok(false);
         }
-        if a.is_text_box() && text.trim().is_empty() {
-            return self.remove_picked_annotation(scheduler);
+        if a.is_text_box() {
+            return self.change_picked_text_box(scheduler, Some(text), None);
         }
+        // For the others the text is beside what they show: no new look.
         let mut changed = (*a).clone();
         changed.contents = Some(text.to_owned()).filter(|t| !t.is_empty());
         changed.modified = Some(now());
-        // A text box shows its text, so it gets a new look and its page a
-        // new copy; for the others the text is beside what they show.
-        let ready = if a.is_text_box() {
-            changed.fit_text();
-            self.page_without(id, &a)?
-        } else {
-            None
-        };
-        let done = self.edit.change_annotation(id, changed);
-        if done {
-            self.sync_variants_with(scheduler, ready);
-        }
-        Ok(done)
+        Ok(self.edit.change_annotation(id, changed))
     }
 
     /// The colour of the picked annotation, if one is picked and has one.

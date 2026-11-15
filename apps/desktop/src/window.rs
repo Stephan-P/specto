@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
-use specto_annot::{AnnotType, Color, MarkupStyle};
+use specto_annot::{AnnotType, Color, FontFamily, MarkupStyle, TextFont};
 use specto_doc::{Edit, Rotation, SourceId};
 use specto_geom::ViewPoint;
 use specto_render::{OpenError, PdfData};
@@ -91,6 +91,17 @@ pub struct Inner {
     search_bar: gtk::SearchBar,
     /// The bar with the markup tools and colours.
     markup_bar: gtk::Revealer,
+    /// The controls for how text boxes are set, on the markup bar: all of
+    /// them, and each.
+    text_controls: gtk::Box,
+    text_font: gtk::DropDown,
+    text_bold: gtk::ToggleButton,
+    text_italic: gtk::ToggleButton,
+    text_size: gtk::SpinButton,
+    /// The size and font new text boxes get.
+    text_style: Cell<(f64, TextFont)>,
+    /// The controls are being set to show a style, not by the user.
+    showing_text_style: Cell<bool>,
     /// The dot on the colour button of the markup bar: the colour in use.
     color_swatch: gtk::Box,
     /// Lies over the page view, for typing text onto the page.
@@ -484,12 +495,75 @@ impl Window {
             .build();
         markup_row.append(&signature_button);
         markup_row.append(&color_button);
+        // How text boxes are set: shown with the text tool, and while a
+        // text box is picked or typed into.
+        let font_names = gtk::StringList::new(&[
+            &gettext("Sans-serif"),
+            &gettext("Serif"),
+            &gettext("Monospace"),
+        ]);
+        // Each name in the kind of font it names.
+        let in_its_font = gtk::SignalListItemFactory::new();
+        in_its_font.connect_setup(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().expect("ListItem");
+            item.set_child(Some(&gtk::Label::builder().xalign(0.0).build()));
+        });
+        in_its_font.connect_bind(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().expect("ListItem");
+            let (Some(label), Some(name)) = (
+                item.child().and_downcast::<gtk::Label>(),
+                item.item().and_downcast::<gtk::StringObject>(),
+            ) else {
+                return;
+            };
+            label.set_label(&name.string());
+            let class = ["font-sans", "font-serif", "font-mono"]
+                .get(item.position() as usize)
+                .copied()
+                .unwrap_or("font-sans");
+            label.set_css_classes(&[class]);
+        });
+        let text_font = gtk::DropDown::builder()
+            .model(&font_names)
+            .factory(&in_its_font)
+            .tooltip_text(gettext("Font"))
+            .build();
+        let text_bold = gtk::ToggleButton::builder()
+            .icon_name("format-text-bold-symbolic")
+            .tooltip_text(gettext("Bold"))
+            .build();
+        let text_italic = gtk::ToggleButton::builder()
+            .icon_name("format-text-italic-symbolic")
+            .tooltip_text(gettext("Italic"))
+            .build();
+        let text_weight = gtk::Box::builder().css_classes(["linked"]).build();
+        text_weight.append(&text_bold);
+        text_weight.append(&text_italic);
+        let text_size = gtk::SpinButton::with_range(6.0, 96.0, 1.0);
+        text_size.set_value(12.0);
+        text_size.set_tooltip_text(Some(&gettext("Text size in points")));
+        let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        text_controls.append(&text_font);
+        text_controls.append(&text_weight);
+        text_controls.append(&text_size);
+        text_controls.set_visible(false);
+        markup_row.append(&text_controls);
         // Over the page view only: the sidebar keeps its full height.
         let markup_strip = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .css_classes(["markup-bar"])
             .build();
-        markup_strip.append(&markup_row);
+        // Never wider than the page view: with everything on it, the bar
+        // is wider than a small window has room for, and it mustn't push
+        // the sidebar or the page about as its controls come and go. What
+        // doesn't fit is scrolled to.
+        let markup_scroller = gtk::ScrolledWindow::builder()
+            .child(&markup_row)
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .build();
+        markup_strip.append(&markup_scroller);
         let markup_bar = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::SlideDown)
             .child(&markup_strip)
@@ -551,6 +625,13 @@ impl Window {
             last_toast: RefCell::default(),
             search_bar,
             markup_bar,
+            text_controls,
+            text_font,
+            text_bold,
+            text_italic,
+            text_size,
+            text_style: Cell::new((12.0, TextFont::default())),
+            showing_text_style: Cell::new(false),
             color_swatch,
             page_overlay,
             signature_menu,
@@ -602,6 +683,19 @@ impl Window {
             }
         });
         this.fill_signature_menu();
+        let weak = Rc::downgrade(&this.0);
+        let chosen = move || {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).text_style_chosen();
+            }
+        };
+        let f = chosen.clone();
+        this.0.text_font.connect_selected_notify(move |_| f());
+        let f = chosen.clone();
+        this.0.text_bold.connect_toggled(move |_| f());
+        let f = chosen.clone();
+        this.0.text_italic.connect_toggled(move |_| f());
+        this.0.text_size.connect_value_changed(move |_| chosen());
         // The text field for typing on the page goes where its text box
         // is, as wide as the box and as high as its text needs. (Left to
         // itself, the overlay gives a text view no height at all.)
@@ -615,7 +709,17 @@ impl Window {
                     .as_ref()
                     .filter(|t| t.view.upcast_ref::<gtk::Widget>() == widget)?;
                 let (x, y, width) = typing.area.get();
-                let (_, height, _, _) = widget.measure(gtk::Orientation::Vertical, width);
+                let (_, measured, _, _) = widget.measure(gtk::Orientation::Vertical, width);
+                // At least as high as the box will be for this text: the field
+                // is slow to say so itself after its font has changed.
+                let buffer = typing.view.buffer();
+                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                let (size, font) = typing.style.get();
+                let inside = (typing.place.width - 2.0 * specto_annot::TEXT_MARGIN).max(size);
+                let lines = specto_annot::wrap(&text, size, inside, font).len();
+                let zoom = f64::from(width) / typing.place.width.max(1.0);
+                let needed = (specto_annot::box_height(lines, size, font) * zoom).ceil() as i32;
+                let height = measured.max(needed);
                 Some(gdk::Rectangle::new(x, y, width, height.max(1)))
             });
         let weak = Rc::downgrade(&this.0);
@@ -1625,6 +1729,28 @@ impl Window {
                     w.place_signature(signature.clone());
                 }
             }),
+            // Sets the text controls of the markup bar, as by hand: words
+            // like "serif bold italic 18".
+            action("debug-text-style", |w, words| {
+                for word in words.split_ascii_whitespace() {
+                    match word {
+                        "sans" => w.0.text_font.set_selected(0),
+                        "serif" => w.0.text_font.set_selected(1),
+                        "mono" => w.0.text_font.set_selected(2),
+                        "bold" => w.0.text_bold.set_active(true),
+                        "italic" => w.0.text_italic.set_active(true),
+                        "regular" => {
+                            w.0.text_bold.set_active(false);
+                            w.0.text_italic.set_active(false);
+                        }
+                        size => {
+                            if let Ok(size) = size.parse::<f64>() {
+                                w.0.text_size.set_value(size);
+                            }
+                        }
+                    }
+                }
+            }),
             // Shows the dialog for a new signature.
             action("debug-new-signature", |w, _| w.new_signature()),
             // Activates a row of the markup list, by its number from 0.
@@ -1716,6 +1842,28 @@ impl Window {
         )
         .bool("markup_bar", inner.markup_bar.reveals_child())
         .num("signatures", signatures::saved().len() as f64)
+        // The text controls: whether they show, and what they are set to,
+        // e.g. "serif bold 18".
+        .bool("text_controls", inner.text_controls.is_visible())
+        .str("text_style", &{
+            let (size, font) = self.text_controls_style();
+            let mut words = vec![
+                match font.family {
+                    FontFamily::Sans => "sans",
+                    FontFamily::Serif => "serif",
+                    FontFamily::Mono => "mono",
+                }
+                .to_owned(),
+            ];
+            if font.bold {
+                words.push("bold".to_owned());
+            }
+            if font.italic {
+                words.push("italic".to_owned());
+            }
+            words.push(format!("{size}"));
+            words.join(" ")
+        })
         .bool("placing_signature", inner.placing.borrow().is_some())
         .str(
             "markup_tool",
@@ -2089,7 +2237,8 @@ impl Window {
         let on_page = match new_at {
             Some(p) => {
                 let color = color_named(inner.tool_colors.get()[tool_index(Tool::Text)]);
-                let place = doc.borrow().new_text_box_place(p, TEXT_SIZE, color);
+                let style = inner.text_style.get();
+                let place = doc.borrow().new_text_box_place(p, style, color);
                 place.map(|place| (place, String::new(), true))
             }
             None => {
@@ -2190,7 +2339,12 @@ impl Window {
         focus.connect_leave(move |_| {
             let weak = weak.clone();
             glib::idle_add_local_once(move || {
-                if let Some(inner) = weak.upgrade() {
+                let Some(inner) = weak.upgrade() else { return };
+                // Not for the controls that set the text's size and font:
+                // those act on what is being typed.
+                let on_controls = gtk::prelude::GtkWindowExt::focus(&inner.window)
+                    .is_some_and(|f| f.is_ancestor(&inner.text_controls));
+                if !on_controls {
                     Window(inner).finish_typing();
                 }
             });
@@ -2198,10 +2352,12 @@ impl Window {
         view.add_controller(focus);
         inner.typing.replace(Some(Typing {
             view: view.clone(),
+            style: Cell::new((place.size, place.font)),
             place,
             new,
             area: Cell::new((0, 0, 1)),
         }));
+        self.show_text_style();
         self.place_typing();
         // The redraw first: the page without the box, if it had it.
         inner.canvas.queue_draw();
@@ -2222,6 +2378,7 @@ impl Window {
             return typing.view.set_visible(false);
         };
         let place = &typing.place;
+        let (size, font) = typing.style.get();
         let view = &typing.view;
         view.set_visible(true);
         // Where the overlay puts it (see `Window::new`): its corner, and
@@ -2238,20 +2395,23 @@ impl Window {
         // A line of the field is higher than the letters, half of the rest
         // above them: less of a margin on top makes up for it, so that the
         // text stands where the box will have it.
-        let above = (specto_annot::TEXT_MARGIN - 0.12 * place.size) * zoom;
+        let above = (specto_annot::TEXT_MARGIN - 0.12 * size) * zoom;
         view.set_top_margin(above.max(0.0).round() as i32);
         view.set_bottom_margin(margin);
         let c = place.color;
         let byte = |v: f32| (v * 255.0).round() as u8;
         let rgb = format!("rgb({}, {}, {})", byte(c.r), byte(c.g), byte(c.b));
-        // Helvetica, or what stands in for it with the same widths, so that
-        // lines break where they will in the box.
+        // The box's font, or what stands in for it with the same widths, so
+        // that lines break where they will in the box.
         let css = format!(
             ".page-text, .page-text text {{ background: none; color: {rgb}; caret-color: {rgb}; \
-             font-family: Helvetica, \"Nimbus Sans\", Arimo, \"Liberation Sans\", Arial, sans-serif; \
+             font-family: {}; font-weight: {}; font-style: {}; \
              font-size: {:.2}px; line-height: 1.2; }}\n\
              .page-text {{ outline: 1px solid @accent_bg_color; outline-offset: 2px; border-radius: 2px; }}\n",
-            place.size * zoom
+            font_stack(font.family),
+            if font.bold { "bold" } else { "normal" },
+            if font.italic { "italic" } else { "normal" },
+            size * zoom
         );
         TYPING_CSS.with(|provider| {
             provider.load_from_string(&css);
@@ -2277,11 +2437,19 @@ impl Window {
             .text(&buffer.start_iter(), &buffer.end_iter(), false)
             .to_string();
         inner.page_overlay.remove_overlay(&typing.view);
+        // In the size and font it has now, which may have been changed
+        // while typing.
+        let style = typing.style.get();
+        let place = TextBoxPlace {
+            size: style.0,
+            font: style.1,
+            ..typing.place.clone()
+        };
         let mut failed = None;
         self.edit(|d| {
             if typing.new {
-                d.add_text_box_at(&typing.place, &text);
-            } else if let Err(e) = d.end_text_edit(Some(&text)) {
+                d.add_text_box_at(&place, &text);
+            } else if let Err(e) = d.end_text_edit(Some((&text, style))) {
                 failed = Some(e);
             }
             // Always: the page is drawn with the box again.
@@ -2303,9 +2471,10 @@ impl Window {
         let mut failed = None;
         let tool = Tool::Text;
         let color = color_named(self.0.tool_colors.get()[tool_index(tool)]);
+        let style = self.0.text_style.get();
         self.edit(|d| {
             let changed = match new_at {
-                Some(p) => d.add_text_box(p, text, TEXT_SIZE, color),
+                Some(p) => d.add_text_box(p, text, style, color),
                 None => d.set_picked_text(text).unwrap_or_else(|e| {
                     failed = Some(e);
                     false
@@ -2320,6 +2489,91 @@ impl Window {
             ));
         }
         self.show_markup_color();
+    }
+
+    /// The size and font the text controls of the markup bar are set to.
+    fn text_controls_style(&self) -> (f64, TextFont) {
+        let inner = &self.0;
+        let family = match inner.text_font.selected() {
+            1 => FontFamily::Serif,
+            2 => FontFamily::Mono,
+            _ => FontFamily::Sans,
+        };
+        (
+            inner.text_size.value(),
+            TextFont {
+                family,
+                bold: inner.text_bold.is_active(),
+                italic: inner.text_italic.is_active(),
+            },
+        )
+    }
+
+    /// Shows the text controls while they have something to act on (the
+    /// text tool, a text box picked or typed into), set to that thing's
+    /// size and font.
+    fn show_text_style(&self) {
+        let inner = &self.0;
+        let typing = inner.typing.borrow().as_ref().map(|t| t.style.get());
+        let picked = inner
+            .document
+            .borrow()
+            .as_ref()
+            .and_then(|d| d.borrow_mut().picked_text_style());
+        let tool = self.markup_tool() == Some(Tool::Text);
+        inner
+            .text_controls
+            .set_visible(tool || typing.is_some() || picked.is_some());
+        let (size, font) = typing.or(picked).unwrap_or(inner.text_style.get());
+        inner.showing_text_style.set(true);
+        inner.text_font.set_selected(match font.family {
+            FontFamily::Sans => 0,
+            FontFamily::Serif => 1,
+            FontFamily::Mono => 2,
+        });
+        inner.text_bold.set_active(font.bold);
+        inner.text_italic.set_active(font.italic);
+        inner.text_size.set_value(size);
+        inner.showing_text_style.set(false);
+    }
+
+    /// A text control of the markup bar was changed: what is typed, or the
+    /// picked text box, is set that way, and so are text boxes from now on.
+    fn text_style_chosen(&self) {
+        let inner = &self.0;
+        if inner.showing_text_style.get() {
+            return;
+        }
+        let style = self.text_controls_style();
+        inner.text_style.set(style);
+        let typing = inner.typing.borrow().as_ref().map(|t| {
+            t.style.set(style);
+            t.view.clone()
+        });
+        if let Some(view) = typing {
+            self.place_typing();
+            // Back to typing, unless a size is being typed in.
+            let in_size = gtk::prelude::GtkWindowExt::focus(&inner.window)
+                .is_some_and(|f| f.is_ancestor(&inner.text_size));
+            if !in_size {
+                view.grab_focus();
+            }
+            return;
+        }
+        let mut failed = None;
+        self.edit(|d| match d.restyle_picked_text_box(style) {
+            Ok(changed) => changed.then(Edited::default),
+            Err(e) => {
+                failed = Some(e);
+                None
+            }
+        });
+        if let Some(e) = failed {
+            self.toast(&gettext_f(
+                "Couldn't change the annotation: {error}",
+                &[("error", &save_error(e))],
+            ));
+        }
     }
 
     /// Shows, on the markup bar, the colour of the picked annotation if it
@@ -2346,6 +2600,7 @@ impl Window {
         inner
             .color_swatch
             .set_css_classes(&["markup-swatch", &format!("markup-{name}")]);
+        self.show_text_style();
     }
 
     /// A colour of the markup bar was chosen: the picked annotation gets
@@ -3601,6 +3856,9 @@ struct Typing {
     view: gtk::TextView,
     /// Where the text box is.
     place: TextBoxPlace,
+    /// The size and font of what is typed, which the markup bar can change
+    /// meanwhile.
+    style: Cell<(f64, TextFont)>,
     /// Whether the box is yet to be made, of what is typed.
     new: bool,
     /// Where the field is over the page view: its left and top edge, and
@@ -3617,8 +3875,21 @@ thread_local! {
 /// How wide a signature is when it is placed, in points.
 const SIGNATURE_WIDTH: f64 = 150.0;
 
-/// The size of the text of new text boxes, in points.
-const TEXT_SIZE: f64 = 12.0;
+/// The fonts to ask the system for, for a family: the font PDF programs
+/// set it in, then others with the same widths, then anything of the kind.
+fn font_stack(family: FontFamily) -> &'static str {
+    match family {
+        FontFamily::Sans => {
+            "Helvetica, \"Nimbus Sans\", Arimo, \"Liberation Sans\", Arial, sans-serif"
+        }
+        FontFamily::Serif => {
+            "Times, \"Nimbus Roman\", Tinos, \"Liberation Serif\", \"Times New Roman\", serif"
+        }
+        FontFamily::Mono => {
+            "Courier, \"Nimbus Mono PS\", Cousine, \"Liberation Mono\", \"Courier New\", monospace"
+        }
+    }
+}
 
 /// The tool whose colour the bar shows while none is pressed in.
 const HIGHLIGHTER: Tool = Tool::Mark(MarkupStyle::Highlight);
@@ -3663,6 +3934,17 @@ fn load_css() {
              .markup-bar { background-color: @headerbar_bg_color; \
              box-shadow: inset 0 -1px alpha(currentColor, 0.12); }\n",
         );
+        for (class, family) in [
+            ("font-sans", FontFamily::Sans),
+            ("font-serif", FontFamily::Serif),
+            ("font-mono", FontFamily::Mono),
+        ] {
+            css.push_str(&format!(
+                ".{class} {{ font-family: {}; }}\n",
+                font_stack(family)
+            ));
+        }
+        css.push_str("");
         for (name, _, c) in markup_colors() {
             let byte = |v: f32| (v * 255.0).round() as u8;
             css.push_str(&format!(

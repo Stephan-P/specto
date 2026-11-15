@@ -181,13 +181,19 @@ fn dictionary_of(
             );
         }
         AnnotKind::Note => d.set("Name", "Note"),
-        AnnotKind::FreeText { size } => {
+        AnnotKind::FreeText { size, font } => {
             // How its text is set, for programs that draw it themselves or
             // let it be edited: the font, its size and the colour.
             let c = a.color.unwrap_or(Color::new(0.0, 0.0, 0.0));
             d.set(
                 "DA",
-                Object::string_literal(format!("/Helv {size} Tf {} {} {} rg", c.r, c.g, c.b)),
+                Object::string_literal(format!(
+                    "/{} {size} Tf {} {} {} rg",
+                    font.resource_name(),
+                    c.r,
+                    c.g,
+                    c.b
+                )),
             );
             d.set("Q", 0);
         }
@@ -274,20 +280,20 @@ fn dictionary_of(
                     "Resources" => dictionary! { "ExtGState" => states },
                 };
                 let mut form = form;
-                if ap.helvetica
+                if let Some(font) = ap.font
                     && let Ok(resources) = form.get_mut(b"Resources").and_then(Object::as_dict_mut)
                 {
-                    resources.set(
-                        "Font",
+                    let mut fonts = Dictionary::new();
+                    fonts.set(
+                        font.resource_name(),
                         dictionary! {
-                            "Helv" => dictionary! {
-                                "Type" => "Font",
-                                "Subtype" => "Type1",
-                                "BaseFont" => "Helvetica",
-                                "Encoding" => "WinAnsiEncoding",
-                            },
+                            "Type" => "Font",
+                            "Subtype" => "Type1",
+                            "BaseFont" => font.pdf_name(),
+                            "Encoding" => "WinAnsiEncoding",
                         },
                     );
+                    resources.set("Font", fonts);
                 }
                 if let Some(image) = &ap.image
                     && let Ok(resources) = form.get_mut(b"Resources").and_then(Object::as_dict_mut)

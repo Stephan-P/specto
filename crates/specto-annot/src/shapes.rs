@@ -307,9 +307,10 @@ pub struct AppearanceStream {
     pub content: Vec<u8>,
     /// The graphics states the content uses.
     pub states: Vec<GraphicsState>,
-    /// Whether the content sets text in the font `/Helv`: Helvetica in
+    /// The font the content sets text in, if it does, by its
+    /// `resource_name`: one of the fonts no file needs to bring along, in
     /// `WinAnsiEncoding`, which the stream's resources must then name.
-    pub helvetica: bool,
+    pub font: Option<crate::TextFont>,
     /// The image the content draws as `/Im0`, if it does. The stream's box
     /// is then not `bbox` but the unit square, which the image fills and
     /// readers stretch onto the annotation's area, wherever that is moved.
@@ -326,8 +327,8 @@ pub struct GraphicsState {
 /// The appearance stream for `annotation`, or `None` where [`shapes`]
 /// gives none.
 pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
-    if let AnnotKind::FreeText { size } = annotation.kind {
-        return Some(text_appearance(annotation, size));
+    if let AnnotKind::FreeText { size, font } = annotation.kind {
+        return Some(text_appearance(annotation, size, font));
     }
     if let AnnotKind::Stamp(crate::StampArt::Image(image)) = &annotation.kind {
         return Some(AppearanceStream {
@@ -337,7 +338,7 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
                 opacity: annotation.opacity,
                 multiply: false,
             }],
-            helvetica: false,
+            font: None,
             image: Some(image.clone()),
         });
     }
@@ -430,21 +431,27 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
         bbox: bbox?,
         content: content.into_bytes(),
         states,
-        helvetica: false,
+        font: None,
         image: None,
     })
 }
 
 /// The appearance stream of a text box: its text in lines from the top of
 /// its rectangle down.
-fn text_appearance(annotation: &Annotation, size: f64) -> AppearanceStream {
+fn text_appearance(annotation: &Annotation, size: f64, font: crate::TextFont) -> AppearanceStream {
     let r = annotation.rect;
     let color = annotation.color.unwrap_or(Color::new(0.0, 0.0, 0.0));
     let width = (r.width() - 2.0 * crate::TEXT_MARGIN).max(size);
-    let lines = crate::wrap(annotation.contents.as_deref().unwrap_or(""), size, width);
-    let (first, leading) = crate::text::baselines(size);
+    let lines = crate::wrap(
+        annotation.contents.as_deref().unwrap_or(""),
+        size,
+        width,
+        font,
+    );
+    let (first, leading) = crate::text::baselines(size, font);
     let mut content = format!(
-        "/GS0 gs\nBT\n/Helv {} Tf\n{} {} {} rg\n{} TL\n{} {} Td\n",
+        "/GS0 gs\nBT\n/{} {} Tf\n{} {} {} rg\n{} TL\n{} {} Td\n",
+        font.resource_name(),
         n(size),
         n(color.r.into()),
         n(color.g.into()),
@@ -475,7 +482,7 @@ fn text_appearance(annotation: &Annotation, size: f64) -> AppearanceStream {
             opacity: annotation.opacity,
             multiply: false,
         }],
-        helvetica: true,
+        font: Some(font),
         image: None,
     }
 }

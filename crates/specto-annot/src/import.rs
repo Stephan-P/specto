@@ -6,7 +6,9 @@ use specto_source::hayro_syntax::object::{
 };
 use specto_source::{Date, SourceDocument, decode_text};
 
-use crate::{AnnotKind, Annotation, Appearance, Color, Flags, MarkupStyle, Origin, look_mark};
+use crate::{
+    AnnotKind, Annotation, Appearance, Color, Flags, MarkupStyle, Origin, TextFont, look_mark,
+};
 
 /// Entries of a page's `/Annots` beyond this many are ignored, as are
 /// quads, strokes and points of one annotation: a guard against broken
@@ -88,9 +90,9 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
         // programs give theirs icons, borders and fonts of their own.
         b"Text" if look == Appearance::Own => Some(AnnotKind::Note),
         b"Stamp" if look == Appearance::Own => Some(AnnotKind::Stamp(crate::StampArt::InFile)),
-        b"FreeText" if look == Appearance::Own => text_size(dict).map(|size| {
+        b"FreeText" if look == Appearance::Own => text_style(dict).map(|(size, font)| {
             text_color = default_appearance_color(dict);
-            AnnotKind::FreeText { size }
+            AnnotKind::FreeText { size, font }
         }),
         _ => None,
     }
@@ -147,14 +149,19 @@ fn appearance_of(dict: &Dict<'_>) -> Appearance {
     }
 }
 
-/// The numbers before the operator `operator` in the default appearance
-/// string of a text box (`/DA`), e.g. the size before `Tf`.
-fn default_appearance(dict: &Dict<'_>, operator: &str, count: usize) -> Option<Vec<f64>> {
+/// The default appearance string of a text box (`/DA`), in its words.
+fn default_appearance_words(dict: &Dict<'_>) -> Option<Vec<String>> {
     let da = dict.get::<PdfString<'_>>(b"DA")?;
     let da = String::from_utf8_lossy(da.as_bytes()).into_owned();
-    let tokens: Vec<&str> = da.split_ascii_whitespace().collect();
-    let at = tokens.iter().position(|t| *t == operator)?;
-    let numbers: Vec<f64> = tokens[at.checked_sub(count)?..at]
+    Some(da.split_ascii_whitespace().map(str::to_owned).collect())
+}
+
+/// The numbers before the operator `operator` in the default appearance
+/// string of a text box, e.g. the three of the colour before `rg`.
+fn default_appearance(dict: &Dict<'_>, operator: &str, count: usize) -> Option<Vec<f64>> {
+    let words = default_appearance_words(dict)?;
+    let at = words.iter().position(|t| t == operator)?;
+    let numbers: Vec<f64> = words[at.checked_sub(count)?..at]
         .iter()
         .filter_map(|t| t.parse().ok())
         .filter(|n: &f64| n.is_finite())
@@ -162,11 +169,18 @@ fn default_appearance(dict: &Dict<'_>, operator: &str, count: usize) -> Option<V
     (numbers.len() == count).then_some(numbers)
 }
 
-/// The font size of a text box.
-fn text_size(dict: &Dict<'_>) -> Option<f64> {
-    default_appearance(dict, "Tf", 1)
-        .map(|n| n[0])
-        .filter(|size| (1.0..=1000.0).contains(size))
+/// The size and the font of a text box: `/Name size Tf`. A font that
+/// isn't one of ours by name counts as Helvetica.
+fn text_style(dict: &Dict<'_>) -> Option<(f64, TextFont)> {
+    let words = default_appearance_words(dict)?;
+    let at = words.iter().position(|t| t == "Tf")?;
+    let size: f64 = words.get(at.checked_sub(1)?)?.parse().ok()?;
+    let font = at
+        .checked_sub(2)
+        .and_then(|i| words[i].strip_prefix('/'))
+        .and_then(TextFont::from_resource_name)
+        .unwrap_or_default();
+    (1.0..=1000.0).contains(&size).then_some((size, font))
 }
 
 /// The colour of a text box's text.

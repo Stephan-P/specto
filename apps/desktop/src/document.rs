@@ -283,10 +283,12 @@ impl Document {
         &mut self,
         p: specto_geom::ViewPoint,
         text: &str,
-        size: f64,
+        style: (f64, specto_annot::TextFont),
         color: specto_annot::Color,
     ) -> bool {
-        let added = self.session.add_text_box(scheduler(), p, text, size, color);
+        let added = self
+            .session
+            .add_text_box(scheduler(), p, text, style, color);
         if added {
             self.pages_changed();
         }
@@ -320,10 +322,26 @@ impl Document {
 
     /// Ends typing into the picked text box, with its new text or without
     /// a change.
-    pub fn end_text_edit(&mut self, text: Option<&str>) -> Result<bool, specto_write::WriteError> {
+    pub fn end_text_edit(
+        &mut self,
+        text: Option<(&str, (f64, specto_annot::TextFont))>,
+    ) -> Result<bool, specto_write::WriteError> {
         let changed = self.session.end_text_edit(scheduler(), text);
         self.pages_changed();
         changed
+    }
+
+    /// Sets the picked text box in another size and font (see the
+    /// session's function of this name).
+    pub fn restyle_picked_text_box(
+        &mut self,
+        style: (f64, specto_annot::TextFont),
+    ) -> Result<bool, specto_write::WriteError> {
+        let changed = self.session.restyle_picked_text_box(scheduler(), style)?;
+        if changed {
+            self.pages_changed();
+        }
+        Ok(changed)
     }
 
     /// Makes a text box at `place` (see `Session::add_text_box_on`).
@@ -334,7 +352,7 @@ impl Document {
             place.at,
             place.width,
             text,
-            place.size,
+            (place.size, place.font),
             place.color,
         );
         if added {

@@ -28,7 +28,7 @@ pub use photo::{InkSettings, ink_from_photo};
 pub use shapes::{
     AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, look_mark, shapes,
 };
-pub use text::{TEXT_MARGIN, box_height, text_width, wrap};
+pub use text::{FontFamily, TEXT_MARGIN, TextFont, box_height, text_width, wrap};
 
 /// How wide and high the mark of a note is, in points.
 pub const NOTE_SIZE: f64 = 18.0;
@@ -86,10 +86,11 @@ pub enum AnnotKind {
     /// another program is [`AnnotKind::Other`].
     Note,
     /// A box of text on the page (the annotation's `contents`), set in
-    /// Helvetica of `size` points in the annotation's colour, broken into
+    /// `font` at `size` points in the annotation's colour, broken into
     /// lines to fit the width of its `rect`. Only for text boxes made here.
     FreeText {
         size: f64,
+        font: TextFont,
     },
     /// A picture placed on the page: the photo of a signature, for
     /// instance. Only for stamps made here; one of another program is
@@ -378,11 +379,17 @@ impl Annotation {
         a
     }
 
-    /// A text box of `text` in Helvetica of `size` points and `color`, its
-    /// top left corner at `at` and `width` wide; as high as the text needs.
-    pub fn text_box(at: PdfPoint, width: f64, text: &str, size: f64, color: Color) -> Self {
+    /// A text box of `text` in `font` at `size` points and `color`, its top
+    /// left corner at `at` and `width` wide; as high as the text needs.
+    pub fn text_box(
+        at: PdfPoint,
+        width: f64,
+        text: &str,
+        (size, font): (f64, TextFont),
+        color: Color,
+    ) -> Self {
         let rect = PdfBox::new(at, PdfPoint::new(at.x + width, at.y));
-        let mut a = Self::new(AnnotKind::FreeText { size }, rect);
+        let mut a = Self::new(AnnotKind::FreeText { size, font }, rect);
         a.color = Some(color);
         a.line_width = 0.0;
         a.contents = Some(text.to_owned());
@@ -393,12 +400,12 @@ impl Annotation {
     /// For a text box: makes it as high as its text needs at its width,
     /// keeping its top edge where it is. Its look is to be made anew.
     pub fn fit_text(&mut self) {
-        let AnnotKind::FreeText { size } = self.kind else {
+        let AnnotKind::FreeText { size, font } = self.kind else {
             return;
         };
         let width = (self.rect.width() - 2.0 * TEXT_MARGIN).max(size);
-        let lines = wrap(self.contents.as_deref().unwrap_or(""), size, width).len();
-        self.rect.min.y = self.rect.max.y - box_height(lines, size);
+        let lines = wrap(self.contents.as_deref().unwrap_or(""), size, width, font).len();
+        self.rect.min.y = self.rect.max.y - box_height(lines, size, font);
         self.rect.max.x = self.rect.min.x + width + 2.0 * TEXT_MARGIN;
         self.appearance = Appearance::Generated;
     }

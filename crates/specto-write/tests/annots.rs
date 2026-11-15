@@ -675,7 +675,18 @@ fn notes_and_text_boxes_are_saved_and_show() {
     edit.add_annotation(MAIN, 1, note.clone());
     // Wide enough for "Hello, world" in 20 points, not for the rest of it.
     let text = "Hello, world of (bracketed) text\nGrüße";
-    let text_box = Annotation::text_box(PdfPoint::new(100.0, 500.0), 150.0, text, 20.0, blue);
+    let bold_serif = specto_annot::TextFont {
+        family: specto_annot::FontFamily::Serif,
+        bold: true,
+        italic: false,
+    };
+    let text_box = Annotation::text_box(
+        PdfPoint::new(100.0, 500.0),
+        150.0,
+        text,
+        (20.0, bold_serif),
+        blue,
+    );
     assert!(text_box.rect.height() > 3.0 * 20.0, "three lines at least");
     edit.add_annotation(MAIN, 1, text_box.clone());
     let out = write(&original, None, &edit);
@@ -686,7 +697,13 @@ fn notes_and_text_boxes_are_saved_and_show() {
     assert_eq!(annots[0].contents.as_deref(), Some("Check this (again)"));
     assert_eq!(annots[0].color, Some(YELLOW));
     assert_eq!(annots[0].rect, note.rect);
-    assert_eq!(annots[1].kind, AnnotKind::FreeText { size: 20.0 });
+    assert_eq!(
+        annots[1].kind,
+        AnnotKind::FreeText {
+            size: 20.0,
+            font: bold_serif
+        }
+    );
     assert_eq!(annots[1].contents.as_deref(), Some(text));
     assert_eq!(annots[1].color, Some(blue));
     assert_eq!(annots[1].rect, text_box.rect);

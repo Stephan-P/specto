@@ -352,6 +352,18 @@ Saving, printing and other windows:
   *Primary*+C, *Primary*+V, *Primary*+Z and *Primary*+Left and Right act on the
   text, not on the document.
 - Typing near the right and bottom edge of the page view and of the window.
+- Font and size: with the text tool, choose Serif, bold and 24, then type. The
+  field shows that font while typing, and the finished box looks the same.
+  Change the font and size while typing: the field follows and keeps the
+  keyboard. Pick a finished box and change them: it changes, and one undo
+  changes it back.
+- The font menu shows each name in its own font. The three fonts look right in
+  the finished box and in other programs: a sans-serif, a Times-like serif and
+  a typewriter font, each with bold and italic.
+- Compare line breaks while typing and after, for each font, with a paragraph
+  long enough to wrap several times.
+- A narrow window: the bar scrolls sideways and nothing in the window moves
+  when the text controls appear.
 - Type umlauts, quotes and a euro sign: they show. Characters outside Western
   European (Greek, Cyrillic, CJK, emoji) show as question marks for now.
 - Note tool: click, type, close. The mark is where the click was. Enter on the
