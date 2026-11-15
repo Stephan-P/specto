@@ -104,6 +104,48 @@ class ViewFrameTest {
     }
 
     @Test
+    fun annotations() {
+        assertEquals(3, frame.shapeCount)
+
+        // A highlight on the first page: a quadrilateral that darkens.
+        assertEquals(0, frame.shapePage(0))
+        assertTrue(frame.shapeIsFilled(0) && frame.shapeDarkens(0) && frame.shapeIsClosed(0))
+        assertFalse(frame.shapeIsStroked(0) || frame.shapeIsRound(0))
+        assertEquals(0xFFFFEB3B.toInt(), frame.shapeFill(0))
+        assertEquals(100f, frame.shapeStartX(0))
+        assertEquals(200f, frame.shapeStartY(0))
+        assertEquals(0..2, frame.segments(0))
+        assertFalse(frame.segmentIsCurve(1))
+        assertEquals(300f, frame.segmentX(1, 0))
+        assertEquals(170.5f, frame.segmentY(1, 0))
+
+        // A line under some text on the second.
+        assertEquals(1, frame.shapePage(1))
+        assertTrue(frame.shapeIsStroked(1))
+        assertFalse(frame.shapeIsFilled(1) || frame.shapeDarkens(1) || frame.shapeIsClosed(1))
+        assertEquals(0xFFE01C24.toInt(), frame.shapeStroke(1))
+        assertEquals(2.5f, frame.shapeStrokeWidth(1))
+        assertEquals(3..3, frame.segments(1))
+        assertEquals(400f, frame.segmentX(3, 0))
+
+        // A drawing: filled and outlined with a round pen, with a curve.
+        assertTrue(frame.shapeIsFilled(2) && frame.shapeIsStroked(2) && frame.shapeIsRound(2))
+        assertEquals(0x8000FF00.toInt(), frame.shapeFill(2))
+        assertEquals(4..5, frame.segments(2))
+        assertTrue(frame.segmentIsCurve(4))
+        assertEquals(520f, frame.segmentX(4, 0))
+        assertEquals(560f, frame.segmentX(4, 1))
+        assertEquals(580f, frame.segmentX(4, 2))
+        assertEquals(1400f, frame.segmentY(4, 2))
+        assertFalse(frame.segmentIsCurve(5))
+        assertEquals(1450f, frame.segmentY(5, 0))
+
+        // The highlight is picked.
+        assertArrayEquals(floatArrayOf(98f, 202f, 302f, 202f, 302f, 168.5f, 98f, 168.5f), frame.picked, 0f)
+        assertArrayEquals(floatArrayOf(98f, 168.5f, 302f, 202f), frame.pickedBounds(), 0f)
+    }
+
+    @Test
     fun searchMatches() {
         assertEquals(ViewFrame.HIGHLIGHT_MATCH, frame.highlightKind(0))
         assertEquals(ViewFrame.HIGHLIGHT_CURRENT_MATCH, frame.highlightKind(1))

@@ -42,7 +42,7 @@ class PrintTest : AppTest() {
     private fun leavePrintDialog() {
         // Once the dialog is up, or Back would go to the app instead.
         compose.waitUntil(WAIT_MS) { !appFocused() }
-        instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_BACK").close()
+        shell("input keyevent KEYCODE_BACK")
         compose.waitUntil(WAIT_MS) { appFocused() }
     }
 

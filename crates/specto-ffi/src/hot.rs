@@ -8,7 +8,8 @@
 //! ```text
 //! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged,
 //!                      bit 3: two pages, bit 4: first page alone,
-//!                      bit 5: text is selected
+//!                      bit 5: text is selected,
+//!                      bit 6: an annotation is picked and on screen
 //! u32 zoom_mode        0 fixed, 1 fit width, 2 fit page
 //! u32 current_page
 //! i32 settles_in_ms    -1: none
@@ -37,12 +38,30 @@
 //! }
 //! 2 × { f32 bottom x, y, top x, y }    the selection's start and end edge,
 //!                                      zeros if not on screen
+//! u32 shape_count      annotations to draw over the pages, under the
+//! u32 unused           highlights (see `ShapeDraw`)
+//! shape_count × {
+//!     u32 page         index into the pages above, to clip to
+//!     u32 flags        bit 0: filled, bit 1: stroked, bit 2: the fill
+//!                      darkens what is under it (Multiply), bit 3: closed,
+//!                      bit 4: round pen
+//!     u32 fill, u32 stroke             0xAARRGGBB
+//!     f32 stroke_width, u32 segment_count
+//!     f32 x, y         where the outline starts
+//!     segment_count × {
+//!         u32 kind (0: line, 1: curve), u32 unused
+//!         3 × { f32 x, y }   line: its end, twice unused;
+//!                            curve: two control points and its end
+//!     }
+//! }
+//! 4 × { f32 x, y }     the corners of the box around the picked
+//!                      annotation, zeros if flag bit 6 isn't set
 //! ```
 //!
 //! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then
 //! `count × { u64 id, u32 width, u32 height }`.
 
-use crate::{FinishedTile, Frame, HighlightKind, Point, Rect, ZoomMode, find_session};
+use crate::{FinishedTile, Frame, HighlightKind, Point, Rect, SegmentDraw, ZoomMode, find_session};
 
 /// See `ViewSession::set_viewport`. Here because the app animates its bars,
 /// which resizes the view on every frame. `false` if the session is closed.
@@ -192,7 +211,8 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
             | u32::from(frame.paged) << 2
             | u32::from(frame.two_pages) << 3
             | u32::from(frame.cover_alone) << 4
-            | u32::from(frame.selection) << 5,
+            | u32::from(frame.selection) << 5
+            | u32::from(frame.picked.len() == 4) << 6,
     );
     put_u32(
         buf,
@@ -259,6 +279,40 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
         let (bottom, top) = edge.map_or((zero, zero), |e| (e.bottom, e.top));
         put_point(buf, bottom);
         put_point(buf, top);
+    }
+    let zero = Point { x: 0.0, y: 0.0 };
+    put_u32(buf, frame.shapes.len() as u32);
+    put_u32(buf, 0);
+    for shape in &frame.shapes {
+        put_u32(buf, shape.page);
+        put_u32(
+            buf,
+            u32::from(shape.fill.is_some())
+                | u32::from(shape.stroke.is_some()) << 1
+                | u32::from(shape.multiply) << 2
+                | u32::from(shape.closed) << 3
+                | u32::from(shape.round) << 4,
+        );
+        put_u32(buf, shape.fill.unwrap_or(0));
+        put_u32(buf, shape.stroke.unwrap_or(0));
+        buf.extend_from_slice(&shape.stroke_width.to_ne_bytes());
+        put_u32(buf, shape.segments.len() as u32);
+        put_point(buf, shape.start);
+        for segment in &shape.segments {
+            let (kind, points) = match *segment {
+                SegmentDraw::Line { to } => (0, [to, zero, zero]),
+                SegmentDraw::Curve { c1, c2, to } => (1, [c1, c2, to]),
+            };
+            put_u32(buf, kind);
+            put_u32(buf, 0);
+            for p in points {
+                put_point(buf, p);
+            }
+        }
+    }
+    let picked = (frame.picked.len() == 4).then_some(&frame.picked[..]);
+    for i in 0..4 {
+        put_point(buf, picked.map_or(zero, |p| p[i]));
     }
 }
 

@@ -101,6 +101,26 @@ abstract class AppTest {
         target.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
+    /**
+     * Keeps the system's own dialogs out of the way. An emulator that is
+     * short of breath now and then finds an app "not responding" (its
+     * launcher, mostly) and says so in a dialog, which takes the focus from
+     * the app under test: Back, keys and the clipboard then go nowhere,
+     * and the tests that need them fail. The setting stops such dialogs
+     * from being shown; one that is up already is sent away.
+     */
+    @Before
+    fun noSystemDialogs() {
+        shell("settings put global hide_error_dialogs 1")
+        shell("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS")
+    }
+
+    /** Runs [command] as the shell user and waits for it to end. */
+    protected fun shell(command: String) {
+        val output = instrumentation.uiAutomation.executeShellCommand(command)
+        ParcelFileDescriptor.AutoCloseInputStream(output).use { it.readBytes() }
+    }
+
     @After
     fun close() {
         // Before the app is closed, which changes it.

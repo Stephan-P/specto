@@ -129,7 +129,9 @@ This is the default layout.
 ## Text
 
 - A long press selects a word, with a handle at each end and the system's
-  floating menu beside it: Copy, Share and Select all
+  floating menu beside it: Highlight, Copy, Share, Underline, Strike through
+  and Select all. Where they don't all fit, the last ones are behind the
+  menu's three dots
 - Moving on after the long press, without lifting the finger, selects further
   words
 - The handles move each end letter by letter, also on to other lines
@@ -143,6 +145,25 @@ This is the default layout.
   100,000 characters
 - Select all selects the whole document
 - A tap on the page, or Back, lets go of the selection
+
+## Marking text
+
+Marks are annotations, as other PDF programs make and show them. Like page
+edits, they change nothing in a file until the document is saved.
+
+- Highlight, in the menu beside selected text, marks it in yellow, as with a
+  highlighter: the text stays readable under it
+- Underline and Strike through draw a red line under or through it
+- A selection over several lines or pages is marked as a whole
+- A tap on a mark picks it: a box is drawn around it, and the menu offers
+  Delete. A tap elsewhere, or Back, lets go of it
+- Marks that were in the file already, and other annotations in it (notes,
+  drawings, text boxes), can be picked and deleted the same way
+- Where a mark lies on a link, a tap follows the link
+- Marking and deleting are edits: "Edited" shows beside the title, Undo and
+  Redo in the overflow menu take them back and repeat them ("Undo add
+  annotation"), and they are saved, shared and printed with the document
+- The thumbnails don't show marks until the document is saved
 
 ## Editing pages
 
@@ -294,4 +315,5 @@ the whole app and are kept across launches.
 
 - Inserting pages from other files
 - Keeping unsaved edits when Android ends the app
-- Annotations and form filling
+- Other annotations (notes, drawings, text boxes), choosing a mark's color, and
+  form filling

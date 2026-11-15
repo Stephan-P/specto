@@ -42,6 +42,7 @@ Not covered, and left to the manual pass:
 - Whether the screen really stays on
 - How dragging pages looks, and how the selection, its handles and the text
   menu look
+- How marks on the text look: the UI tests only know that there is one
 
 ## Setup
 
@@ -136,6 +137,24 @@ These need a document with real text.
 - With a selection, tap the page or press Back: the selection goes and nothing
   else happens. The app doesn't enter full screen, follow a link or leave the
   document.
+
+### Marking text
+
+- Highlight a word: it is yellow and the text under it is as dark as before.
+  Nothing else on the page changes color. On Android 9 and older the yellow
+  is blended a little differently; black text on white paper looks the same.
+- Highlight two selections that overlap: where they overlap is no darker than
+  the rest.
+- Mark a selection that runs over several lines, and in continuous scrolling
+  over a page break: every line is marked, on both pages.
+- Scroll, zoom and rotate the device: the marks stay on their text.
+- Tap a mark: a box around it, and Delete in the menu. The bars stay as they
+  are. Tap blank paper: the box goes, and the bars still stay.
+- Save, then open the file in another PDF program: the marks are there, and
+  can be deleted there. Open a file marked up elsewhere: its marks can be
+  picked and deleted here.
+- Mark a line of a table of contents that is a link, then tap it: the link is
+  followed. The mark can still be taken back with Undo.
 
 ### Editing pages
 

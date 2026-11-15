@@ -29,10 +29,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, Weak};
 use std::time::Instant;
 
+use specto_annot::{Color, MarkupStyle, Segment};
 use specto_doc::SourceId;
 use specto_geom::{DeviceRect, ViewPoint, ViewVector};
 use specto_render::scheduler::Scheduler;
 use specto_render::{Bitmap, OpenError};
+use specto_session::ViewShape;
 use specto_session::{MAIN, Options, Session};
 use specto_source::{NamedAction, OutlineItem, PdfData, Target};
 use specto_view::{
@@ -305,6 +307,51 @@ pub struct SelectionEdge {
     pub top: Point,
 }
 
+/// How selected text is marked; see [`ViewSession::mark_selection`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum Markup {
+    Highlight,
+    Underline,
+    StrikeOut,
+}
+
+/// A piece of a [`ShapeDraw`]'s outline, from where the one before ended.
+#[derive(Clone, Copy, Debug, PartialEq, uniffi::Enum)]
+pub enum SegmentDraw {
+    Line {
+        to: Point,
+    },
+    /// A cubic Bézier curve.
+    Curve {
+        c1: Point,
+        c2: Point,
+        to: Point,
+    },
+}
+
+/// A piece of an annotation that the frontend draws over a page: those
+/// made or changed since the file was read, and ones the file gives no
+/// look for. (The rest are part of the page as rendered.) An outline in
+/// device pixels, filled, drawn along with a pen, or both. Colours are
+/// 0xAARRGGBB.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct ShapeDraw {
+    /// Which of [`Frame::pages`] it is on (an index): clip it to that page.
+    pub page: u32,
+    pub fill: Option<u32>,
+    /// The fill darkens what is under it, as a highlighter does (the blend
+    /// mode Multiply), instead of covering it.
+    pub multiply: bool,
+    pub stroke: Option<u32>,
+    pub stroke_width: f32,
+    /// The pen is round: round ends and joins.
+    pub round: bool,
+    /// The outline ends where it starts.
+    pub closed: bool,
+    pub start: Point,
+    pub segments: Vec<SegmentDraw>,
+}
+
 #[derive(Clone, Copy, Debug, uniffi::Record)]
 pub struct TileDraw {
     /// Id of a tile previously handed out by [`ViewSession::take_finished`].
@@ -377,6 +424,13 @@ pub struct Frame {
     /// end that isn't on a visible page.
     pub selection_start: Option<SelectionEdge>,
     pub selection_end: Option<SelectionEdge>,
+    /// The annotations to draw over the visible pages, in order, under the
+    /// highlights.
+    pub shapes: Vec<ShapeDraw>,
+    /// The four corners of the box around the annotation that is picked
+    /// ([`ViewSession::pick_annotation_at`]), around it; empty if none is,
+    /// or it is on no visible page.
+    pub picked: Vec<Point>,
 }
 
 /// Size of a page as displayed, in PDF points.
@@ -554,6 +608,25 @@ impl Shared {
             .collect();
         self.scheduler.request(planned.requests);
 
+        // The annotations that aren't part of the pages as rendered.
+        let px = session.viewer.device_scale().get() / session.viewer.zoom();
+        let mut shapes = Vec::new();
+        for (slot, page) in planned.pages.iter().enumerate() {
+            let overlay = session.overlay(page.page);
+            shapes.extend(overlay.iter().map(|s| shape_draw(slot as u32, s, px)));
+        }
+        let visible = |position: usize| planned.pages.iter().any(|p| p.page == position);
+        let picked = match session.picked_outline() {
+            Some((position, corners)) if visible(position) => corners
+                .iter()
+                .map(|p| Point {
+                    x: (p.x * px) as f32,
+                    y: (p.y * px) as f32,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+
         // What the search found and what is selected on the visible pages.
         // Positions come in logical pixels; everything in a frame is in
         // device pixels.
@@ -613,6 +686,8 @@ impl Shared {
             }
         }
         Frame {
+            shapes,
+            picked,
             selection: selection.is_some(),
             highlights,
             selection_start,
@@ -655,6 +730,84 @@ impl Shared {
                 .position(|p| p.doc == key.doc && p.page == key.page);
             position.is_some_and(|i| viewer.placeholder_key(i) == Some(*key))
         })
+    }
+}
+
+/// An annotation's shape as a frame has it: `px` device pixels per logical
+/// one, on the page at index `page` of the frame.
+fn shape_draw(page: u32, shape: &ViewShape, px: f64) -> ShapeDraw {
+    let point = |p: ViewPoint| Point {
+        x: (p.x * px) as f32,
+        y: (p.y * px) as f32,
+    };
+    let argb = |c: specto_annot::Color, opacity: f32| {
+        let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
+        byte(opacity) << 24 | byte(c.r) << 16 | byte(c.g) << 8 | byte(c.b)
+    };
+    match shape {
+        ViewShape::Fill {
+            quad,
+            color,
+            opacity,
+            multiply,
+        } => ShapeDraw {
+            page,
+            fill: Some(argb(*color, *opacity)),
+            multiply: *multiply,
+            stroke: None,
+            stroke_width: 0.0,
+            round: false,
+            closed: true,
+            start: point(quad[0]),
+            segments: quad[1..]
+                .iter()
+                .map(|&p| SegmentDraw::Line { to: point(p) })
+                .collect(),
+        },
+        ViewShape::Stroke {
+            from,
+            to,
+            width,
+            color,
+            opacity,
+        } => ShapeDraw {
+            page,
+            fill: None,
+            multiply: false,
+            stroke: Some(argb(*color, *opacity)),
+            stroke_width: (width * px) as f32,
+            round: false,
+            closed: false,
+            start: point(*from),
+            segments: vec![SegmentDraw::Line { to: point(*to) }],
+        },
+        ViewShape::Path {
+            path,
+            fill,
+            stroke,
+            opacity,
+        } => ShapeDraw {
+            page,
+            fill: fill.map(|c| argb(c, *opacity)),
+            multiply: false,
+            stroke: stroke.map(|(c, _)| argb(c, *opacity)),
+            stroke_width: stroke.map_or(0.0, |(_, width)| (width * px) as f32),
+            round: true,
+            closed: path.closed,
+            start: point(path.start),
+            segments: path
+                .segments
+                .iter()
+                .map(|s| match *s {
+                    Segment::Line(p) => SegmentDraw::Line { to: point(p) },
+                    Segment::Curve(a, b, p) => SegmentDraw::Curve {
+                        c1: point(a),
+                        c2: point(b),
+                        to: point(p),
+                    },
+                })
+                .collect(),
+        },
     }
 }
 
@@ -977,6 +1130,57 @@ impl ViewSession {
             Some((source, target)) => state.follow(source, &target),
             None => Activated::Nothing,
         }
+    }
+
+    // --- annotations -------------------------------------------------------
+    //
+    // Marks on the text, and whatever else a file brings along (notes,
+    // drawings, text boxes). What a frame must draw of them is in
+    // [`Frame::shapes`]; the rest is part of the pages as rendered. Adding
+    // and deleting one are edits like those of the pages: undone with
+    // [`undo`](Self::undo), saved with the document.
+
+    /// Marks the selected text: a highlight, or a line under or through
+    /// it. The selection is given up. Returns whether anything was marked
+    /// (not without a selection).
+    pub fn mark_selection(&self, markup: Markup) -> bool {
+        // The colours the desktop app starts out with.
+        let (style, color) = match markup {
+            Markup::Highlight => (MarkupStyle::Highlight, Color::new(1.0, 0.92, 0.23)),
+            Markup::Underline => (MarkupStyle::Underline, Color::new(0.88, 0.11, 0.14)),
+            Markup::StrikeOut => (MarkupStyle::StrikeOut, Color::new(0.88, 0.11, 0.14)),
+        };
+        self.shared.lock().session.mark_selection(style, color)
+    }
+
+    /// A tap at (`x`, `y`) in logical pixels: picks the topmost annotation
+    /// there, or none if there is none (or only one its file doesn't let
+    /// be changed). Returns whether one is picked now. The picked one is
+    /// outlined ([`Frame::picked`]) and is what
+    /// [`remove_picked_annotation`](Self::remove_picked_annotation) deletes.
+    pub fn pick_annotation_at(&self, x: f64, y: f64) -> bool {
+        let mut state = self.shared.lock();
+        let picked = state.session.annotation_at(ViewPoint::new(x, y));
+        state.session.picked = picked;
+        picked.is_some()
+    }
+
+    /// Lets go of the picked annotation. Returns whether one was picked.
+    pub fn clear_picked_annotation(&self) -> bool {
+        self.shared.lock().session.picked.take().is_some()
+    }
+
+    /// Deletes the picked annotation. Returns whether there was one.
+    /// Fails for an annotation of a file that can't be saved either: its
+    /// page has to be written anew without it.
+    pub fn remove_picked_annotation(&self) -> Result<bool, PdfError> {
+        self.shared
+            .lock()
+            .session
+            .remove_picked_annotation(&self.shared.scheduler)
+            .map_err(|e| PdfError::Save {
+                reason: e.to_string(),
+            })
     }
 
     // --- editing ---------------------------------------------------------------

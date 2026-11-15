@@ -1348,8 +1348,49 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     };
     let selection_start = edge(edges & 1 != 0);
     let selection_end = edge(edges & 2 != 0);
+    let shape_count = u32_(&mut b);
+    assert_eq!(u32_(&mut b), 0);
+    let shapes = (0..shape_count)
+        .map(|_| {
+            let page = u32_(&mut b);
+            let flags = u32_(&mut b);
+            let (fill, stroke) = (u32_(&mut b), u32_(&mut b));
+            let stroke_width = f32::from_ne_bytes(u32_(&mut b).to_ne_bytes());
+            let segments = u32_(&mut b);
+            ShapeDraw {
+                page,
+                fill: (flags & 1 != 0).then_some(fill),
+                stroke: (flags & 2 != 0).then_some(stroke),
+                multiply: flags & 4 != 0,
+                closed: flags & 8 != 0,
+                round: flags & 16 != 0,
+                stroke_width,
+                start: point(&mut b),
+                segments: (0..segments)
+                    .map(|_| {
+                        let kind = u32_(&mut b);
+                        assert_eq!(u32_(&mut b), 0);
+                        let points = [point(&mut b), point(&mut b), point(&mut b)];
+                        match kind {
+                            0 => SegmentDraw::Line { to: points[0] },
+                            1 => SegmentDraw::Curve {
+                                c1: points[0],
+                                c2: points[1],
+                                to: points[2],
+                            },
+                            other => panic!("segment kind {other}"),
+                        }
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+    let outline: Vec<Point> = (0..4).map(|_| point(&mut b)).collect();
+    let picked = if flags & 64 != 0 { outline } else { Vec::new() };
     assert!(b.is_empty(), "trailing bytes");
     Frame {
+        shapes,
+        picked,
         selection: flags & 32 != 0,
         highlights,
         selection_start,
@@ -1460,7 +1501,185 @@ fn fixture_frame() -> Frame {
             bottom: Point { x: 300.0, y: 121.0 },
             top: Point { x: 300.5, y: 91.0 },
         }),
+        shapes: vec![
+            // A highlight, a line under some text, and a drawing.
+            ShapeDraw {
+                page: 0,
+                fill: Some(0xFFFF_EB3B),
+                multiply: true,
+                stroke: None,
+                stroke_width: 0.0,
+                round: false,
+                closed: true,
+                start: Point { x: 100.0, y: 200.0 },
+                segments: vec![
+                    SegmentDraw::Line {
+                        to: Point { x: 300.0, y: 200.0 },
+                    },
+                    SegmentDraw::Line {
+                        to: Point { x: 300.0, y: 170.5 },
+                    },
+                    SegmentDraw::Line {
+                        to: Point { x: 100.0, y: 170.5 },
+                    },
+                ],
+            },
+            ShapeDraw {
+                page: 1,
+                fill: None,
+                multiply: false,
+                stroke: Some(0xFFE0_1C24),
+                stroke_width: 2.5,
+                round: false,
+                closed: false,
+                start: Point { x: 60.0, y: 1300.0 },
+                segments: vec![SegmentDraw::Line {
+                    to: Point {
+                        x: 400.0,
+                        y: 1300.0,
+                    },
+                }],
+            },
+            ShapeDraw {
+                page: 1,
+                fill: Some(0x8000_FF00),
+                multiply: false,
+                stroke: Some(0x80E0_1C24),
+                stroke_width: 4.0,
+                round: true,
+                closed: true,
+                start: Point {
+                    x: 500.0,
+                    y: 1400.0,
+                },
+                segments: vec![
+                    SegmentDraw::Curve {
+                        c1: Point {
+                            x: 520.0,
+                            y: 1380.0,
+                        },
+                        c2: Point {
+                            x: 560.0,
+                            y: 1380.0,
+                        },
+                        to: Point {
+                            x: 580.0,
+                            y: 1400.0,
+                        },
+                    },
+                    SegmentDraw::Line {
+                        to: Point {
+                            x: 540.0,
+                            y: 1450.0,
+                        },
+                    },
+                ],
+            },
+        ],
+        picked: vec![
+            Point { x: 98.0, y: 202.0 },
+            Point { x: 302.0, y: 202.0 },
+            Point { x: 302.0, y: 168.5 },
+            Point { x: 98.0, y: 168.5 },
+        ],
     }
+}
+
+#[test]
+fn marking_text() {
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(text_pdf(), None, 1 << 20, listener.clone()).unwrap();
+    // As in `selecting_text`: PDF (x, y) is at (8 + x, 308 - y) in the view.
+    session.set_viewport(216.0, 316.0, 2.0);
+    session.set_view_mode(ViewMode::Paged);
+    let at = |x: f64, y: f64| (8.0 + x, 308.0 - y);
+    let (hello, blank) = (at(30.0, 255.0), at(100.0, 100.0));
+
+    // Nothing to mark without a selection, and nothing to pick.
+    assert!(!session.mark_selection(Markup::Highlight));
+    assert!(!session.pick_annotation_at(hello.0, hello.1));
+    assert!(session.frame().shapes.is_empty());
+
+    assert!(session.select_word_at(hello.0, hello.1));
+    let selected = session.frame().highlights[0];
+    assert!(session.mark_selection(Markup::Highlight));
+    // The selection became the highlight: a fill that darkens, where the
+    // word is, in device pixels.
+    let frame = session.frame();
+    assert!(!frame.selection && frame.highlights.is_empty());
+    let [shape] = &frame.shapes[..] else {
+        panic!("one highlight: {:?}", frame.shapes);
+    };
+    assert_eq!((shape.page, shape.multiply, shape.closed), (0, true, true));
+    assert!(shape.fill.is_some() && shape.stroke.is_none());
+    assert!(
+        (shape.start.x - selected.start_bottom.x).abs() < 6.0,
+        "{shape:?}"
+    );
+    assert_eq!(shape.segments.len(), 3);
+    let state = session.edit_state();
+    assert!(state.modified);
+    assert_eq!(state.undo.unwrap().kind, EditKind::AddAnnotation);
+
+    // A line under the next word is a stroke.
+    let brave = at(80.0, 255.0);
+    assert!(session.select_word_at(brave.0, brave.1));
+    assert!(session.mark_selection(Markup::Underline));
+    let frame = session.frame();
+    assert_eq!(frame.shapes.len(), 2);
+    assert!(
+        frame
+            .shapes
+            .iter()
+            .any(|s| s.stroke.is_some() && s.fill.is_none())
+    );
+
+    // A tap on a mark picks it, a tap elsewhere lets go of it.
+    assert!(frame.picked.is_empty());
+    assert!(session.pick_annotation_at(hello.0, hello.1));
+    let outline = session.frame().picked;
+    assert_eq!(outline.len(), 4);
+    assert!(outline.iter().any(|p| p.x <= shape.start.x + 1.0));
+    assert!(!session.pick_annotation_at(blank.0, blank.1));
+    assert!(session.frame().picked.is_empty());
+    assert!(!session.clear_picked_annotation());
+
+    // The picked one can be deleted, and that taken back.
+    assert!(!session.remove_picked_annotation().unwrap());
+    assert!(session.pick_annotation_at(hello.0, hello.1));
+    assert!(session.remove_picked_annotation().unwrap());
+    let frame = session.frame();
+    assert!(frame.picked.is_empty());
+    assert_eq!(frame.shapes.len(), 1);
+    assert_eq!(session.undo().unwrap().kind, EditKind::RemoveAnnotation);
+    assert_eq!(session.frame().shapes.len(), 2);
+
+    // Saved, they are in the file, which then draws them itself.
+    use std::os::fd::IntoRawFd;
+    let path = std::env::temp_dir().join(format!("specto-ffi-marks-{}.pdf", std::process::id()));
+    let fd = std::fs::File::create(&path).unwrap().into_raw_fd();
+    session.save_to_fd(fd, true).unwrap();
+    let written = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    let (tx, rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let saved = ViewSession::open(written, None, 1 << 20, listener).unwrap();
+    saved.set_viewport(216.0, 316.0, 2.0);
+    saved.set_view_mode(ViewMode::Paged);
+    let (frame, _) = settle(&saved, &rx);
+    assert!(frame.shapes.is_empty());
+
+    // One of the file's own can be deleted too: its page is then rendered
+    // without it, from a copy, and with it again after undo.
+    assert!(saved.pick_annotation_at(hello.0, hello.1));
+    assert!(saved.remove_picked_annotation().unwrap());
+    assert!(!saved.pick_annotation_at(hello.0, hello.1));
+    let (frame, _) = settle(&saved, &rx);
+    assert!(frame.shapes.is_empty() && !frame.pages[0].tiles.is_empty());
+    assert_eq!(saved.undo().unwrap().kind, EditKind::RemoveAnnotation);
+    settle(&saved, &rx);
+    assert!(saved.pick_annotation_at(hello.0, hello.1));
 }
 
 /// `fixtures/frame.bin` is what Rust writes for [`fixture_frame`] and what

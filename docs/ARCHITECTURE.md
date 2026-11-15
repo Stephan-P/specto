@@ -342,6 +342,8 @@ The Android app is written in Kotlin with Jetpack Compose.
   (see D5 in [DECISIONS.md](DECISIONS.md)).
 - Tiles are copied from Rust into Android bitmaps through the NDK, and Compose
   draws them on a canvas.
+- Annotations made or changed since the file was read aren't in the tiles.
+  Each frame lists their shapes, and Compose draws them over the pages.
 - Files are opened and saved through the Storage Access Framework. Saving
   writes to a file in the app's cache first and copies it from there.
 - Printing hands the system's print service a copy of the document without

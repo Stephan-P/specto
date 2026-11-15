@@ -3,6 +3,9 @@ package net.xfbs.specto
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Paint
+import android.graphics.BlendMode
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.os.Build
 import android.util.Log
@@ -39,6 +42,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.luminance
@@ -76,6 +80,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import uniffi.specto_ffi.Activated
+import uniffi.specto_ffi.Markup
+import uniffi.specto_ffi.PdfException
 
 /** Radius of the round part of a selection handle. */
 private val HANDLE_RADIUS = 10.dp
@@ -104,6 +110,9 @@ private const val CLIPBOARD_MAX_CHARS = 300_000
 internal const val SHARE_MAX_CHARS = 100_000
 
 /** What the search found, as on the desktop: yellow, and orange for the match being looked at. */
+/** How thick the box around a picked annotation is drawn. */
+private val PICKED_OUTLINE = 2.dp
+
 private val MATCH_COLOUR = Color(0xFFFFD600)
 private val CURRENT_MATCH_COLOUR = Color(0xFFFF6D00)
 
@@ -223,6 +232,8 @@ private fun PageCanvas(
     val exactPaint = remember { Paint().apply { isFilterBitmap = false } }
     val scaledPaint = remember { Paint().apply { isFilterBitmap = true } }
     val dest = remember { RectF() }
+    val shapes = remember { ShapePainter() }
+    val annotationSelected = stringResource(R.string.annotation_selected)
     var origin by remember { mutableStateOf(Offset.Zero) }
 
     // --- text selection -----------------------------------------------------
@@ -283,8 +294,24 @@ private fun PageCanvas(
         }
     }
 
-    // Back first lets go of the selection.
+    fun mark(markup: Markup) {
+        state.markSelection(markup)
+    }
+
+    fun deleteAnnotation() {
+        try {
+            state.deletePickedAnnotation()
+        } catch (e: PdfException.Save) {
+            // One of the file's own, on a page that can't be written anew.
+            Toast.makeText(
+                context, context.getString(R.string.could_not_delete_annotation, e.reason), Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    // Back first lets go of the selection, or of the annotation that is picked.
     BackHandler(enabled = state.hasSelection) { state.clearSelection() }
+    BackHandler(enabled = state.hasPickedAnnotation) { state.clearPickedAnnotation() }
 
     // While scrolling continuously, a selection dragged to the top or bottom
     // edge scrolls the view on, so it can grow beyond what is on screen.
@@ -327,19 +354,30 @@ private fun PageCanvas(
     } else {
         null
     }
-    LaunchedEffect(state, selected, selecting, originInRoot) {
+    // An annotation picked by a tap gets the same menu, to delete it.
+    val picked = if (state.hasPickedAnnotation) {
+        state.frame?.pickedBounds()?.let { Rect(it[0], it[1], it[2], it[3]) }
+    } else {
+        null
+    }
+    LaunchedEffect(state, selected, picked, selecting, originInRoot) {
         menu.hide()
-        if (selected == null || selecting) return@LaunchedEffect
+        if (selecting) return@LaunchedEffect
+        val beside = (selected ?: picked ?: return@LaunchedEffect).translate(originInRoot)
         delay(MENU_DELAY_MS)
-        val beside = selected.translate(originInRoot)
-        menu.show(
-            beside.left, beside.top, beside.right, beside.bottom,
+        val items = if (selected != null) {
             listOf(
+                TextMenu.Item(context.getString(R.string.highlight)) { mark(Markup.HIGHLIGHT) },
                 TextMenu.Item(context.getString(R.string.copy), ::copy),
                 TextMenu.Item(context.getString(R.string.share), ::share),
+                TextMenu.Item(context.getString(R.string.underline)) { mark(Markup.UNDERLINE) },
+                TextMenu.Item(context.getString(R.string.strike_through)) { mark(Markup.STRIKE_OUT) },
                 TextMenu.Item(context.getString(R.string.select_all)) { state.selectAll() },
-            ),
-        )
+            )
+        } else {
+            listOf(TextMenu.Item(context.getString(R.string.delete), ::deleteAnnotation))
+        }
+        menu.show(beside.left, beside.top, beside.right, beside.bottom, items)
     }
     DisposableEffect(state) {
         onDispose { menu.hide() }
@@ -380,16 +418,28 @@ private fun PageCanvas(
                 state.setViewport(it.width / density, it.height / density, density)
             }
             // For screen readers, and for UI tests, which can't see the page.
-            .semantics { if (state.hasSelection) stateDescription = textSelected }
+            .semantics {
+                if (state.hasSelection) {
+                    stateDescription = textSelected
+                } else if (state.hasPickedAnnotation) {
+                    stateDescription = annotationSelected
+                }
+            }
             .pointerInput(state) {
                 detectTapGestures(
                     onTap = {
                         if (state.hasSelection) {
                             state.clearSelection()
                         } else {
+                            // A link first, as on the desktop; then an
+                            // annotation, which the tap picks. A tap
+                            // elsewhere lets go of the picked one, and
+                            // does nothing else.
+                            val hadPicked = state.hasPickedAnnotation
                             when (val hit = state.tap(it / density)) {
-                                Activated.Nothing -> onTap()
-                                Activated.Moved -> {}
+                                Activated.Nothing ->
+                                    if (!state.pickAnnotation(it / density) && !hadPicked) onTap()
+                                Activated.Moved -> state.clearPickedAnnotation()
                                 is Activated.Uri -> onExternalLink(hit.uri)
                             }
                         }
@@ -512,8 +562,18 @@ private fun PageCanvas(
                         val paint = if (f.tileIsExact(t)) exactPaint else scaledPaint
                         canvas.nativeCanvas.drawBitmap(bitmap, null, dest, paint)
                     }
+                    shapes.draw(canvas.nativeCanvas, f, p, dest)
                 }
             }
+        }
+        // The box around the annotation that is picked.
+        f.picked?.let { box ->
+            val outline = Path().apply {
+                moveTo(box[0], box[1])
+                for (corner in 1..3) lineTo(box[2 * corner], box[2 * corner + 1])
+                close()
+            }
+            drawPath(outline, accent, style = Stroke(width = PICKED_OUTLINE.toPx()))
         }
         // What the search found and what is selected, and a handle at each
         // end of the selection that is on screen.
@@ -531,6 +591,82 @@ private fun PageCanvas(
         }
         f.selectionStart?.let { drawHandle(it, end = false, handleRadius, accent) }
         f.selectionEnd?.let { drawHandle(it, end = true, handleRadius, accent) }
+    }
+}
+
+/**
+ * Draws the annotations of a frame that aren't part of the pages as
+ * rendered ([ViewFrame.shapeCount]), reusing its paints and path from frame
+ * to frame.
+ */
+private class ShapePainter {
+    private val path = android.graphics.Path()
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    // The layer of highlights is multiplied with the page under it. Before
+    // Android 10 there is no such blend that leaves the page alone where
+    // the layer is empty (PorterDuff's MULTIPLY blackens it), so there the
+    // darker of the two colours is taken: the same on white paper and
+    // black text, and close to it elsewhere.
+    private val darken = Paint().apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            blendMode = BlendMode.MULTIPLY
+        } else {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DARKEN)
+        }
+    }
+
+    /**
+     * Draws the shapes of the [page]th visible page of [frame] onto
+     * [canvas], which is clipped to that page; [scratch] is a rectangle to
+     * use. Highlights first: they darken the page under them, together,
+     * so that two that overlap don't darken it twice. Then the rest, on
+     * top of the page.
+     */
+    fun draw(canvas: android.graphics.Canvas, frame: ViewFrame, page: Int, scratch: RectF) {
+        val shapes = (0 until frame.shapeCount).filter { frame.shapePage(it) == page }
+        if (shapes.isEmpty()) return
+        if (shapes.any(frame::shapeDarkens)) {
+            scratch.set(
+                frame.pageLeft(page),
+                frame.pageTop(page),
+                frame.pageLeft(page) + frame.pageWidth(page),
+                frame.pageTop(page) + frame.pageHeight(page),
+            )
+            val layer = canvas.saveLayer(scratch, darken)
+            for (i in shapes) if (frame.shapeDarkens(i)) draw(canvas, frame, i)
+            canvas.restoreToCount(layer)
+        }
+        for (i in shapes) if (!frame.shapeDarkens(i)) draw(canvas, frame, i)
+    }
+
+    private fun draw(canvas: android.graphics.Canvas, frame: ViewFrame, i: Int) {
+        path.rewind()
+        path.moveTo(frame.shapeStartX(i), frame.shapeStartY(i))
+        for (s in frame.segments(i)) {
+            if (frame.segmentIsCurve(s)) {
+                path.cubicTo(
+                    frame.segmentX(s, 0), frame.segmentY(s, 0),
+                    frame.segmentX(s, 1), frame.segmentY(s, 1),
+                    frame.segmentX(s, 2), frame.segmentY(s, 2),
+                )
+            } else {
+                path.lineTo(frame.segmentX(s, 0), frame.segmentY(s, 0))
+            }
+        }
+        if (frame.shapeIsClosed(i)) path.close()
+        if (frame.shapeIsFilled(i)) {
+            fill.color = frame.shapeFill(i)
+            canvas.drawPath(path, fill)
+        }
+        if (frame.shapeIsStroked(i)) {
+            val round = frame.shapeIsRound(i)
+            stroke.color = frame.shapeStroke(i)
+            stroke.strokeWidth = frame.shapeStrokeWidth(i)
+            stroke.strokeCap = if (round) Paint.Cap.ROUND else Paint.Cap.BUTT
+            stroke.strokeJoin = if (round) Paint.Join.ROUND else Paint.Join.MITER
+            canvas.drawPath(path, stroke)
+        }
     }
 }
 

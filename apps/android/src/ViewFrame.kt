@@ -57,7 +57,71 @@ class ViewFrame private constructor(
     val selectionStart: FloatArray?,
     /** Where the selection ends, likewise. */
     val selectionEnd: FloatArray?,
+    /** Five numbers per shape: its page, its flags, fill and stroke colour, and its first segment. */
+    private val shapeHeads: IntArray,
+    private val shapeWidths: FloatArray,
+    /** Where each shape's outline starts: x and y. */
+    private val shapeStarts: FloatArray,
+    private val segmentCurved: BooleanArray,
+    /** Six numbers per segment: x and y of up to three points. */
+    private val segmentPoints: FloatArray,
+    /**
+     * The box around the annotation that is picked, as x and y of its four
+     * corners, around it. Null if none is picked, or it isn't on screen.
+     */
+    val picked: FloatArray?,
 ) {
+    /**
+     * How many shapes there are to draw over the pages, under the
+     * highlights: the annotations that aren't part of the pages as rendered
+     * (those made or changed since the file was read). Each is an outline,
+     * filled, drawn along with a pen, or both, and belongs to one page.
+     */
+    val shapeCount: Int get() = shapeWidths.size
+
+    /** Which of the visible pages shape [i] is on (as for [page]): it is clipped to that page. */
+    fun shapePage(i: Int): Int = shapeHeads[5 * i]
+
+    fun shapeIsFilled(i: Int): Boolean = shapeHeads[5 * i + 1] and 1 != 0
+    fun shapeIsStroked(i: Int): Boolean = shapeHeads[5 * i + 1] and 2 != 0
+
+    /** The fill darkens what is under it, as a highlighter does, instead of covering it. */
+    fun shapeDarkens(i: Int): Boolean = shapeHeads[5 * i + 1] and 4 != 0
+
+    /** The outline ends where it starts. */
+    fun shapeIsClosed(i: Int): Boolean = shapeHeads[5 * i + 1] and 8 != 0
+
+    /** The pen is round: round ends and joins. */
+    fun shapeIsRound(i: Int): Boolean = shapeHeads[5 * i + 1] and 16 != 0
+
+    /** Colours as 0xAARRGGBB. */
+    fun shapeFill(i: Int): Int = shapeHeads[5 * i + 2]
+    fun shapeStroke(i: Int): Int = shapeHeads[5 * i + 3]
+    fun shapeStrokeWidth(i: Int): Float = shapeWidths[i]
+
+    fun shapeStartX(i: Int): Float = shapeStarts[2 * i]
+    fun shapeStartY(i: Int): Float = shapeStarts[2 * i + 1]
+
+    /** The pieces of shape [i]'s outline, each from where the one before ended: indices for the `segment*` accessors. */
+    fun segments(i: Int): IntRange {
+        val end = if (i + 1 < shapeCount) shapeHeads[5 * (i + 1) + 4] else segmentCurved.size
+        return shapeHeads[5 * i + 4] until end
+    }
+
+    /** A cubic curve, with control points 0 and 1 and its end as point 2; else a line to point 0. */
+    fun segmentIsCurve(s: Int): Boolean = segmentCurved[s]
+
+    fun segmentX(s: Int, point: Int): Float = segmentPoints[6 * s + 2 * point]
+    fun segmentY(s: Int, point: Int): Float = segmentPoints[6 * s + 2 * point + 1]
+
+    /** What [picked] covers, as left, top, right, bottom. */
+    fun pickedBounds(): FloatArray? {
+        val p = picked ?: return null
+        val xs = floatArrayOf(p[0], p[2], p[4], p[6])
+        val ys = floatArrayOf(p[1], p[3], p[5], p[7])
+        return floatArrayOf(xs.min(), ys.min(), xs.max(), ys.max())
+    }
+
     /**
      * How many stretches of text on screen are highlighted, because they
      * are selected or the search found them; one per line. Each is a
@@ -154,6 +218,7 @@ class ViewFrame private constructor(
 
         private const val PAGE_BYTES = 32
         private const val TILE_BYTES = 32
+        private const val SEGMENT_BYTES = 32
 
         /** Reads the layout documented in crates/specto-ffi/src/hot.rs ([b] in native byte order). */
         fun decode(b: ByteBuffer, length: Int): ViewFrame {
@@ -215,6 +280,33 @@ class ViewFrame private constructor(
             }
             val selectionStart = edge(edges and 1 != 0)
             val selectionEnd = edge(edges and 2 != 0)
+
+            val shapes = b.getInt()
+            b.getInt()
+            // Segments are at most what is left.
+            val maxSegments = (length - b.position()) / SEGMENT_BYTES
+            val shapeHeads = IntArray(5 * shapes)
+            val shapeWidths = FloatArray(shapes)
+            val shapeStarts = FloatArray(2 * shapes)
+            val curved = BooleanArray(maxSegments)
+            val points = FloatArray(6 * maxSegments)
+            var s = 0
+            for (i in 0 until shapes) {
+                for (k in 0 until 4) shapeHeads[5 * i + k] = b.getInt()
+                shapeHeads[5 * i + 4] = s
+                shapeWidths[i] = b.getFloat()
+                val segments = b.getInt()
+                shapeStarts[2 * i] = b.getFloat()
+                shapeStarts[2 * i + 1] = b.getFloat()
+                repeat(segments) {
+                    curved[s] = b.getInt() == 1
+                    b.getInt()
+                    for (k in 0 until 6) points[6 * s + k] = b.getFloat()
+                    s++
+                }
+            }
+            // Always there, but only meaningful if its bit is set.
+            val outline = FloatArray(8) { b.getFloat() }
             return ViewFrame(
                 complete = flags and 1 != 0,
                 settled = flags and 2 != 0,
@@ -243,6 +335,12 @@ class ViewFrame private constructor(
                 highlightKinds = highlightKinds,
                 selectionStart = selectionStart,
                 selectionEnd = selectionEnd,
+                shapeHeads = shapeHeads,
+                shapeWidths = shapeWidths,
+                shapeStarts = shapeStarts,
+                segmentCurved = curved.copyOf(s),
+                segmentPoints = points,
+                picked = outline.takeIf { flags and 64 != 0 },
             )
         }
     }

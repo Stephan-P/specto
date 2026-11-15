@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.specto_ffi.Markup
 import uniffi.specto_ffi.Activated
 import uniffi.specto_ffi.DocumentInfo
 import uniffi.specto_ffi.EditState
@@ -306,6 +307,8 @@ class PdfViewState(
     /** Positions changed: reads again what goes by them. */
     private fun pagesChanged() {
         stopMotion()
+        // An edit lets go of a picked annotation.
+        hasPickedAnnotation = false
         pageSizes = session.pageSizes()
         pageLabels = session.pageLabels()
         outline = session.outline()
@@ -343,6 +346,59 @@ class PdfViewState(
         editState = session.editState()
     }
 
+    // --- annotations --------------------------------------------------------
+    //
+    // Marks on the text, and what a file brings along. They live in Rust;
+    // a frame has what is to be drawn of them, and the box around the one
+    // that is picked.
+
+    /** Whether an annotation is picked (by a tap on it), on screen or not. */
+    var hasPickedAnnotation: Boolean by mutableStateOf(false)
+        private set
+
+    /** Marks the selected text, which is then no longer selected. False if there was none. */
+    fun markSelection(markup: Markup): Boolean {
+        if (closed || !session.markSelection(markup)) return false
+        editState = session.editState()
+        refresh()
+        return true
+    }
+
+    /**
+     * A tap at [at]: picks the annotation there, and lets go of one picked
+     * before. Returns whether one is picked now.
+     */
+    fun pickAnnotation(at: Offset): Boolean {
+        if (closed) return false
+        val had = hasPickedAnnotation
+        hasPickedAnnotation = session.pickAnnotationAt(at.x.toDouble(), at.y.toDouble())
+        if (had || hasPickedAnnotation) refresh()
+        return hasPickedAnnotation
+    }
+
+    fun clearPickedAnnotation() {
+        if (closed || !hasPickedAnnotation) return
+        session.clearPickedAnnotation()
+        hasPickedAnnotation = false
+        refresh()
+    }
+
+    /**
+     * Deletes the picked annotation. Throws `PdfException.Save` for one of
+     * a file whose page can't be written without it.
+     */
+    fun deletePickedAnnotation() {
+        if (closed || !hasPickedAnnotation) return
+        try {
+            session.removePickedAnnotation()
+        } finally {
+            hasPickedAnnotation = false
+            session.clearPickedAnnotation()
+            editState = session.editState()
+            refresh()
+        }
+    }
+
     // --- text selection -----------------------------------------------------
     //
     // The selection lives in Rust and shows up in frames: the highlights to
@@ -355,6 +411,11 @@ class PdfViewState(
     /** A long press at [at]: selects the word there. False if there is no text there. */
     fun selectWordAt(at: Offset): Boolean {
         if (closed || !session.selectWordAt(at.x.toDouble(), at.y.toDouble())) return false
+        // One thing at a time is acted on: the text, or an annotation.
+        if (hasPickedAnnotation) {
+            session.clearPickedAnnotation()
+            hasPickedAnnotation = false
+        }
         stopMotion()
         refresh()
         return true

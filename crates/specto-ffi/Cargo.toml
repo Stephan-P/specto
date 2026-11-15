@@ -10,6 +10,7 @@ license.workspace = true
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
+specto-annot.workspace = true
 specto-doc.workspace = true
 specto-geom.workspace = true
 specto-render.workspace = true

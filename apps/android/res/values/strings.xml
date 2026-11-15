@@ -115,6 +115,13 @@
     <string name="no_matches">No matches</string>
 
     <!-- Selected text. -->
+    <!-- Marks the selected text: with a highlighter, or a line under or through it. -->
+    <string name="highlight">Highlight</string>
+    <string name="underline">Underline</string>
+    <string name="strike_through">Strike through</string>
+    <!-- Tells screen readers that an annotation (a mark on the text, a note, a drawing) is picked. -->
+    <string name="annotation_selected">Annotation selected</string>
+    <string name="could_not_delete_annotation">Couldn\'t delete the annotation: %1$s</string>
     <string name="copy">Copy</string>
     <string name="copied">Copied</string>
     <string name="too_much_to_copy">That is too much text to copy at once</string>

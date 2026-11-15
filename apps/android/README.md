@@ -28,6 +28,8 @@ The main features are below, and the full list is in
   contents, links, and printed page numbers ("iii (3 / 240)")
 - **Search**: ignoring case and accents, with all matches highlighted
 - **Text**: selecting, copying and sharing
+- **Markup**: highlighting, underlining and striking through text, saved as
+  annotations that other PDF programs show too
 - **Editing**: rotating, deleting and reordering pages, with undo and redo, and
   saving the result
 - **Tablets**: a sidebar, and two pages side by side on wide windows,
@@ -40,8 +42,8 @@ The main features are below, and the full list is in
   volume keys
 - **Languages**: English and German
 
-Coming next: inserting pages from other documents, annotations, and filling in
-forms.
+Coming next: inserting pages from other documents, more kinds of annotations,
+and filling in forms.
 
 ## Implementation
 

@@ -86,6 +86,11 @@
     <string name="search_running">…</string>
     <string name="no_matches">Keine Treffer</string>
 
+    <string name="highlight">Hervorheben</string>
+    <string name="underline">Unterstreichen</string>
+    <string name="strike_through">Durchstreichen</string>
+    <string name="annotation_selected">Anmerkung ausgewählt</string>
+    <string name="could_not_delete_annotation">Die Anmerkung konnte nicht gelöscht werden: %1$s</string>
     <string name="copy">Kopieren</string>
     <string name="copied">Kopiert</string>
     <string name="too_much_to_copy">Das ist zu viel Text, um ihn auf einmal zu kopieren</string>
