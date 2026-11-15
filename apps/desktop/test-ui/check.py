@@ -80,6 +80,10 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - markup_list: the Markup page of the sidebar lists every annotation with
   its page, kind and text, follows edits, and a row picks its annotation and
   shows its page; it is filled from the file when a document opens on it
+- signatures: a saved signature, drawn or from a photo, is placed by one
+  click, as a drawing or a picture; the picture moves and keeps its
+  proportions when resized; saved, both are in the file, and the picture
+  still moves; the dialog for a new signature opens
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1328,6 +1332,112 @@ def test_markup_list(ctx):
     w.wait("the last page", lambda s: s["page"] == len(TEXT) - 1)
     w.action("debug-markup-row", gvariant_str("0"))
     w.wait("back on page 1", lambda s: s["page"] == 0 and s["annotation_picked"])
+
+
+def write_png(path, width, height, rgba):
+    """A PNG of one colour (red, green, blue, alpha)."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    rows = b"".join(b"\x00" + bytes(rgba) * width for _ in range(height))
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n")
+        f.write(chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)))
+        f.write(chunk(b"IDAT", zlib.compress(rows)))
+        f.write(chunk(b"IEND", b""))
+
+
+def test_signatures(ctx):
+    # Two saved signatures, as the app keeps them: one drawn (a line across
+    # and one down, in a box of 100 by 40) and one from a photo (blue ink).
+    kept = os.path.join(ctx.env["XDG_DATA_HOME"], "specto", "signatures")
+    os.makedirs(kept)
+    with open(os.path.join(kept, "1-drawn.strokes"), "w") as f:
+        f.write("specto-signature 1\nsize 100 40\n0 20 50 20 100 20\n50 0 50 40\n")
+    write_png(os.path.join(kept, "2-photo.png"), 40, 10, (0, 0, 255, 255))
+    path = os.path.join(ctx.home, "signed.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    s = w.settled()
+    check(s["signatures"] == 2, s)
+    w.maximize()
+    inp = ctx.input().attach(w)
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)
+    at = lambda x, y: w.screen(0, x, y)
+    blue = lambda c: c[2] > 150 and c[0] < 100 and c[1] < 100
+    dark = lambda c: max(c) < 110
+    # The drawn one, chosen and then placed by a click: a drawing, 150
+    # points wide, with its middle where the click was.
+    w.action("debug-place-signature", gvariant_str("0"))
+    w.wait("placing", lambda s: s["placing_signature"])
+    inp.move(*at(300, 520))
+    check(w.pointer_at(*at(300, 520))["cursor"] == "crosshair", "no crosshair while placing")
+    inp.click(*at(300, 520))
+    s = w.wait("the signature placed", lambda s: s["annotations"] == 1)
+    check(s["undo"] == "Add Ink" and s["annotation_picked"] and not s["placing_signature"], s)
+    check(dark(pixel(w, "drawn", *at(260, 520))), "no stroke left of the middle")
+    check(dark(pixel(w, "drawn-down", *at(300, 500))), "no stroke below the middle")
+    check(not dark(pixel(w, "drawn-beside", *at(260, 500))), "ink where no stroke is")
+    # Once: the next click places nothing.
+    inp.click(*at(450, 300))
+    time.sleep(0.4)
+    check(w.state()["annotations"] == 1, "a second click placed another")
+    # The one from a photo: a picture, 150 wide and a quarter as high.
+    w.action("debug-place-signature", gvariant_str("1"))
+    w.wait("placing", lambda s: s["placing_signature"])
+    inp.click(*at(300, 400))
+    s = w.wait("the picture placed", lambda s: s["annotations"] == 2 and s["undo"] == "Add Stamp")
+    w.settled()
+    check(blue(pixel(w, "photo", *at(300, 400))), "no picture where it was placed")
+    check(blue(pixel(w, "photo-left", *at(235, 400))), "the picture isn't 150 wide")
+    check(not blue(pixel(w, "photo-above", *at(300, 425))), "the picture is too high")
+    # It moves, and keeps its proportions when resized by a corner: pulled
+    # to twice the width, it is twice as high too.
+    inp.drag(at(300, 400), at(300, 340))
+    w.wait("the picture moved", lambda s: s["undo"] == "Change Stamp")
+    w.settled()
+    check(blue(pixel(w, "moved", *at(300, 340))), "the picture didn't move")
+    check(not blue(pixel(w, "moved-from", *at(300, 405))), "the picture is still where it was")
+    inp.drag(at(375, 321), at(525, 321))
+    w.settled()
+    time.sleep(0.3)
+    check(blue(pixel(w, "resized", *at(500, 345))), "the picture didn't grow to the right")
+    # (Its top stays, being across from the corner pulled.)
+    # Sampled just below where its bottom was: further down is off screen
+    # in a small window.
+    check(blue(pixel(w, "resized-down", *at(300, 312))), "the picture didn't grow in height")
+    check(not blue(pixel(w, "resized-top", *at(300, 375))), "the picture's top moved")
+    # Saved and opened again: both there, and the picture still moves.
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    app = ctx.app([path])
+    w = app.window()
+    s = w.settled()
+    w.maximize()
+    check(s["annotations"] == 2 and not s["modified"], s)
+    at = lambda x, y: w.screen(0, x, y)
+    check(blue(pixel(w, "reopened", *at(400, 345))), "the saved picture isn't shown")
+    inp = ctx.input().attach(w)
+    inp.drag(at(400, 345), at(400, 445))
+    w.wait("the saved picture moved", lambda s: s["undo"] == "Change Stamp")
+    w.settled()
+    check(blue(pixel(w, "file-moved", *at(400, 445))), "the saved picture didn't move")
+    check(not blue(pixel(w, "file-moved-from", *at(400, 345))), "the saved picture is still drawn where it was")
+    # The dialog for a new one opens, and Escape closes it.
+    w.action("debug-new-signature", gvariant_str(""))
+    w.wait("the dialog", lambda s: s["dialog"] == "New Signature")
+    time.sleep(0.5)
+    w.screenshot("new-signature")
+    inp.keys(Input.ESCAPE)
+    w.wait("the dialog closed", lambda s: s["dialog"] == "")
 
 
 def test_select_words_and_lines(ctx):

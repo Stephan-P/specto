@@ -737,3 +737,102 @@ fn pixel_of(data: &[u8], x: u32, y: u32) -> [u8; 3] {
         [bitmap.data[at], bitmap.data[at + 1], bitmap.data[at + 2]]
     })
 }
+
+#[test]
+fn stamps_are_saved_show_and_move() {
+    use specto_annot::{StampArt, StampImage};
+
+    // A picture of 4 × 2 pixels: red on the left, nothing on the right.
+    let mut rgba = Vec::new();
+    for _ in 0..2 {
+        rgba.extend([255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 0, 0, 0, 255, 0]);
+    }
+    let image = Arc::new(StampImage {
+        width: 4,
+        height: 2,
+        rgba,
+    });
+    let original = fixture();
+    let mut edit = EditDoc::from_source(MAIN, 2);
+    // 200 wide, so 100 high, around (300, 400).
+    let stamp = Annotation::stamp(PdfPoint::new(300.0, 400.0), 200.0, image);
+    assert_eq!(
+        stamp.rect,
+        PdfBox::new(PdfPoint::new(200.0, 350.0), PdfPoint::new(400.0, 450.0))
+    );
+    edit.add_annotation(MAIN, 1, stamp.clone());
+    let out = write(&original, None, &edit);
+
+    // Red where the picture is, the page where it is transparent.
+    assert_eq!(pixel(&out, None, 1, 250, 400, true), [255, 0, 0]);
+    assert_eq!(pixel(&out, None, 1, 350, 400, true), [255, 255, 255]);
+    assert_eq!(pixel(&out, None, 1, 190, 400, true), [255, 255, 255]);
+
+    // Read again: a stamp whose picture is the file's, still to be moved.
+    let on_page: Vec<Arc<Annotation>> = imported(&out, None, 1).into_iter().map(Arc::new).collect();
+    assert_eq!(on_page.len(), 1);
+    assert_eq!(on_page[0].kind, AnnotKind::Stamp(StampArt::InFile));
+    assert_eq!(on_page[0].rect, stamp.rect);
+    assert!(on_page[0].is_adjustable() && on_page[0].keeps_proportions());
+
+    // Moved down by 200 and made half the size: the picture goes along.
+    let mut edit = EditDoc::from_source(MAIN, 2);
+    let (id, a) = edit.annotations(MAIN, 1, &on_page)[0].clone();
+    let moved =
+        a.transformed(|p| PdfPoint::new(200.0 + (p.x - 200.0) / 2.0, 150.0 + (p.y - 350.0) / 2.0));
+    assert_eq!(moved.appearance, Appearance::Own);
+    assert!(edit.change_annotation(id, moved));
+    let again = write(&out, None, &edit);
+    assert_eq!(pixel(&again, None, 1, 225, 175, true), [255, 0, 0]);
+    assert_eq!(pixel(&again, None, 1, 275, 175, true), [255, 255, 255]);
+    assert_eq!(pixel(&again, None, 1, 250, 400, true), [255, 255, 255]);
+    let after = imported(&again, None, 1);
+    assert_eq!(after[0].kind, AnnotKind::Stamp(StampArt::InFile));
+    assert!(after[0].is_adjustable());
+}
+
+#[test]
+fn a_drawing_placed_from_elsewhere() {
+    // Two strokes in a box of 100 × 50, y down: a line along the top and
+    // one down the left. Placed 200 wide around (300, 400).
+    let strokes = vec![
+        vec![(0.0, 0.0), (100.0, 0.0)],
+        vec![(0.0, 0.0), (0.0, 50.0)],
+    ];
+    let a = Annotation::drawing(
+        PdfPoint::new(300.0, 400.0),
+        200.0,
+        &strokes,
+        (100.0, 50.0),
+        RED,
+        2.0,
+    )
+    .expect("there are strokes");
+    let AnnotKind::Ink { strokes: placed } = &a.kind else {
+        panic!("not a drawing");
+    };
+    // Twice the size, the top of the box at the top on the page.
+    assert_eq!(
+        placed[0],
+        [PdfPoint::new(200.0, 450.0), PdfPoint::new(400.0, 450.0)]
+    );
+    assert_eq!(
+        placed[1],
+        [PdfPoint::new(200.0, 450.0), PdfPoint::new(200.0, 350.0)]
+    );
+    assert_eq!(
+        a.rect,
+        PdfBox::new(PdfPoint::new(199.0, 349.0), PdfPoint::new(401.0, 451.0))
+    );
+    assert!(
+        Annotation::drawing(
+            PdfPoint::new(0.0, 0.0),
+            200.0,
+            &[vec![]],
+            (100.0, 50.0),
+            RED,
+            2.0
+        )
+        .is_none()
+    );
+}

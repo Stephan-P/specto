@@ -310,6 +310,10 @@ pub struct AppearanceStream {
     /// Whether the content sets text in the font `/Helv`: Helvetica in
     /// `WinAnsiEncoding`, which the stream's resources must then name.
     pub helvetica: bool,
+    /// The image the content draws as `/Im0`, if it does. The stream's box
+    /// is then not `bbox` but the unit square, which the image fills and
+    /// readers stretch onto the annotation's area, wherever that is moved.
+    pub image: Option<std::sync::Arc<crate::StampImage>>,
 }
 
 /// An `ExtGState`: how what follows is painted over what is beneath.
@@ -324,6 +328,18 @@ pub struct GraphicsState {
 pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
     if let AnnotKind::FreeText { size } = annotation.kind {
         return Some(text_appearance(annotation, size));
+    }
+    if let AnnotKind::Stamp(crate::StampArt::Image(image)) = &annotation.kind {
+        return Some(AppearanceStream {
+            bbox: annotation.rect,
+            content: b"/GS0 gs\n/Im0 Do\n".to_vec(),
+            states: vec![GraphicsState {
+                opacity: annotation.opacity,
+                multiply: false,
+            }],
+            helvetica: false,
+            image: Some(image.clone()),
+        });
     }
     let shapes = shapes(annotation)?;
     let mut bbox: Option<PdfBox> = None;
@@ -415,6 +431,7 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
         content: content.into_bytes(),
         states,
         helvetica: false,
+        image: None,
     })
 }
 
@@ -459,6 +476,7 @@ fn text_appearance(annotation: &Annotation, size: f64) -> AppearanceStream {
             multiply: false,
         }],
         helvetica: true,
+        image: None,
     }
 }
 

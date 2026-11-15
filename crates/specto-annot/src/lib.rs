@@ -14,6 +14,7 @@
 //! saving leaves them alone.
 
 mod import;
+mod photo;
 mod shapes;
 mod text;
 
@@ -23,6 +24,7 @@ use specto_geom::{PdfBox, PdfPoint, PdfQuad};
 pub use specto_source::Date;
 
 pub use import::import;
+pub use photo::{InkSettings, ink_from_photo};
 pub use shapes::{
     AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, look_mark, shapes,
 };
@@ -89,9 +91,9 @@ pub enum AnnotKind {
     FreeText {
         size: f64,
     },
-    /// A picture placed on the page: a signature, for instance. Only for
-    /// stamps made here; one read from a file is [`AnnotKind::Other`], since
-    /// its appearance is all there is to know about it.
+    /// A picture placed on the page: the photo of a signature, for
+    /// instance. Only for stamps made here; one of another program is
+    /// [`AnnotKind::Other`].
     Stamp(StampArt),
     /// Markup of a kind this crate has no parameters for (a text box, a
     /// note, a stamp, a polygon, …), named by its `/Subtype`. It is shown
@@ -104,11 +106,12 @@ pub enum AnnotKind {
 /// What a stamp shows.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StampArt {
-    /// Strokes, as of a signature drawn by hand: they stay sharp at any
-    /// zoom. In the unit square, scaled to the annotation's `rect`.
-    Strokes(Arc<[Vec<(f32, f32)>]>),
     /// An image, shared rather than copied when the annotation is.
     Image(Arc<StampImage>),
+    /// The image the file has for it (a stamp written here and read
+    /// again). It stretches to the annotation's area by itself, so the
+    /// stamp can be moved and resized without the image in hand.
+    InFile,
 }
 
 /// The pixels of an image stamp: RGBA, 8 bits each, row by row.
@@ -286,10 +289,69 @@ impl Annotation {
     /// a text box (text markup belongs to its text) that is
     /// [redrawable](Self::is_redrawable).
     pub fn is_adjustable(&self) -> bool {
-        !matches!(
-            self.kind,
-            AnnotKind::TextMarkup { .. } | AnnotKind::Stamp(_) | AnnotKind::Other { .. }
-        ) && self.is_redrawable()
+        match self.kind {
+            AnnotKind::TextMarkup { .. } | AnnotKind::Other { .. } => false,
+            // The file's image goes where the stamp does.
+            AnnotKind::Stamp(StampArt::InFile) => self.appearance == Appearance::Own,
+            _ => self.is_redrawable(),
+        }
+    }
+
+    /// Whether resizing keeps the annotation's proportions: a picture.
+    pub fn keeps_proportions(&self) -> bool {
+        matches!(self.kind, AnnotKind::Stamp(_))
+    }
+
+    /// A stamp of `image`, `width` wide and as high as the image's
+    /// proportions make it, with its middle at `at`.
+    pub fn stamp(at: PdfPoint, width: f64, image: Arc<StampImage>) -> Self {
+        let height = width * f64::from(image.height.max(1)) / f64::from(image.width.max(1));
+        let rect = PdfBox::new(
+            PdfPoint::new(at.x - width / 2.0, at.y - height / 2.0),
+            PdfPoint::new(at.x + width / 2.0, at.y + height / 2.0),
+        );
+        let mut a = Self::new(AnnotKind::Stamp(StampArt::Image(image)), rect);
+        a.line_width = 0.0;
+        a
+    }
+
+    /// A drawing of `strokes`, `width` wide with its middle at `at`. The
+    /// strokes are in a box of `size` (width and height) with y pointing
+    /// down, as a screen has it: a signature drawn somewhere else, placed
+    /// here.
+    pub fn drawing(
+        at: PdfPoint,
+        width: f64,
+        strokes: &[Vec<(f64, f64)>],
+        size: (f64, f64),
+        color: Color,
+        line_width: f64,
+    ) -> Option<Self> {
+        if strokes.iter().all(Vec::is_empty) || size.0 <= 0.0 || size.1 <= 0.0 {
+            return None;
+        }
+        let scale = width / size.0;
+        let height = size.1 * scale;
+        let placed: Vec<Vec<PdfPoint>> = strokes
+            .iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                s.iter()
+                    .map(|&(x, y)| {
+                        PdfPoint::new(
+                            at.x - width / 2.0 + x * scale,
+                            at.y + height / 2.0 - y * scale,
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        let all: Vec<PdfPoint> = placed.iter().flatten().copied().collect();
+        let rect = PdfBox::from_points(&all).inflate(line_width / 2.0, line_width / 2.0);
+        let mut a = Self::new(AnnotKind::Ink { strokes: placed }, rect);
+        a.color = Some(color);
+        a.line_width = line_width;
+        Some(a)
     }
 
     /// Whether the annotation can also be resized: not a note, which is a
@@ -391,7 +453,11 @@ impl Annotation {
             }
             _ => a.rect = around(&[f(frame.min), f(frame.max)]),
         }
-        a.appearance = Appearance::Generated;
+        // The image a file has for a stamp follows the stamp's area as it
+        // is: nothing to make anew.
+        if a.kind != AnnotKind::Stamp(StampArt::InFile) {
+            a.appearance = Appearance::Generated;
+        }
         // A text box is as high as its text needs at its new width.
         a.fit_text();
         a

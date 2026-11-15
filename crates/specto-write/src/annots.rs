@@ -255,12 +255,22 @@ fn dictionary_of(
                         (format!("GS{i}"), Object::Dictionary(gs))
                     })
                     .collect();
+                // An image fills the unit square, which readers stretch
+                // onto the annotation's area; everything else is drawn in
+                // page coordinates, in a box that is that area.
+                let bbox = match ap.image {
+                    Some(_) => vec![0.into(), 0.into(), 1.into(), 1.into()],
+                    None => vec![
+                        real(rect.min.x),
+                        real(rect.min.y),
+                        real(rect.max.x),
+                        real(rect.max.y),
+                    ],
+                };
                 let form = dictionary! {
                     "Type" => "XObject",
                     "Subtype" => "Form",
-                    "BBox" => vec![
-                        real(rect.min.x), real(rect.min.y), real(rect.max.x), real(rect.max.y),
-                    ],
+                    "BBox" => bbox,
                     "Resources" => dictionary! { "ExtGState" => states },
                 };
                 let mut form = form;
@@ -278,6 +288,12 @@ fn dictionary_of(
                             },
                         },
                     );
+                }
+                if let Some(image) = &ap.image
+                    && let Ok(resources) = form.get_mut(b"Resources").and_then(Object::as_dict_mut)
+                {
+                    let id = image_object(doc, image);
+                    resources.set("XObject", dictionary! { "Im0" => id });
                 }
                 // Marked as written here, so that it can be made anew
                 // another day without wondering what else it drew.
@@ -303,6 +319,34 @@ fn dictionary_of(
         ],
     );
     d
+}
+
+/// `image` as an image object: its colours, with how opaque each pixel is
+/// as a mask beside them. Both compressed without loss.
+fn image_object(doc: &mut Document, image: &specto_annot::StampImage) -> ObjectId {
+    let pixels = image.rgba.as_chunks::<4>().0.iter();
+    let colors: Vec<u8> = pixels.clone().flat_map(|p| [p[0], p[1], p[2]]).collect();
+    let alpha: Vec<u8> = pixels.map(|p| p[3]).collect();
+    let stream = |space: &str, data: Vec<u8>| {
+        let mut s = Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => i64::from(image.width),
+                "Height" => i64::from(image.height),
+                "ColorSpace" => space,
+                "BitsPerComponent" => 8,
+            },
+            data,
+        );
+        // If it doesn't compress, it is written as it is.
+        let _ = s.compress();
+        s
+    };
+    let mask = doc.add_object(stream("DeviceGray", alpha));
+    let mut picture = stream("DeviceRGB", colors);
+    picture.dict.set("SMask", mask);
+    doc.add_object(picture)
 }
 
 fn real(v: f64) -> Object {

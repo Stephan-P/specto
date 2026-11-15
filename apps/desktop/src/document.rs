@@ -293,6 +293,21 @@ impl Document {
         added
     }
 
+    /// Puts a picture on the page at `p` (see the session's function of
+    /// this name).
+    pub fn add_stamp(
+        &mut self,
+        p: specto_geom::ViewPoint,
+        width: f64,
+        image: std::sync::Arc<specto_annot::StampImage>,
+    ) -> bool {
+        let added = self.session.add_stamp(scheduler(), p, width, image);
+        if added {
+            self.pages_changed();
+        }
+        added
+    }
+
     /// Gives the picked annotation another text (see the session's
     /// function of this name).
     pub fn set_picked_text(&mut self, text: &str) -> Result<bool, specto_write::WriteError> {

@@ -18,7 +18,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use specto_annot::{
-    AnnotKind, Annotation, Appearance, Color, Date, MarkupStyle, Origin, Path, Shape, shapes,
+    AnnotKind, Annotation, Appearance, Color, Date, MarkupStyle, Origin, Path, Shape, StampArt,
+    shapes,
 };
 use specto_doc::{AnnotId, PageAnnotChanges, PageRef, SourceId};
 use specto_geom::{PdfBox, PdfPoint, ViewPoint, ViewSpace};
@@ -34,25 +35,31 @@ use crate::{FilePage, Session, view_pages};
 pub(crate) struct Variant {
     /// The annotations of the file the copy leaves out.
     hidden: Vec<Origin>,
-    /// The annotations the copy has in addition: text boxes made or
-    /// changed here, which only the renderer can draw.
-    baked: Vec<Arc<Annotation>>,
+    /// The annotations the copy has that the file doesn't: text boxes and
+    /// stamps made or changed here, which only the renderer can draw.
+    baked: Vec<Baked>,
     /// The copy, in the scheduler: a document of one page.
     pub(crate) doc_id: DocId,
 }
 
 /// A variant that is written but not opened yet: its page, the annotations
 /// it leaves out and has in addition, and the file.
-type WrittenVariant = (FilePage, Vec<Origin>, Vec<Arc<Annotation>>, Vec<u8>);
+type WrittenVariant = (FilePage, Vec<Origin>, Vec<Baked>, Vec<u8>);
 
 /// Whether `annotation` is one made or changed here that the frontend
 /// can't draw, so that the renderer must, from a copy of the page with it
-/// in: a text box.
+/// in: a text box, or a stamp (whose image the file may have, see
+/// `StampArt::InFile`).
 fn bakes(annotation: &Annotation) -> bool {
-    annotation.appearance == Appearance::Generated
-        && shapes(annotation).is_none()
-        && specto_annot::appearance(annotation).is_some()
+    let has_look = annotation.appearance == Appearance::Generated
+        && specto_annot::appearance(annotation).is_some();
+    let moved_stamp = annotation.kind == AnnotKind::Stamp(StampArt::InFile);
+    shapes(annotation).is_none() && (has_look || moved_stamp)
 }
+
+/// An annotation a page's copy has that the file doesn't: in place of the
+/// one the file has there, or in addition.
+type Baked = (Option<Origin>, Arc<Annotation>);
 
 /// Whether the frontend draws `annotation` (see the module documentation)
 /// rather than the renderer.
@@ -275,12 +282,7 @@ impl Session {
             replaced,
             ..
         } = self.edit.annotation_changes(source, page);
-        removed.extend(
-            replaced
-                .iter()
-                .filter(|(_, a)| floats(a) || bakes(a))
-                .map(|(o, _)| *o),
-        );
+        removed.extend(replaced.iter().filter(|(_, a)| floats(a)).map(|(o, _)| *o));
         // And one that is being dragged about.
         if let Some((lifted, origin)) = self.lifted
             && lifted == (source, page)
@@ -293,15 +295,15 @@ impl Session {
     }
 
     /// The annotations page `page` of `source` must be rendered with that
-    /// the file doesn't have: text boxes made or changed here.
-    fn baked(&self, source: SourceId, page: u32) -> Vec<Arc<Annotation>> {
+    /// the file doesn't have: text boxes and stamps made or changed here.
+    fn baked(&self, source: SourceId, page: u32) -> Vec<Baked> {
         let changes = self.edit.annotation_changes(source, page);
         changes
             .replaced
             .into_iter()
-            .map(|(_, a)| a)
-            .chain(changes.added)
-            .filter(|a| bakes(a))
+            .map(|(origin, a)| (Some(origin), a))
+            .chain(changes.added.into_iter().map(|a| (None, a)))
+            .filter(|(_, a)| bakes(a))
             .collect()
     }
 
@@ -311,7 +313,7 @@ impl Session {
         &self,
         (source, page): FilePage,
         hidden: &[Origin],
-        baked: &[Arc<Annotation>],
+        baked: &[Baked],
     ) -> Result<Vec<u8>, WriteError> {
         let s = self
             .sources
@@ -322,11 +324,19 @@ impl Session {
             data: &s.data,
             password: s.password.as_deref(),
         };
-        let changes = PageAnnotChanges {
+        let mut changes = PageAnnotChanges {
             removed: hidden.to_vec(),
-            added: baked.to_vec(),
             ..Default::default()
         };
+        for (origin, a) in baked {
+            match origin {
+                // One that is hidden for now (it is being dragged about)
+                // isn't written in its place either.
+                Some(origin) if hidden.contains(origin) => {}
+                Some(origin) => changes.replaced.push((*origin, a.clone())),
+                None => changes.added.push(a.clone()),
+            }
+        }
         // Not encrypted: it never leaves the program.
         specto_write::write_edited(
             &[from],
@@ -346,7 +356,7 @@ impl Session {
     /// As [`sync_variants`](Self::sync_variants); `ready` is a copy that is
     /// written already: its page, what it leaves out, and the file.
     fn sync_variants_with(&mut self, scheduler: &Scheduler, mut ready: Option<WrittenVariant>) {
-        let wanted: HashMap<FilePage, (Vec<Origin>, Vec<Arc<Annotation>>)> = self
+        let wanted: HashMap<FilePage, (Vec<Origin>, Vec<Baked>)> = self
             .edit
             .pages_with_annotation_edits()
             .into_iter()
@@ -559,7 +569,12 @@ impl Session {
                         1.0
                     }
                 };
-                let (sx, sy) = (scale(held.x, fixed.x, at.x), scale(held.y, fixed.y, at.y));
+                let (mut sx, mut sy) = (scale(held.x, fixed.x, at.x), scale(held.y, fixed.y, at.y));
+                // A picture keeps its proportions, and isn't turned over.
+                if original.keeps_proportions() {
+                    sx = sx.abs().max(sy.abs()).max(0.02);
+                    sy = sx;
+                }
                 original.transformed(|q| {
                     PdfPoint::new(
                         fixed.x + (q.x - fixed.x) * sx,
@@ -852,7 +867,7 @@ impl Session {
         }
         hidden.sort_by_key(|o| o.index);
         let mut baked = self.baked(source, page);
-        baked.retain(|b| !Arc::ptr_eq(b, a));
+        baked.retain(|(_, b)| !Arc::ptr_eq(b, a));
         let file = self.variant_file((source, page), &hidden, &baked)?;
         Ok(Some(((source, page), hidden, baked, file)))
     }
@@ -907,6 +922,63 @@ impl Session {
             self.sync_variants_with(scheduler, ready);
         }
         Ok(done)
+    }
+
+    /// Puts an annotation on the page under `p` (viewport coordinates),
+    /// made by `make` from where that is on the page, and picks it.
+    fn place(&mut self, p: ViewPoint, make: impl FnOnce(PdfPoint) -> Option<Annotation>) -> bool {
+        let Some((position, _)) = self.viewer.hit_test(p) else {
+            return false;
+        };
+        let (Some(at), Some(&page)) = (
+            self.viewer.view_to_pdf(position, p),
+            self.edit.pages().get(position),
+        ) else {
+            return false;
+        };
+        let Some(mut annotation) = make(at) else {
+            return false;
+        };
+        annotation.modified = Some(now());
+        let id = self.edit.add_annotation(page.source, page.page, annotation);
+        self.selection = None;
+        self.picked = Some((position, id));
+        true
+    }
+
+    /// Puts a drawing made elsewhere (a signature) on the page with its
+    /// middle at `p` (viewport coordinates), `width` points wide, and picks
+    /// it. The strokes are in a box of `size` with y pointing down. Returns
+    /// whether it did: `p` must be on a page.
+    pub fn add_drawing(
+        &mut self,
+        p: ViewPoint,
+        width: f64,
+        strokes: &[Vec<(f64, f64)>],
+        size: (f64, f64),
+        color: Color,
+        line_width: f64,
+    ) -> bool {
+        self.place(p, |at| {
+            Annotation::drawing(at, width, strokes, size, color, line_width)
+        })
+    }
+
+    /// Puts a picture (a signature from a photo) on the page with its
+    /// middle at `p` (viewport coordinates), `width` points wide, and picks
+    /// it. Returns whether it did: `p` must be on a page.
+    pub fn add_stamp(
+        &mut self,
+        scheduler: &Scheduler,
+        p: ViewPoint,
+        width: f64,
+        image: Arc<specto_annot::StampImage>,
+    ) -> bool {
+        let placed = self.place(p, |at| Some(Annotation::stamp(at, width, image)));
+        if placed {
+            self.sync_variants(scheduler);
+        }
+        placed
     }
 
     /// Puts a note at `p` (viewport coordinates) in `color`, and picks it.

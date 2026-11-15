@@ -19,6 +19,7 @@ use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::markup_list::{Entry, MarkupList};
 use crate::outline::OutlineView;
 use crate::print;
+use crate::signatures::{self, Signature};
 use crate::state;
 use crate::thumbnails::Sidebar;
 
@@ -90,6 +91,11 @@ pub struct Inner {
     search_bar: gtk::SearchBar,
     /// The bar with the markup tools and colours.
     markup_bar: gtk::Revealer,
+    /// The list of saved signatures, under its button on the markup bar.
+    signature_menu: gtk::Popover,
+    /// The signature that the next click on a page places, if one was
+    /// chosen.
+    placing: RefCell<Option<Signature>>,
     /// The editor for an annotation's text, while it is open.
     text_editor: RefCell<Option<gtk::Popover>>,
     /// The colour of each tool of the markup bar (in the order of
@@ -437,6 +443,14 @@ impl Window {
             .build();
         markup_row.append(&tools);
         markup_row.append(&draw_tools);
+        // Signatures: the saved ones to choose from, and making a new one.
+        let signature_menu = gtk::Popover::new();
+        let signature_button = gtk::MenuButton::builder()
+            .child(&signature_icon())
+            .tooltip_text(gettext("Signature"))
+            .popover(&signature_menu)
+            .build();
+        markup_row.append(&signature_button);
         markup_row.append(&colors);
         let markup_bar = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::SlideDown)
@@ -499,6 +513,8 @@ impl Window {
             last_toast: RefCell::default(),
             search_bar,
             markup_bar,
+            signature_menu,
+            placing: RefCell::default(),
             text_editor: RefCell::default(),
             tool_colors: Cell::new([
                 "yellow", "red", "red", "red", "red", "red", "red", "black", "yellow",
@@ -544,6 +560,7 @@ impl Window {
                 Window(inner).show_markup_color();
             }
         });
+        this.fill_signature_menu();
         let weak = Rc::downgrade(&this.0);
         this.0.canvas.connect_place(move |x, y| {
             if let Some(inner) = weak.upgrade() {
@@ -1525,6 +1542,18 @@ impl Window {
                     w.insert_file(file).await;
                 });
             }),
+            // Chooses the saved signature of that number, from 0, to be
+            // placed, as its row under the signature button does.
+            action("debug-place-signature", |w, number| {
+                let saved = signatures::saved();
+                if let Some((_, signature)) =
+                    number.parse::<usize>().ok().and_then(|i| saved.get(i))
+                {
+                    w.place_signature(signature.clone());
+                }
+            }),
+            // Shows the dialog for a new signature.
+            action("debug-new-signature", |w, _| w.new_signature()),
             // Activates a row of the markup list, by its number from 0.
             action("debug-markup-row", |w, row| {
                 let at = row.parse::<usize>().ok().and_then(|i| {
@@ -1613,6 +1642,8 @@ impl Window {
             &inner.canvas.selected_text().unwrap_or_default(),
         )
         .bool("markup_bar", inner.markup_bar.reveals_child())
+        .num("signatures", signatures::saved().len() as f64)
+        .bool("placing_signature", inner.placing.borrow().is_some())
         .str(
             "markup_tool",
             &inner
@@ -1843,9 +1874,80 @@ impl Window {
             _ => None,
         };
         self.0.canvas.set_draw_tool(draw);
+        let placing = self.0.placing.borrow().is_some();
         self.0
             .canvas
-            .set_place_tool(matches!(self.markup_tool(), Some(Tool::Text | Tool::Note)));
+            .set_place_tool(placing || matches!(self.markup_tool(), Some(Tool::Text | Tool::Note)));
+    }
+
+    /// Fills the list of saved signatures under its button: each to be
+    /// chosen or deleted, and a button to make a new one.
+    fn fill_signature_menu(&self) {
+        let inner = &self.0;
+        let rows = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        for (name, signature) in signatures::saved() {
+            let choose = gtk::Button::builder()
+                .child(&signatures::preview(&signature))
+                .tooltip_text(gettext("Place this signature: click where it goes"))
+                .css_classes(["flat"])
+                .build();
+            let weak = Rc::downgrade(inner);
+            choose.connect_clicked(move |_| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.signature_menu.popdown();
+                    Window(inner).place_signature(signature.clone());
+                }
+            });
+            let delete = gtk::Button::builder()
+                .icon_name("user-trash-symbolic")
+                .tooltip_text(gettext("Delete this signature"))
+                .valign(gtk::Align::Center)
+                .css_classes(["flat"])
+                .build();
+            let weak = Rc::downgrade(inner);
+            delete.connect_clicked(move |_| {
+                signatures::delete(&name);
+                if let Some(inner) = weak.upgrade() {
+                    Window(inner).fill_signature_menu();
+                }
+            });
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            row.append(&choose);
+            row.append(&delete);
+            rows.append(&row);
+        }
+        let new = gtk::Button::with_label(&gettext("New Signature…"));
+        let weak = Rc::downgrade(inner);
+        new.connect_clicked(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                inner.signature_menu.popdown();
+                Window(inner).new_signature();
+            }
+        });
+        rows.append(&new);
+        inner.signature_menu.set_child(Some(&rows));
+    }
+
+    /// Shows the dialog for making a signature. Once it is saved, it is
+    /// the one being placed.
+    fn new_signature(&self) {
+        let weak = Rc::downgrade(&self.0);
+        signatures::new_signature(&self.0.window, move |_, signature| {
+            if let Some(inner) = weak.upgrade() {
+                let w = Window(inner);
+                w.fill_signature_menu();
+                w.place_signature(signature);
+            }
+        });
+    }
+
+    /// The next click on a page places `signature`. Lets go of the markup
+    /// bar's tool.
+    fn place_signature(&self, signature: Signature) {
+        self.0.canvas.unpick_annotation();
+        self.0.placing.replace(Some(signature));
+        self.set_markup_tool(None);
+        self.toast(&gettext("Click where the signature goes"));
     }
 
     /// The page was clicked at (`x`, `y`) with a placing tool: a note goes
@@ -1853,6 +1955,28 @@ impl Window {
     /// text box there.
     fn place(&self, x: f64, y: f64) {
         let p = ViewPoint::new(x, y);
+        // A signature chosen to be placed: once, here.
+        if let Some(signature) = self.0.placing.take() {
+            let (w, h) = signature.size();
+            // 150 points wide, less for a tall one.
+            let width = SIGNATURE_WIDTH.min(SIGNATURE_WIDTH * 0.6 * w / h);
+            self.edit(|d| {
+                let placed = match signature {
+                    Signature::Drawn { strokes, size } => d.add_drawing(
+                        p,
+                        width,
+                        &strokes,
+                        size,
+                        color_named("black"),
+                        signatures::PEN * width / size.0,
+                    ),
+                    Signature::Photo(image) => d.add_stamp(p, width, image),
+                };
+                placed.then(Edited::default)
+            });
+            self.set_draw_tool();
+            return;
+        }
         match self.markup_tool() {
             Some(tool @ Tool::Note) => {
                 let color = color_named(self.0.tool_colors.get()[tool_index(tool)]);
@@ -2849,6 +2973,7 @@ impl Window {
                 // picked is let go of, and the bar shows the tool's colour.
                 if tool.is_some() {
                     w.0.canvas.unpick_annotation();
+                    w.0.placing.replace(None);
                 }
                 w.set_markup_tool(tool);
                 // What is selected already is marked at once.
@@ -3140,6 +3265,39 @@ fn tool_icon(kind: Tool) -> gtk::DrawingArea {
     icon
 }
 
+/// The picture on the signature button: a scribble over a line.
+fn signature_icon() -> gtk::DrawingArea {
+    let icon = gtk::DrawingArea::builder()
+        .content_width(18)
+        .content_height(16)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::Center)
+        .build();
+    icon.set_draw_func(|area, cr, width, height| {
+        let color = area.color();
+        cr.set_source_rgba(
+            color.red().into(),
+            color.green().into(),
+            color.blue().into(),
+            color.alpha().into(),
+        );
+        cr.set_line_cap(gtk::cairo::LineCap::Round);
+        cr.set_line_join(gtk::cairo::LineJoin::Round);
+        cr.scale(f64::from(width) / 18.0, f64::from(height) / 16.0);
+        cr.set_line_width(1.4);
+        cr.move_to(2.0, 10.0);
+        cr.curve_to(4.0, 0.0, 7.0, 0.0, 6.0, 9.0);
+        cr.curve_to(5.5, 13.0, 9.0, 3.0, 10.5, 7.0);
+        cr.curve_to(11.5, 10.0, 13.0, 9.0, 16.0, 6.0);
+        let _ = cr.stroke();
+        cr.set_line_width(1.0);
+        cr.move_to(1.5, 14.0);
+        cr.line_to(16.5, 14.0);
+        let _ = cr.stroke();
+    });
+    icon
+}
+
 /// A tool of the markup bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tool {
@@ -3152,6 +3310,9 @@ enum Tool {
     /// Puts a note where the page is clicked.
     Note,
 }
+
+/// How wide a signature is when it is placed, in points.
+const SIGNATURE_WIDTH: f64 = 150.0;
 
 /// The size of the text of new text boxes, in points.
 const TEXT_SIZE: f64 = 12.0;

@@ -152,6 +152,16 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - A double click on a text box or a note, or Enter with any markup picked,
   asks for its text again. For other markup that text is a comment, which other
   programs show in their annotation lists. A text box left empty is deleted
+- Signature button on the bar: lists the saved signatures and makes new ones.
+  Choosing one and clicking on a page places it there, 150 points wide. It can
+  then be moved and resized like a shape, and keeps its proportions
+- New Signature: drawn with the mouse or touchpad, or taken from a picture of
+  a signature on white paper. For a picture, the paper is made transparent,
+  also under uneven light, with a slider for how faint a stroke may be and a
+  choice of ink color (as photographed, black or blue)
+- Saved signatures are kept on this computer only, in the app's data
+  directory, and can be deleted from the list. A placed signature is a picture
+  on the page. It does not sign the document digitally
 - A click on markup picks it (a frame shows around it). Delete or Backspace
   deletes it, Escape lets go of it. That goes for what the file already had
   too, of any kind (notes, text boxes, drawings, stamps), except what the file

@@ -87,6 +87,7 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
         // Notes and text boxes only if their look was written here: other
         // programs give theirs icons, borders and fonts of their own.
         b"Text" if look == Appearance::Own => Some(AnnotKind::Note),
+        b"Stamp" if look == Appearance::Own => Some(AnnotKind::Stamp(crate::StampArt::InFile)),
         b"FreeText" if look == Appearance::Own => text_size(dict).map(|size| {
             text_color = default_appearance_color(dict);
             AnnotKind::FreeText { size }

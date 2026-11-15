@@ -361,6 +361,25 @@ Saving, printing and other windows:
 - Add, change, delete and undo markup with the list open: it follows at once
   and keeps its scroll position.
 - LONG with the Markup page open: opening the document and editing stay quick.
+- New Signature, Draw: sign with the mouse and with a touchpad. The line
+  follows without lag and looks like handwriting. Clear empties the pad. Save
+  with an empty pad does nothing.
+- New Signature, From a Picture: sign on white paper, take a photo with a
+  phone (try one with a shadow across it), and choose it. The preview shows
+  the ink alone. Move the slider: to the left faint strokes and some of the
+  paper's shadows appear, to the right only dark strokes stay. Somewhere in
+  between the paper is gone and the strokes are whole. Try the three ink
+  colors. A JPEG, a PNG and a HEIC from a phone all open, or say so clearly.
+- Place a saved signature on a form's signature line. Its edges are clean
+  against the page (no pale box around it, no halo), also zoomed far in and on
+  a colored background.
+- Move and resize a placed signature. A picture keeps its proportions.
+- The signature list: each entry is recognizable, deleting one removes it, and
+  the list is the same in another window and after a restart.
+- Save and reopen the document, then print it: the signature is there each
+  time, sharp. Other programs show it in the same place.
+- Flatpak: saved signatures survive a restart, and choosing a picture works
+  through the file chooser.
 - Save, close and open again: markup, drawings and shapes look the same as
   before saving. Compare the color, the position and the height of the lines
   closely.

@@ -9,6 +9,7 @@ mod i18n;
 mod markup_list;
 mod outline;
 mod print;
+mod signatures;
 mod state;
 mod thumbnails;
 mod window;

@@ -403,6 +403,9 @@ impl Canvas {
             return R::default();
         };
         let r = f(&mut doc.borrow_mut());
+        // What the page is drawn from may have changed with it: not
+        // complete until a frame has found all its tiles again.
+        self.imp().complete.set(false);
         self.queue_draw();
         r
     }
