@@ -7,7 +7,10 @@ import org.junit.Test
 
 /** Where dragged pages land ([pageDrop]). */
 class PageDragTest {
-    /** Pages 3 to 8 in a grid of three columns: cells 100 wide and 150 high, 20 apart, from (10, 10). */
+    /**
+     * Pages 3 to 8 in a grid of three columns: cells 100 wide and 150 high, 20 apart, from (10,
+     * 10).
+     */
     private val grid: Map<Int, Rect> = (3..8).associateWith { page ->
         val (column, row) = (page - 3) % 3 to (page - 3) / 3
         Rect(Offset(10f + column * 120f, 10f + row * 170f), androidx.compose.ui.geometry.Size(100f, 150f))
@@ -36,8 +39,8 @@ class PageDragTest {
 
     @Test
     fun atTheEndsOfARow() {
-        // Left of the first thumbnail of the second row: before it, which
-        // is also after the last one of the first row.
+        // Left of the first thumbnail of the second row: before it, which is also after the last
+        // one of the first row.
         assertEquals(6, inGrid(0f, 250f))
         assertEquals(6, inGrid(345f, 80f))
         assertEquals(PageDrop(5, before = false), pageDrop(Offset(345f, 80f), grid, oneColumn = false))
@@ -46,8 +49,8 @@ class PageDragTest {
 
     @Test
     fun beyondWhatIsOnScreen() {
-        // Above everything: before the first thumbnail on screen, whatever
-        // the column; below: after the last.
+        // Above everything: before the first thumbnail on screen, whatever the column. Below: after
+        // the last.
         assertEquals(3, inGrid(300f, 0f))
         assertEquals(9, inGrid(20f, 400f))
         assertEquals(null, pageDrop(Offset(0f, 0f), emptyMap(), oneColumn = false))

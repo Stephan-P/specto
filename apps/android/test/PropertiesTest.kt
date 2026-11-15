@@ -27,7 +27,7 @@ class PropertiesTest {
 
     @Test
     fun otherSizesAreMeasured() {
-        // 6 × 9 inches, a common book size without a name here.
+        // 6 by 9 inches, a common book size without a name here.
         assertEquals("152 × 229 mm", pageSizeText(432f, 648f, EnglishTexts, Locale.UK))
         assertEquals("254 × 143 mm", pageSizeText(720f, 405f, EnglishTexts, Locale.UK))
     }

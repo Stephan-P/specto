@@ -32,12 +32,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Editing the pages: picking them in the page grid, turning and deleting
- * them, undo and redo, and saving the result as a new document.
+ * Editing the pages: picking them in the page grid, turning and deleting them, undo and redo, and
+ * saving the result as a new document.
  *
- * Where "Save as" writes is asked of the system's file dialog, which never
- * opens here: the request is caught on its way out and answered with a file
- * in the app's cache.
+ * Where "Save as" writes is asked of the system's file dialog, which never opens here: the request
+ * is caught on its way out and answered with a file in the app's cache.
  */
 @RunWith(AndroidJUnit4::class)
 class EditTest : AppTest() {
@@ -111,8 +110,8 @@ class EditTest : AppTest() {
     fun pagesArePickedInTheGrid() {
         openPages()
         showGrid()
-        // A tap goes to a page; a long press picks it, and from then on a
-        // tap picks more, or lets go again.
+        // A tap goes to a page. A long press picks it, and from then on a tap picks more, or lets
+        // go again.
         pick("2")
         waitForText("1 selected")
         compose.onNodeWithText("2").assertIsSelected()
@@ -183,7 +182,7 @@ class EditTest : AppTest() {
         waitForText("1 / 11")
     }
 
-    /** Where the thumbnail labelled [label] is in the page grid. */
+    /** Where the thumbnail labeled [label] is in the page grid. */
     private fun cell(label: String): Rect {
         val grid = compose.onNodeWithTag(PAGES_GRID_TAG).fetchSemanticsNode().boundsInRoot
         return compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.translate(-grid.topLeft)
@@ -193,7 +192,10 @@ class EditTest : AppTest() {
     private fun inOrder(vararg labels: String): List<String> =
         labels.sortedWith(compareBy({ cell(it).top }, { cell(it).left }))
 
-    /** Presses long on the thumbnail labelled [from] and drags it to just behind the one labelled [behind]. */
+    /**
+     * Presses long on the thumbnail labeled [from] and drags it to just behind the one labeled
+     * [behind].
+     */
     private fun drag(from: String, behind: String) {
         val start = cell(from).center
         val target = cell(behind)
@@ -217,7 +219,7 @@ class EditTest : AppTest() {
         waitForText("iii")
         assertEquals(listOf("i", "ii", "iii"), inOrder("i", "ii", "iii"))
 
-        // A long press that moves on takes the page along; it stays picked.
+        // A long press that moves on takes the page along, and it stays picked.
         drag("ii", behind = "iii")
         waitForText("1 selected")
         compose.waitUntil(WAIT_MS) { inOrder("i", "ii", "iii") == listOf("i", "iii", "ii") }
@@ -263,8 +265,8 @@ class EditTest : AppTest() {
         compose.onNodeWithContentDescription("More").performClick()
         compose.onAllNodesWithText("Undo delete").assertCountEquals(0)
         compose.onNodeWithText("Close").performClick()
-        // Both are offered again; the original has all its pages still
-        // (and remembers where it was left, like any document).
+        // Both are offered again. The original has all its pages still (and remembers where it was
+        // left, like any document).
         waitForText("Recent")
         compose.onNodeWithText("edited.pdf").assertIsDisplayed()
         compose.onNodeWithText("pages.pdf").performClick()
@@ -288,8 +290,7 @@ class EditTest : AppTest() {
         waitForText("1 / 11")
         compose.onNodeWithText("pages.pdf").assertIsDisplayed()
         assertTrue("written anew", opened.length() != before)
-        // Read afresh from what was written: nothing to undo, and it opens
-        // like that from now on.
+        // Read afresh from what was written: nothing to undo, and it opens like that from now on.
         compose.onNodeWithContentDescription("More").performClick()
         compose.onAllNodesWithText("Undo delete").assertCountEquals(0)
         compose.onNodeWithText("Close").performClick()
@@ -345,8 +346,8 @@ class EditTest : AppTest() {
         val saved = opened.readBytes()
         assertTrue("written anew", !saved.contentEquals(before))
         assertEquals("a PDF", "%PDF-", String(saved, 0, 5))
-        // Still the same document, where it was: the edit can be taken
-        // back, which is a change to save again. Ctrl+S does that.
+        // Still the same document, where it was: the edit can be taken back, which is a change to
+        // save again. Ctrl+S does that.
         compose.onNodeWithText("1 / 11").assertIsDisplayed()
         menu("Undo delete")
         waitForText("1 / 12")

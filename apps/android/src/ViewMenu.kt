@@ -38,31 +38,35 @@ enum class ViewLayout(@param:StringRes val label: Int, val paged: Boolean, val t
 
         /**
          * What a window can show: two pages side by side need a [wide] one.
+         *
          * (A narrow window shows the two-page layouts one page at a time.)
          */
         fun choices(wide: Boolean): List<ViewLayout> = if (wide) entries else entries.filter { !it.twoPages }
     }
 }
 
-/** The layout this window shows: one that needs more room than there is falls back to single pages. */
+/**
+ * The layout this window shows: one that needs more room than there is falls back to single pages.
+ */
 fun PdfViewState.layout(wide: Boolean): ViewLayout = ViewLayout.of(paged, twoPages && wide)
 
 /**
- * Switches to [layout]. On a narrow window, which only offers single pages,
- * a wish for two pages is kept for when there is room again.
+ * Switches to [layout].
+ *
+ * On a narrow window, which only offers single pages, a wish for two pages is kept for when there
+ * is room again.
  */
 fun PdfViewState.show(layout: ViewLayout, wide: Boolean) {
     paged = layout.paged
     if (wide) setSpread(layout.twoPages, coverAlone)
 }
 
-/** Identifies the view button to UI tests; its description names the current layout. */
+/** Identifies the view button to UI tests. Its description names the current layout. */
 const val VIEW_BUTTON_TAG = "view-button"
 
 /**
- * The top bar's view button and its menu: everything about how this document
- * is shown, all of it remembered for the document. The button's icon is the
- * current layout.
+ * The top bar's view button and its menu: everything about how this document is shown, all of it
+ * remembered for the document. The button's icon is the current layout.
  */
 @Composable
 fun ViewMenu(state: PdfViewState, wide: Boolean) {
@@ -110,8 +114,8 @@ private fun Choice(label: String, chosen: Boolean, icon: ImageVector? = null, on
 
 // --- icons ------------------------------------------------------------------
 //
-// Little pictures of the layouts: whole pages for the paged ones; for the
-// continuous ones a page between the edges of its neighbours.
+// Little pictures of the layouts: whole pages for the paged ones, and for the continuous ones a
+// page between the edges of its neighbors.
 
 private fun layoutIcon(name: String, pages: PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {

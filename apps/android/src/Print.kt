@@ -19,14 +19,13 @@ import kotlinx.coroutines.withContext
 private const val PRINTING_DIR = "printing"
 
 /**
- * Opens the system's print dialog for the document open in [state], as it
- * is now, unsaved edits included. Must be called on an activity.
+ * Opens the system's print dialog for the document open in [state], as it is now, unsaved edits
+ * included. Must be called on an activity.
  *
- * The system prints PDFs itself: it gets the document's pages as they are
- * (text stays text, nothing is turned into images), shows the preview, and
- * takes care of page ranges, copies and paper. It can't be told a password,
- * so a protected document is handed over without its protection, in a copy
- * that stays in the app's cache until the print job is done.
+ * The system prints PDFs itself: it gets the document's pages as they are (text stays text, nothing
+ * is turned into images), shows the preview, and takes care of page ranges, copies and paper. It
+ * can't be told a password, so a protected document is handed over without its protection, in a
+ * copy that stays in the app's cache until the print job is done.
  *
  * Throws `PdfException.Save` if the copy can't be written.
  */
@@ -38,7 +37,7 @@ suspend fun Context.printDocument(state: PdfViewState, name: String) {
         File(dir, sharedFileName(name))
     }
     state.printTo(copy.writableDescriptor())
-    // Paper the way the first page lies; the reader can change it.
+    // Paper the way the first page lies. The reader can change it.
     val landscape = state.pageSizes.firstOrNull()?.let { it.width > it.height } == true
     val attributes = PrintAttributes.Builder()
         .setMediaSize(
@@ -50,8 +49,8 @@ suspend fun Context.printDocument(state: PdfViewState, name: String) {
 }
 
 /**
- * Gives the print service a finished PDF [file] of [pageCount] pages, and
- * deletes it when the print dialog is done with it.
+ * Gives the print service a finished PDF [file] of [pageCount] pages, and deletes it when the print
+ * dialog is done with it.
  */
 private class PdfFilePrintAdapter(
     private val file: File,
@@ -70,8 +69,7 @@ private class PdfFilePrintAdapter(
             .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
             .setPageCount(pageCount)
             .build()
-        // The pages are what they are, whatever paper is chosen: the system
-        // fits them onto it.
+        // The pages are what they are, whatever paper is chosen: the system fits them onto it.
         callback.onLayoutFinished(info, newAttributes != oldAttributes)
     }
 

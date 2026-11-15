@@ -39,20 +39,20 @@ private const val FOLLOW_DELAY_MS = 300L
 private val ASPECT_RANGE = 0.5f..1.6f
 
 /**
- * A row of page thumbnails along the bottom, with the current page in the
- * middle. Scrolling it flips through the document: whichever page passes the
- * middle is shown. Tapping a thumbnail goes there. When pages are turned in
- * the page view, the strip follows.
+ * A row of page thumbnails along the bottom, with the current page in the middle.
+ *
+ * Scrolling it flips through the document: whichever page passes the middle is shown. Tapping a
+ * thumbnail goes there. When pages are turned in the page view, the strip follows.
  */
 @Composable
 fun ThumbnailStrip(state: PdfViewState, modifier: Modifier = Modifier) {
     val current = state.currentPage
-    // The row is padded by half its width at both ends, so that an item at
-    // the start of the content sits in the middle.
+    // The row is padded by half its width at both ends, so that an item at the start of the content
+    // sits in the middle.
     val list = rememberLazyListState(initialFirstVisibleItemIndex = current)
     val owner = remember { Any() }
-    // Set while the strip scrolls by itself to follow the page view, as
-    // opposed to being scrolled by hand.
+    // Set while the strip scrolls by itself to follow the page view, as opposed to being scrolled
+    // by hand.
     val following = remember { booleanArrayOf(false) }
 
     LaunchedEffect(state, list) {
@@ -65,9 +65,8 @@ fun ThumbnailStrip(state: PdfViewState, modifier: Modifier = Modifier) {
         onDispose { state.hideThumbnails(owner) }
     }
     LaunchedEffect(state, list) {
-        // Follow once the page view has come to rest: scrolling the strip
-        // while a page is still sliding costs frames, and flipping through
-        // several pages would restart it each time.
+        // Follow once the page view has come to rest: scrolling the strip while a page is still
+        // sliding costs frames, and flipping through several pages would restart it each time.
         snapshotFlow { state.currentPage }.collectLatest { page ->
             delay(FOLLOW_DELAY_MS)
             if (list.isScrollInProgress) return@collectLatest
@@ -80,8 +79,8 @@ fun ThumbnailStrip(state: PdfViewState, modifier: Modifier = Modifier) {
         }
     }
     LaunchedEffect(state, list) {
-        // Scrubbing: while the strip is scrolled by hand (or still gliding
-        // from it), the page passing the middle is the one shown.
+        // Scrubbing: while the strip is scrolled by hand (or still gliding from it), the page
+        // passing the middle is the one shown.
         snapshotFlow {
             if (!list.isScrollInProgress || following[0]) return@snapshotFlow -1
             val info = list.layoutInfo

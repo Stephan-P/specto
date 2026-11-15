@@ -21,13 +21,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * "Share": what the app hands to the system's share sheet. The sheet itself
- * belongs to the system and never opens here; the request for it is caught
- * on its way out.
+ * "Share": what the app hands to the system's share sheet.
  *
- * The tests open documents by file path, which other apps may not be given,
- * so what they see shared is the copy the app makes for such cases. Passing
- * on a document that came from another app can only be checked by hand.
+ * The sheet itself belongs to the system and never opens here. The request for it is caught on its
+ * way out.
+ *
+ * The tests open documents by file path, which other apps may not be given, so what they see shared
+ * is the copy the app makes for such cases. Passing on a document that came from another app can
+ * only be checked by hand.
  */
 @RunWith(AndroidJUnit4::class)
 class ShareTest : AppTest() {

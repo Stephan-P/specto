@@ -60,17 +60,17 @@ private const val ZOOM_STEP = 1.25f
 private const val SLIDE_MS = 260
 
 /**
- * One open document: the Rust [ViewSession] (layout, zoom, scrolling, tile
- * planning and rendering) plus the tile bitmaps it tells us to keep.
+ * One open document: the Rust [ViewSession] (layout, zoom, scrolling, tile planning and rendering)
+ * plus the tile bitmaps it tells us to keep.
  *
- * Whatever happens every frame goes through [Native] (plain JNI); the
- * generated UniFFI bindings are only used for occasional calls.
+ * Whatever happens every frame goes through [Native] (plain JNI). The generated UniFFI bindings are
+ * only used for occasional calls.
  *
- * Main thread only, except [tilesReady]. Positions and distances are in dp
- * unless noted. Call [close] when done.
+ * Main thread only, except [tilesReady]. Positions and distances are in dp unless noted. Call
+ * [close] when done.
  *
- * Throws `PdfException` if the file can't be opened, e.g.
- * `PdfException.PasswordRequired` for a missing or wrong [password].
+ * Throws `PdfException` if the file can't be opened, such as `PdfException.PasswordRequired` for a
+ * missing or wrong [password].
  */
 class PdfViewState(
     file: PdfFile,
@@ -78,7 +78,7 @@ class PdfViewState(
     cacheBytes: Long,
     /** Where the reader left off last time, to continue there. */
     restore: SavedView? = null,
-    /** Whether the window has room for two pages side by side; see [wideWindow]. */
+    /** Whether the window has room for two pages side by side (see [wideWindow]). */
     wideWindow: Boolean = false,
     sidebarOpen: Boolean = true,
 ) : AutoCloseable {
@@ -123,8 +123,7 @@ class PdfViewState(
     /** Device pixels per dp. */
     private var density = 1f
 
-    // What follows describes the pages as they are now: editing changes
-    // it (see "editing" below).
+    // What follows describes the pages as they are now: editing changes it (see "editing" below).
 
     /** Width and height of each page as displayed, in points (1/72 inch). */
     var pageSizes: List<PageSize> by mutableStateOf(session.pageSizes())
@@ -132,15 +131,18 @@ class PdfViewState(
 
     val pageCount: Int get() = pageSizes.size
 
-    /** Width / height of [page] as displayed; that of a sheet of paper for a page that isn't there (any more). */
+    /**
+     * Width divided by height of [page] as displayed, or that of a sheet of paper for a page that
+     * isn't there any more.
+     */
     fun pageAspect(page: Int): Float = pageSizes.getOrNull(page)?.let { it.width / it.height } ?: 0.707f
 
-    /** What the document says about itself: title, author, dates, … */
+    /** What the document says about itself: title, author, dates and so on. */
     fun info(): DocumentInfo = session.info()
 
     /**
-     * The pages' printed numbers, for documents that number them other than
-     * 1, 2, 3 (roman numerals for the front matter, "A-1" in an appendix, …).
+     * The pages' printed numbers, for documents that number them other than 1, 2, 3 (roman numerals
+     * for the front matter, "A-1" in an appendix, and so on).
      */
     private var pageLabels: List<String>? by mutableStateOf(session.pageLabels())
 
@@ -153,7 +155,7 @@ class PdfViewState(
     /** The zero-based page meant by [text]: a printed number first, else a position. */
     fun findPage(text: String): Int? = session.findPage(text)?.toInt()
 
-    /** The outline (table of contents) in reading order; empty if there is none. */
+    /** The outline (table of contents) in reading order, or empty if there is none. */
     var outline: List<OutlineEntry> by mutableStateOf(session.outline())
         private set
 
@@ -163,8 +165,8 @@ class PdfViewState(
     }
 
     /**
-     * One page at a time, swiped left and right, or else one continuously
-     * scrolling column. Keeps the current page.
+     * One page at a time, swiped left and right, or else one continuously scrolling column. Keeps
+     * the current page.
      */
     var paged: Boolean
         get() = pagedNow
@@ -178,10 +180,11 @@ class PdfViewState(
         }
 
     /**
-     * What the view is fitted to unless the reader zoomed in: the page's
-     * width, the rest of a taller page being reached by scrolling, or else
-     * the whole page. Pages start out whole when [paged] and fitted to the
-     * width when scrolling; setting it also undoes any zooming.
+     * What the view is fitted to unless the reader zoomed in: the page's width, the rest of a
+     * taller page being reached by scrolling, or else the whole page.
+     *
+     * Pages start out whole when [paged] and fitted to the width when scrolling. Setting it also
+     * undoes any zooming.
      */
     var fitWidth: Boolean by mutableStateOf(restore?.fitWidth ?: false)
         private set
@@ -198,18 +201,22 @@ class PdfViewState(
 
     // --- search --------------------------------------------------------------
     //
-    // Like the selection, a search lives in Rust and shows up in frames, as
-    // highlighted matches. The first one has the whole document read in the
-    // background, so it keeps finding more for a moment.
+    // Like the selection, a search lives in Rust and shows up in frames, as highlighted matches.
+    // The first one has the whole document read in the background, so it keeps finding more for a
+    // moment.
 
-    /** How the search stands: matches so far, the current one, how much has been searched. Null without a search. */
+    /**
+     * How the search stands: matches so far, the current one, how much has been searched. Null
+     * without a search.
+     */
     var searchStatus: SearchStatus? by mutableStateOf(null)
         private set
 
     /**
-     * Searches for [text], ignoring case and accents, and goes to the first
-     * match from the current page on. Fine to call for every letter typed;
-     * blank text ends the search.
+     * Searches for [text], ignoring case and accents, and goes to the first match from the current
+     * page on.
+     *
+     * Fine to call for every letter typed. Blank text ends the search.
      */
     fun search(text: String) {
         if (closed) return
@@ -218,7 +225,7 @@ class PdfViewState(
         searchMoved()
     }
 
-    /** Goes to the next (or previous) match; after the last one comes the first again. */
+    /** Goes to the next (or previous) match. After the last one comes the first again. */
     fun searchStep(forward: Boolean) {
         if (closed) return
         stopMotion()
@@ -240,17 +247,18 @@ class PdfViewState(
 
     // --- editing ------------------------------------------------------------
     //
-    // Pages can be turned, removed and moved; every such edit can be undone.
-    // Nothing touches the file until the document is written somewhere
-    // ([writeTo]). Pages are named by their position, from 0.
+    // Pages can be turned, removed and moved, and every such edit can be undone. Nothing touches
+    // the file until the document is written somewhere ([writeTo]). Pages are named by their
+    // position, from 0.
 
     /** Whether the document has unsaved edits, and what undo and redo would do. */
     var editState: EditState by mutableStateOf(session.editState())
         private set
 
     /**
-     * The pages picked in the page grid to act on, by position. Kept here
-     * rather than in the grid, since the bar above it acts on them.
+     * The pages picked in the page grid to act on, by position.
+     *
+     * Kept here rather than in the grid, since the bar above it acts on them.
      */
     var selectedPages: Set<Int> by mutableStateOf(emptySet())
 
@@ -265,7 +273,11 @@ class PdfViewState(
         if (session.rotatePages(pages.map { it.toUInt() }, clockwise)) pagesChanged()
     }
 
-    /** Removes [pages]; a document keeps at least one page. Nothing is picked afterwards. */
+    /**
+     * Removes [pages].
+     *
+     * A document keeps at least one page. Nothing is picked afterwards.
+     */
     fun deletePages(pages: Collection<Int>) {
         if (closed) return
         if (session.deletePages(pages.map { it.toUInt() })) {
@@ -275,9 +287,8 @@ class PdfViewState(
     }
 
     /**
-     * Moves [pages], in their order in the document, to before the page now
-     * at [to] (the page count: to the end). They stay picked, where they are
-     * then.
+     * Moves [pages], in their order in the document, to before the page now at [to] (the page
+     * count: to the end). They stay picked, where they are then.
      */
     fun movePages(pages: Collection<Int>, to: Int) {
         if (closed) return
@@ -319,9 +330,10 @@ class PdfViewState(
     }
 
     /**
-     * Writes the document as edited, as a new PDF, into the open file
-     * descriptor [fd], which is closed either way. With [countsAsSaved] the
-     * document has no unsaved edits afterwards; without, this is a copy on
+     * Writes the document as edited, as a new PDF, into the open file descriptor [fd], which is
+     * closed either way.
+     *
+     * With [countsAsSaved] the document has no unsaved edits afterwards. Without, this is a copy on
      * the side. Throws `PdfException.Save` if it can't be written.
      */
     suspend fun writeTo(fd: Int, countsAsSaved: Boolean) {
@@ -330,15 +342,15 @@ class PdfViewState(
     }
 
     /**
-     * Writes the document as edited to [fd] for the system's print service:
-     * like [writeTo], but without its password protection, and counting for
-     * nothing. Throws `PdfException.Save` if it can't be written.
+     * Writes the document as edited to [fd] for the system's print service: like [writeTo], but
+     * without its password protection, and counting for nothing. Throws `PdfException.Save` if it
+     * can't be written.
      */
     suspend fun printTo(fd: Int) = withContext(Dispatchers.IO) { session.printToFd(fd) }
 
     /**
-     * The copy last written with [writeTo] has been put where the document
-     * is kept: what it holds is saved now. Edits made since are not.
+     * The copy last written with [writeTo] has been put where the document is kept: what it holds
+     * is saved now. Edits made since are not.
      */
     fun writtenIsSaved() {
         if (closed) return
@@ -348,9 +360,8 @@ class PdfViewState(
 
     // --- annotations --------------------------------------------------------
     //
-    // Marks on the text, and what a file brings along. They live in Rust;
-    // a frame has what is to be drawn of them, and the box around the one
-    // that is picked.
+    // Marks on the text, and what a file brings along. They live in Rust. A frame has what is to be
+    // drawn of them, and the box around the one that is picked.
 
     /** Whether an annotation is picked (by a tap on it), on screen or not. */
     var hasPickedAnnotation: Boolean by mutableStateOf(false)
@@ -365,8 +376,8 @@ class PdfViewState(
     }
 
     /**
-     * A tap at [at]: picks the annotation there, and lets go of one picked
-     * before. Returns whether one is picked now.
+     * A tap at [at]: picks the annotation there, and lets go of one picked before. Returns whether
+     * one is picked now.
      */
     fun pickAnnotation(at: Offset): Boolean {
         if (closed) return false
@@ -384,8 +395,9 @@ class PdfViewState(
     }
 
     /**
-     * Deletes the picked annotation. Throws `PdfException.Save` for one of
-     * a file whose page can't be written without it.
+     * Deletes the picked annotation.
+     *
+     * Throws `PdfException.Save` for one of a file whose page can't be written without it.
      */
     fun deletePickedAnnotation() {
         if (closed || !hasPickedAnnotation) return
@@ -401,8 +413,8 @@ class PdfViewState(
 
     // --- text selection -----------------------------------------------------
     //
-    // The selection lives in Rust and shows up in frames: the highlights to
-    // draw and where its two handles go.
+    // The selection lives in Rust and shows up in frames: the highlights to draw and where its two
+    // handles go.
 
     /** Whether any text is selected, on screen or not. */
     var hasSelection: Boolean by mutableStateOf(false)
@@ -422,16 +434,16 @@ class PdfViewState(
     }
 
     /**
-     * A handle was touched: [selectTo] now moves that end of the selection
-     * (its end, or else its start) and the other one stays.
+     * A handle was touched: [selectTo] now moves that end of the selection (its end, or else its
+     * start) and the other one stays.
      */
     fun grabSelection(end: Boolean) {
         if (!closed) session.grabSelection(end)
     }
 
     /**
-     * Extends the selection to the text nearest to [at]: word by word from
-     * the word a long press selected, or moving the end last grabbed.
+     * Extends the selection to the text nearest to [at]: word by word from the word a long press
+     * selected, or moving the end last grabbed.
      */
     fun selectTo(at: Offset) {
         Native.selectTo(sessionId, at.x.toDouble(), at.y.toDouble())
@@ -451,9 +463,10 @@ class PdfViewState(
     }
 
     /**
-     * The selected text, for copying; null if there is none. Reads every
-     * selected page, which takes a moment for a whole long document, so not
-     * on the main thread.
+     * The selected text, for copying, or null if there is none.
+     *
+     * Reads every selected page, which takes a moment for a whole long document, so not on the main
+     * thread.
      */
     suspend fun selectedText(): String? = withContext(Dispatchers.Default) {
         // The document may be closed meanwhile.
@@ -461,15 +474,16 @@ class PdfViewState(
     }
 
     /**
-     * What to draw. Changes whenever the view or the available tiles change,
-     * i.e. on every step of a scroll: only the page canvas should read it.
-     * The bars around it read [currentPage] and [thumbnailId], which change
-     * far less often.
+     * What to draw.
+     *
+     * Changes whenever the view or the available tiles change, that is on every step of a scroll:
+     * only the page canvas should read it. The bars around it read [currentPage] and [thumbnailId],
+     * which change far less often.
      */
     var frame: ViewFrame? by mutableStateOf(null)
         private set
 
-    /** Zero-based index of the page being looked at; with two pages, the first of the pair. */
+    /** Zero-based index of the page being looked at. With two pages, the first of the pair. */
     var currentPage: Int by mutableIntStateOf(0)
         private set
 
@@ -484,16 +498,15 @@ class PdfViewState(
     private var thumbnails: ViewFrame? by mutableStateOf(null)
 
     /**
-     * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't
-     * rendered yet or wasn't announced with [showThumbnails].
+     * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't rendered yet or wasn't
+     * announced with [showThumbnails].
      */
     fun thumbnailId(page: Int): Long = thumbnails?.thumbnailId(page) ?: 0
 
     fun bitmap(id: Long): Bitmap? = bitmaps[id]
 
     fun setViewport(widthDp: Float, heightDp: Float, density: Float) {
-        // Through JNI: the bars around the view are animated, which resizes
-        // it on every frame.
+        // Through JNI: the bars around the view are animated, which resizes it on every frame.
         Native.setViewport(sessionId, widthDp.toDouble(), heightDp.toDouble(), density.toDouble())
         viewport = Offset(widthDp, heightDp)
         this.density = density
@@ -519,14 +532,15 @@ class PdfViewState(
     }
 
     /**
-     * A tap at [at]: follows a link there, if any. Links within the document
-     * are followed right away ([Activated.Moved]); for an external one
-     * ([Activated.Uri]), opening it after asking is up to the caller.
-     * [Activated.Nothing] means the tap hit no link.
+     * A tap at [at]: follows a link there, if any.
+     *
+     * Links within the document are followed right away ([Activated.Moved]). For an external one
+     * ([Activated.Uri]), opening it after asking is up to the caller. [Activated.Nothing] means the
+     * tap hit no link.
      */
     fun tap(at: Offset): Activated = finish(session.tap(at.x.toDouble(), at.y.toDouble()))
 
-    /** Goes where entry [index] of [outline] leads; see [tap] for the result. */
+    /** Goes where entry [index] of [outline] leads (see [tap] for the result). */
     fun openOutlineEntry(index: Int): Activated = finish(session.activateOutline(index.toUInt()))
 
     private fun finish(activated: Activated): Activated {
@@ -539,7 +553,7 @@ class PdfViewState(
 
     // --- keyboard -----------------------------------------------------------
 
-    /** The next or previous page; with two pages, the next or previous pair. */
+    /** The next or previous page. With two pages, the next or previous pair. */
     fun turnPage(forward: Boolean) {
         stopMotion()
         session.turnPage(forward)
@@ -547,8 +561,9 @@ class PdfViewState(
     }
 
     /**
-     * Page Down and Page Up: most of a screenful. When [paged], that is a
-     * page turn, unless the page is taller than the view (fitted to the
+     * Page Down and Page Up: most of a screenful.
+     *
+     * When [paged], that is a page turn, unless the page is taller than the view (fitted to the
      * width, or zoomed in) and has more to show in that direction.
      */
     fun pageBy(scope: CoroutineScope, forward: Boolean) {
@@ -572,8 +587,8 @@ class PdfViewState(
     }
 
     /**
-     * Arrow up and down: a small scroll, or, where a page has no more to
-     * show in that direction, a page turn.
+     * Arrow up and down: a small scroll, or, where a page has no more to show in that direction, a
+     * page turn.
      */
     fun lineBy(forward: Boolean) {
         val current = frame ?: return
@@ -612,10 +627,11 @@ class PdfViewState(
     }
 
     /**
-     * Tells which pages' thumbnails are on screen, so that they get rendered
-     * and kept: see [ViewFrame.thumbnailId]. One range at a time: [owner]
-     * identifies the caller (the page grid, the thumbnail strip), and the
-     * last one to call wins.
+     * Tells which pages' thumbnails are on screen, so that they get rendered and kept: see
+     * [ViewFrame.thumbnailId].
+     *
+     * One range at a time: [owner] identifies the caller (the page grid, the thumbnail strip), and
+     * the last one to call wins.
      */
     fun showThumbnails(owner: Any, first: Int, count: Int) {
         if (closed) return
@@ -633,8 +649,9 @@ class PdfViewState(
     }
 
     /**
-     * Two pages side by side, as the reader asked for. Only takes effect in
-     * a [wideWindow]; on a narrow one the wish is kept (and saved) but pages
+     * Two pages side by side, as the reader asked for.
+     *
+     * Only takes effect in a [wideWindow]. On a narrow one the wish is kept (and saved) but pages
      * are shown one at a time.
      */
     var twoPages: Boolean by mutableStateOf(restore?.twoPages ?: false)
@@ -673,8 +690,10 @@ class PdfViewState(
     }
 
     /**
-     * Brackets a pinch. In between, pages are drawn from a few fixed zoom
-     * levels; exact-scale tiles are only rendered once the zoom has come to rest.
+     * Brackets a pinch.
+     *
+     * In between, pages are drawn from a few fixed zoom levels. Exact-scale tiles are only rendered
+     * once the zoom has come to rest.
      */
     fun beginZoomGesture() {
         session.beginZoomGesture()
@@ -692,9 +711,10 @@ class PdfViewState(
     }
 
     /**
-     * The fingers lifted after a drag or pinch. [velocityPx] is the scrolling
-     * velocity at that moment in px/s. In paged mode a view left between two
-     * pages slides on to one of them (a flick turns the page); otherwise the
+     * The fingers lifted after a drag or pinch.
+     *
+     * [velocityPx] is the scrolling velocity at that moment in pixels per second. In paged mode a
+     * view left between two pages slides on to one of them (a flick turns the page). Otherwise the
      * scrolling carries on and slows down, within the page when paged.
      */
     fun release(scope: CoroutineScope, velocityPx: Offset, density: Float, decay: DecayAnimationSpec<Offset>) {
@@ -746,7 +766,7 @@ class PdfViewState(
                     zoomBy((target / applied).toFloat(), anchor)
                     applied = target
                 }
-                // Back to following the window size (e.g. on rotation).
+                // Back to following the window size (on rotation, for instance).
                 if (!zoomIn) session.fit()
             } finally {
                 // Also when a touch interrupts the animation.
@@ -765,8 +785,8 @@ class PdfViewState(
 
     private fun collectTiles() {
         if (closed) return
-        // Tiles that don't fit this time are rendered again; 16 bytes each,
-        // so the buffer holds about a thousand.
+        // Tiles that don't fit this time are rendered again. They are 16 bytes each, so the buffer
+        // holds about a thousand.
         if (Native.takeFinished(sessionId, buffer) > 0) {
             val b = buffer
             b.position(0)
@@ -795,9 +815,9 @@ class PdfViewState(
         }
         if (length <= 0) return
         val next = ViewFrame.decode(buffer, length)
-        // Free the pixels now rather than whenever the GC gets to them. The
-        // new frame never draws an evicted tile, and a frame already handed to
-        // the render thread keeps its own reference to the pixels.
+        // Free the pixels now rather than whenever the GC gets to them. The new frame never draws
+        // an evicted tile, and a frame already handed to the render thread keeps its own reference
+        // to the pixels.
         for (id in next.evicted) {
             bitmaps[id]?.recycle()
             bitmaps.remove(id)
@@ -808,8 +828,8 @@ class PdfViewState(
         currentPage = next.currentPage
         lastPage = next.lastPage
         if (!next.sameThumbnailsAs(thumbnails)) thumbnails = next
-        // After zooming, the view sharpens (switches to exact-scale tiles)
-        // only when a frame is planned once the zoom has been still for a while.
+        // After zooming, the view sharpens (switches to exact-scale tiles) only when a frame is
+        // planned once the zoom has been still for a while.
         main.removeCallbacks(settle)
         if (next.settlesInMs >= 0) main.postDelayed(settle, next.settlesInMs + 1L)
     }

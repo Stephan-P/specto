@@ -7,13 +7,13 @@ import android.view.MenuItem
 import android.view.View
 
 /**
- * The floating menu beside selected text: the system's own (the one text
- * fields show), with the entries the page view wants. Compose's
- * `TextToolbar` shows the same menu but knows only cut, copy, paste and
- * select all, and the page view needs "Share".
+ * The floating menu beside selected text: the system's own (the one text fields show), with the
+ * entries the page view wants.
  *
- * [view] is the view the menu belongs to; the places given to [show] are in
- * its coordinates.
+ * Compose's `TextToolbar` shows the same menu but knows only cut, copy, paste and select all, and
+ * the page view needs "Share".
+ *
+ * [view] is the view the menu belongs to. The places given to [show] are in its coordinates.
  */
 class TextMenu(private val view: View) {
     /** An entry: what it says and what choosing it does. */
@@ -47,7 +47,10 @@ class TextMenu(private val view: View) {
         override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) = outRect.set(beside)
     }
 
-    /** Shows the menu with [items] beside the rectangle given (px), replacing one that is showing. */
+    /**
+     * Shows the menu with [items] beside the rectangle given (pixels), replacing one that is
+     * showing.
+     */
     fun show(left: Float, top: Float, right: Float, bottom: Float, items: List<Item>) {
         hide()
         this.items = items

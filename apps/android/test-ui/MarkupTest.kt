@@ -15,14 +15,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Marking text: "Highlight", "Underline" and "Strike through" in the menu
- * beside selected text, and "Delete" for a mark that a tap picked. The text
- * is the heading of `pages.pdf` (see `SelectionTest` for where it is).
+ * Marking text: "Highlight", "Underline" and "Strike through" in the menu beside selected text, and
+ * "Delete" for a mark that a tap picked.
  *
- * The marks are drawn on the canvas, where tests don't see them. They go by
- * what the app says: that the document is edited, what there is to undo,
- * and that an annotation is picked. That a mark is where the text is, and
- * is saved with the document, is tested in Rust (`marking_text`).
+ * The text is the heading of `pages.pdf` (see `SelectionTest` for where it is).
+ *
+ * The marks are drawn on the canvas, where tests don't see them. They go by what the app says: that
+ * the document is edited, what there is to undo, and that an annotation is picked. That a mark is
+ * where the text is, and is saved with the document, is tested in Rust (`marking_text`).
  */
 @RunWith(AndroidJUnit4::class)
 class MarkupTest : AppTest() {

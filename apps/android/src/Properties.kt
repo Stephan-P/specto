@@ -30,9 +30,8 @@ import uniffi.specto_ffi.DocumentInfo
 import uniffi.specto_ffi.PageSize
 
 /**
- * What is known about the open document: what it says about itself (which
- * may be nothing, or wrong) and what the app can see. The values can be
- * selected and copied.
+ * What is known about the open document: what it says about itself (which may be nothing, or wrong)
+ * and what the app can see. The values can be selected and copied.
  */
 @Composable
 fun PropertiesDialog(state: PdfViewState, name: String, bytes: Long, onDismiss: () -> Unit) {
@@ -76,9 +75,10 @@ fun PropertiesDialog(state: PdfViewState, name: String, bytes: Long, onDismiss: 
 }
 
 /**
- * The dialog's rows, as label and value, in the order shown. What the
- * document doesn't state is left out. [date] turns a date as the document
- * gives it (ISO 8601) into what the reader sees.
+ * The dialog's rows, as label and value, in the order shown.
+ *
+ * What the document doesn't state is left out. [date] turns a date as the document gives it (ISO
+ * 8601) into what the reader sees.
  */
 internal fun propertyRows(
     name: String,
@@ -105,9 +105,10 @@ internal fun propertyRows(
 ).map { (label, value) -> texts.get(label) to value }
 
 /**
- * A date from a document (ISO 8601 with an offset), on the reader's clock
- * and in the reader's language. A date that isn't one (the 31st of
- * February) is shown as it is.
+ * A date from a document (ISO 8601 with an offset), on the reader's clock and in the reader's
+ * language.
+ *
+ * A date that isn't one (the 31st of February) is shown as it is.
  */
 internal fun documentDate(
     iso: String,
@@ -121,7 +122,10 @@ internal fun documentDate(
     iso
 }
 
-/** Paper sizes people know by name: shorter side, longer side (in points), name, and whether they are measured in inches. */
+/**
+ * Paper sizes people know by name: shorter side, longer side (in points), name, and whether they
+ * are measured in inches.
+ */
 private val PAPER_SIZES = listOf(
     PaperSize(841.9f, 1190.6f, "A3"),
     PaperSize(595.3f, 841.9f, "A4"),
@@ -138,9 +142,10 @@ private class PaperSize(val short: Float, val long: Float, val name: String, val
 private const val PAPER_TOLERANCE = 2f
 
 /**
- * A page size for people: "210 × 297 mm (A4)", "11 × 8.5 in (Letter,
- * landscape)", or just "152 × 229 mm" for a size without a name. Width
- * first; [width] and [height] are in points.
+ * A page size for people: "210 × 297 mm (A4)", "11 × 8.5 in (Letter, landscape)", or just "152 ×
+ * 229 mm" for a size without a name.
+ *
+ * Width first. [width] and [height] are in points.
  */
 internal fun pageSizeText(
     width: Float,

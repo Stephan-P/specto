@@ -140,8 +140,8 @@ class DocumentStoreTest {
 
     @Test
     fun fingerprintsStayWhatTheyWere() {
-        // Documents are remembered by these: a change would forget every
-        // reading position. (Values from the first version of the scheme.)
+        // Documents are remembered by these: a change would forget every reading position. (Values
+        // from the first version of the scheme.)
         val long = ByteArray(200_000) { (it % 251).toByte() }
         val short = ByteArray(1_000) { (it % 251).toByte() }
         assertEquals("6caa9d845c5241f43224ca33bc7dcc7d", DocumentStore.fingerprint(long))

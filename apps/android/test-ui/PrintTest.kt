@@ -18,17 +18,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * "Print": what the app hands to the system's print dialog. The dialog
- * itself belongs to the system; the tests look at the print job it was
- * opened for and at the copy of the document made for it, read here with
- * Android's own PDF reader, as the print service does, and then leave the
- * dialog with Back.
+ * "Print": what the app hands to the system's print dialog.
+ *
+ * The dialog itself belongs to the system. The tests look at the print job it was opened for and at
+ * the copy of the document made for it, read here with Android's own PDF reader, as the print
+ * service does, and then leave the dialog with Back.
  */
 @RunWith(AndroidJUnit4::class)
 class PrintTest : AppTest() {
     private val target get() = instrumentation.targetContext
 
-    /** Waits for a print job called [name] and returns the page count of the document made for it. */
+    /**
+     * Waits for a print job called [name] and returns the page count of the document made for it.
+     */
     private fun pagesHandedOver(name: String): Int {
         val manager = target.getSystemService(PrintManager::class.java)
         compose.waitUntil(WAIT_MS) { manager.printJobs.any { it.info.label == name } }

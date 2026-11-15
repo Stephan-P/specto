@@ -39,6 +39,15 @@
   when a macro has the same name.
 - A blank line above every top-level doc comment.
 
+## Kotlin comments
+
+- Wrap code and comments at 100 columns.
+- KDoc (`/** ... */`) on declarations, `//` inside functions.
+- KDoc: a one-sentence summary, a blank ` *` line, then the detail. A KDoc that
+  fits on one line stays on one line.
+- Describe parameters in the prose with `[name]` links. No `@param` or
+  `@return` tags unless they add something.
+
 ## Keeping documents current
 
 - A change to a feature updates the app's `FEATURES.md` in the same commit,

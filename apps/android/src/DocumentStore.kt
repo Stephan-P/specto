@@ -14,17 +14,16 @@ private const val MAX_DOCUMENTS = 200
 /** How many documents the start screen lists. */
 private const val MAX_RECENTS = 20
 
-/** Bytes hashed at each end of a file to recognise it. */
+/** Bytes hashed at each end of a file to recognize it. */
 private const val FINGERPRINT_SPAN = 64 * 1024
 
 /**
- * What the app remembers about documents between sessions: where the reader
- * was in each, and which ones can be reopened from the start screen.
+ * What the app remembers about documents between sessions: where the reader was in each, and which
+ * ones can be reopened from the start screen.
  *
- * A document is recognised by its content ([fingerprint]), not by where it
- * came from: the same file arrives under different addresses depending on
- * the app that hands it over. Kept in a small JSON [file] (in the app's
- * private storage). Main thread only.
+ * A document is recognized by its content ([fingerprint]), not by where it came from: the same file
+ * arrives under different addresses depending on the app that hands it over. Kept in a small JSON
+ * [file] (in the app's private storage). Main thread only.
  */
 class DocumentStore(private val file: File) {
     class Entry(
@@ -50,7 +49,7 @@ class DocumentStore(private val file: File) {
                 for (i in 0 until array.length()) entries += array.getJSONObject(i).toEntry()
             }
         } catch (e: Exception) {
-            // Unreadable (e.g. written by a newer version): start afresh.
+            // Unreadable (written by a newer version, say): start afresh.
             Log.w("specto", "ignoring $file", e)
             entries.clear()
         }
@@ -62,16 +61,17 @@ class DocumentStore(private val file: File) {
     fun find(key: String): Entry? = entries.firstOrNull { it.key == key }
 
     /**
-     * Notes that [key] was just opened. [uri] is where to reopen it from, or
-     * null if that won't be possible; an address known from before is kept.
-     * An address leads to one document: any other one that was found at
-     * [uri] before is no longer offered from there.
+     * Notes that [key] was just opened.
+     *
+     * [uri] is where to reopen it from, or null if that won't be possible. An address known from
+     * before is kept. An address leads to one document: any other one that was found at [uri]
+     * before is no longer offered from there.
      */
     fun opened(key: String, name: String, uri: String?, pageCount: Int) {
         val known = find(key)
         entries.removeAll { it.key == key }
-        // What is at this address now is this document. Another one found
-        // there before (the file was saved over, or replaced) isn't any more.
+        // What is at this address now is this document. Another one found there before (the file
+        // was saved over, or replaced) isn't any more.
         if (uri != null) {
             for (i in entries.indices) {
                 val e = entries[i]
@@ -111,7 +111,7 @@ class DocumentStore(private val file: File) {
         if (changed) save()
     }
 
-    /** Addresses the start screen may still offer; the rest need no read permission any more. */
+    /** Addresses the start screen may still offer. The rest need no read permission any more. */
     fun reopenable(): Set<String> = recents.mapNotNull { it.uri }.toSet()
 
     private fun save() {
@@ -129,10 +129,10 @@ class DocumentStore(private val file: File) {
 
     companion object {
         /**
-         * Identifies a file of [size] bytes by its length and both ends:
-         * quick even for huge files, which needn't be read for it, and
-         * stable however the file reaches the app. [read] returns the given
-         * number of bytes from the given offset.
+         * Identifies a file of [size] bytes by its length and both ends: quick even for huge files,
+         * which needn't be read for it, and stable however the file reaches the app.
+         *
+         * [read] returns the given number of bytes from the given offset.
          */
         fun fingerprint(size: Long, read: (offset: Long, length: Int) -> ByteArray): String {
             val digest = MessageDigest.getInstance("SHA-256")

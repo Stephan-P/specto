@@ -69,7 +69,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-/** Shape of a grid cell; pages are fitted into it whatever their own shape. */
+/** Shape of a grid cell. Pages are fitted into it whatever their own shape. */
 private const val CELL_ASPECT = 0.72f
 
 /** How long the page must stay the same before a following grid scrolls to it. */
@@ -78,7 +78,10 @@ private const val FOLLOW_DELAY_MS = 300L
 /** Identifies the page grid to UI tests. */
 const val PAGES_GRID_TAG = "pages-grid"
 
-/** How near the top or bottom edge dragged pages make the grid scroll, and how fast at most (per second). */
+/**
+ * How near the top or bottom edge dragged pages make the grid scroll, and how fast at most (per
+ * second).
+ */
 private val DRAG_SCROLL_ZONE = 56.dp
 private val DRAG_SCROLL_SPEED = 900.dp
 
@@ -97,12 +100,12 @@ const val THUMBNAIL_PREFETCH = 6
 private val thumbnailPaint = Paint().apply { isFilterBitmap = true }
 
 /**
- * The thumbnail of [page] on a white sheet, filling the space it is given
- * (the caller sets the aspect ratio), outlined, more strongly if [selected]
- * (the page being read).
- * Blank until the thumbnail is rendered. The thumbnails are the page view's
- * own low-resolution placeholder tiles, so nothing is rendered twice; the
- * caller must announce the pages it shows with [PdfViewState.showThumbnails].
+ * The thumbnail of [page] on a white sheet, filling the space it is given (the caller sets the
+ * aspect ratio), outlined, more strongly if [selected] (the page being read).
+ *
+ * Blank until the thumbnail is rendered. The thumbnails are the page view's own low-resolution
+ * placeholder tiles, so nothing is rendered twice. The caller must announce the pages it shows with
+ * [PdfViewState.showThumbnails].
  */
 @Composable
 fun PageThumbnail(
@@ -126,8 +129,8 @@ fun PageThumbnail(
         modifier
             .background(Color.White)
             .drawBehind {
-                // Not `Image`: the tile cache may recycle a bitmap, and
-                // drawing a recycled one would throw.
+                // Not `Image`: the tile cache may recycle a bitmap, and drawing a recycled one
+                // would throw.
                 if (bitmap != null && !bitmap.isRecycled) {
                     drawIntoCanvas {
                         it.nativeCanvas.drawBitmap(
@@ -157,17 +160,16 @@ fun PageThumbnail(
 }
 
 /**
- * All pages as a grid of thumbnails; tapping one calls [onPick] with its
- * zero-based index.
+ * All pages as a grid of thumbnails. Tapping one calls [onPick] with its zero-based index.
  *
- * A long press picks a page instead, to act on: from then on, until none is
- * picked any more, a tap picks further pages or lets go of them. Which pages
- * are picked is in [PdfViewState.selectedPages], and what can be done with
- * them is in the bar above (see [SelectionBar]).
+ * A long press picks a page instead, to act on: from then on, until none is picked any more, a tap
+ * picks further pages or lets go of them. Which pages are picked is in
+ * [PdfViewState.selectedPages], and what can be done with them is in the bar above (see
+ * [SelectionBar]).
  *
- * A long press that moves on drags the picked pages: a mark between two
- * thumbnails shows where they would go, the grid scrolls on at its top and
- * bottom edge, and lifting the finger moves them there.
+ * A long press that moves on drags the picked pages: a mark between two thumbnails shows where they
+ * would go, the grid scrolls on at its top and bottom edge, and lifting the finger moves them
+ * there.
  */
 @Composable
 fun PagesGrid(
@@ -175,8 +177,8 @@ fun PagesGrid(
     onPick: (Int) -> Unit,
     modifier: Modifier = Modifier,
     /**
-     * Shown beside the document rather than in its place: one column of
-     * thumbnails, which scrolls to keep the current page in view.
+     * Shown beside the document rather than in its place: one column of thumbnails, which scrolls
+     * to keep the current page in view.
      */
     beside: Boolean = false,
 ) {
@@ -246,7 +248,7 @@ fun PagesGrid(
             .pointerInput(state, beside) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    // Cancelled when the finger lifts or the grid scrolls first.
+                    // Canceled when the finger lifts or the grid scrolls first.
                     val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
                     val at = held.position + origin
                     val page = drag.cells.entries.firstOrNull { it.value.contains(at) }?.key
@@ -279,8 +281,8 @@ fun PagesGrid(
             }
             .drawWithContent {
                 drawContent()
-                // The mark where dragged pages would go: a bar beside the
-                // thumbnail they would come before or after.
+                // The mark where dragged pages would go: a bar beside the thumbnail they would come
+                // before or after.
                 val cell = drop?.let { drag.cells[it.cell] }?.translate(-origin) ?: return@drawWithContent
                 val gap = DROP_MARK_GAP.toPx()
                 val width = DROP_MARK_WIDTH.toPx()
@@ -297,8 +299,8 @@ fun PagesGrid(
             columns = if (beside) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 104.dp),
             state = grid,
             modifier = Modifier.fillMaxSize().testTag(PAGES_GRID_TAG),
-            // One column would make thumbnails as wide as the sidebar: keep them
-            // at a size where a few fit above each other.
+            // One column would make thumbnails as wide as the sidebar: keep them at a size where a
+            // few fit above each other.
             contentPadding = if (beside) PaddingValues(horizontal = 72.dp, vertical = 16.dp) else PaddingValues(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -312,8 +314,8 @@ fun PagesGrid(
                         .onGloballyPositioned { drag.cells[page] = it.boundsInRoot() }
                         .clickable { if (picking) state.togglePage(page) else onPick(page) }
                         .semantics {
-                            // Screen readers (and UI tests) hear which pages
-                            // are picked, and can pick without the gesture.
+                            // Screen readers (and UI tests) hear which pages are picked, and can
+                            // pick without the gesture.
                             if (picking) selected = page in picked
                             onLongClick(pick) {
                                 state.togglePage(page)

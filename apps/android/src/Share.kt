@@ -10,17 +10,18 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Where copies made for sharing live, below the cache directory; see `res/xml/shared_paths.xml`. */
+/**
+ * Where copies made for sharing live, below the cache directory (see `res/xml/shared_paths.xml`).
+ */
 private const val SHARED_DIR = "shared"
 
 /**
  * Offers the open document to other apps through the system's share sheet.
  *
- * The file is shared as it was opened (a protected one stays protected). If
- * possible the receiving app reads it where it is: the app passes its own
- * permission to read [document] on. Where that isn't allowed, or for a plain
- * file path, which may not be given to other apps at all, it gets a copy from
- * the app's cache.
+ * The file is shared as it was opened (a protected one stays protected). If possible the receiving
+ * app reads it where it is: the app passes its own permission to read [document] on. Where that
+ * isn't allowed, or for a plain file path, which may not be given to other apps at all, it gets a
+ * copy from the app's cache.
  *
  * Throws if the document can't be read any more.
  */
@@ -38,8 +39,8 @@ suspend fun Context.shareDocument(document: Uri, name: String) {
 }
 
 /**
- * Offers the document open in [state] as it is now, unsaved edits included:
- * a copy written for the purpose, from the app's cache.
+ * Offers the document open in [state] as it is now, unsaved edits included: a copy written for the
+ * purpose, from the app's cache.
  *
  * Throws if it can't be written.
  */
@@ -67,9 +68,9 @@ private fun shareSheet(document: Uri, name: String): Intent {
 }
 
 /**
- * Offers [text], selected in a document, to other apps through the system's
- * share sheet. Throws a `RuntimeException` if it is more than the system
- * passes on.
+ * Offers [text], selected in a document, to other apps through the system's share sheet.
+ *
+ * Throws a `RuntimeException` if it is more than the system passes on.
  */
 fun Context.shareText(text: String) {
     val send = Intent(Intent.ACTION_SEND)
@@ -91,9 +92,8 @@ private fun Context.copyForSharing(document: Uri, name: String): File {
 }
 
 /**
- * The file name a shared copy of the document called [name] gets: what the
- * receiving app will show and save it under. Never empty, never a path, and
- * always ending in ".pdf".
+ * The file name a shared copy of the document called [name] gets: what the receiving app will show
+ * and save it under. Never empty, never a path, and always ending in ".pdf".
  */
 internal fun sharedFileName(name: String): String {
     val cleaned = name

@@ -12,8 +12,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * What a document can bring along: an outline, links, printed page numbers
- * (`book.pdf`: i–iii, 1–9, A-1, A-2) and a password (`locked.pdf`).
+ * What a document can bring along: an outline, links, printed page numbers (`book.pdf`: i to iii, 1
+ * to 9, A-1, A-2) and a password (`locked.pdf`).
  */
 @RunWith(AndroidJUnit4::class)
 class DocumentTest : AppTest() {
@@ -66,8 +66,8 @@ class DocumentTest : AppTest() {
     }
 
     /**
-     * Taps the point of the current page that is ([x], [fromTop]) points from
-     * its top-left corner. The pages are A4 and shown fitted and centred.
+     * Taps the point of the current page that is ([x], [fromTop]) points from its top-left corner.
+     * The pages are A4 and shown fitted and centered.
      */
     private fun tapOnPage(x: Float, fromTop: Float) {
         page.performTouchInput { click(pagePoint(x, fromTop)) }

@@ -13,9 +13,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Pages that take long to draw. The first page of `slow.pdf` is one: a lot
- * of small curves, and marked as heavy from the start by an image its
- * resources name (and nothing draws). Its second page is an ordinary one.
+ * Pages that take long to draw.
+ *
+ * The first page of `slow.pdf` is one: a lot of small curves, and marked as heavy from the start by
+ * an image its resources name (and nothing draws). Its second page is an ordinary one.
  */
 @RunWith(AndroidJUnit4::class)
 class SlowPageTest : AppTest() {
@@ -25,14 +26,13 @@ class SlowPageTest : AppTest() {
     fun aSlowPageHasASpinnerUntilItIsSharp() {
         open("slow.pdf", shows = "1 / 2")
         compose.waitUntil(WAIT_MS) { spinners().fetchSemanticsNodes().isNotEmpty() }
-        // It is in the middle of the page and lets touches through: a tap
-        // there hides the bars like a tap anywhere else, and another one
-        // brings them back.
+        // It is in the middle of the page and lets touches through: a tap there hides the bars like
+        // a tap anywhere else, and another one brings them back.
         page.performTouchInput { click(center) }
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isEmpty() }
         page.performTouchInput { click(center) }
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isNotEmpty() }
-        // Drawn piece by piece; an emulator in CI takes its time over each.
+        // Drawn piece by piece, and an emulator in CI takes its time over each.
         compose.waitUntil(SHARP_MS) { spinners().fetchSemanticsNodes().isEmpty() }
 
         // An ordinary page never has one, not even before it is sharp.

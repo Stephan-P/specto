@@ -130,7 +130,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: DocumentStore
     private lateinit var settings: AppSettings
 
-    /** Moves on or back through the document being read, for the volume keys; null while none is on screen. */
+    /**
+     * Moves on or back through the document being read, for the volume keys, or null while none is
+     * on screen.
+     */
     private var pageKeys: ((forward: Boolean) -> Unit)? = null
 
     private val main = Handler(Looper.getMainLooper())
@@ -166,9 +169,11 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * With [AppSettings.keepScreenOn] and a document open, keeps the screen
-     * on for a while from now; called whenever the reader does something. A
-     * phone left lying on the table still goes dark in the end.
+     * With [AppSettings.keepScreenOn] and a document open, keeps the screen on for a while from
+     * now.
+     *
+     * Called whenever the reader does something. A phone left lying on the table still goes dark in
+     * the end.
      */
     private fun stayAwake() {
         main.removeCallbacks(letScreenTurnOff)
@@ -190,7 +195,10 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /** Whether [keyCode] is a volume key that is to move through the document, and which way: true for volume down (onwards). */
+    /**
+     * Whether [keyCode] is a volume key that is to move through the document, and which way: true
+     * for volume down (onwards).
+     */
     private fun pageKey(keyCode: Int): Boolean? = when {
         pageKeys == null || !settings.volumeKeysTurnPages -> null
         keyCode == KeyEvent.KEYCODE_VOLUME_DOWN -> true
@@ -198,8 +206,8 @@ class MainActivity : ComponentActivity() {
         else -> null
     }
 
-    // Only keys nothing else wanted arrive here: with a menu or dialog open,
-    // the volume keys change the volume as usual.
+    // Only keys nothing else wanted arrive here: with a menu or dialog open, the volume keys change
+    // the volume as usual.
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val forward = pageKey(keyCode) ?: return super.onKeyDown(keyCode, event)
         pageKeys?.invoke(forward)
@@ -218,8 +226,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // The activity isn't recreated when dark mode is switched, so the
-        // system bar icons have to be told about the new background.
+        // The activity isn't recreated when dark mode is switched, so the system bar icons have to
+        // be told about the new background.
         enableEdgeToEdge()
     }
 
@@ -230,8 +238,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        // In the background, or the system is short on memory: keep only
-        // what is on screen. Tiles are re-rendered on demand.
+        // In the background, or the system is short on memory: keep only what is on screen. Tiles
+        // are re-rendered on demand.
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) current?.state?.trimMemory()
     }
 }
@@ -239,8 +247,8 @@ class MainActivity : ComponentActivity() {
 private fun Intent.viewedDocument(): Uri? = data.takeIf { action == Intent.ACTION_VIEW }
 
 /**
- * Follows the system: dark or light, and on Android 12+ the colours derived
- * from the wallpaper. Pages themselves stay as the document defines them.
+ * Follows the system: dark or light, and on Android 12+ the colors derived from the wallpaper.
+ * Pages themselves stay as the document defines them.
  */
 @Composable
 private fun AppTheme(content: @Composable () -> Unit) {
@@ -276,9 +284,9 @@ private const val BARS_MS = 220
 private const val INDICATOR_MS = 1500L
 
 /**
- * Budget for tile bitmaps: a share of what the system considers normal for an
- * app here. A drawn tile also has a copy on the GPU, so the real cost is up
- * to twice this.
+ * Budget for tile bitmaps: a share of what the system considers normal for an app here.
+ *
+ * A drawn tile also has a copy on the GPU, so the real cost is up to twice this.
  */
 private fun Context.tileCacheBytes(): Long {
     val memoryClassMb = (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).memoryClass
@@ -294,16 +302,20 @@ private fun Context.displayName(uri: Uri): String {
     return fromProvider ?: uri.lastPathSegment ?: getString(R.string.unnamed_document)
 }
 
-/** Where the reader wants to go from a document with unsaved edits: another one, or (null) the start screen. */
+/**
+ * Where the reader wants to go from a document with unsaved edits: another one, or (null) the start
+ * screen.
+ */
 private class Leaving(val to: Uri?)
 
 private sealed interface Loaded {
     data object Loading : Loaded
 
     /**
-     * [key] identifies the document in the [DocumentStore]. A [mapped] file
-     * (a large one) is read where it lies for as long as it is open, and
-     * must not change meanwhile.
+     * [key] identifies the document in the [DocumentStore].
+     *
+     * A [mapped] file (a large one) is read where it lies for as long as it is open, and must not
+     * change meanwhile.
      */
     class Ready(
         val state: PdfViewState,
@@ -322,9 +334,11 @@ private sealed interface Loaded {
 }
 
 /**
- * Makes sure the app can read [uri] again later, so that the document can be
- * offered on the start screen. Only some addresses allow that: those from the
- * system file picker do, most handed over by other apps don't.
+ * Makes sure the app can read [uri] again later, so that the document can be offered on the start
+ * screen.
+ *
+ * Only some addresses allow that: those from the system file picker do, most handed over by other
+ * apps don't.
  */
 private fun Context.canReopen(uri: Uri): Boolean {
     if (uri.scheme == "file") return true
@@ -346,9 +360,11 @@ private fun Context.canReopen(uri: Uri): Boolean {
 }
 
 /**
- * Whether the document at [uri] may be written over, as far as can be told
- * without trying: "Save" is offered for these. Documents from the system
- * file picker usually may; those handed over by other apps mostly not.
+ * Whether the document at [uri] may be written over, as far as can be told without trying: "Save"
+ * is offered for these.
+ *
+ * Documents from the system file picker usually may, and those handed over by other apps mostly
+ * not.
  */
 private fun Context.canSaveOver(uri: Uri): Boolean {
     if (uri.scheme == "file") return uri.path?.let { File(it).canWrite() } == true
@@ -370,10 +386,11 @@ private fun Context.releaseUnused(store: DocumentStore) {
 }
 
 /**
- * Hands the document at [uri] to Rust, which reads it straight from the
- * file, or for a large one maps it and reads only the parts it shows. Either
- * way its bytes never pass through this app's own (much smaller) Java memory.
- * Throws if it can't be read.
+ * Hands the document at [uri] to Rust, which reads it straight from the file, or for a large one
+ * maps it and reads only the parts it shows.
+ *
+ * Either way its bytes never pass through this app's own (much smaller) Java memory. Throws if it
+ * can't be read.
  */
 private fun Context.pdfFile(uri: Uri): PdfFile {
     val descriptor = checkNotNull(contentResolver.openFileDescriptor(uri, "r")) { "cannot open $uri" }
@@ -382,9 +399,10 @@ private fun Context.pdfFile(uri: Uri): PdfFile {
 }
 
 /**
- * Opens [file], continuing where the reader left off if it was open before;
- * a missing or wrong [password] leads to [Loaded.Locked]. Unless it ends
- * there, [file] is closed: an open document keeps its own hold on the bytes.
+ * Opens [file], continuing where the reader left off if it was open before.
+ *
+ * A missing or wrong [password] leads to [Loaded.Locked]. Unless it ends there, [file] is closed:
+ * an open document keeps its own hold on the bytes.
  */
 private suspend fun Context.open(
     file: PdfFile,
@@ -424,11 +442,14 @@ private fun App(
     settings: AppSettings,
     crashLog: CrashLog,
     onDocument: (Uri?) -> Unit,
-    /** A document asked for from outside the app, to show when the open one can be left; [onIncoming] takes note. */
+    /**
+     * A document asked for from outside the app, to show when the open one can be left.
+     * [onIncoming] takes note.
+     */
     incoming: Uri?,
     onIncoming: () -> Unit,
     onReady: (Loaded.Ready?) -> Unit,
-    /** Hands over what the volume keys should do; null while no document is on screen. */
+    /** Hands over what the volume keys should do, or null while no document is on screen. */
     onPageKeys: (((forward: Boolean) -> Unit)?) -> Unit,
 ) {
     val context = LocalContext.current
@@ -464,8 +485,7 @@ private fun App(
     // Which tab the top-left button opens: the one used last, pages at first.
     var preferContents by remember { mutableStateOf(false) }
     var externalLink by remember { mutableStateOf<String?>(null) }
-    // Tapping the page hides everything but the page; tapping again brings
-    // the bars back.
+    // Tapping the page hides everything but the page, and tapping again brings the bars back.
     var fullScreen by remember { mutableStateOf(false) }
     var showGoTo by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
@@ -513,10 +533,10 @@ private fun App(
     }
 
     /**
-     * Writes the open document, as edited, to [uri] and then shows what is
-     * there, where the reader was, unless [then] says what to do instead.
-     * The document is read afresh from [uri], also if that is the file it
-     * was opened from.
+     * Writes the open document, as edited, to [uri] and then shows what is there, where the reader
+     * was, unless [then] says what to do instead.
+     *
+     * The document is read afresh from [uri], also if that is the file it was opened from.
      */
     fun saveTo(uri: Uri, then: (() -> Unit)?) {
         val open = loaded as? Loaded.Ready ?: return
@@ -528,8 +548,8 @@ private fun App(
                 val sidebar = open.state.sidebarOpen
                 val pages = open.state.pageCount
                 if (open.mapped) {
-                    // The reader may be saving over the file that is open,
-                    // which is read where it lies: let go of it first.
+                    // The reader may be saving over the file that is open, which is read where it
+                    // lies: let go of it first.
                     show(null)
                     loaded = Loaded.Loading
                 }
@@ -537,13 +557,12 @@ private fun App(
                     context.copyTo(written, uri)
                 } catch (e: Exception) {
                     if (!open.mapped) throw e
-                    // Nothing is open any more; what was written is.
+                    // Nothing is open any more, but what was written is.
                     Toast.makeText(context, R.string.could_not_save_there, Toast.LENGTH_LONG).show()
                     onDocument(Uri.fromFile(written))
                     return@launch
                 }
-                // The saved file is a new document to the store: it starts
-                // out where this one is.
+                // The saved file is a new document to the store: it starts out where this one is.
                 val key = withContext(Dispatchers.IO) { written.fingerprint() }
                 store.opened(key, context.displayName(uri), uri.toString().takeIf { context.canReopen(uri) }, pages)
                 store.saveView(key, view, sidebar)
@@ -595,15 +614,14 @@ private fun App(
         saver.launch(name)
     }
 
-    // "Save": over the file the document was opened from, where the app may
-    // write to it.
+    // "Save": over the file the document was opened from, where the app may write to it.
     val canSave = remember(document) { document != null && context.canSaveOver(document) }
 
     /**
-     * Saves the open document over its file and goes on with [then]. The
-     * document stays open as it is, edits still to be undone, unless its
-     * file is mapped: that one has to be closed to be written, and is read
-     * afresh.
+     * Saves the open document over its file and goes on with [then].
+     *
+     * The document stays open as it is, edits still to be undone, unless its file is mapped: that
+     * one has to be closed to be written, and is read afresh.
      */
     fun save(then: (() -> Unit)? = null) {
         val open = loaded as? Loaded.Ready ?: return
@@ -612,13 +630,13 @@ private fun App(
         scope.launch {
             saving = true
             try {
-                // Written beside it first and then copied over it: should
-                // writing fail, the file is as it was.
+                // Written beside it first and then copied over it: should writing fail, the file is
+                // as it was.
                 val written = context.writeEdited(open.state, open.name)
                 context.copyTo(written, uri)
                 open.state.writtenIsSaved()
-                // Its content is how the store knows a document: under what
-                // it is now, it is where this one was.
+                // Its content is how the store knows a document: under what it is now, it is where
+                // this one was.
                 val (key, size) = withContext(Dispatchers.IO) {
                     val result = written.fingerprint() to written.length()
                     written.delete()
@@ -641,9 +659,8 @@ private fun App(
     }
 
     val ready = loaded as? Loaded.Ready
-    // A wide window (a tablet, but not one sharing its screen) has room for
-    // Pages and Contents in a sidebar next to the document. Narrower ones
-    // show them full screen instead, on request.
+    // A wide window (a tablet, but not one sharing its screen) has room for Pages and Contents in a
+    // sidebar next to the document. Narrower ones show them full screen instead, on request.
     val wide = LocalConfiguration.current.screenWidthDp >= WIDE_WINDOW_DP
     val overlay = showPages && !wide
     val immersive = fullScreen && ready != null && !overlay
@@ -657,7 +674,7 @@ private fun App(
     val picking = ready != null && ready.state.selectedPages.isNotEmpty()
     BackHandler(enabled = picking) { ready?.state?.selectedPages = emptySet() }
     if (ready != null && !overlay && !sidebarShown) {
-        // Picked where the page grid is; without it nothing is.
+        // Picked where the page grid is. Without it nothing is.
         SideEffect { ready.state.selectedPages = emptySet() }
     }
     StatusBar(hidden = immersive)
@@ -669,26 +686,24 @@ private fun App(
     if (hasStrip) stripState = ready?.state else if (ready == null) stripState = null
 
     if (showSettings) {
-        // In place of everything else; the document stays open underneath.
+        // In place of everything else, while the document stays open underneath.
         BackHandler { showSettings = false }
         SideEffect { onPageKeys(null) }
         SettingsScreen(settings, crashLog, onBack = { showSettings = false })
         return
     }
-    // The volume keys move through the document like Page Down and Page Up,
-    // while it is what the reader sees.
+    // The volume keys move through the document like Page Down and Page Up, while it is what the
+    // reader sees.
     val pageKeys: ((Boolean) -> Unit)? =
         if (ready != null && !overlay) { forward -> ready.state.pageBy(scope, forward) } else null
     SideEffect { onPageKeys(pageKeys) }
 
     Scaffold(
-        // The page view goes edge to edge: under the camera cutout (in
-        // landscape, beside it) and under the navigation handle. Everything
-        // else keeps clear of them by itself.
+        // The page view goes edge to edge: under the camera cutout (in landscape, beside it) and
+        // under the navigation handle. Everything else keeps clear of them by itself.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        // The bars slide in and out. They take up their space as they go, so
-        // the page area between them resizes smoothly and the page glides
-        // rather than jumps.
+        // The bars slide in and out. They take up their space as they go, so the page area between
+        // them resizes smoothly and the page glides rather than jumps.
         bottomBar = {
             AnimatedVisibility(
                 visible = hasStrip,
@@ -748,7 +763,7 @@ private fun App(
                         IconButton(onClick = { searching = true }) {
                             Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
                         }
-                        // How this document is shown; everything else is behind ⋮.
+                        // How this document is shown. Everything else is in the overflow menu.
                         ViewMenu(ready.state, wide)
                     }
                     var menu by remember { mutableStateOf(false) }
@@ -890,8 +905,8 @@ private fun App(
                         stringResource(R.string.password_protected, l.name), "",
                         stringResource(R.string.open_another), pick, safe,
                     )
-                    // A fresh dialog for every attempt, so a wrong password
-                    // doesn't stay in the field.
+                    // A fresh dialog for every attempt, so a wrong password doesn't stay in the
+                    // field.
                     key(l) { PasswordDialog(
                         name = l.name,
                         wrongPassword = l.wrongPassword,
@@ -931,8 +946,8 @@ private fun App(
                     if (overlay) {
                         navigator(Modifier.fillMaxSize(), besideAndBelow, true)
                     } else Row(Modifier.fillMaxSize()) {
-                        // The sidebar takes its width as it slides, so the
-                        // page area resizes smoothly, as with the bars.
+                        // The sidebar takes its width as it slides, so the page area resizes
+                        // smoothly, as with the bars.
                         AnimatedVisibility(
                             visible = sidebarShown,
                             enter = expandHorizontally(tween(BARS_MS), expandFrom = Alignment.End),
@@ -950,8 +965,8 @@ private fun App(
                                     // The tag is how UI tests find the page area.
                                     Modifier.fillMaxSize().testTag(PAGE_VIEW_TAG),
                                     onExternalLink = { externalLink = it },
-                                    // While searching, a tap puts the keyboard
-                                    // away instead of the bars.
+                                    // While searching, a tap puts the keyboard away instead of the
+                                    // bars.
                                     onTap = { if (searching) focusManager.clearFocus() else fullScreen = !fullScreen },
                                     onSearch = {
                                         // The search field is part of the bars.
@@ -964,8 +979,8 @@ private fun App(
                                     onPrint = ::print,
                                     refocus = searchesClosed,
                                 )
-                                // Always there in the normal view; in full screen it
-                                // shows up on a page turn and leaves again.
+                                // Always there in the normal view. In full screen it shows up on a
+                                // page turn and leaves again.
                                 var turned by remember(l.state) { mutableStateOf(false) }
                                 LaunchedEffect(l.state, immersive) {
                                     turned = false
@@ -975,13 +990,14 @@ private fun App(
                                         turned = false
                                     }
                                 }
-                                // Fully qualified: inside the Row, the plain name
-                                // would mean the variant that animates a row's child.
+                                // Fully qualified: inside the Row, the plain name would mean the
+                                // variant that animates a row's child.
                                 androidx.compose.animation.AnimatedVisibility(
                                     visible = !immersive || turned,
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
-                                        // Above the strip if there is one, else above the navigation bar.
+                                        // Above the strip if there is one, else above the
+                                        // navigation bar.
                                         .then(if (hasStrip) Modifier else Modifier.navigationBarsPadding())
                                         .padding(12.dp),
                                     enter = fadeIn(),
@@ -1047,9 +1063,10 @@ private fun App(
 }
 
 /**
- * Hides or shows the status bar, for full screen. The navigation bar stays: hiding it makes
- * Android show its "viewing full screen" explanation and turns going home
- * into two swipes, for the sake of a thin handle.
+ * Hides or shows the status bar, for full screen.
+ *
+ * The navigation bar stays: hiding it makes Android show its "viewing full screen" explanation and
+ * turns going home into two swipes, for the sake of a thin handle.
  */
 @Composable
 private fun StatusBar(hidden: Boolean) {
@@ -1086,9 +1103,8 @@ private fun Message(
 }
 
 /**
- * What the top-left button opens, full screen or as a sidebar: the page grid
- * and, if the document has an outline, its contents as a second tab. The
- * tabs can also be swiped.
+ * What the top-left button opens, full screen or as a sidebar: the page grid and, if the document
+ * has an outline, its contents as a second tab. The tabs can also be swiped.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1138,8 +1154,9 @@ private fun Navigator(
 private val OPENABLE_SCHEMES = setOf("http", "https", "mailto")
 
 /**
- * A link leaving the document was tapped. Documents can link anywhere, so
- * the address is shown and nothing opens without confirmation.
+ * A link leaving the document was tapped.
+ *
+ * Documents can link anywhere, so the address is shown and nothing opens without confirmation.
  */
 @Composable
 private fun ExternalLinkDialog(link: String, onDismiss: () -> Unit) {
@@ -1158,7 +1175,7 @@ private fun ExternalLinkDialog(link: String, onDismiss: () -> Unit) {
                         try {
                             context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                         } catch (e: ActivityNotFoundException) {
-                            // No app for it; nothing to do.
+                            // No app for it, so nothing to do.
                         }
                     },
                 ) { Text(stringResource(R.string.open)) }
@@ -1226,8 +1243,7 @@ private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (
         text = {
             OutlinedTextField(
                 value = text,
-                // Printed page numbers can be anything ("iv", "A-3"); plain
-                // ones are digits.
+                // Printed page numbers can be anything ("iv", "A-3"). Plain ones are digits.
                 onValueChange = { new ->
                     text = if (state.hasPageLabels) new.take(20) else new.filter(Char::isDigit).take(9)
                 },
@@ -1272,8 +1288,8 @@ private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
     ) {
-        // "4 / 120", or for a pair "4–5 / 120"; with printed page numbers
-        // "iv (4 / 120)" and "iv–v (4–5 / 120)".
+        // "4 / 120", or for a pair "4–5 / 120". With printed page numbers "iv (4 / 120)" and "iv–v
+        // (4–5 / 120)".
         val last = state.lastPage
         val positions = if (last > current) "${current + 1}–${last + 1}" else "${current + 1}"
         Text(

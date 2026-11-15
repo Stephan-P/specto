@@ -26,10 +26,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Reading a plain document: turning pages by swipe and key, the page grid,
- * full screen, the layouts for narrow and wide windows, and what is
- * remembered. They run on phones and tablets alike; where the two differ,
- * tests ask [wide].
+ * Reading a plain document: turning pages by swipe and key, the page grid, full screen, the layouts
+ * for narrow and wide windows, and what is remembered.
+ *
+ * They run on phones and tablets alike. Where the two differ, tests ask [wide].
  */
 @RunWith(AndroidJUnit4::class)
 class ReaderTest : AppTest() {
@@ -84,7 +84,7 @@ class ReaderTest : AppTest() {
     @Test
     fun keysTurnPages() {
         openPages()
-        // The page has the focus from the start; no tap needed first.
+        // The page has the focus from the start, so no tap is needed first.
         page.performKeyInput { pressKey(Key.DirectionRight) }
         waitForText("2 / 12")
         page.performKeyInput { pressKey(Key.PageDown) }
@@ -141,8 +141,7 @@ class ReaderTest : AppTest() {
         compose.onNodeWithText("Fit width").performClick()
         compose.onNodeWithTag(VIEW_BUTTON_TAG).performClick()
         chosen("Fit width").assertIsDisplayed()
-        // Each layout starts with its own fit: the width when scrolling, the
-        // whole page otherwise.
+        // Each layout starts with its own fit: the width when scrolling, the whole page otherwise.
         compose.onNodeWithText("Fit page").performClick()
         view("Continuous")
         compose.onNodeWithContentDescription("View: Continuous").performClick()
@@ -232,8 +231,8 @@ class ReaderTest : AppTest() {
         val pageWidth = page.fetchSemanticsNode().size.width
         assertTrue("the document gets most of the width", pageWidth > 2 * sidebarWidth)
 
-        // Picking a page keeps the sidebar; the button folds it away, and the
-        // document takes the room.
+        // Picking a page keeps the sidebar. The button folds it away, and the document takes the
+        // room.
         compose.onNodeWithText("3").performClick()
         waitForText("3 / 12")
         compose.onNodeWithTag(SIDEBAR_TAG).assertIsDisplayed()
@@ -280,7 +279,7 @@ class ReaderTest : AppTest() {
         // A swipe now turns a pair of pages.
         page.performTouchInput { swipeLeft() }
         waitForText("3–4 / 12")
-        // With the first page alone, the pairs are 2–3, 4–5, …
+        // With the first page alone, the pairs are 2 and 3, 4 and 5, and so on.
         view("First page alone")
         waitForText("2–3 / 12")
         page.performTouchInput { swipeLeft() }
@@ -314,13 +313,12 @@ class ReaderTest : AppTest() {
             return orientation == Configuration.ORIENTATION_LANDSCAPE
         }
         val before = landscape()
-        // Turning the device itself: large screens ignore an app's own
-        // orientation requests.
+        // Turning the device itself: large screens ignore an app's own orientation requests.
         val device = instrumentation.uiAutomation
         try {
             device.setRotation(UiAutomation.ROTATION_FREEZE_90)
-            // The window changes shape (on a tablet, between the sidebar and
-            // the phone layout); the document doesn't reload.
+            // The window changes shape (on a tablet, between the sidebar and the phone layout). The
+            // document doesn't reload.
             compose.waitUntil(WAIT_MS) { landscape() != before }
             waitForText("3 / 12")
             page.assertIsDisplayed()
@@ -343,7 +341,7 @@ class ReaderTest : AppTest() {
         waitForText("2 / 12")
         page.performTouchInput { swipeLeft() }
         waitForText("3 / 12")
-        // Leaving saves the position; the same file opens there again.
+        // Leaving saves the position, and the same file opens there again.
         reopen("pages.pdf")
         waitForText("3 / 12")
     }
@@ -369,7 +367,7 @@ class ReaderTest : AppTest() {
         waitForText("2 / 12")
         menu("Close")
         waitForText("Recent")
-        // Listed with where it was left; tapping it continues there.
+        // Listed with where it was left. Tapping it continues there.
         compose.onNodeWithText("Page 2 of 12", substring = true).assertIsDisplayed()
         compose.onNodeWithText("pages.pdf").performClick()
         waitForText("2 / 12")

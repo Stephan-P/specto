@@ -23,8 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
- * What the app shows without a document: a button to open one, and the
- * documents read recently, each with where the reader left off.
+ * What the app shows without a document: a button to open one, and the documents read recently,
+ * each with where the reader left off.
  */
 @Composable
 fun StartScreen(

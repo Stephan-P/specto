@@ -5,7 +5,7 @@ import java.io.File
 
 /** The app as a whole: what is set up before any of its screens. */
 class SpectoApp : Application() {
-    /** What went wrong, for bug reports; shown in Settings. */
+    /** What went wrong, for bug reports, shown in Settings. */
     lateinit var crashLog: CrashLog
         private set
 

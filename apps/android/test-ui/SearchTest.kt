@@ -18,10 +18,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Searching `pages.pdf`: every page is headed "Page n of 12" and has forty
- * lines of "the quick brown fox …". The highlights are drawn on the canvas,
- * so the tests go by the count in the search bar and by the page the view
- * lands on.
+ * Searching `pages.pdf`: every page is headed "Page n of 12" and has forty lines starting "the
+ * quick brown fox".
+ *
+ * The highlights are drawn on the canvas, so the tests go by the count in the search bar and by the
+ * page the view lands on.
  */
 @RunWith(AndroidJUnit4::class)
 class SearchTest : AppTest() {
@@ -85,15 +86,14 @@ class SearchTest : AppTest() {
         openAndSearch("page 3 of")
         waitForText("3 / 12")
         compose.onNodeWithContentDescription("Close search").performClick()
-        // The usual bar is back, on the page the search led to, and keys
-        // turn pages again.
+        // The usual bar is back, on the page the search led to, and keys turn pages again.
         compose.onNodeWithContentDescription("More").assertIsDisplayed()
         field.assertDoesNotExist()
         compose.onNodeWithText("3 / 12").assertIsDisplayed()
         page.performKeyInput { pressKey(Key.DirectionRight) }
         waitForText("4 / 12")
 
-        // Ctrl+F opens it as well; Back first puts the keyboard away, then closes.
+        // Ctrl+F opens it as well. Back first puts the keyboard away, then closes.
         page.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.F) } }
         field.assertIsDisplayed()
         Espresso.closeSoftKeyboard()

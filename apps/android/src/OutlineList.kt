@@ -32,8 +32,8 @@ import androidx.compose.ui.unit.dp
 import uniffi.specto_ffi.OutlineEntry
 
 /**
- * The indices of the [entries] to show, given the indices of the [expanded]
- * ones: an entry is shown unless one of its ancestors is collapsed.
+ * The indices of the [entries] to show, given the indices of the [expanded] ones: an entry is shown
+ * unless one of its ancestors is collapsed.
  */
 internal fun visibleOutlineRows(entries: List<OutlineEntry>, expanded: Set<Int>): List<Int> = buildList {
     var hiddenBelow = Int.MAX_VALUE
@@ -46,12 +46,13 @@ internal fun visibleOutlineRows(entries: List<OutlineEntry>, expanded: Set<Int>)
     }
 }
 
-/** Outlines up to this size start fully expanded; longer ones show their top level. */
+/** Outlines up to this size start fully expanded. Longer ones show their top level. */
 private const val EXPAND_ALL_UP_TO = 40
 
 /**
- * The document's outline (table of contents) as a collapsible list. Tapping
- * an entry calls [onPick] with its index into [PdfViewState.outline].
+ * The document's outline (table of contents) as a collapsible list.
+ *
+ * Tapping an entry calls [onPick] with its index into [PdfViewState.outline].
  */
 @Composable
 fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {

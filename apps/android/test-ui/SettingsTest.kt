@@ -16,7 +16,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Settings, from the ⋮ menu: what holds for the whole app, and what the switches there do. */
+/**
+ * Settings, from the overflow menu: what holds for the whole app, and what the switches there do.
+ */
 @RunWith(AndroidJUnit4::class)
 class SettingsTest : AppTest() {
     private fun openPages() = open("pages.pdf", shows = "1 / 12")

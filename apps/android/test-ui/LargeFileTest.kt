@@ -16,17 +16,18 @@ import org.junit.runner.RunWith
 import uniffi.specto_ffi.PdfFile
 
 /**
- * Files too large to want in memory: Rust maps them (from 64 MB) instead of
- * reading them, and the app hands it the file itself, not its bytes.
+ * Files too large to want in memory: Rust maps them (from 64 MB) instead of reading them, and the
+ * app hands it the file itself, not its bytes.
  */
 @RunWith(AndroidJUnit4::class)
 class LargeFileTest : AppTest() {
     private val large: File get() = File(instrumentation.targetContext.cacheDir, "large.pdf")
 
     /**
-     * A one-page PDF of a little over 64 MB. Nearly all of it is one unused
-     * stream, written as a hole in the file, so it takes next to no space
-     * or time and reads as zeros.
+     * A one-page PDF of a little over 64 MB.
+     *
+     * Nearly all of it is one unused stream, written as a hole in the file, so it takes next to no
+     * space or time and reads as zeros.
      */
     @Before
     fun writeLargeFile() {
@@ -87,18 +88,18 @@ class LargeFileTest : AppTest() {
     fun theAppOpensALargeFile() {
         reopen("large.pdf")
         waitForText("large.pdf")
-        // One blank page; its details come from the file all the same.
+        // One blank page. Its details come from the file all the same.
         menu("Properties")
         waitForText("210 × 297 mm (A4)")
         compose.onNodeWithText("File size").assertIsDisplayed()
         compose.onNodeWithText("Close").performClick()
-        // Leaving and coming back finds it again (it is recognised by parts
-        // of its content, without reading all of it).
+        // Leaving and coming back finds it again (it is recognized by parts of its content, without
+        // reading all of it).
         menu("Close")
         waitForText("Recent")
         compose.onNodeWithText("large.pdf").performClick()
-        // The list goes at once and the document takes a moment to open, so
-        // its name has to be waited for (the list had it too, hence both).
+        // The list goes at once and the document takes a moment to open, so its name has to be
+        // waited for (the list had it too, hence both).
         waitUntilGone("Recent")
         waitForText("large.pdf")
         compose.onNodeWithText("large.pdf").assertIsDisplayed()

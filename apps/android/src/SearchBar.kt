@@ -48,10 +48,11 @@ import uniffi.specto_ffi.SearchStatus
 const val SEARCH_FIELD_TAG = "search-field"
 
 /**
- * The top bar while searching: a field to type into, how many matches
- * there are and which one is shown, and buttons to the previous and next
- * one. Matches follow the typing. [onClose] leaves it (the arrow, or
- * Escape); the search itself is ended by whoever shows this.
+ * The top bar while searching: a field to type into, how many matches there are and which one is
+ * shown, and buttons to the previous and next one.
+ *
+ * Matches follow the typing. [onClose] leaves it (the arrow, or Escape). The search itself is ended
+ * by whoever shows this.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,8 +84,8 @@ fun SearchBar(state: PdfViewState, onClose: () -> Unit) {
                     .fillMaxWidth()
                     .focusRequester(focus)
                     .testTag(SEARCH_FIELD_TAG)
-                    // With a keyboard attached: Enter and Shift+Enter step
-                    // through the matches, Escape leaves.
+                    // With a keyboard attached: Enter and Shift+Enter step through the matches,
+                    // Escape leaves.
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
@@ -127,9 +128,8 @@ fun SearchBar(state: PdfViewState, onClose: () -> Unit) {
 }
 
 /**
- * How a search stands, in a few characters: "3 of 17", with "…" while more
- * of the document is still being searched, or "No matches" once all of it
- * has been.
+ * How a search stands, in a few characters: "3 of 17", with an ellipsis while more of the document
+ * is still being searched, or "No matches" once all of it has been.
  */
 internal fun searchSummary(status: SearchStatus?, texts: Texts): String {
     status ?: return ""

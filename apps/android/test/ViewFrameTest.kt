@@ -9,10 +9,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Decodes `crates/specto-ffi/fixtures/frame.bin`: the bytes Rust writes for a
- * known frame (`fixture_frame` in the crate's tests, which also checks that
- * the file is current). If the layout changes on the Rust side, that test
- * fails first; this one fails if the Kotlin decoder is not updated to match.
+ * Decodes `crates/specto-ffi/fixtures/frame.bin`: the bytes Rust writes for a known frame
+ * (`fixture_frame` in the crate's tests, which also checks that the file is current).
+ *
+ * If the layout changes on the Rust side, that test fails first, and this one fails if the Kotlin
+ * decoder is not updated to match.
  */
 class ViewFrameTest {
     private val frame: ViewFrame = run {
@@ -72,7 +73,7 @@ class ViewFrameTest {
 
     @Test
     fun thumbnails() {
-        // Announced for pages 2–4; page 2 is not rendered yet.
+        // Announced for pages 2 to 4. Page 2 is not rendered yet.
         assertEquals(0L, frame.thumbnailId(2))
         assertEquals(11L, frame.thumbnailId(3))
         assertEquals(12L, frame.thumbnailId(4))
@@ -162,13 +163,13 @@ class ViewFrameTest {
         assertEquals(330f to 151f, handleCentre(edge, end = true, radius = 30f))
         assertEquals(270f to 151f, handleCentre(edge, end = false, radius = 30f))
 
-        // A touch on it takes hold of the end; the selection then follows
-        // the middle of the line's edge, not the finger below it.
+        // A touch on it takes hold of the end. The selection then follows the middle of the line's
+        // edge, not the finger below it.
         val grab = frame.handleAt(340f, 160f, radius = 30f, reach = 80f)!!
         assertTrue(grab.end)
         assertEquals(300.25f - 340f, grab.dx)
         assertEquals(106f - 160f, grab.dy)
-        // Near enough still counts; further away is no handle.
+        // Near enough still counts, and further away is no handle.
         assertTrue(frame.handleAt(330f, 151f + 79f, radius = 30f, reach = 80f)!!.end)
         assertEquals(null, frame.handleAt(330f, 151f + 81f, radius = 30f, reach = 80f))
         assertEquals(null, frame.handleAt(100f, 60f, radius = 30f, reach = 80f))

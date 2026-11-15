@@ -20,22 +20,23 @@ private const val MAX_TRACE_CHARS = 12_000
 private const val ENTRY = "--- "
 
 /**
- * A record of what went wrong, for bug reports: exceptions that ended the
- * app, and panics in the Rust library, which mostly don't (a page that fails
- * to draw is skipped). It is a text [file] in the app's private storage that
- * Settings shows and the reader can share. Nothing is sent anywhere.
+ * A record of what went wrong, for bug reports: exceptions that ended the app, and panics in the
+ * Rust library, which mostly don't (a page that fails to draw is skipped).
  *
- * A crash in native code that is no panic (out of memory, or a mapped file
- * cut short by another app) ends the process at once and leaves no entry.
+ * It is a text [file] in the app's private storage that Settings shows and the reader can share.
+ * Nothing is sent anywhere.
  *
- * Both sides write entries in the same form, see `crash.rs` in `specto-ffi`:
- * a line of "--- ", the time in UTC and what happened, then the details.
+ * A crash in native code that is no panic (out of memory, or a mapped file cut short by another
+ * app) ends the process at once and leaves no entry.
+ *
+ * Both sides write entries in the same form, see `crash.rs` in `specto-ffi`: a line of "--- ", the
+ * time in UTC and what happened, then the details.
  */
 class CrashLog(private val file: File) {
     /**
-     * From now on, records exceptions nothing caught, before whatever
-     * handled them so far (the system, which ends the app) gets them, and
-     * panics in the Rust library. Call it once, as the app starts.
+     * From now on, records exceptions nothing caught, before whatever handled them so far (the
+     * system, which ends the app) gets them, and panics in the Rust library. Call it once, as the
+     * app starts.
      */
     fun install() {
         try {
@@ -59,12 +60,12 @@ class CrashLog(private val file: File) {
         try {
             uniffi.specto_ffi.logPanicsTo(file.path)
         } catch (e: Throwable) {
-            // The library didn't load. The app won't get far; say why.
+            // The library didn't load. The app won't get far, so say why.
             runCatching { file.appendText(crashEntry(Instant.now(), Thread.currentThread().name, e)) }
         }
     }
 
-    /** Everything recorded, oldest first; empty if nothing was. */
+    /** Everything recorded, oldest first, or empty if nothing was. */
     fun read(): String = try {
         if (file.exists()) file.readText() else ""
     } catch (e: Exception) {
@@ -77,8 +78,8 @@ class CrashLog(private val file: File) {
 }
 
 /**
- * Which app this is and what it runs on, to go with a shared log:
- * "Specto 0.1.0 (1), Android 16 (API 36), Google Pixel 9a".
+ * Which app this is and what it runs on, to go with a shared log: "Specto 0.1.0 (1), Android 16
+ * (API 36), Google Pixel 9a".
  */
 fun Context.appAndDevice(): String {
     val app = try {
@@ -112,8 +113,8 @@ internal fun lastCrashTime(log: String): Instant? = log.lineSequence()
     .lastOrNull()
 
 /**
- * The newest entries of [log] that fit into [max] characters, whole. If
- * even the newest one alone is longer, its end.
+ * The newest entries of [log] that fit into [max] characters, whole. If even the newest one alone
+ * is longer, its end.
  */
 internal fun trimmedLog(log: String, max: Int): String {
     if (log.length <= max) return log

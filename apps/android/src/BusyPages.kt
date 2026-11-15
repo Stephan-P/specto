@@ -38,13 +38,14 @@ private val SPINNER = 32.dp
 private val PLATE_SHAPE = RoundedCornerShape(12.dp)
 
 /**
- * A spinner over each page that takes long to draw and isn't sharp yet
- * ([ViewFrame.pageIsBusy]), in the middle of the part of it that is on
- * screen, as on the desktop. Such pages are rare (huge scans, mostly): any
- * other page is sharp within milliseconds and never shows one.
+ * A spinner over each page that takes long to draw and isn't sharp yet ([ViewFrame.pageIsBusy]), in
+ * the middle of the part of it that is on screen, as on the desktop.
  *
- * Fills the page view, on top of it, and takes no touches. While no page is
- * busy there is nothing here, and so nothing animating.
+ * Such pages are rare (huge scans, mostly): any other page is sharp within milliseconds and never
+ * shows one.
+ *
+ * Fills the page view, on top of it, and takes no touches. While no page is busy there is nothing
+ * here, and so nothing animating.
  */
 @Composable
 fun BusyPages(state: PdfViewState, modifier: Modifier = Modifier) {
@@ -56,7 +57,7 @@ fun BusyPages(state: PdfViewState, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().clipToBounds().onSizeChanged { view = it }) {
         for (i in 0 until frame.pageCount) {
             if (!frame.pageIsBusy(i)) continue
-            // What is on screen of the page; a sliver is left alone.
+            // What is on screen of the page. A sliver is left alone.
             val left = maxOf(frame.pageLeft(i), 0f)
             val top = maxOf(frame.pageTop(i), 0f)
             val right = minOf(frame.pageLeft(i) + frame.pageWidth(i), view.width.toFloat())

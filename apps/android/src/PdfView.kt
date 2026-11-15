@@ -86,10 +86,13 @@ import uniffi.specto_ffi.PdfException
 /** Radius of the round part of a selection handle. */
 private val HANDLE_RADIUS = 10.dp
 
-/** How far from a handle's centre a touch still takes hold of it. */
+/** How far from a handle's center a touch still takes hold of it. */
 private val HANDLE_REACH = 28.dp
 
-/** While scrolling continuously, a selection dragged this close to the top or bottom scrolls the view. */
+/**
+ * While scrolling continuously, a selection dragged this close to the top or bottom scrolls the
+ * view.
+ */
 private val AUTO_SCROLL_ZONE = 56.dp
 
 /** How fast that goes at most, in dp per second. */
@@ -102,10 +105,11 @@ private const val MENU_DELAY_MS = 150L
 private const val CLIPBOARD_MAX_CHARS = 300_000
 
 /**
- * The most text offered to other apps at once. Less than fits on the
- * clipboard: a shared text travels inside the request to the share sheet and
- * again inside the one to the app chosen, and those have a size limit that
- * everything else on its way at that moment counts towards.
+ * The most text offered to other apps at once.
+ *
+ * Less than fits on the clipboard: a shared text travels inside the request to the share sheet and
+ * again inside the one to the app chosen, and those have a size limit that everything else on its
+ * way at that moment counts towards.
  */
 internal const val SHARE_MAX_CHARS = 100_000
 
@@ -121,18 +125,23 @@ private class SelectionDrag {
     /** A long press selected a word, and the finger is still down. */
     var byPress = false
 
-    /** The point in the view (px) the moving end of the selection follows; null if none is. */
+    /**
+     * The point in the view (pixels) the moving end of the selection follows, or null if none is.
+     */
     var at: Offset? = null
 }
 
 /**
- * What keys do while the page has the focus, as on the desktop: arrows left
- * and right, Page Up and Down, Space and Backspace turn pages; arrows up and
- * down scroll; Home and End go to the first and last page; Ctrl with plus,
- * minus and zero zooms; Ctrl+A selects all text, Ctrl+C copies the selection
- * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]); Ctrl+S saves
- * ([onSave]); Ctrl+P prints ([onPrint]); Ctrl+Z takes back the last edit of the pages, and Shift+Ctrl+Z
- * or Ctrl+Y does it again.
+ * What keys do while the page has the focus, as on the desktop.
+ *
+ * - Arrows left and right, Page Up and Down, Space and Backspace turn pages.
+ * - Arrows up and down scroll.
+ * - Home and End go to the first and last page.
+ * - Ctrl with plus, minus and zero zooms.
+ * - Ctrl+A selects all text, Ctrl+C copies the selection ([onCopy]) and Escape drops it.
+ * - Ctrl+F searches ([onSearch]), Ctrl+S saves ([onSave]) and Ctrl+P prints ([onPrint]).
+ * - Ctrl+Z takes back the last edit of the pages, and Shift+Ctrl+Z or Ctrl+Y does it again.
+ *
  * Returns whether the key was used.
  */
 private fun PdfViewState.handleKey(
@@ -177,25 +186,23 @@ private fun PdfViewState.handleKey(
 }
 
 /**
- * Draws the frames planned by [state] and turns touches into scrolling or
- * swiping between pages, pinch zoom and double-tap zoom. A tap follows a
- * link; links leaving the document are passed to [onExternalLink], and taps
- * that hit no link to [onTap]. With a keyboard attached, keys turn pages,
- * scroll and zoom. No layout maths happens here.
+ * Draws the frames planned by [state] and turns touches into scrolling or swiping between pages,
+ * pinch zoom and double-tap zoom.
  *
- * A long press selects the word under the finger; moving on before lifting
- * it selects further words. The selection then has a handle at each end to
- * drag, and the system's text menu with "Copy", "Share" and "Select all". A tap or
- * Back drops it.
+ * A tap follows a link. Links leaving the document are passed to [onExternalLink], and taps that
+ * hit no link to [onTap]. With a keyboard attached, keys turn pages, scroll and zoom. No layout
+ * math happens here.
  *
- * What a search found is highlighted too. The search itself is run from
- * outside (see [PdfViewState.search]); [onSearch] is called for Ctrl+F, and
- * [onSave] for Ctrl+S and [onPrint] for Ctrl+P. The
- * page takes the keyboard focus when it appears, and again whenever
- * [refocus] changes.
+ * A long press selects the word under the finger, and moving on before lifting it selects further
+ * words. The selection then has a handle at each end to drag, and the system's text menu with
+ * "Copy", "Share" and "Select all". A tap or Back drops it.
  *
- * A page that takes long to draw has a spinner on it until it is sharp (see
- * [BusyPages]).
+ * What a search found is highlighted too. The search itself is run from outside (see
+ * [PdfViewState.search]). [onSearch] is called for Ctrl+F, and [onSave] for Ctrl+S and [onPrint]
+ * for Ctrl+P. The page takes the keyboard focus when it appears, and again whenever [refocus]
+ * changes.
+ *
+ * A page that takes long to draw has a spinner on it until it is sharp (see [BusyPages]).
  */
 @Composable
 fun PdfView(
@@ -313,10 +320,9 @@ private fun PageCanvas(
     BackHandler(enabled = state.hasSelection) { state.clearSelection() }
     BackHandler(enabled = state.hasPickedAnnotation) { state.clearPickedAnnotation() }
 
-    // While scrolling continuously, a selection dragged to the top or bottom
-    // edge scrolls the view on, so it can grow beyond what is on screen.
-    // How hard the finger pushes: -1 at the top edge, 1 at the bottom one, 0
-    // away from both.
+    // While scrolling continuously, a selection dragged to the top or bottom edge scrolls the view
+    // on, so it can grow beyond what is on screen. How hard the finger pushes: -1 at the top edge,
+    // 1 at the bottom one, 0 away from both.
     fun edgePush(at: Offset): Float {
         val zone = AUTO_SCROLL_ZONE.value * density
         return when {
@@ -328,7 +334,7 @@ private fun PageCanvas(
     }
     var atEdge by remember(state) { mutableStateOf(false) }
 
-    /** The finger moved the selection's end to [at] (px), or let go of it (null). */
+    /** The finger moved the selection's end to [at] (pixels), or let go of it (null). */
     fun follow(at: Offset?) {
         drag.at = at
         atEdge = at != null && edgePush(at) != 0f
@@ -347,8 +353,8 @@ private fun PageCanvas(
         }
     }
 
-    // The floating text menu, beside the selected text that is on screen. It goes away while the view or the selection is moving and
-    // comes back once they rest.
+    // The floating text menu, beside the selected text that is on screen. It goes away while the
+    // view or the selection is moving and comes back once they rest.
     val selected = if (state.hasSelection) {
         state.frame?.selectionBounds()?.let { Rect(it[0], it[1], it[2], it[3]) }
     } else {
@@ -383,9 +389,8 @@ private fun PageCanvas(
         onDispose { menu.hide() }
     }
 
-    // Sharpness probe, off unless `adb shell setprop log.tag.specto DEBUG`:
-    // a screenshot's page area should then match
-    // `specto render file.pdf -p <page> -s <device scale>` pixel for pixel.
+    // Sharpness probe, off unless `adb shell setprop log.tag.specto DEBUG`: a screenshot's page
+    // area should then match `specto render file.pdf -p <page> -s <device scale>` pixel for pixel.
     val frame = state.frame
     if (frame != null && frame.settled && frame.complete && Log.isLoggable("specto", Log.DEBUG)) {
         LaunchedEffect(frame) {
@@ -431,10 +436,9 @@ private fun PageCanvas(
                         if (state.hasSelection) {
                             state.clearSelection()
                         } else {
-                            // A link first, as on the desktop; then an
-                            // annotation, which the tap picks. A tap
-                            // elsewhere lets go of the picked one, and
-                            // does nothing else.
+                            // A link first, as on the desktop, then an annotation, which the tap
+                            // picks. A tap elsewhere lets go of the picked one, and does nothing
+                            // else.
                             val hadPicked = state.hasPickedAnnotation
                             when (val hit = state.tap(it / density)) {
                                 Activated.Nothing ->
@@ -462,8 +466,8 @@ private fun PageCanvas(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     state.stopMotion()
 
-                    // A touch on one of the selection's handles moves that
-                    // end of the selection, and does nothing else.
+                    // A touch on one of the selection's handles moves that end of the selection,
+                    // and does nothing else.
                     val grab = if (state.hasSelection) {
                         state.frame?.handleAt(down.position.x, down.position.y, handleRadius, reach)
                     } else {
@@ -496,8 +500,8 @@ private fun PageCanvas(
                     do {
                         val event = awaitPointerEvent()
                         if (drag.byPress) {
-                            // A long press selected a word (see above); as
-                            // the finger moves on, so does the selection.
+                            // A long press selected a word (see above). As the finger moves on, so
+                            // does the selection.
                             val finger = event.changes.firstOrNull { it.id == down.id }
                             if (finger != null && finger.pressed && finger.positionChanged()) {
                                 follow(finger.position)
@@ -575,8 +579,8 @@ private fun PageCanvas(
             }
             drawPath(outline, accent, style = Stroke(width = PICKED_OUTLINE.toPx()))
         }
-        // What the search found and what is selected, and a handle at each
-        // end of the selection that is on screen.
+        // What the search found and what is selected, and a handle at each end of the selection
+        // that is on screen.
         if (f.highlightCount > 0) {
             highlights.forEach { it.rewind() }
             for (i in 0 until f.highlightCount) {
@@ -595,18 +599,16 @@ private fun PageCanvas(
 }
 
 /**
- * Draws the annotations of a frame that aren't part of the pages as
- * rendered ([ViewFrame.shapeCount]), reusing its paints and path from frame
- * to frame.
+ * Draws the annotations of a frame that aren't part of the pages as rendered
+ * ([ViewFrame.shapeCount]), reusing its paints and path from frame to frame.
  */
 private class ShapePainter {
     private val path = android.graphics.Path()
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    // The layer of highlights is multiplied with the page under it. Before
-    // Android 10 there is no such blend that leaves the page alone where
-    // the layer is empty (PorterDuff's MULTIPLY blackens it), so there the
-    // darker of the two colours is taken: the same on white paper and
+    // The layer of highlights is multiplied with the page under it. Before Android 10 there is no
+    // such blend that leaves the page alone where the layer is empty (PorterDuff's MULTIPLY
+    // blackens it), so there the darker of the two colors is taken: the same on white paper and
     // black text, and close to it elsewhere.
     private val darken = Paint().apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -617,11 +619,11 @@ private class ShapePainter {
     }
 
     /**
-     * Draws the shapes of the [page]th visible page of [frame] onto
-     * [canvas], which is clipped to that page; [scratch] is a rectangle to
-     * use. Highlights first: they darken the page under them, together,
-     * so that two that overlap don't darken it twice. Then the rest, on
-     * top of the page.
+     * Draws the shapes of the [page]th visible page of [frame] onto [canvas], which is clipped to
+     * that page.
+     *
+     * [scratch] is a rectangle to use. Highlights first: they darken the page under them, together,
+     * so that two that overlap don't darken it twice. Then the rest, on top of the page.
      */
     fun draw(canvas: android.graphics.Canvas, frame: ViewFrame, page: Int, scratch: RectF) {
         val shapes = (0 until frame.shapeCount).filter { frame.shapePage(it) == page }
@@ -671,8 +673,8 @@ private class ShapePainter {
 }
 
 /**
- * A selection handle as Android draws them: a drop hanging below the line,
- * its pointed corner at the bottom of [edge] (see [handleCentre]).
+ * A selection handle as Android draws them: a drop hanging below the line, its pointed corner at
+ * the bottom of [edge] (see [handleCentre]).
  */
 private fun DrawScope.drawHandle(edge: FloatArray, end: Boolean, radius: Float, colour: Color) {
     val (x, y) = handleCentre(edge, end, radius)

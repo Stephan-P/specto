@@ -3,16 +3,17 @@ package net.xfbs.specto
 import java.nio.ByteBuffer
 
 /**
- * Everything needed to draw the view once, as planned in Rust. Rectangles are
- * in device pixels relative to the view's top-left corner.
+ * Everything needed to draw the view once, as planned in Rust.
  *
- * Kept in flat arrays rather than objects per page and tile: one of these is
- * created for every frame while scrolling.
+ * Rectangles are in device pixels relative to the view's top-left corner.
+ *
+ * Kept in flat arrays rather than objects per page and tile: one of these is created for every
+ * frame while scrolling.
  */
 class ViewFrame private constructor(
     /** Every visible tile is sharp. */
     val complete: Boolean,
-    /** Pages are drawn 1:1 from tiles at the exact device scale. */
+    /** Pages are drawn one to one from tiles at the exact device scale. */
     val settled: Boolean,
     /** One page at a time, swiped left and right (otherwise: one scrolling column). */
     val paged: Boolean,
@@ -51,13 +52,15 @@ class ViewFrame private constructor(
     /** Why each is highlighted: one of the `HIGHLIGHT_*` constants. */
     private val highlightKinds: IntArray,
     /**
-     * Where the selection starts, for its handle: the edge of its first
-     * line as bottom x, bottom y, top x, top y. Null if that isn't on screen.
+     * Where the selection starts, for its handle: the edge of its first line as bottom x, bottom y,
+     * top x, top y. Null if that isn't on screen.
      */
     val selectionStart: FloatArray?,
     /** Where the selection ends, likewise. */
     val selectionEnd: FloatArray?,
-    /** Five numbers per shape: its page, its flags, fill and stroke colour, and its first segment. */
+    /**
+     * Five numbers per shape: its page, its flags, fill and stroke color, and its first segment.
+     */
     private val shapeHeads: IntArray,
     private val shapeWidths: FloatArray,
     /** Where each shape's outline starts: x and y. */
@@ -66,16 +69,16 @@ class ViewFrame private constructor(
     /** Six numbers per segment: x and y of up to three points. */
     private val segmentPoints: FloatArray,
     /**
-     * The box around the annotation that is picked, as x and y of its four
-     * corners, around it. Null if none is picked, or it isn't on screen.
+     * The box around the annotation that is picked, as x and y of its four corners, around it. Null
+     * if none is picked, or it isn't on screen.
      */
     val picked: FloatArray?,
 ) {
     /**
-     * How many shapes there are to draw over the pages, under the
-     * highlights: the annotations that aren't part of the pages as rendered
-     * (those made or changed since the file was read). Each is an outline,
-     * filled, drawn along with a pen, or both, and belongs to one page.
+     * How many shapes there are to draw over the pages, under the highlights: the annotations that
+     * aren't part of the pages as rendered (those made or changed since the file was read).
+     *
+     * Each is an outline, filled, drawn along with a pen, or both, and belongs to one page.
      */
     val shapeCount: Int get() = shapeWidths.size
 
@@ -94,7 +97,7 @@ class ViewFrame private constructor(
     /** The pen is round: round ends and joins. */
     fun shapeIsRound(i: Int): Boolean = shapeHeads[5 * i + 1] and 16 != 0
 
-    /** Colours as 0xAARRGGBB. */
+    /** Colors as 0xAARRGGBB. */
     fun shapeFill(i: Int): Int = shapeHeads[5 * i + 2]
     fun shapeStroke(i: Int): Int = shapeHeads[5 * i + 3]
     fun shapeStrokeWidth(i: Int): Float = shapeWidths[i]
@@ -102,13 +105,19 @@ class ViewFrame private constructor(
     fun shapeStartX(i: Int): Float = shapeStarts[2 * i]
     fun shapeStartY(i: Int): Float = shapeStarts[2 * i + 1]
 
-    /** The pieces of shape [i]'s outline, each from where the one before ended: indices for the `segment*` accessors. */
+    /**
+     * The pieces of shape [i]'s outline, each from where the one before ended: indices for the
+     * `segment*` accessors.
+     */
     fun segments(i: Int): IntRange {
         val end = if (i + 1 < shapeCount) shapeHeads[5 * (i + 1) + 4] else segmentCurved.size
         return shapeHeads[5 * i + 4] until end
     }
 
-    /** A cubic curve, with control points 0 and 1 and its end as point 2; else a line to point 0. */
+    /**
+     * A cubic curve, with control points 0 and 1 and its end as point 2. Otherwise a line to point
+     * 0.
+     */
     fun segmentIsCurve(s: Int): Boolean = segmentCurved[s]
 
     fun segmentX(s: Int, point: Int): Float = segmentPoints[6 * s + 2 * point]
@@ -123,10 +132,11 @@ class ViewFrame private constructor(
     }
 
     /**
-     * How many stretches of text on screen are highlighted, because they
-     * are selected or the search found them; one per line. Each is a
-     * quadrilateral (lines can be rotated) with the corners 0: start
-     * bottom, 1: end bottom, 2: end top, 3: start top.
+     * How many stretches of text on screen are highlighted, because they are selected or the search
+     * found them, one per line.
+     *
+     * Each is a quadrilateral (lines can be rotated) with the corners 0: start bottom, 1: end
+     * bottom, 2: end top, 3: start top.
      */
     val highlightCount: Int get() = highlightKinds.size
 
@@ -136,7 +146,10 @@ class ViewFrame private constructor(
     fun highlightX(i: Int, corner: Int): Float = highlights[8 * i + 2 * corner]
     fun highlightY(i: Int, corner: Int): Float = highlights[8 * i + 2 * corner + 1]
 
-    /** What the selected text on screen covers, as left, top, right, bottom; null if there is none. */
+    /**
+     * What the selected text on screen covers, as left, top, right, bottom, or null if there is
+     * none.
+     */
     fun selectionBounds(): FloatArray? {
         var bounds: FloatArray? = null
         for (h in highlightKinds.indices) {
@@ -154,9 +167,8 @@ class ViewFrame private constructor(
     }
 
     /**
-     * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't
-     * rendered yet or [page] is outside the range last passed to
-     * [PdfViewState.showThumbnails].
+     * The tile to show as thumbnail of [page] (zero-based), or 0 if it isn't rendered yet or [page]
+     * is outside the range last passed to [PdfViewState.showThumbnails].
      */
     fun thumbnailId(page: Int): Long = thumbnails.getOrElse(page - thumbnailFirst) { 0 }
 
@@ -173,16 +185,17 @@ class ViewFrame private constructor(
     fun pageHeight(i: Int): Float = pageRects[4 * i + 3]
 
     /**
-     * Whether the [i]th visible page takes long to render (huge images,
-     * mostly) and isn't sharp yet: it gets a spinner. Other pages are sharp
-     * within milliseconds and never say so.
+     * Whether the [i]th visible page takes long to render (huge images, mostly) and isn't sharp
+     * yet: it gets a spinner.
+     *
+     * Other pages are sharp within milliseconds and never say so.
      */
     fun pageIsBusy(i: Int): Boolean = pageBusy[i]
 
     /** Whether [i] is one of the pages being looked at ([currentPage] to [lastPage]). */
     private fun isCurrent(i: Int): Boolean = pageIndex[i] in currentPage..lastPage
 
-    /** The top edge of the pages being looked at; 0 if none of them is visible. */
+    /** The top edge of the pages being looked at, or 0 if none of them is visible. */
     fun currentTop(): Float =
         (0 until pageCount).filter(::isCurrent).minOfOrNull { pageTop(it) } ?: 0f
 
@@ -190,7 +203,10 @@ class ViewFrame private constructor(
     fun currentBottom(): Float =
         (0 until pageCount).filter(::isCurrent).maxOfOrNull { pageTop(it) + pageHeight(it) } ?: 0f
 
-    /** Whether they are no larger than [width] × [height] pixels, so that there is nowhere to pan to. */
+    /**
+     * Whether they are no larger than [width] by [height] pixels, so that there is nowhere to pan
+     * to.
+     */
     fun currentFitsIn(width: Float, height: Float): Boolean {
         val pages = (0 until pageCount).filter(::isCurrent)
         if (pages.isEmpty()) return true
@@ -207,7 +223,7 @@ class ViewFrame private constructor(
     fun tileRight(t: Int): Float = tileRects[4 * t] + tileRects[4 * t + 2]
     fun tileBottom(t: Int): Float = tileRects[4 * t + 1] + tileRects[4 * t + 3]
 
-    /** The tile maps 1:1 onto device pixels: draw without filtering. */
+    /** The tile maps one to one onto device pixels: draw without filtering. */
     fun tileIsExact(t: Int): Boolean = tileExact[t]
 
     companion object {
@@ -220,7 +236,9 @@ class ViewFrame private constructor(
         private const val TILE_BYTES = 32
         private const val SEGMENT_BYTES = 32
 
-        /** Reads the layout documented in crates/specto-ffi/src/hot.rs ([b] in native byte order). */
+        /**
+         * Reads the layout documented in crates/specto-ffi/src/hot.rs ([b] in native byte order).
+         */
         fun decode(b: ByteBuffer, length: Int): ViewFrame {
             b.position(0)
             val flags = b.getInt()

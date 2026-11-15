@@ -23,16 +23,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Selecting and copying text. Every page of `pages.pdf` is headed "Page n of
- * 12" in bold 22 pt type, starting 62 pt from the left with its baseline
- * 70 pt below the top ("Page" ends at about 115 pt, "of" spans about 139 to
- * 160, the line ends at about 190); nothing is printed in the lowest part
- * of a page.
+ * Selecting and copying text.
  *
- * The highlight and the handles are drawn on the canvas, so the tests see
- * neither: they go by whether the page says that text is selected, and by
- * what lands on the clipboard (copied with Ctrl+C, or with the "Copy" of
- * the floating menu). "Share" in that menu is in `ShareTest`.
+ * Every page of `pages.pdf` is headed "Page n of 12" in bold type of 22 points, starting 62 points
+ * from the left with its baseline 70 points below the top ("Page" ends at about 115 points, "of"
+ * spans about 139 to 160, the line ends at about 190). Nothing is printed in the lowest part of a
+ * page.
+ *
+ * The highlight and the handles are drawn on the canvas, so the tests see neither: they go by
+ * whether the page says that text is selected, and by what lands on the clipboard (copied with
+ * Ctrl+C, or with the "Copy" of the floating menu). "Share" in that menu is in `ShareTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class SelectionTest : AppTest() {
@@ -105,8 +105,8 @@ class SelectionTest : AppTest() {
         openPages()
         page.performTouchInput { longClick(heading(150f)) }
         waitForSelection()
-        // The handles hang below the line: the end one to the right of the
-        // word's end, the start one to the left of its start.
+        // The handles hang below the line: the end one to the right of the word's end, the start
+        // one to the left of its start.
         page.performTouchInput {
             val handle = Offset(10 * density, 10 * density)
             down(pagePoint(160f, fromTop = 75f) + handle)
@@ -131,16 +131,16 @@ class SelectionTest : AppTest() {
     fun draggingToTheEdgeScrollsOnWhenScrollingContinuously() {
         openPages()
         view("Continuous")
-        // Scrolling, pages are fitted to the width and the first one starts
-        // at the top: "Page", in its heading.
+        // Scrolling, pages are fitted to the width and the first one starts at the top: "Page", in
+        // its heading.
         page.performTouchInput {
             val margin = 8 * density
             val zoom = (width - 2 * margin) / 595f
             down(Offset(margin + 85f * zoom, margin + 62f * zoom))
         }
         waitForSelection()
-        // Holding the finger at the bottom edge keeps the view scrolling for
-        // as long as it stays there, so time is moved on by hand here.
+        // Holding the finger at the bottom edge keeps the view scrolling for as long as it stays
+        // there, so time is moved on by hand here.
         compose.mainClock.autoAdvance = false
         try {
             page.performTouchInput {

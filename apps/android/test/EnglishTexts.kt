@@ -5,9 +5,8 @@ import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * The app's English texts, read from `res/values/strings.xml`: unit tests
- * run without Android's resources, and this way they still check what the
- * reader gets to see, placeholders included.
+ * The app's English texts, read from `res/values/strings.xml`: unit tests run without Android's
+ * resources, and this way they still check what the reader gets to see, placeholders included.
  */
 object EnglishTexts : Texts {
     /** The texts by name. Gradle runs unit tests in the project's directory. */

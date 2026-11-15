@@ -47,12 +47,16 @@ import androidx.compose.ui.unit.dp
 const val KEEP_SCREEN_ON_MINUTES = 10
 
 /**
- * What the reader set for the whole app, as opposed to what is remembered
- * for each document (see [DocumentStore]). Observable, and stored as soon as
- * it changes. Main thread only.
+ * What the reader set for the whole app, as opposed to what is remembered for each document (see
+ * [DocumentStore]).
+ *
+ * Observable, and stored as soon as it changes. Main thread only.
  */
 class AppSettings(private val stored: SharedPreferences) {
-    /** While a document is open, the screen stays on for [KEEP_SCREEN_ON_MINUTES] after the last touch. */
+    /**
+     * While a document is open, the screen stays on for [KEEP_SCREEN_ON_MINUTES] after the last
+     * touch.
+     */
     var keepScreenOn: Boolean by flag("keep_screen_on")
 
     /** The volume keys turn pages (or scroll) instead of changing the volume. */
@@ -104,7 +108,7 @@ fun SettingsScreen(settings: AppSettings, crashLog: CrashLog, onBack: () -> Unit
                 stringResource(R.string.setting_volume_keys_detail),
                 settings.volumeKeysTurnPages,
             ) { settings.volumeKeysTurnPages = it }
-            // What went wrong, for a bug report; see [CrashLog].
+            // What went wrong, for a bug report (see [CrashLog]).
             val last = remember(recorded) { lastCrashTime(recorded) }
             Entry(
                 stringResource(R.string.crash_log),
@@ -133,8 +137,8 @@ fun SettingsScreen(settings: AppSettings, crashLog: CrashLog, onBack: () -> Unit
 const val CRASH_LOG_TAG = "crash-log"
 
 /**
- * The crash log as it is, to read, to share (with a line saying which app
- * and device it is from) or to delete.
+ * The crash log as it is, to read, to share (with a line saying which app and device it is from) or
+ * to delete.
  */
 @Composable
 private fun CrashLogDialog(log: String, onDelete: () -> Unit, onDismiss: () -> Unit) {
@@ -171,7 +175,7 @@ private fun CrashLogDialog(log: String, onDelete: () -> Unit, onDismiss: () -> U
     )
 }
 
-/** Something to open, with its explanation; the whole row is the button. */
+/** Something to open, with its explanation. The whole row is the button. */
 @Composable
 private fun Entry(title: String, detail: String, enabled: Boolean, onClick: () -> Unit) {
     Column(
@@ -179,7 +183,7 @@ private fun Entry(title: String, detail: String, enabled: Boolean, onClick: () -
             .fillMaxWidth()
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 16.dp)
-            // Greyed out, as Material does for what can't be used.
+            // Grayed out, as Material does for what can't be used.
             .alpha(if (enabled) 1f else 0.38f),
     ) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
@@ -191,7 +195,7 @@ private fun Entry(title: String, detail: String, enabled: Boolean, onClick: () -
     }
 }
 
-/** One switch with its explanation; the whole row toggles it. */
+/** One switch with its explanation. The whole row toggles it. */
 @Composable
 private fun Setting(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
     Row(
@@ -209,7 +213,7 @@ private fun Setting(title: String, detail: String, on: Boolean, onChange: (Boole
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // The row is the control; the switch only shows the state.
+        // The row is the control, and the switch only shows the state.
         Switch(checked = on, onCheckedChange = null)
     }
 }

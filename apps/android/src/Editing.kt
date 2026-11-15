@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
 import uniffi.specto_ffi.EditKind
 import uniffi.specto_ffi.EditStep
 
-/** "Undo rotate", "Undo delete", …: the menu item that takes [step] back. */
+/** The menu item that takes [step] back, such as "Undo rotate" or "Undo delete". */
 @StringRes
 internal fun undoLabel(step: EditStep): Int = when (step.kind) {
     EditKind.ROTATE -> R.string.undo_rotate
@@ -52,7 +52,7 @@ internal fun undoLabel(step: EditStep): Int = when (step.kind) {
     EditKind.CHANGE_ANNOTATION -> R.string.undo_change_annotation
 }
 
-/** "Redo rotate", …: the menu item that does [step] again. */
+/** The menu item that does [step] again, such as "Redo rotate". */
 @StringRes
 internal fun redoLabel(step: EditStep): Int = when (step.kind) {
     EditKind.ROTATE -> R.string.redo_rotate
@@ -65,8 +65,8 @@ internal fun redoLabel(step: EditStep): Int = when (step.kind) {
 }
 
 /**
- * The top bar while pages are picked in the page grid: how many, and what
- * can be done with them. Its ✕ (like Back) lets go of them.
+ * The top bar while pages are picked in the page grid: how many, and what can be done with them.
+ * Its ✕ (like Back) lets go of them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,13 +112,16 @@ fun SelectionBar(state: PdfViewState) {
 }
 
 /**
- * Asked before a document with unsaved edits is left: nothing is saved
- * unless the reader says where.
+ * Asked before a document with unsaved edits is left: nothing is saved unless the reader says
+ * where.
  */
 @Composable
 fun UnsavedChangesDialog(
     name: String,
-    /** Whether saving means asking where ("Save as"), since the document's own file can't be written over. */
+    /**
+     * Whether saving means asking where ("Save as"), since the document's own file can't be written
+     * over.
+     */
     saveAs: Boolean,
     onSave: () -> Unit,
     onDiscard: () -> Unit,
@@ -136,7 +139,9 @@ fun UnsavedChangesDialog(
     )
 }
 
-/** Says [what] the app is busy with (writing the document, say); nothing else can be done meanwhile. */
+/**
+ * Says [what] the app is busy with (writing the document, say). Nothing else can be done meanwhile.
+ */
 @Composable
 fun BusyDialog(what: String) {
     AlertDialog(
@@ -146,14 +151,14 @@ fun BusyDialog(what: String) {
     )
 }
 
-/** Where a document being saved is written first; see [writeEdited]. */
+/** Where a document being saved is written first (see [writeEdited]). */
 private const val SAVING_DIR = "saving"
 
 /**
- * Writes the document open in [state], as edited, to a file of the app's
- * own and returns it. From there it is copied to where the reader wants it
- * once nothing reads the original any more: a large original is mapped
- * while open, and a mapped file must not change, which it would if the
+ * Writes the document open in [state], as edited, to a file of the app's own and returns it.
+ *
+ * From there it is copied to where the reader wants it once nothing reads the original any more: a
+ * large original is mapped while open, and a mapped file must not change, which it would if the
  * reader chose to save over it. Throws if it can't be written.
  */
 suspend fun Context.writeEdited(state: PdfViewState, name: String): File {
@@ -161,8 +166,7 @@ suspend fun Context.writeEdited(state: PdfViewState, name: String): File {
         val dir = File(cacheDir, SAVING_DIR)
         dir.deleteRecursively()
         dir.mkdirs()
-        // Under the document's name: should copying it fail, it is what
-        // the reader is left with.
+        // Under the document's name: should copying it fail, it is what the reader is left with.
         File(dir, sharedFileName(name))
     }
     state.writeTo(file.writableDescriptor(), countsAsSaved = false)
@@ -176,7 +180,7 @@ suspend fun Context.copyTo(file: File, destination: Uri) = withContext(Dispatche
     }
 }
 
-/** What [DocumentStore] recognises this file by. */
+/** What [DocumentStore] recognizes this file by. */
 internal fun File.fingerprint(): String = RandomAccessFile(this, "r").use { file ->
     DocumentStore.fingerprint(file.length()) { offset, length ->
         ByteArray(length).also {

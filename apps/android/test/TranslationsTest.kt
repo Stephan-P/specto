@@ -8,13 +8,14 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The translations (`res/values-<language>/strings.xml`) against the English
- * texts: each has every text and no others, with the same placeholders. A
- * placeholder lost or mistyped in a translation would otherwise only show,
- * as a crash, when that text comes up in that language.
+ * The translations (`res/values-<language>/strings.xml`) against the English texts: each has every
+ * text and no others, with the same placeholders.
+ *
+ * A placeholder lost or mistyped in a translation would otherwise only show, as a crash, when that
+ * text comes up in that language.
  */
 class TranslationsTest {
-    /** A file's texts by name; a plural's forms as "name/one", "name/other". */
+    /** A file's texts by name, with a plural's forms as "name/one", "name/other". */
     private fun texts(file: File): Map<String, String> {
         val root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).documentElement
         val children = root.childNodes
@@ -36,7 +37,7 @@ class TranslationsTest {
         return texts
     }
 
-    /** "%1$s", "%d", …, in order of appearance. */
+    /** The placeholders, such as "%1$s" and "%d", in order of appearance. */
     private fun placeholders(text: String): List<String> =
         Regex("""%(\d+\$)?[sd]""").findAll(text).map { it.value }.toList().sorted()
 
@@ -54,8 +55,8 @@ class TranslationsTest {
     @Test
     fun translationsHaveEveryTextAndNoOthers() {
         for ((language, texts) in translations) {
-            // English and German have the same plural forms; a language with
-            // more of them will need this to be told so.
+            // English and German have the same plural forms. A language with more of them will need
+            // this to be told so.
             assertEquals("texts of $language", english.keys.sorted(), texts.keys.sorted())
         }
     }
