@@ -36,7 +36,7 @@ enum Command {
     /// Print the text layer (words separated by spaces, lines by newlines).
     Text {
         file: PathBuf,
-        /// Pages, 1-based, e.g. "1,3,5-7". Default: all.
+        /// Pages, 1-based, such as "1,3,5-7". Default: all.
         #[arg(short, long)]
         pages: Option<String>,
         #[arg(long)]
@@ -45,14 +45,14 @@ enum Command {
         #[arg(long)]
         annotations: bool,
     },
-    /// Write a copy of a PDF with pages picked, reordered or rotated, as the
-    /// apps save edited documents.
+    /// Write a copy of a PDF with pages picked, reordered or rotated, as the apps save edited
+    /// documents.
     Save {
         file: PathBuf,
-        /// Where to write; may be the input file.
+        /// Where to write, which may be the input file.
         #[arg(short, long)]
         output: PathBuf,
-        /// Pages to keep, in order, 1-based, e.g. "3,1-2". Default: all.
+        /// Pages to keep, in order, 1-based, such as "3,1-2". Default: all.
         #[arg(short, long)]
         pages: Option<String>,
         /// Turn the kept pages clockwise by this many degrees (90, 180, 270).
@@ -68,14 +68,13 @@ enum Command {
     Corpus(corpus::CorpusArgs),
 }
 
-/// Makes writing to a closed pipe (`specto info … | head`) end the program
-/// quietly, as for other command line tools. Rust ignores SIGPIPE, so
-/// `println!` would panic instead.
+/// Makes writing to a closed pipe (`specto info … | head`) end the program quietly, as for other
+/// command line tools. Rust ignores SIGPIPE, so `println!` would panic instead.
 #[cfg(unix)]
 #[allow(unsafe_code)]
 fn default_sigpipe() {
-    // SAFETY: called at the start of main, before any other threads exist;
-    // it only resets how the process handles one signal.
+    // SAFETY: called at the start of main, before any other threads exist. It only resets how the
+    // process handles one signal.
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
@@ -83,8 +82,8 @@ fn default_sigpipe() {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    // Not for check and corpus, which talk to child processes through
-    // pipes and handle their errors.
+    // Not for check and corpus, which talk to child processes through pipes and handle their
+    // errors.
     #[cfg(unix)]
     if !matches!(cli.command, Command::Check(_) | Command::Corpus(_)) {
         default_sigpipe();
@@ -248,14 +247,14 @@ struct RenderArgs {
     /// Output directory.
     #[arg(short, long, default_value = "out")]
     output: PathBuf,
-    /// Pages to render, 1-based, e.g. "1,3,5-7". Default: all.
+    /// Pages to render, 1-based, such as "1,3,5-7". Default: all.
     #[arg(short, long)]
     pages: Option<String>,
     /// Device pixels per PDF point (2.0 = 144 dpi).
     #[arg(short, long, default_value_t = 2.0)]
     scale: f64,
-    /// Only render this part of the page bitmap, "x,y,width,height" in
-    /// pixels at `--scale`, like a viewer tile.
+    /// Only render this part of the page bitmap, "x,y,width,height" in pixels at `--scale`, like a
+    /// viewer tile.
     #[arg(long)]
     region: Option<String>,
     /// Don't draw annotations stored in the file.

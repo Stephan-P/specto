@@ -1,10 +1,10 @@
 //! Renders one file and compares it with a reference renderer.
 //!
-//! Runs in a child process of `specto corpus` so that hangs, aborts and stack
-//! overflows in the renderer only take down this one file.
+//! Runs in a child process of `specto corpus` so that hangs, aborts and stack overflows in the
+//! renderer only take down this one file.
 //!
-//! Output: one tab-separated line per page on stdout:
-//! `page  width  height  ms  status  diff_fraction  mean_abs_diff`
+//! Output: one tab-separated line per page on stdout: `page  width  height  ms  status
+//! diff_fraction  mean_abs_diff`
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -94,9 +94,8 @@ pub fn run(args: &CheckArgs) -> Result<()> {
     Ok(())
 }
 
-/// pdftoppm gets its own deadline, shorter than `corpus`'s per-file timeout.
-/// Otherwise `corpus` kills this process first and pdftoppm is orphaned,
-/// burning CPU in the background indefinitely.
+/// pdftoppm gets its own deadline, shorter than `corpus`'s per-file timeout. Otherwise `corpus`
+/// kills this process first and pdftoppm is orphaned, burning CPU in the background indefinitely.
 const REFERENCE_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn reference_render(file: &Path, page: usize, scale: f64, tmp: &Path) -> Result<image::RgbImage> {
@@ -123,15 +122,15 @@ fn reference_render(file: &Path, page: usize, scale: f64, tmp: &Path) -> Result<
 struct Diff {
     /// Fraction of pixels whose largest channel difference exceeds the tolerance.
     fraction: f64,
-    /// Mean absolute channel difference (0–255).
+    /// Mean absolute channel difference (0 to 255).
     mean_abs: f64,
 }
 
-/// Compares the overlapping area; renderers may round page sizes differently by a pixel.
+/// Compares the overlapping area, since renderers may round page sizes differently by a pixel.
 ///
-/// A pixel only counts as differing if *no* reference pixel within a 1 px
-/// radius is close to it, so sub-pixel glyph positioning and anti-aliasing
-/// differences don't drown out real rendering errors.
+/// A pixel only counts as differing if *no* reference pixel within a radius of 1 pixel is close to
+/// it, so sub-pixel glyph positioning and anti-aliasing differences don't drown out real rendering
+/// errors.
 fn diff(ours: &Bitmap, reference: &image::RgbImage) -> Diff {
     let w = ours.width.min(reference.width());
     let h = ours.height.min(reference.height());
