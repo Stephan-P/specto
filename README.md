@@ -1,6 +1,27 @@
-# Specto
+<p align="center">
+  <img src="apps/desktop/data/icons/net.xfbs.specto.svg" width="128" height="128" alt="">
+</p>
 
-A PDF viewer and light editor written in Rust, with a shared core and two apps:
+<h1 align="center">Specto</h1>
+
+<p align="center">
+  A fast document viewer and light editor for Linux and Android, written in Rust.
+</p>
+
+<p align="center">
+  <a href="apps/desktop/README.md">Desktop</a> ·
+  <a href="apps/android/README.md">Android</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="docs/TASKS.md">Plan</a>
+</p>
+
+<p align="center">
+  <img src="apps/desktop/screenshot.png" width="60%" alt="Specto on the desktop: two pages side by side, with the table of contents in the sidebar">
+  &nbsp;
+  <img src="apps/android/screenshot-phone.png" width="21%" alt="Specto on a phone: a page of a manual, the page number, and a strip of page thumbnails along the bottom">
+</p>
+
+Specto is a shared core with two apps on top of it:
 
 - [Desktop](apps/desktop/README.md): GTK 4 and libadwaita, for Linux (also runs on macOS)
 - [Android](apps/android/README.md): Kotlin and Jetpack Compose
@@ -24,7 +45,7 @@ Not planned, at least for now: editing existing page content (reflowing text), X
 
 ## Status
 
-Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and edit pages: rotate, delete, reorder them by dragging thumbnails, insert pages from other PDFs, export a selection of pages, and save the result. It also prints. Android gets text selection and search next, then page editing. Annotations and forms come after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
+Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. In both you can select, copy and search text, and edit pages: rotate, delete and reorder them, and save the result. The desktop app can also insert pages from other PDFs, export a selection of pages, and print. Annotations and forms come next. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 ## Building
 
