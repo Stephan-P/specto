@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Android bindings for Specto, through UniFFI and JNI"
 
 [lib]
 # cdylib for Android (libspecto_ffi.so), lib for host tests.

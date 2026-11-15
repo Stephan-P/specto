@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Text layer for specto: characters with positions, words, lines"
+description = "Text layer for Specto: characters with positions, words, lines"
 
 [dependencies]
 hayro.workspace = true

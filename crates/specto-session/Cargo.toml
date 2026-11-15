@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "An open document as the specto apps hold it: its files, pages as edited, viewer, text, selection and search"
+description = "An open document as the Specto apps hold it: its files, pages as edited, viewer, text, selection and search"
 
 [dependencies]
 specto-annot.workspace = true

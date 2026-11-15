@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "The edit model of specto: the pages and annotations of a document being edited, with undo and redo"
+description = "The edit model of Specto: the pages and annotations of a document being edited, with undo and redo"
 
 [dependencies]
 specto-annot.workspace = true

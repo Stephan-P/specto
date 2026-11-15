@@ -62,7 +62,7 @@ android {
             // users get it, not for distributing it.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             // R8 removes what the app doesn't use (most of Compose and the
-            // icon set) and shortens names; proguard-rules.pro says what it
+            // icon set) and shortens names, and proguard-rules.pro says what it
             // must leave alone.
             isMinifyEnabled = true
             isShrinkResources = true
@@ -77,7 +77,7 @@ android {
     androidResources {
         // Lists the languages there are texts for (res/values-*), so that
         // Android 13 and later offer them in the system's settings for the
-        // app; res/resources.properties names the language of res/values.
+        // app. The file res/resources.properties names the language of res/values.
         generateLocaleConfig = true
     }
 
@@ -86,7 +86,7 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
-    // A flat layout instead of Android's usual src/main/kotlin/net/xfbs/…:
+    // A flat layout instead of Android's usual src/main/kotlin/net/xfbs/specto:
     // Kotlin doesn't need directories that repeat the package name.
     sourceSets {
         getByName("main") {
@@ -96,7 +96,7 @@ android {
         }
         getByName("test") {
             kotlin.directories.replaceWith("test")
-            // Data written by Rust that the Kotlin side must read; see ViewFrameTest.
+            // Data written by Rust that the Kotlin side must read. See ViewFrameTest.
             resources.directories.replaceWith("../../crates/specto-ffi/fixtures")
         }
         // The UI tests, which run on an emulator or device.
@@ -136,7 +136,7 @@ dependencies {
 // Both are wired in as generated sources, so a normal build or "Run" in
 // Android Studio picks up Rust changes.
 //
-// Requires: rustup target add aarch64-linux-android; cargo install cargo-ndk
+// Requires the Rust target aarch64-linux-android and cargo-ndk (see BUILDING.md).
 
 /** Android Studio started from the Dock doesn't have ~/.cargo/bin on PATH. */
 fun cargoBinDir(): String =

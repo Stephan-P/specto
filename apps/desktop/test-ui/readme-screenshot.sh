@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Makes the screenshot in apps/desktop/README.md: hwloc's manual (BSD
-# licence, `dnf install hwloc` puts it in /usr/share/doc/hwloc), two pages
+# license, `dnf install hwloc` puts it in /usr/share/doc/hwloc), two pages
 # side by side with the Contents tab open, at scale 2, in a window of the
 # default size (the monitor must be big enough for it).
 #

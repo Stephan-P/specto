@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Runs a command inside a headless mutter Wayland session with its own D-Bus.
 #
-#   apps/desktop/test-ui/run.sh <command…>
-#   SPECTO_SCALE=1.25 apps/desktop/test-ui/run.sh <command…>   # HiDPI / fractional scale
-#   SPECTO_MONITOR=2400x1800 apps/desktop/test-ui/run.sh …     # monitor size (device px)
+#   apps/desktop/test-ui/run.sh <command>
+#   SPECTO_SCALE=1.25 apps/desktop/test-ui/run.sh <command>        # HiDPI or fractional scale
+#   SPECTO_MONITOR=2400x1800 apps/desktop/test-ui/run.sh <command> # monitor size, device pixels
 #
 # Fractional scales use mutter's scale-monitor-framebuffer feature, enabled
 # through a throwaway GSettings keyfile, so the user's settings are untouched.
 #
-# Needs mutter and dbus-run-session (Fedora: mutter, dbus-daemon; see
-# ci/install-deps-fedora.sh --headless).
+# Needs mutter and dbus-run-session. On Fedora they are in the packages mutter
+# and dbus-daemon (see ci/install-deps-fedora.sh --headless).
 set -u
 if [ -z "${SPECTO_HEADLESS_INNER:-}" ]; then
   exec env SPECTO_HEADLESS_INNER=1 dbus-run-session -- "$0" "$@"

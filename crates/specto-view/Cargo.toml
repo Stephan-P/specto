@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "UI-agnostic viewer core for specto: layout, zoom, scrolling, tile planning"
+description = "The viewer core of Specto, without a UI: layout, zoom, scrolling, selection and tile planning"
 
 [dependencies]
 specto-geom.workspace = true

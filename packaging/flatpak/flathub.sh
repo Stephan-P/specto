@@ -5,7 +5,7 @@
 #
 #     packaging/flatpak/flathub.sh <tag> <commit> <out-dir>
 #
-# Run it in a checkout of that tag (Cargo.lock must be the tag's), e.g.
+# Run it in a checkout of that tag (Cargo.lock must be the tag's), for example:
 #
 #     packaging/flatpak/flathub.sh v0.1.0 "$(git rev-parse v0.1.0^{commit})" ../flathub-specto
 #

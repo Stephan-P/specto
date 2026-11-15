@@ -1,26 +1,26 @@
 """Checks the desktop app end to end in a headless session.
 
     cargo build -p specto-desktop
-    apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py [BINARY] [TEST…]
+    apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py [BINARY] [TEST]...
     SPECTO_SCALE=2 apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py
 
 Starts specto-gtk with SPECTO_DEBUG=1 and drives it over D-Bus with its window
 actions plus the test hooks in apps/desktop/src/debug.rs: `debug-state`
 dumps the window's state as JSON, `debug-screenshot` saves a PPM image.
 
-The test PDFs are generated here. Each page is filled with its own colour, so
+The test PDFs are generated here. Each page is filled with its own color, so
 a screenshot shows which page is on screen and that it was rendered.
 
-Tests (run some by naming them, e.g. `zoom layouts`):
+Tests (run some by naming them, such as `zoom layouts`):
 
 - start_page: no file opens the start page
 - about: the About dialog, with the version
 - open_and_render: title, page labels in the entry, default layout, zoom and
-  sidebar; the screenshot is at device resolution and shows page 1
-- navigation: next, previous, first and last page; a rotated page renders
-- page_entry: labels win over numbers ("4" is the page labelled 4), case
+  sidebar. The screenshot is at device resolution and shows page 1
+- navigation: next, previous, first and last page. A rotated page renders
+- page_entry: labels win over numbers ("4" is the page labeled 4), case
   doesn't matter, unknown pages are refused
-- layouts: all four keep the current page; two-page shows two pages; cover
+- layouts: all four keep the current page. Two-page shows two pages. Cover
   page alone
 - zoom: actual size, in, out, fit page (the whole page visible), limits
   5% and 3200% and rendering there
@@ -29,64 +29,64 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 - broken_file: an error message, and the app keeps running
 - two_windows: one window per file, navigated independently
 - rotate_and_undo: Ctrl+Right and Ctrl+Left turn the current page, both
-  pages of a spread in the two-page layout; "Edited" in the title; Ctrl+Z
-  and Shift+Ctrl+Z; in the page entry, Ctrl+Left moves the cursor instead
+  pages of a spread in the two-page layout. "Edited" in the title. Ctrl+Z
+  and Shift+Ctrl+Z. In the page entry, Ctrl+Left moves the cursor instead
 - save: a rotated page is saved (opened again, it's still rotated, and
-  the page labels are kept); Save As writes a copy and shows it, leaving
+  the page labels are kept). Save As writes a copy and shows it, leaving
   the original as it was, and the copy opens where the original was left
-- close_prompt: quitting with unsaved changes asks first; Cancel keeps the
+- close_prompt: quitting with unsaved changes asks first. Cancel keeps the
   window, Discard closes without saving, Save saves and closes
-- thumbnail_selection: clicking a thumbnail goes to its page; Shift+click
+- thumbnail_selection: clicking a thumbnail goes to its page. Shift+click
   and Ctrl+click select several, which stay selected while the view moves
-  and are what Rotate turns; Ctrl+A in the sidebar selects every page
+  and are what Rotate turns. Ctrl+A in the sidebar selects every page
 - delete_pages: Delete on the document deletes the current page, Backspace
-  in the sidebar the selected ones; not in the page entry; never the last
-  page; undo brings them back
+  in the sidebar the selected ones. Not in the page entry. Never the last
+  page. Undo brings them back
 - move_pages: thumbnails dropped (through a test hook) on the lower or
-  upper half of another go after or before it; the view stays on the page
-  it showed; a drop in place does nothing
+  upper half of another go after or before it. The view stays on the page
+  it showed. A drop in place does nothing
 - drop_files_and_export: two PDFs dropped (through a test hook) on the
-  sidebar are inserted where dropped, as one edit; Export Selected Pages
+  sidebar are inserted where dropped, as one edit. Export Selected Pages
   writes those pages as a new file and leaves the document as it was
 - pages_between_windows: pages of one window dropped (through a test
-  hook) on another's thumbnails are copied there, rotation included; the
-  first window keeps them; saved, they're in the second file
+  hook) on another's thumbnails are copied there, rotation included. The
+  first window keeps them. Saved, they're in the second file
 - file_changed: the file replaced by another program is reloaded in place
-  if there are no edits; with edits, a banner offers to, and Save asks
-  before overwriting; our own saves don't count; a deleted file gets a
+  if there are no edits. With edits, a banner offers to, and Save asks
+  before overwriting. Our own saves don't count. A deleted file gets a
   banner
 - print_to_file: printing (to a PDF file, through a test hook) prints the
   pages as edited, landscape ones on landscape paper, each with its own
-  content; "Selection" prints the selected thumbnails only
+  content. "Selection" prints the selected thumbnails only
 - insert_file: pages of another file inserted after the current page, shown
-  and searched; the pages keep their labels, the inserted ones numbered by
-  position; undo; saved, they're in the file
+  and searched. The pages keep their labels, the inserted ones numbered by
+  position. Undo. Saved, they're in the file
 
 With the virtual pointer and keyboard, on a Courier text PDF:
 
 - link_click: clicking a link follows it
 - markup_bar: with a tool of the markup bar pressed in, text is marked as
-  it is selected, in the tool's colour; a colour chosen while an annotation
-  is picked recolours it; closing the bar lets go of the tool
+  it is selected, in the tool's color. A color chosen while an annotation
+  is picked recolors it. Closing the bar lets go of the tool
 - draw_tools: the pen, rectangle, ellipse and line tools draw where the
-  pointer is dragged, also over text, each in its colour; a click draws no
-  shape; a line is picked near it only; a drag moves a shape and a handle
-  resizes it, Escape gives that up; saved, they're in the file and shown,
+  pointer is dragged, also over text, each in its color. A click draws no
+  shape. A line is picked near it only. A drag moves a shape and a handle
+  resizes it, Escape gives that up. Saved, they're in the file and shown,
   and move as before
 - text_tools: the note tool puts a note where the page is clicked and asks
-  for its text; the text tool asks for text and makes a text box of it; a
-  double click or Enter asks again; a text box moves with its text; saved,
+  for its text. The text tool asks for text and makes a text box of it. A
+  double click or Enter asks again. A text box moves with its text. Saved,
   both are in the file, and a text box emptied is deleted
 - markup_list: the Markup page of the sidebar lists every annotation with
   its page, kind and text, follows edits, and a row picks its annotation and
-  shows its page; it is filled from the file when a document opens on it
+  shows its page. It is filled from the file when a document opens on it
 - signatures: a saved signature, drawn or from a photo, is placed by one
-  click, as a drawing or a picture; the picture moves and keeps its
-  proportions when resized; saved, both are in the file, and the picture
-  still moves; the dialog for a new signature opens
+  click, as a drawing or a picture. The picture moves and keeps its
+  proportions when resized. Saved, both are in the file, and the picture
+  still moves. The dialog for a new signature opens
 - text_style: the size and font controls show with the text tool and a
-  picked text box; what is typed is set as they say; a picked box takes
-  what is set then, and shows its own; saved, it is what it was
+  picked text box. What is typed is set as they say. A picked box takes
+  what is set then, and shows its own. Saved, it is what it was
 - typed_text_is_kept: text being typed is in the document when it is saved
   or the window closed, goes to the box it was typed into whatever is
   clicked meanwhile, also from the size field, and before pages are inserted
@@ -95,24 +95,24 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   where it is, Enter ending it; undo and redo; text being typed is saved;
   saved, the values are in the file and shown
 - mark_text: Highlight and Underline mark the selected text (and say so
-  when there is none) and are printed; a click picks an annotation, Delete deletes it and
-  not the page, Escape lets go; undo; saved, they're in the file and shown;
+  when there is none) and are printed. A click picks an annotation, Delete deletes it and
+  not the page, Escape lets go. Undo. Saved, they're in the file and shown.
   one the file has is picked and deleted the same way, and the page is
   then shown without it
-- select_by_dragging: the I-beam cursor over text; dragging selects,
-  forwards and backwards over lines; Escape and a click clear it
+- select_by_dragging: the I-beam cursor over text. Dragging selects,
+  forwards and backwards over lines. Escape and a click clear it
 - select_words_and_lines: double-click selects a word, triple-click a line,
   Shift+click extends by lines, double-click and drag extends by words
 - drag_on_link_selects: a drag starting on a link selects instead
 - copy_and_select_all: Ctrl+C puts the selection on the clipboard (read back
-  through the compositor); Ctrl+A selects every page
+  through the compositor). Ctrl+A selects every page
 - select_across_pages: holding a drag at the bottom edge scrolls, and the
   selection continues onto the next page
-- select_rotated_page: selecting on a page rotated by 90°
+- select_rotated_page: selecting on a page rotated by 90 degrees
 - select_after_rotating: selecting and searching on a page the user rotated
-- search: Ctrl+F and typing; case, a line break, a hyphenated word and
-  accents don't stop a match; Enter, Shift+Enter and wrapping around; the
-  view follows; "No matches"; Escape ends the search
+- search: Ctrl+F and typing. Case, a line break, a hyphenated word and
+  accents don't stop a match. Enter, Shift+Enter and wrapping around. The
+  view follows. "No matches". Escape ends the search
 - search_indexes_in_background: the first match after the current page,
   found while the pages are indexed in the background
 
@@ -138,8 +138,8 @@ APP_ID = "net.xfbs.specto"
 APP_PATH = "/net/xfbs/specto"
 TIMEOUT = float(os.environ.get("SPECTO_CHECK_TIMEOUT", "20"))
 
-# One colour per page: the corners of the RGB cube at 0, 128 and 255,
-# without greys (the UI's colours) and blues close to the accent colour.
+# One color per page: the corners of the RGB cube at 0, 128 and 255,
+# without grays (the UI's colors) and blues close to the accent color.
 PALETTE = [
     (r, g, b)
     for r in (0, 128, 255)
@@ -158,7 +158,7 @@ ROTATED = 5
 
 
 def write_pdf(path, objects):
-    """Writes `objects` (bodies of objects 1…n, object 1 the catalog)."""
+    """Writes `objects` (bodies of objects 1 to n, object 1 the catalog)."""
     out = bytearray(b"%PDF-1.7\n")
     offsets = []
     for i, body in enumerate(objects):
@@ -181,7 +181,7 @@ def stream(data):
 def pages_pdf(path):
     """PAGES letter pages, page i filled with PALETTE[i] and titled "Page
     i+1". Page labels, an outline with two entries, and page ROTATED rotated
-    by 90°."""
+    by 90 degrees."""
     # 1 catalog, 2 pages, 3 font, 4 outlines, 5-6 outline items,
     # then a page and a content stream per page.
     first = 7
@@ -215,7 +215,7 @@ def pages_pdf(path):
 
 
 # Text for selection tests, in Courier: every character is 0.6 em wide, so
-# positions are easy to compute. Page 3 is rotated by 90°.
+# positions are easy to compute. Page 3 is rotated by 90 degrees.
 TEXT = [
     ["The quick brown fox", "jumps over the lazy dog", "Link to page two"],
     ["Second page", "and its last line", "Search across a line", "break and a hyphen-",
@@ -235,7 +235,7 @@ def text_point(page, line, col, before=True):
 
 
 def text_pdf(path):
-    """TEXT, one page per entry; a link on page 1's last line to page 2."""
+    """TEXT, one page per entry. A link on page 1's last line to page 2."""
     n = len(TEXT)
     page_ids = [5 + 2 * i for i in range(n)]
     link_rect = (LEFT - 2, TOP - LINK_LINE * LEADING - 6,
@@ -278,7 +278,7 @@ def read_ppm(path):
 
 
 def page_colours(path, step=4):
-    """Fraction of (sampled) pixels showing each page's colour: {page: share}."""
+    """Fraction of (sampled) pixels showing each page's color: {page: share}."""
     width, height, pixels = read_ppm(path)
     colours = {c: i for i, c in enumerate(PALETTE[:PAGES])}
     counts, total = {}, 0
@@ -381,7 +381,7 @@ class Input:
         " ": 57, "-": 12, ",": 51, ".": 52,
     }
     # GTK counts clicks within this many seconds as one sequence (double-
-    # and triple-clicks); wait this long before clicking somewhere new.
+    # and triple-clicks). Wait this long before clicking somewhere new.
     CLICK_GAP = 0.6
 
     def __init__(self):
@@ -443,7 +443,7 @@ class Input:
             except CheckFailed:
                 s = self.window.state()
                 seen = (s["pointer"][0] + s["canvas"][0], s["pointer"][1] + s["canvas"][1])
-                # Correct by the difference; a stale report gets a fresh
+                # Correct by the difference. A stale report gets a fresh
                 # one this way too, and the next round corrects that.
                 self._relative(x - seen[0], y - seen[1])
         self.window.pointer_at(x, y)
@@ -522,7 +522,7 @@ class Input:
                 self.keys(code)
 
     def clipboard(self):
-        """The clipboard's text; None while nothing owns the clipboard (e.g.
+        """The clipboard's text. None while nothing owns the clipboard (for example
         before the app has handled the copy shortcut)."""
         try:
             r, fds = self.bus.call_with_unix_fd_list_sync(
@@ -558,7 +558,7 @@ class Window:
             return json.load(f)
 
     def wait(self, what, pred, timeout=TIMEOUT):
-        """Waits until `pred(state)` holds; returns that state."""
+        """Waits until `pred(state)` holds. Returns that state."""
         deadline = time.monotonic() + timeout
         while True:
             s = self.state()
@@ -643,7 +643,7 @@ class Window:
         return page_colours(self.screenshot(name))
 
     def showing(self, page, name, share=0.25):
-        """Checks that `page`'s colour covers at least `share` of the window."""
+        """Checks that `page`'s color covers at least `share` of the window."""
         c = self.colours(name)
         check(
             c.get(page, 0) >= share,
@@ -721,7 +721,7 @@ def test_navigation(ctx):
 def test_page_entry(ctx):
     w = ctx.app([ctx.pages]).window()
     w.settled()
-    # Labels win over page numbers: "4" is the page labelled 4.
+    # Labels win over page numbers: "4" is the page labeled 4.
     w.action("debug-go-to", gvariant_str("4"))
     s = w.settled("label 4", lambda s: s["page"] == LABELS.index("4"))
     check(s["page_entry"] == "4", s)
@@ -771,7 +771,7 @@ def test_zoom(ctx):
     w.action("layout", gvariant_str("single"))
     w.action("fit-page")
     s = w.settled("fit page", lambda s: s["zoom_mode"] == "fit-page")
-    # The whole page is visible: its coloured area, 540 × 690 of 612 × 792
+    # The whole page is visible: its colored area, 540 by 690 of 612 by 792
     # points, at the current zoom.
     c = w.showing(0, "fit-page", share=0.0)
     area = 540 * 690 * s["zoom"] ** 2 / (s["width"] * s["height"])
@@ -877,7 +877,7 @@ def test_select_by_dragging(ctx):
 
 
 def pixel(w, name, x, y):
-    """The colour of the window at (x, y), from a screenshot."""
+    """The color of the window at (x, y), from a screenshot."""
     width, height, pixels = read_ppm(w.screenshot(name))
     scale = w.app.ctx.scale
     at = (min(round(y * scale), height - 1) * width + min(round(x * scale), width - 1)) * 3
@@ -944,7 +944,7 @@ def test_mark_text(ctx):
     _, _, pixels = read_ppm(prefix + ".ppm")
     marked = sum(yellow(tuple(pixels[k:k + 3])) for k in range(0, len(pixels), 3))
     check(marked > 20, f"the print has {marked} yellow pixels")
-    # A click picks the highlight; Delete deletes it, not the page.
+    # A click picks the highlight. Delete deletes it, not the page.
     inp.click(*gap)
     w.wait("the highlight picked", lambda s: s["annotation_picked"])
     w.screenshot("picked")
@@ -972,7 +972,7 @@ def test_mark_text(ctx):
     gap = w.char(0, 0, 9)
     check(yellow(pixel(w, "reopened", *gap)), "the saved highlight isn't shown")
     # Now that the file has them, they are part of the page as rendered.
-    # Deleting one renders the page without it; the underline stays.
+    # Deleting one renders the page without it. The underline stays.
     inp = ctx.input().attach(w)
     inp.click(*gap)
     w.wait("the saved highlight picked", lambda s: s["annotation_picked"])
@@ -1017,7 +1017,7 @@ def test_markup_bar(ctx):
     w.wait("a word marked", lambda s: s["annotations"] == 2)
     quick = w.char(0, 0, 6)
     check(yellow(pixel(w, "yellow", *quick)), "not highlighted in yellow")
-    # Another colour for what is marked next.
+    # Another color for what is marked next.
     w.action("markup-color", gvariant_str("green"))
     w.wait("green", lambda s: s["markup_color"] == "green")
     inp.drag(w.char(0, 0, 10), w.char(0, 0, 14, before=False))
@@ -1025,11 +1025,11 @@ def test_markup_bar(ctx):
     brown = w.char(0, 0, 12)
     c = pixel(w, "green", *brown)
     check(c[1] > c[0] + 30 and c[1] > c[2] + 30, f"not highlighted in green: {c}")
-    # The underline tool has its own colour, red; the bar shows it.
+    # The underline tool has its own color, red. The bar shows it.
     w.action("markup-tool", gvariant_str("underline"))
     s = w.wait("the underliner", lambda s: s["markup_tool"] == "underline")
     check(s["markup_color"] == "red", s)
-    # A picked annotation shows its colour, and takes the one chosen then.
+    # A picked annotation shows its color, and takes the one chosen then.
     inp.click(*quick)
     s = w.wait("quick picked", lambda s: s["annotation_picked"])
     check(s["markup_color"] == "yellow", s)
@@ -1042,7 +1042,7 @@ def test_markup_bar(ctx):
     c = pixel(w, "blue", *quick)
     check(c[2] > c[0] + 30, f"not recoloured to blue: {c}")
     w.screenshot("bar")
-    # Activating the tool that is in lets go of it; so does closing the bar.
+    # Activating the tool that is in lets go of it. So does closing the bar.
     w.action("markup-tool", gvariant_str("underline"))
     w.wait("no tool", lambda s: s["markup_tool"] == "none")
     w.action("markup-tool", gvariant_str("strike-out"))
@@ -1118,7 +1118,7 @@ def test_draw_tools(ctx):
     w.action("undo")
     w.wait("the line back", lambda s: s["annotations"] == 5)
     # A drag from inside the rectangle moves it (60 to the right), without
-    # picking it first; it is picked then, and the pointer says "move".
+    # picking it first. It is picked then, and the pointer says "move".
     inp.keys(Input.ESCAPE)
     w.wait("nothing picked", lambda s: not s["annotation_picked"])
     inp.drag(at(150, 440), at(210, 440))
@@ -1250,7 +1250,7 @@ def test_text_tools(ctx):
     w.settled()
     more = dark_pixels(w, "more-text", *area)
     check(more > one_line + 20, f"no more text on the page: {one_line} then {more}")
-    # A click on a note shows its text, to read or change; Enter on a
+    # A click on a note shows its text, to read or change. Enter on a
     # picked annotation does the same.
     inp.click(*at(409, 491))
     s = w.wait("the note's editor", lambda s: s["text_editor"])
@@ -1322,7 +1322,7 @@ def test_markup_list(ctx):
     s = w.wait("the rectangle listed", lambda s: len(s["markup_list"]) == 2)
     check(s["markup_list"][1] == ["1", "Rectangle", ""], s["markup_list"])
     w.action("markup-tool", gvariant_str("rectangle"))
-    # A row picks its annotation; a comment typed for it shows in the list.
+    # A row picks its annotation. A comment typed for it shows in the list.
     w.action("debug-markup-row", gvariant_str("1"))
     w.wait("the rectangle picked", lambda s: s["annotation_picked"] and s["markup_color"] == "red")
     w.action("debug-markup-row", gvariant_str("0"))
@@ -1357,7 +1357,7 @@ def test_markup_list(ctx):
 
 
 def write_png(path, width, height, rgba):
-    """A PNG of one colour (red, green, blue, alpha)."""
+    """A PNG of one color (red, green, blue, alpha)."""
     import struct
     import zlib
 
@@ -1793,7 +1793,7 @@ def test_select_rotated_page(ctx):
     w, inp = selection_window(ctx)
     w.action("last-page")
     s = w.settled("the rotated page", lambda s: s["page"] == 2)
-    # The text runs downwards on screen; drag along it.
+    # The text runs downwards on screen. Drag along it.
     inp.drag(w.char(2, 0, 0, state=s), w.char(2, 0, 6, before=False, state=s))
     selected(w, "Rotated")
 
@@ -1818,7 +1818,7 @@ def test_search(ctx):
     s = status(w, "1 of 2")
     check(s["match_page"] == 0, s)
     w.screenshot("the")
-    # Enter goes on, wrapping around; Shift+Enter goes back.
+    # Enter goes on, wrapping around. Shift+Enter goes back.
     inp.keys(Input.ENTER)
     status(w, "2 of 2")
     inp.keys(Input.ENTER)
@@ -1897,7 +1897,7 @@ def test_rotate_and_undo(ctx):
     # Two pages side by side turn together.
     w.action("layout", gvariant_str("two-page"))
     w.action("debug-go-to", gvariant_str(LABELS[5]))
-    # Pages 5 and 6 side by side; the left one counts as current.
+    # Pages 5 and 6 side by side. The left one counts as current.
     s = w.settled("pages 5 and 6", lambda s: s["page"] == 4)
     w.action("rotate-right")
     s = w.wait("a spread rotated", lambda s: sum(r == 90 for r in rotations(s)) == 3)
@@ -1912,7 +1912,7 @@ def test_rotate_and_undo(ctx):
 
 
 def turned(s, page):
-    """Whether `page` is shown turned by 90° or 270°: its x axis runs
+    """Whether `page` is shown turned by 90 or 270 degrees: its x axis runs
     vertically on screen."""
     a, b = next(p[1:3] for p in s["pages"] if p[0] == page)
     return abs(a) < 1e-6 and abs(b) > 0
@@ -1946,7 +1946,7 @@ def test_save(ctx):
     s = w.settled("page 2", lambda s: s["page"] == 1)
     check(turned(s, 1) and not turned(s, 0), s["pages"])
     check(not s["modified"] and s["page_entry"] == LABELS[1], s)
-    # Save As: a copy, shown from then on; the file opened stays as it was.
+    # Save As: a copy, shown from then on. The file opened stays as it was.
     before = open(path, "rb").read()
     w.action("rotate-left")
     w.wait("page 2 turned back", lambda s: s["modified"])
@@ -2053,7 +2053,7 @@ def test_thumbnail_selection(ctx):
     check(w.state()["thumbnails_selected"] == [0, 2], "the selection didn't stay")
     w.action("first-page")
     w.settled("page 1", lambda s: s["page"] == 0)
-    # A plain click selects one again; then Rotate turns the current page.
+    # A plain click selects one again. Then Rotate turns the current page.
     click_thumbnail(w, inp, 1)
     selected_thumbnails(w, [1])
     w.settled("page 2", lambda s: s["page"] == 1)
@@ -2270,7 +2270,7 @@ def test_file_changed(ctx):
     replace_file(ctx.pages, path)
     s = w.wait("the banner", lambda s: "changed by another program" in s["banner"])
     check(len(s["edit_pages"]) == 3 and s["modified"], s)
-    # Saving asks first; Cancel leaves the other program's file.
+    # Saving asks first. Cancel leaves the other program's file.
     w.action("save")
     w.wait("the question", lambda s: s["alert"] == "File Changed on Disk")
     w.action("debug-alert-response", gvariant_str("cancel"))
@@ -2280,7 +2280,7 @@ def test_file_changed(ctx):
     w.action("reload")
     s = w.wait("the reload", lambda s: len(s["edit_pages"]) == PAGES)
     check(not s["modified"] and s["banner"] == "" and s["undo"] == "", s)
-    # Deleted: a banner; Save writes the file again.
+    # Deleted: a banner. Save writes the file again.
     os.remove(path)
     w.wait("the banner", lambda s: "moved or deleted" in s["banner"])
     w.action("save")
@@ -2288,7 +2288,7 @@ def test_file_changed(ctx):
 
 
 def printed_pages(path):
-    """Each page of the PDF at `path`: (landscape, colour covering most of
+    """Each page of the PDF at `path`: (landscape, color covering most of
     it), read with poppler (pdfinfo, pdftoppm) rather than Specto."""
     info = subprocess.run(["pdfinfo", "-f", "1", "-l", "999", path],
                           capture_output=True, text=True).stdout
@@ -2400,7 +2400,7 @@ def test_select_after_rotating(ctx):
     inp.keys(Input.CONTROL, Input.RIGHT)
     w.wait("page 1 rotated", lambda s: rotations(s)[0] == 90)
     s = w.stable()
-    # The text runs downwards on screen now; drag along it.
+    # The text runs downwards on screen now. Drag along it.
     inp.drag(w.char(0, 0, 4, state=s), w.char(0, 0, 14, before=False, state=s))
     selected(w, "quick brown")
     # Search highlights still find their page.
@@ -2454,7 +2454,7 @@ class Context:
         for a in self.apps:
             a.kill()
         self.apps = []
-        # The test's state and caches (shader caches add up); screenshots
+        # The test's state and caches (shader caches add up). Screenshots
         # and the log are elsewhere.
         shutil.rmtree(self.home, ignore_errors=True)
 

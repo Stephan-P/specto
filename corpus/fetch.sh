@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetches the test corpus into corpus/files/ (git-ignored).
-# Currently: the pdf.js test PDFs (~150 MB, ~1100 files).
+# Currently: the pdf.js test PDFs (about 150 MB and 1,100 files). Only that
+# directory of the pdf.js repository is checked out, without its history.
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p files

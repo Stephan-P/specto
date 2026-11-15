@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Compiler warnings fail the build.
   RUSTFLAGS: -D warnings
 
 jobs:
@@ -16,10 +17,12 @@ jobs:
     # The Rust code: formatting, lints (also for the Android target) and
     # tests.
     runs-on: ubuntu-latest
-    # Same distro as development, so GTK/libadwaita versions match.
+    # The same distribution as development, so the versions of GTK and
+    # libadwaita match.
     container: fedora:44
     steps:
       - name: Install system dependencies
+        # The checkout below needs git, which the container image lacks.
         run: |
           dnf install -y git
       - uses: actions/checkout@v4
@@ -41,9 +44,9 @@ jobs:
         run: cargo test --workspace
 
   deny:
-    # The dependencies, against deny.toml: security advisories, licences,
+    # The dependencies, against deny.toml: security advisories, licenses,
     # where crates come from. A new advisory can make this fail without any
-    # change here; deny.toml says how to record one that doesn't apply.
+    # change here, and deny.toml says how to record one that doesn't apply.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -110,8 +113,9 @@ jobs:
           java-version: 21
       - name: Install the NDK
         # Must match `ndkVersion` in apps/android/build.gradle.kts. The
-        # runner image ships the Android SDK; Gradle fetches the platform and
-        # build tools itself once the licences are accepted.
+        # runner image ships the Android SDK. Gradle fetches the platform and
+        # build tools itself once the licenses are accepted. `yes` ends with an
+        # error when sdkmanager stops reading, hence the `|| true`.
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
@@ -153,7 +157,9 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Let the emulator use hardware virtualisation
+      - name: Let the emulator use hardware virtualization
+        # Gives every user access to /dev/kvm. Without it the emulator falls
+        # back to emulating the processor, which is far too slow.
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules

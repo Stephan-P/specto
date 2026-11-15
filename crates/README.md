@@ -13,12 +13,11 @@ graph TD
     view[specto-view] --> render
     view --> text
     write[specto-write] --> doc
-    write --> render
     doc[specto-doc] --> annot
     doc --> forms
     forms[specto-forms] --> annot
     render[specto-render] --> source
-    text[specto-text] --> source
+    text[specto-text] --> geom
     annot[specto-annot] --> source
     source[specto-source] --> geom[specto-geom]
 ```

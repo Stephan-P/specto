@@ -1,6 +1,8 @@
 # cargo-deny: checks the dependencies of the whole workspace.
 
 [graph]
+# The platforms the apps are built for. Dependencies that only other
+# platforms pull in aren't checked.
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
@@ -18,14 +20,14 @@ ignore = [
     # askama's own configuration, never anything from a PDF.
     {
         id = "RUSTSEC-2026-0374",
-        reason = "basic-toml: build-time only, via uniffi_bindgen + askama"
+        reason = "basic-toml: build-time only, through uniffi_bindgen and askama"
     },
 ]
 
 [licenses]
 # What may end up in an app that is itself MIT OR Apache-2.0: permissive
-# licences, and MPL-2.0, whose copyleft stops at the files of the crate that
-# carries it. Anything else (GPL, LGPL, AGPL, no licence) fails the check.
+# licenses, and MPL-2.0, whose copyleft stops at the files of the crate that
+# carries it. Anything else (GPL, LGPL, AGPL, no license) fails the check.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -35,18 +37,23 @@ allow = [
     "Unicode-3.0",
     "MPL-2.0",
 ]
+# How sure cargo-deny must be that a license text is the license it names.
 confidence-threshold = 0.9
 
 [licenses.private]
+# Our own crates aren't published, so their license needs no check.
 ignore = true
 
 [bans]
 # Two versions of one crate are common and harmless, but worth seeing.
 multiple-versions = "warn"
+# No dependency on "any version" of a crate, except between the crates of this
+# workspace, which depend on each other by path.
 wildcards = "deny"
 allow-wildcard-paths = true
 
 [sources]
+# Crates come from crates.io only: no other registry, and no git repository.
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]

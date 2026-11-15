@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Saving for specto: writes the pages of an edited document as a new PDF"
+description = "Saving for Specto: writes the pages of an edited document as a new PDF"
 
 [dependencies]
 lopdf = "0.47"

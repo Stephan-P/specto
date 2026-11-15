@@ -3,7 +3,7 @@
 
     python3 make-fixtures.py
 
-The files are checked in; rerun this only to change them. They are plain,
+The files are checked in. Rerun this only to change them. They are plain,
 uncompressed PDFs using the standard fonts, so they stay small and diff-able.
 
 pages.pdf  12 A4 pages, each headed "Page n of 12".
@@ -61,7 +61,7 @@ def stream(content):
 
 
 def page_id(page):
-    """Object number of 1-based page `page`; its content stream follows it."""
+    """Object number of 1-based page `page`. Its content stream follows it."""
     return 10 + 2 * (page - 1)
 
 

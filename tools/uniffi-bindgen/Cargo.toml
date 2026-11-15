@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Generates the Kotlin bindings of specto-ffi for the Android app"
 publish = false
 
 # No docs for this one-line program: its name is the same as the `uniffi_bindgen`

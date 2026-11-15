@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Typed coordinate spaces and page transforms for specto"
+description = "Typed coordinate spaces and page transforms for Specto"
 
 [dependencies]
 euclid = "0.22"

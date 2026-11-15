@@ -3,8 +3,8 @@
 # target/test-files/: copies of the corpus test files, so saving doesn't
 # change the corpus, plus an encrypted file and one over 64 MB.
 #
-# Needs the corpus (corpus/fetch.sh) and qpdf (dnf install qpdf / brew
-# install qpdf). Running it again starts over with fresh copies.
+# Needs the corpus (corpus/fetch.sh) and qpdf (`dnf install qpdf` or
+# `brew install qpdf`). Running it again starts over with fresh copies.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

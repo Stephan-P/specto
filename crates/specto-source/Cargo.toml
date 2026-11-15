@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Read access to PDF structure for specto: opening, metadata, outline, links"
+description = "Read access to PDF structure for Specto: opening, metadata, outline, links and page labels"
 
 [dependencies]
 hayro-syntax = "0.9"

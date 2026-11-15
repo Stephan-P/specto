@@ -6,12 +6,12 @@ from the repository root:
     XDG_RUNTIME_DIR=$(mktemp -d /tmp/rt.XXXX) apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check-flatpak.py
 
 The separate XDG_RUNTIME_DIR gives the session its own document portal
-(the user's own is mounted at /run/user/UID/doc); it must be a short path,
+(the user's own is mounted at /run/user/UID/doc). It must be a short path,
 because the Wayland socket goes in it.
 
 - opens a file given through the portal, as "Open With" does
 - saves an edit: the file is replaced, with no leftover temporary file
-- the start page names the file's real folder, not /run/user/…/doc/…
+- the start page names the file's real folder, not one under /run/user
 - a change by another program is noticed when the window becomes active
   again (file monitors don't see it through the portal)
 - saving over such a change asks first
