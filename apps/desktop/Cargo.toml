@@ -14,6 +14,9 @@ path = "src/main.rs"
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_6"] }
 async-channel = "2"
+# The system's gettext (part of glibc on Linux, Homebrew's on macOS), never
+# the copy of GNU gettext the crate would otherwise build on macOS.
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
 specto-doc.workspace = true
 specto-geom.workspace = true
 specto-render.workspace = true

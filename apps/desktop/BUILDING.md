@@ -15,8 +15,12 @@ sudo dnf install gcc pkgconf-pkg-config gtk4-devel libadwaita-devel
 macOS, with [Homebrew](https://brew.sh):
 
 ```sh
-brew install gtk4 libadwaita adwaita-icon-theme
+brew install gtk4 libadwaita adwaita-icon-theme gettext
+export GETTEXT_DIR="$(brew --prefix gettext)"   # where the build finds libintl
 ```
+
+The app's translations go through gettext, which is part of the C library on
+Linux and a library of its own on macOS.
 
 ## Build and run
 
@@ -54,3 +58,16 @@ tools/headless/run.sh python3 -I tools/headless/check.py     # the app itself, L
 The second one runs the app in a headless compositor and drives it. It needs a
 few more packages (`ci/install-deps-fedora.sh --headless` installs them) and
 is described, with the checks that need a person, in [TESTING.md](TESTING.md).
+
+## Translations
+
+Text shown to people goes through the functions in `src/i18n.rs`; the module's
+comment says how to write such strings. After changing any, update the
+template translations start from (needs GNU gettext 0.24 or newer):
+
+```sh
+apps/desktop/po/update-pot.sh
+```
+
+There are no translations yet. The app looks for them in `share/locale` next
+to the `bin` directory it runs from.

@@ -57,12 +57,13 @@ What to install first on Fedora and macOS, and the Flatpak, are in [BUILDING.md]
 
 ## Project structure
 
-- `src/main.rs`: application, shortcuts, the macOS menu bar
+- `src/main.rs`: application, shortcuts, the About dialog, the macOS menu bar
 - `src/window.rs`: a document window: header bar, start page, actions, opening files
 - `src/canvas.rs`: the page view, a `GtkScrollable` widget that draws `specto-view` frames
 - `src/document.rs`: an open document: the shared session plus what belongs to GTK (tile cache of textures, render client)
 - `src/thumbnails.rs`, `src/outline.rs`: the two sidebar tabs
 - `src/state.rs`: saved view state per file
+- `src/i18n.rs`: translations through gettext; `po/specto.pot` is the template of its strings, written by `po/update-pot.sh`
 - `src/debug.rs`: test hooks, only enabled with `SPECTO_DEBUG=1`
 - `FEATURES.md`, `TESTING.md`: the feature list and how to test it
 - `screenshot.png`: the screenshot above, made by `tools/headless/readme-screenshot.sh`

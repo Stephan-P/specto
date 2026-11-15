@@ -13,6 +13,7 @@ use specto_view::{LayoutMode, Viewer, ZoomMode};
 use crate::canvas::Canvas;
 use crate::debug;
 use crate::document::{Document, Indexed, MAIN, PageBundle, SaveJob, SharedDocument};
+use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::outline::OutlineView;
 use crate::print;
 use crate::state;
@@ -120,11 +121,11 @@ impl Window {
 
         let empty = adw::StatusPage::builder()
             .icon_name("x-office-document-symbolic")
-            .title("Open a PDF")
-            .description("Drop a file here or choose one")
+            .title(gettext("Open a PDF"))
+            .description(gettext("Drop a file here or choose one"))
             .build();
         let open_button = gtk::Button::builder()
-            .label("Open…")
+            .label(gettext("Open…"))
             .action_name("win.open")
             .halign(gtk::Align::Center)
             .css_classes(["pill", "suggested-action"])
@@ -134,7 +135,7 @@ impl Window {
             .css_classes(["boxed-list"])
             .build();
         let recent_title = gtk::Label::builder()
-            .label("Recent")
+            .label(gettext("Recent"))
             .xalign(0.0)
             .css_classes(["heading"])
             .build();
@@ -160,7 +161,7 @@ impl Window {
         let header = adw::HeaderBar::builder().title_widget(&title).build();
         let sidebar_toggle = gtk::ToggleButton::builder()
             .icon_name("sidebar-show-symbolic")
-            .tooltip_text("Thumbnails (F9)")
+            .tooltip_text(gettext("Thumbnails (F9)"))
             .build();
         split
             .bind_property("show-sidebar", &sidebar_toggle, "active")
@@ -171,7 +172,10 @@ impl Window {
         header.pack_start(
             &gtk::Button::builder()
                 .icon_name("document-open-symbolic")
-                .tooltip_text(format!("Open ({}O)", primary_key()))
+                .tooltip_text(gettext_f(
+                    "Open ({shortcut})",
+                    &[("shortcut", &primary("O"))],
+                ))
                 .action_name("win.open")
                 .build(),
         );
@@ -182,18 +186,22 @@ impl Window {
         let main_menu = gio::Menu::new();
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some("Save"), Some("win.save"));
-            m.append(Some("Save As…"), Some("win.save-as"));
-            m.append(Some("Export Selected Pages…"), Some("win.export-pages"));
-            m.append(Some("Print…"), Some("win.print"));
+            m.append(Some(&gettext("Save")), Some("win.save"));
+            m.append(Some(&gettext("Save As…")), Some("win.save-as"));
+            m.append(
+                Some(&gettext("Export Selected Pages…")),
+                Some("win.export-pages"),
+            );
+            m.append(Some(&gettext("Print…")), Some("win.print"));
             m
         });
         main_menu.append_section(None, &undo_section);
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some("Rotate Left"), Some("win.rotate-left"));
-            m.append(Some("Rotate Right"), Some("win.rotate-right"));
-            let delete = gio::MenuItem::new(Some("Delete Pages"), Some("win.delete-pages"));
+            m.append(Some(&gettext("Rotate Left")), Some("win.rotate-left"));
+            m.append(Some(&gettext("Rotate Right")), Some("win.rotate-right"));
+            let delete =
+                gio::MenuItem::new(Some(&gettext("Delete Pages")), Some("win.delete-pages"));
             // Shown only: the keys work through `delete_keys`.
             delete.set_attribute_value("accel", Some(&"Delete".to_variant()));
             m.append_item(&delete);
@@ -201,20 +209,23 @@ impl Window {
         });
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some("Insert Pages from File…"), Some("win.insert-file"));
+            m.append(
+                Some(&gettext("Insert Pages from File…")),
+                Some("win.insert-file"),
+            );
             m
         });
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
             m.append(
-                Some(&format!("About {}", crate::APP_NAME)),
+                Some(&gettext_f("About {app}", &[("app", &crate::APP_NAME)])),
                 Some("app.about"),
             );
             m
         });
         let main_button = gtk::MenuButton::builder()
             .icon_name("open-menu-symbolic")
-            .tooltip_text("Main Menu")
+            .tooltip_text(gettext("Main Menu"))
             .menu_model(&main_menu)
             .primary(true)
             .build();
@@ -223,22 +234,25 @@ impl Window {
         let view_menu = gio::Menu::new();
         let layout_section = gio::Menu::new();
         for (label, target) in [
-            ("Single Page", "single"),
-            ("Continuous", "continuous"),
-            ("Two Pages", "two-page"),
-            ("Two Pages, Continuous", "two-page-continuous"),
+            (gettext("Single Page"), "single"),
+            (gettext("Continuous"), "continuous"),
+            (gettext("Two Pages"), "two-page"),
+            (gettext("Two Pages, Continuous"), "two-page-continuous"),
         ] {
-            layout_section.append(Some(label), Some(&format!("win.layout::{target}")));
+            layout_section.append(Some(&label), Some(&format!("win.layout::{target}")));
         }
         view_menu.append_section(None, &layout_section);
         view_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some("Show Cover Page Alone"), Some("win.cover-alone"));
+            m.append(
+                Some(&gettext("Show Cover Page Alone")),
+                Some("win.cover-alone"),
+            );
             m
         });
         let layout_button = gtk::MenuButton::builder()
             .icon_name("view-dual-symbolic")
-            .tooltip_text("Page Layout")
+            .tooltip_text(gettext("Page Layout"))
             .menu_model(&view_menu)
             .build();
         header.pack_end(&layout_button);
@@ -246,20 +260,20 @@ impl Window {
         let zoom_menu = gio::Menu::new();
         zoom_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some("Fit Width"), Some("win.fit-width"));
-            m.append(Some("Fit Page"), Some("win.fit-page"));
-            m.append(Some("Actual Size"), Some("win.zoom-actual"));
+            m.append(Some(&gettext("Fit Width")), Some("win.fit-width"));
+            m.append(Some(&gettext("Fit Page")), Some("win.fit-page"));
+            m.append(Some(&gettext("Actual Size")), Some("win.zoom-actual"));
             m
         });
         zoom_menu.append_section(None, &{
             let m = gio::Menu::new();
-            m.append(Some("Zoom In"), Some("win.zoom-in"));
-            m.append(Some("Zoom Out"), Some("win.zoom-out"));
+            m.append(Some(&gettext("Zoom In")), Some("win.zoom-in"));
+            m.append(Some(&gettext("Zoom Out")), Some("win.zoom-out"));
             m
         });
         let zoom_button = gtk::MenuButton::builder()
             .label("100%")
-            .tooltip_text("Zoom")
+            .tooltip_text(gettext("Zoom"))
             .menu_model(&zoom_menu)
             .build();
         header.pack_end(&zoom_button);
@@ -269,7 +283,10 @@ impl Window {
             .max_width_chars(6)
             .xalign(1.0)
             .input_purpose(gtk::InputPurpose::Digits)
-            .tooltip_text(format!("Go to Page ({}L)", primary_key()))
+            .tooltip_text(gettext_f(
+                "Go to Page ({shortcut})",
+                &[("shortcut", &primary("L"))],
+            ))
             .build();
         let page_total = gtk::Label::new(None);
         page_total.add_css_class("dim-label");
@@ -280,7 +297,7 @@ impl Window {
 
         // Search: a bar under the header bar.
         let search_entry = gtk::SearchEntry::builder()
-            .placeholder_text("Search")
+            .placeholder_text(gettext("Search"))
             .hexpand(true)
             .build();
         let search_status = gtk::Label::builder()
@@ -292,14 +309,14 @@ impl Window {
         step_buttons.append(
             &gtk::Button::builder()
                 .icon_name("go-up-symbolic")
-                .tooltip_text("Previous Match (Shift+Enter)")
+                .tooltip_text(gettext("Previous Match (Shift+Enter)"))
                 .action_name("win.find-previous")
                 .build(),
         );
         step_buttons.append(
             &gtk::Button::builder()
                 .icon_name("go-down-symbolic")
-                .tooltip_text("Next Match (Enter)")
+                .tooltip_text(gettext("Next Match (Enter)"))
                 .action_name("win.find-next")
                 .build(),
         );
@@ -320,7 +337,10 @@ impl Window {
         // next key replaces it. The find action focuses it right away.
         let search_toggle = gtk::ToggleButton::builder()
             .icon_name("system-search-symbolic")
-            .tooltip_text(format!("Search ({}F)", primary_key()))
+            .tooltip_text(gettext_f(
+                "Search ({shortcut})",
+                &[("shortcut", &primary("F"))],
+            ))
             .build();
         search_bar
             .bind_property("search-mode-enabled", &search_toggle, "active")
@@ -488,7 +508,7 @@ impl Window {
         let known = fingerprint(&file).await;
         let data = match read_pdf(&file).await {
             Ok(data) => data,
-            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
+            Err(e) => return self.toast(&couldnt_read(&name, &e)),
         };
         let Some((document, tiles, password)) = self.open_document(&name, data, None).await else {
             return;
@@ -526,7 +546,10 @@ impl Window {
                     asked = true;
                 }
                 Err(e) => {
-                    self.toast(&format!("Couldn't open “{name}”: {e}"));
+                    self.toast(&gettext_f(
+                        "Couldn't open “{name}”: {error}",
+                        &[("name", &name), ("error", &e)],
+                    ));
                     return None;
                 }
             }
@@ -600,18 +623,20 @@ impl Window {
         let banner = &inner.banner;
         match now {
             None => {
-                banner.set_title(&format!(
-                    "“{name}” was moved or deleted. Saving writes it again."
+                banner.set_title(&gettext_f(
+                    "“{name}” was moved or deleted. Saving writes it again.",
+                    &[("name", &name)],
                 ));
                 banner.set_button_label(None);
                 banner.set_revealed(true);
             }
             Some(_) if !self.is_modified() => self.reload().await,
             Some(_) => {
-                banner.set_title(&format!(
-                    "“{name}” was changed by another program. Reloading discards your edits."
+                banner.set_title(&gettext_f(
+                    "“{name}” was changed by another program. Reloading discards your edits.",
+                    &[("name", &name)],
                 ));
-                banner.set_button_label(Some("_Reload"));
+                banner.set_button_label(Some(&gettext("_Reload")));
                 banner.set_revealed(true);
             }
         }
@@ -640,7 +665,7 @@ impl Window {
         let known = fingerprint(&file).await;
         let data = match read_pdf(&file).await {
             Ok(data) => data,
-            Err(e) => return self.toast(&format!("Couldn't read “{name}”: {e}")),
+            Err(e) => return self.toast(&couldnt_read(&name, &e)),
         };
         let password = inner.password.borrow().clone();
         let Some((document, tiles, password)) = self.open_document(&name, data, password).await
@@ -690,12 +715,16 @@ impl Window {
     async fn confirm_overwrite(&self, name: &str) -> bool {
         let inner = &self.0;
         let alert = adw::AlertDialog::new(
-            Some("File Changed on Disk"),
-            Some(&format!(
-                "“{name}” was changed by another program after it was opened. Saving replaces those changes with this document."
+            Some(&gettext("File Changed on Disk")),
+            Some(&gettext_f(
+                "“{name}” was changed by another program after it was opened. Saving replaces those changes with this document.",
+                &[("name", &name)],
             )),
         );
-        alert.add_responses(&[("cancel", "_Cancel"), ("save", "_Save Anyway")]);
+        alert.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("save", &gettext("_Save Anyway")),
+        ]);
         alert.set_response_appearance("save", adw::ResponseAppearance::Destructive);
         alert.set_default_response(Some("cancel"));
         alert.set_close_response("cancel");
@@ -786,12 +815,18 @@ impl Window {
 
     async fn ask_password(&self, name: &str, retry: bool) -> Option<String> {
         let body = if retry {
-            format!("The password was incorrect. Enter the password for “{name}”.")
+            gettext_f(
+                "The password was incorrect. Enter the password for “{name}”.",
+                &[("name", &name)],
+            )
         } else {
-            format!("“{name}” is protected with a password.")
+            gettext_f("“{name}” is protected with a password.", &[("name", &name)])
         };
-        let dialog = adw::AlertDialog::new(Some("Password Required"), Some(&body));
-        dialog.add_responses(&[("cancel", "_Cancel"), ("unlock", "_Unlock")]);
+        let dialog = adw::AlertDialog::new(Some(&gettext("Password Required")), Some(&body));
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("unlock", &gettext("_Unlock")),
+        ]);
         dialog.set_response_appearance("unlock", adw::ResponseAppearance::Suggested);
         dialog.set_default_response(Some("unlock"));
         dialog.set_close_response("cancel");
@@ -865,13 +900,13 @@ impl Window {
             stack.add_titled_with_icon(
                 &sidebar.widget,
                 Some("thumbnails"),
-                "Thumbnails",
+                &gettext("Thumbnails"),
                 "view-grid-symbolic",
             );
             stack.add_titled_with_icon(
                 &outline.widget,
                 Some("outline"),
-                "Contents",
+                &gettext("Contents"),
                 "view-list-symbolic",
             );
             let switcher = adw::ViewSwitcher::builder()
@@ -964,13 +999,19 @@ impl Window {
     fn open_uri(&self, uri: &str) {
         let scheme = uri.split(':').next().unwrap_or("").to_ascii_lowercase();
         if !matches!(scheme.as_str(), "http" | "https" | "mailto") {
-            return self.toast(&format!("Links of this kind aren't opened: {uri}"));
+            return self.toast(&gettext_f(
+                "Links of this kind aren't opened: {address}",
+                &[("address", &uri)],
+            ));
         }
         let launcher = gtk::UriLauncher::new(uri);
         let this = self.clone();
         glib::spawn_future_local(async move {
             if let Err(e) = launcher.launch_future(Some(&this.0.window)).await {
-                this.toast(&format!("Couldn't open link: {}", e.message()));
+                this.toast(&gettext_f(
+                    "Couldn't open link: {error}",
+                    &[("error", &e.message())],
+                ));
             }
         });
     }
@@ -1163,12 +1204,20 @@ impl Window {
             Some(s) => {
                 let done = s.pages_indexed == s.pages;
                 match (s.matches, s.current) {
-                    (0, _) if done => ("No matches".to_owned(), true),
-                    (0, _) => ("Searching…".to_owned(), false),
-                    (n, Some(c)) => (
-                        format!("{} of {n}{}", c + 1, if done { "" } else { "…" }),
-                        false,
-                    ),
+                    (0, _) if done => (gettext("No matches"), true),
+                    (0, _) => (gettext("Searching…"), false),
+                    (n, Some(c)) => {
+                        let args: &[(&str, &dyn std::fmt::Display)] =
+                            &[("current", &(c + 1)), ("total", &n)];
+                        let text = if done {
+                            gettext_f("{current} of {total}", args)
+                        } else {
+                            // Translators: the search is still running, so there may be
+                            // more matches than {total}.
+                            gettext_f("{current} of {total}…", args)
+                        };
+                        (text, false)
+                    }
                     (n, None) => (format!("{n}{}", if done { "" } else { "…" }), false),
                 }
             }
@@ -1561,7 +1610,10 @@ impl Window {
             }
         });
         match error {
-            Some(e) => self.toast(&format!("Couldn't copy the pages: {e}")),
+            Some(e) => self.toast(&gettext_f(
+                "Couldn't copy the pages: {error}",
+                &[("error", &e)],
+            )),
             None => self.index_for_search(),
         }
     }
@@ -1641,14 +1693,16 @@ impl Window {
             match outcome {
                 print::Outcome::Done => w.0.printed.set(w.0.printed.get() + 1),
                 print::Outcome::Cancelled => {}
-                print::Outcome::Failed(e) => w.toast(&format!("Couldn't print: {e}")),
+                print::Outcome::Failed(e) => {
+                    w.toast(&gettext_f("Couldn't print: {error}", &[("error", &e)]))
+                }
             }
         });
     }
 
     /// Asks for a PDF and inserts its pages.
     async fn choose_insert_file(&self) {
-        let dialog = pdf_dialog("Insert Pages from File");
+        let dialog = pdf_dialog(&gettext("Insert Pages from File"));
         if let Some(folder) = self
             .0
             .uri
@@ -1719,7 +1773,7 @@ impl Window {
         let data = match read_pdf(file).await {
             Ok(data) => data,
             Err(e) => {
-                self.toast(&format!("Couldn't read “{name}”: {e}"));
+                self.toast(&couldnt_read(&name, &e));
                 return None;
             }
         };
@@ -1734,7 +1788,10 @@ impl Window {
                     password = Some(self.ask_password(&name, password.is_some()).await?);
                 }
                 Err(e) => {
-                    self.toast(&format!("Couldn't open “{name}”: {e}"));
+                    self.toast(&gettext_f(
+                        "Couldn't open “{name}”: {error}",
+                        &[("name", &name), ("error", &e)],
+                    ));
                     return None;
                 }
             }
@@ -1774,7 +1831,7 @@ impl Window {
         };
         let pages = self.pages_to_export();
         let dialog = gtk::FileDialog::builder()
-            .title("Export Selected Pages")
+            .title(gettext("Export Selected Pages"))
             .initial_name(export_name(&name, &pages))
             .build();
         if let Some(folder) = inner
@@ -1806,12 +1863,13 @@ impl Window {
         };
         let n = pages.len();
         match write_job(job, &file).await {
-            Ok(()) => self.toast(&format!(
-                "Exported {n} page{} to “{}”",
-                if n == 1 { "" } else { "s" },
-                file_name(&file)
+            Ok(()) => self.toast(&ngettext_f(
+                "Exported {n} page to “{name}”",
+                "Exported {n} pages to “{name}”",
+                n,
+                &[("name", &file_name(&file))],
             )),
-            Err(e) => self.toast(&format!("Couldn't save “{}”: {e}", file_name(&file))),
+            Err(e) => self.toast(&couldnt_save(&file, &e)),
         }
     }
 
@@ -1853,7 +1911,7 @@ impl Window {
             return;
         };
         let dialog = gtk::FileDialog::builder()
-            .title("Save As")
+            .title(gettext("Save As"))
             .initial_name(&name)
             .build();
         if let Some(folder) = inner
@@ -1920,7 +1978,7 @@ impl Window {
                 true
             }
             Err(e) => {
-                self.toast(&format!("Couldn't save “{}”: {e}", file_name(&file)));
+                self.toast(&couldnt_save(&file, &e));
                 false
             }
         }
@@ -1939,15 +1997,16 @@ impl Window {
             .map(|d| d.borrow().name.clone())
             .unwrap_or_default();
         let alert = adw::AlertDialog::new(
-            Some("Save Changes?"),
-            Some(&format!(
-                "“{name}” has unsaved changes. Changes that aren't saved will be lost."
+            Some(&gettext("Save Changes?")),
+            Some(&gettext_f(
+                "“{name}” has unsaved changes. Changes that aren't saved will be lost.",
+                &[("name", &name)],
             )),
         );
         alert.add_responses(&[
-            ("cancel", "_Cancel"),
-            ("discard", "_Discard"),
-            ("save", "_Save"),
+            ("cancel", &gettext("_Cancel")),
+            ("discard", &gettext("_Discard")),
+            ("save", &gettext("_Save")),
         ]);
         alert.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
         alert.set_response_appearance("save", adw::ResponseAppearance::Suggested);
@@ -2014,23 +2073,26 @@ impl Window {
         let section = &inner.undo_section;
         section.remove_all();
         section.append(
-            Some(&undo.map_or_else(|| "Undo".to_owned(), |e| format!("Undo {}", edit_name(e)))),
+            Some(&undo.map_or_else(|| gettext("Undo"), undo_label)),
             Some("win.undo"),
         );
         section.append(
-            Some(&redo.map_or_else(|| "Redo".to_owned(), |e| format!("Redo {}", edit_name(e)))),
+            Some(&redo.map_or_else(|| gettext("Redo"), redo_label)),
             Some("win.redo"),
         );
 
         let pages = d.viewer.page_count();
-        let mut subtitle = format!("{pages} page{}", if pages == 1 { "" } else { "s" });
-        if d.edit().is_modified() {
-            subtitle.push_str(" — Edited");
-        }
+        let subtitle = if d.edit().is_modified() {
+            ngettext_f("{n} page — Edited", "{n} pages — Edited", pages, &[])
+        } else {
+            ngettext_f("{n} page", "{n} pages", pages, &[])
+        };
         inner.title.set_subtitle(&subtitle);
         // With labels, `show_page_number` gives the position instead.
         if d.labels().is_none() {
-            inner.page_total.set_label(&format!("of {pages}"));
+            // Translators: follows the box with the page number: "3 of 120".
+            let total = gettext_f("of {pages}", &[("pages", &pages)]);
+            inner.page_total.set_label(&total);
         }
     }
 
@@ -2291,9 +2353,13 @@ impl Window {
         let d = doc.borrow();
         inner.page_entry.set_text(&d.page_label(page));
         if d.labels().is_some() {
-            inner
-                .page_total
-                .set_label(&format!("({} of {})", page + 1, d.viewer.page_count()));
+            let total = gettext_f(
+                // Translators: follows the box with a printed page number:
+                // "iv (4 of 120)".
+                "({position} of {pages})",
+                &[("position", &(page + 1)), ("pages", &d.viewer.page_count())],
+            );
+            inner.page_total.set_label(&total);
         }
     }
 
@@ -2351,7 +2417,7 @@ impl Window {
     }
 
     fn choose_file(&self) {
-        let dialog = pdf_dialog("Open PDF");
+        let dialog = pdf_dialog(&gettext("Open PDF"));
         let this = self.clone();
         glib::spawn_future_local(async move {
             if let Ok(file) = dialog.open_future(Some(&this.0.window)).await {
@@ -2361,14 +2427,31 @@ impl Window {
     }
 }
 
-/// How the primary shortcut modifier is written in tooltips: Cmd on macOS,
-/// Ctrl elsewhere (shortcuts use GTK's `<Primary>`, which maps the same way).
-fn primary_key() -> &'static str {
+/// How a shortcut with the primary modifier is written in tooltips: "⌘O" on
+/// macOS, "Ctrl+O" elsewhere (shortcuts use GTK's `<Primary>`, which maps
+/// the same way).
+fn primary(key: &str) -> String {
     if cfg!(target_os = "macos") {
-        "⌘"
+        format!("⌘{key}")
     } else {
-        "Ctrl+"
+        // Translators: a keyboard shortcut as tooltips show it, the
+        // Control key with another.
+        gettext_f("Ctrl+{key}", &[("key", &key)])
     }
+}
+
+fn couldnt_read(name: &str, error: &dyn std::fmt::Display) -> String {
+    gettext_f(
+        "Couldn't read “{name}”: {error}",
+        &[("name", &name), ("error", error)],
+    )
+}
+
+fn couldnt_save(file: &gio::File, error: &dyn std::fmt::Display) -> String {
+    gettext_f(
+        "Couldn't save “{name}”: {error}",
+        &[("name", &file_name(file)), ("error", error)],
+    )
 }
 
 fn centre(v: &Viewer) -> ViewPoint {
@@ -2422,7 +2505,7 @@ fn delete_keys() -> gtk::ShortcutController {
 /// A file dialog for choosing a PDF.
 fn pdf_dialog(title: &str) -> gtk::FileDialog {
     let filter = gtk::FileFilter::new();
-    filter.set_name(Some("PDF documents"));
+    filter.set_name(Some(&gettext("PDF documents")));
     filter.add_mime_type("application/pdf");
     filter.add_suffix("pdf");
     let filters = gio::ListStore::new::<gtk::FileFilter>();
@@ -2452,7 +2535,7 @@ async fn read_pdf(file: &gio::File) -> Result<PdfData, String> {
     if let Some(path) = file.path() {
         return gio::spawn_blocking(move || PdfData::open(path))
             .await
-            .map_err(|_| "reading failed".to_owned())?
+            .map_err(|_| gettext("reading failed"))?
             .map_err(|e| {
                 // "No such file or directory (os error 2)" → without the code.
                 let text = e.to_string();
@@ -2466,8 +2549,41 @@ async fn read_pdf(file: &gio::File) -> Result<PdfData, String> {
     Ok(bytes.to_vec().into())
 }
 
-/// An edit's name for the Undo and Redo menu items: "Rotate Page",
-/// "Delete 3 Pages", …
+/// The Undo menu item for an edit: "Undo Rotate Page", "Undo Delete 3
+/// Pages", … Whole sentences per edit, so each can be translated as one.
+fn undo_label(edit: Edit) -> String {
+    match edit {
+        Edit::Rotate { pages } => {
+            ngettext_f("Undo Rotate Page", "Undo Rotate {n} Pages", pages, &[])
+        }
+        Edit::Delete { pages } => {
+            ngettext_f("Undo Delete Page", "Undo Delete {n} Pages", pages, &[])
+        }
+        Edit::Move { pages } => ngettext_f("Undo Move Page", "Undo Move {n} Pages", pages, &[]),
+        Edit::Insert { pages } => {
+            ngettext_f("Undo Insert Page", "Undo Insert {n} Pages", pages, &[])
+        }
+    }
+}
+
+/// The Redo menu item for an edit, like [`undo_label`].
+fn redo_label(edit: Edit) -> String {
+    match edit {
+        Edit::Rotate { pages } => {
+            ngettext_f("Redo Rotate Page", "Redo Rotate {n} Pages", pages, &[])
+        }
+        Edit::Delete { pages } => {
+            ngettext_f("Redo Delete Page", "Redo Delete {n} Pages", pages, &[])
+        }
+        Edit::Move { pages } => ngettext_f("Redo Move Page", "Redo Move {n} Pages", pages, &[]),
+        Edit::Insert { pages } => {
+            ngettext_f("Redo Insert Page", "Redo Insert {n} Pages", pages, &[])
+        }
+    }
+}
+
+/// An edit's name in the tests' `debug-state` ("Rotate Page", "Delete 3
+/// Pages", …): always English, and not shown to anyone.
 fn edit_name(edit: Edit) -> String {
     let (verb, n) = match edit {
         Edit::Rotate { pages } => ("Rotate", pages),
@@ -2512,11 +2628,11 @@ async fn write_job(job: SaveJob, file: &gio::File) -> Result<(), String> {
     match file.path() {
         Some(path) => gio::spawn_blocking(move || job.save(&path).map_err(save_error))
             .await
-            .unwrap_or_else(|_| Err("saving failed".to_owned())),
+            .unwrap_or_else(|_| Err(gettext("saving failed"))),
         None => {
             let bytes = gio::spawn_blocking(move || job.write().map_err(save_error))
                 .await
-                .unwrap_or_else(|_| Err("saving failed".to_owned()))?;
+                .unwrap_or_else(|_| Err(gettext("saving failed")))?;
             file.replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
                 .await
                 .map(|_| ())
@@ -2594,7 +2710,7 @@ fn export_name(name: &str, pages: &[usize]) -> String {
         }
     }
     let what = match ranges.as_slice() {
-        [(a, b)] if a == b => format!("page {}", a + 1),
+        [(a, b)] if a == b => gettext_f("page {page}", &[("page", &(a + 1))]),
         r if r.len() <= 3 => {
             let parts: Vec<String> = r
                 .iter()
@@ -2606,9 +2722,9 @@ fn export_name(name: &str, pages: &[usize]) -> String {
                     }
                 })
                 .collect();
-            format!("pages {}", parts.join(", "))
+            gettext_f("pages {pages}", &[("pages", &parts.join(", "))])
         }
-        _ => format!("{} pages", pages.len()),
+        _ => ngettext_f("{n} page", "{n} pages", pages.len(), &[]),
     };
     format!("{stem} ({what}).pdf")
 }
@@ -2622,8 +2738,11 @@ fn save_error(e: specto_write::WriteError) -> String {
             let text = e.to_string();
             text.split(" (os error").next().unwrap_or(&text).to_owned()
         }
-        E::PasswordRequired => "the document's password is needed".to_owned(),
-        _ => format!("{} can't save this document correctly yet", crate::APP_NAME),
+        E::PasswordRequired => gettext("the document's password is needed"),
+        _ => gettext_f(
+            "{app} can't save this document correctly yet",
+            &[("app", &crate::APP_NAME)],
+        ),
     }
 }
 

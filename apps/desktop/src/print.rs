@@ -7,6 +7,7 @@
 //! own, using GTK's deferred drawing, so the window stays responsive while
 //! a large page renders.
 
+use crate::i18n::gettext;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -137,7 +138,7 @@ pub fn print(
             gtk::PrintOperationResult::Cancel => Outcome::Cancelled,
             _ => Outcome::Failed(
                 op.error()
-                    .map_or_else(|| "printing failed".to_owned(), |e| e.message().to_owned()),
+                    .map_or_else(|| gettext("printing failed"), |e| e.message().to_owned()),
             ),
         };
         done(outcome);
@@ -258,7 +259,7 @@ impl Renderer {
                             req.rotation = rotation;
                             d.render(&req).map_err(|e| e.to_string())
                         }
-                        None => Err("couldn't open the file".to_owned()),
+                        None => Err(gettext("couldn't open the file")),
                     };
                     let _ = r.reply.send_blocking(result);
                 }

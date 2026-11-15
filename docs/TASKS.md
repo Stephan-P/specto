@@ -211,7 +211,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 Each app uses its platform's own mechanism, and the core crates carry no user-facing text. The first two tasks are worth doing early, before M3–M5 add many more strings.
 
-- [ ] **S** Desktop: move the UI strings into gettext (`gettext-rs`, catalogues in `apps/desktop/po`), English only at first. Sentences built with `format!` ("({} of {})", "Links of this kind aren't opened: …") become whole translatable strings with placeholders; counts use `ngettext`
+- [x] **S** Desktop: the UI strings go through gettext (`apps/desktop/src/i18n.rs` over `gettext-rs`, the system's libintl; domain `specto`), English only so far. Sentences with something filled in are whole strings with named placeholders (`gettext_f("Couldn't open “{name}”: {error}", …)`), counts use `ngettext_f`, and Undo and Redo have one string per kind of edit. `apps/desktop/po/update-pot.sh` writes the template `po/specto.pot` (116 strings). Catalogues are looked for in `share/locale` next to the program's `bin`; checked with a throwaway German one. Not translated: what the core crates say in error messages (the task below), and numbers
 - [ ] **S** Android: move the literal `Text("…")` strings into `strings.xml` (`stringResource`, `plurals` for counts)
 - [ ] **S** Core: no user-facing text from the crates. Frontends map error variants (`OpenError`, the `specto-ffi` errors) to their own translated messages instead of showing the `thiserror` text
 - [ ] **S** Numbers through the locale: page counts, the zoom percentage

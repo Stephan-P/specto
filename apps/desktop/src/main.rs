@@ -5,6 +5,7 @@
 mod canvas;
 mod debug;
 mod document;
+mod i18n;
 mod outline;
 mod print;
 mod state;
@@ -14,6 +15,7 @@ mod window;
 use adw::prelude::*;
 use gtk::{gio, glib};
 
+use i18n::{gettext, gettext_f};
 use window::Window;
 
 /// The application ID: D-Bus name, `.desktop` file and icon name, Flatpak
@@ -30,6 +32,7 @@ const WEBSITE: &str = "https://github.com/xfbs/specto";
 const ISSUES: &str = "https://github.com/xfbs/specto/issues";
 
 fn main() -> glib::ExitCode {
+    i18n::init();
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
@@ -106,30 +109,45 @@ fn main() -> glib::ExitCode {
 
 /// Shows the About dialog over the active window.
 fn show_about(app: &adw::Application) {
+    let licence = gettext_f(
+        // Translators: {apache} and {mit} are the names of the two licences,
+        // which stay in English and become links.
+        "Specto is licensed under either of the {apache} or the {mit}, at your option.\n\n\
+         It comes with no warranty of any kind.",
+        &[
+            (
+                "apache",
+                &"<a href=\"https://www.apache.org/licenses/LICENSE-2.0\">Apache License, \
+                  Version 2.0</a>",
+            ),
+            (
+                "mit",
+                &"<a href=\"https://opensource.org/license/mit\">MIT license</a>",
+            ),
+        ],
+    );
     let dialog = adw::AboutDialog::builder()
         .application_name(APP_NAME)
         .application_icon(APP_ID)
         .version(env!("CARGO_PKG_VERSION"))
-        .developer_name("The Specto contributors")
-        .copyright("© 2026 The Specto contributors")
+        .developer_name(gettext("The Specto contributors"))
+        .copyright(gettext("© 2026 The Specto contributors"))
         .website(WEBSITE)
         .issue_url(ISSUES)
         .license_type(gtk::License::Custom)
-        .license(
-            "Specto is licensed under either of the \
-             <a href=\"https://www.apache.org/licenses/LICENSE-2.0\">Apache License, \
-             Version 2.0</a> or the \
-             <a href=\"https://opensource.org/license/mit\">MIT license</a>, \
-             at your option.\n\n\
-             It comes with no warranty of any kind.",
-        )
+        .license(licence)
         .build();
-    // The two libraries that do the heavy lifting.
+    // The two libraries that do the heavy lifting. The text before each
+    // address is shown, as a link to it.
+    // Translators: what the library is used for stays in brackets.
+    let hayro = gettext("hayro (rendering)");
+    // Translators: what the library is used for stays in brackets.
+    let lopdf = gettext("lopdf (saving)");
     dialog.add_acknowledgement_section(
-        Some("Built with"),
+        Some(&gettext("Built with")),
         &[
-            "hayro (rendering) https://github.com/LaurenzV/hayro",
-            "lopdf (saving) https://github.com/J-F-Liu/lopdf",
+            &format!("{hayro} https://github.com/LaurenzV/hayro"),
+            &format!("{lopdf} https://github.com/J-F-Liu/lopdf"),
         ],
     );
     dialog.present(app.active_window().as_ref());
@@ -156,8 +174,8 @@ fn platform_accels(accels: &[&str]) -> Vec<String> {
 /// The application menu bar (macOS only): File, Edit, View, Go, Tools and
 /// Help, like Preview.
 fn menubar() -> gio::Menu {
-    let quit = format!("Quit {APP_NAME}");
-    let about = format!("About {APP_NAME}");
+    let quit = gettext_f("Quit {app}", &[("app", &APP_NAME)]);
+    let about = gettext_f("About {app}", &[("app", &APP_NAME)]);
     let section = |items: &[(&str, &str)]| {
         let m = gio::Menu::new();
         for (label, action) in items {
@@ -174,73 +192,85 @@ fn menubar() -> gio::Menu {
     };
 
     let file = submenu(&[
-        section(&[("Open…", "win.open")]),
+        section(&[(&gettext("Open…"), "win.open")]),
         section(&[
-            ("Save", "win.save"),
-            ("Save As…", "win.save-as"),
-            ("Export Selected Pages…", "win.export-pages"),
+            (&gettext("Save"), "win.save"),
+            (&gettext("Save As…"), "win.save-as"),
+            (&gettext("Export Selected Pages…"), "win.export-pages"),
         ]),
-        section(&[("Print…", "win.print")]),
-        section(&[("Close Window", "window.close")]),
+        section(&[(&gettext("Print…"), "win.print")]),
+        section(&[(&gettext("Close Window"), "window.close")]),
         section(&[(&quit, "app.quit")]),
     ]);
     let edit = submenu(&[
-        section(&[("Undo", "win.undo"), ("Redo", "win.redo")]),
-        section(&[("Copy", "win.copy"), ("Select All", "win.select-all")]),
         section(&[
-            ("Insert Pages from File…", "win.insert-file"),
-            ("Delete Pages", "win.delete-pages"),
+            (&gettext("Undo"), "win.undo"),
+            (&gettext("Redo"), "win.redo"),
         ]),
         section(&[
-            ("Find…", "win.find"),
-            ("Find Next", "win.find-next"),
-            ("Find Previous", "win.find-previous"),
+            (&gettext("Copy"), "win.copy"),
+            (&gettext("Select All"), "win.select-all"),
+        ]),
+        section(&[
+            (&gettext("Insert Pages from File…"), "win.insert-file"),
+            (&gettext("Delete Pages"), "win.delete-pages"),
+        ]),
+        section(&[
+            (&gettext("Find…"), "win.find"),
+            (&gettext("Find Next"), "win.find-next"),
+            (&gettext("Find Previous"), "win.find-previous"),
         ]),
     ]);
     let view = submenu(&[
         section(&[
-            ("Single Page", "win.layout::single"),
-            ("Continuous", "win.layout::continuous"),
-            ("Two Pages", "win.layout::two-page"),
-            ("Two Pages, Continuous", "win.layout::two-page-continuous"),
+            (&gettext("Single Page"), "win.layout::single"),
+            (&gettext("Continuous"), "win.layout::continuous"),
+            (&gettext("Two Pages"), "win.layout::two-page"),
+            (
+                &gettext("Two Pages, Continuous"),
+                "win.layout::two-page-continuous",
+            ),
         ]),
-        section(&[("Show Cover Page Alone", "win.cover-alone")]),
+        section(&[(&gettext("Show Cover Page Alone"), "win.cover-alone")]),
         section(&[
-            ("Actual Size", "win.zoom-actual"),
-            ("Fit Width", "win.fit-width"),
-            ("Fit Page", "win.fit-page"),
-            ("Zoom In", "win.zoom-in"),
-            ("Zoom Out", "win.zoom-out"),
+            (&gettext("Actual Size"), "win.zoom-actual"),
+            (&gettext("Fit Width"), "win.fit-width"),
+            (&gettext("Fit Page"), "win.fit-page"),
+            (&gettext("Zoom In"), "win.zoom-in"),
+            (&gettext("Zoom Out"), "win.zoom-out"),
         ]),
         section(&[
-            ("Show Sidebar", "win.show-sidebar"),
-            ("Thumbnails", "win.sidebar-page::thumbnails"),
-            ("Contents", "win.sidebar-page::outline"),
+            (&gettext("Show Sidebar"), "win.show-sidebar"),
+            (&gettext("Thumbnails"), "win.sidebar-page::thumbnails"),
+            (&gettext("Contents"), "win.sidebar-page::outline"),
         ]),
     ]);
     let go = submenu(&[
         section(&[
-            ("Previous Page", "win.previous-page"),
-            ("Next Page", "win.next-page"),
+            (&gettext("Previous Page"), "win.previous-page"),
+            (&gettext("Next Page"), "win.next-page"),
         ]),
         section(&[
-            ("First Page", "win.first-page"),
-            ("Last Page", "win.last-page"),
+            (&gettext("First Page"), "win.first-page"),
+            (&gettext("Last Page"), "win.last-page"),
         ]),
-        section(&[("Go to Page…", "win.go-to-page")]),
+        section(&[(&gettext("Go to Page…"), "win.go-to-page")]),
     ]);
 
     let tools = submenu(&[section(&[
-        ("Rotate Left", "win.rotate-left"),
-        ("Rotate Right", "win.rotate-right"),
+        (&gettext("Rotate Left"), "win.rotate-left"),
+        (&gettext("Rotate Right"), "win.rotate-right"),
     ])]);
 
     let bar = gio::Menu::new();
-    bar.append_submenu(Some("File"), &file);
-    bar.append_submenu(Some("Edit"), &edit);
-    bar.append_submenu(Some("View"), &view);
-    bar.append_submenu(Some("Go"), &go);
-    bar.append_submenu(Some("Tools"), &tools);
-    bar.append_submenu(Some("Help"), &submenu(&[section(&[(&about, "app.about")])]));
+    bar.append_submenu(Some(&gettext("File")), &file);
+    bar.append_submenu(Some(&gettext("Edit")), &edit);
+    bar.append_submenu(Some(&gettext("View")), &view);
+    bar.append_submenu(Some(&gettext("Go")), &go);
+    bar.append_submenu(Some(&gettext("Tools")), &tools);
+    bar.append_submenu(
+        Some(&gettext("Help")),
+        &submenu(&[section(&[(&about, "app.about")])]),
+    );
     bar
 }
