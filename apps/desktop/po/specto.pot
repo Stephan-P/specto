@@ -84,11 +84,11 @@ msgstr ""
 msgid "Close Window"
 msgstr ""
 
-#: src/main.rs:210 src/window.rs:2128
+#: src/main.rs:210 src/window.rs:2144
 msgid "Undo"
 msgstr ""
 
-#: src/main.rs:211 src/window.rs:2132
+#: src/main.rs:211 src/window.rs:2148
 msgid "Redo"
 msgstr ""
 
@@ -299,7 +299,7 @@ msgstr ""
 msgid "Search ({shortcut})"
 msgstr ""
 
-#: src/window.rs:561 src/window.rs:1844
+#: src/window.rs:561 src/window.rs:1860
 #, rust-format
 msgid "Couldn't open “{name}”: {error}"
 msgstr ""
@@ -329,7 +329,7 @@ msgid ""
 "those changes with this document."
 msgstr ""
 
-#: src/window.rs:736 src/window.rs:838 src/window.rs:2059
+#: src/window.rs:736 src/window.rs:838 src/window.rs:2075
 msgid "_Cancel"
 msgstr ""
 
@@ -389,60 +389,65 @@ msgstr ""
 msgid "Select the text to mark first"
 msgstr ""
 
-#: src/window.rs:1666
+#: src/window.rs:1631
+#, rust-format
+msgid "Couldn't delete the annotation: {error}"
+msgstr ""
+
+#: src/window.rs:1682
 #, rust-format
 msgid "Couldn't copy the pages: {error}"
 msgstr ""
 
-#: src/window.rs:1749
+#: src/window.rs:1765
 #, rust-format
 msgid "Couldn't print: {error}"
 msgstr ""
 
-#: src/window.rs:1757
+#: src/window.rs:1773
 msgid "Insert Pages from File"
 msgstr ""
 
-#: src/window.rs:1886
+#: src/window.rs:1902
 msgid "Export Selected Pages"
 msgstr ""
 
-#: src/window.rs:1919
+#: src/window.rs:1935
 #, rust-format
 msgid "Exported {n} page to “{name}”"
 msgid_plural "Exported {n} pages to “{name}”"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:1966
+#: src/window.rs:1982
 msgid "Save As"
 msgstr ""
 
-#: src/window.rs:2052
+#: src/window.rs:2068
 msgid "Save Changes?"
 msgstr ""
 
-#: src/window.rs:2054
+#: src/window.rs:2070
 #, rust-format
 msgid "“{name}” has unsaved changes. Changes that aren't saved will be lost."
 msgstr ""
 
-#: src/window.rs:2060
+#: src/window.rs:2076
 msgid "_Discard"
 msgstr ""
 
-#: src/window.rs:2061
+#: src/window.rs:2077
 msgid "_Save"
 msgstr ""
 
-#: src/window.rs:2138
+#: src/window.rs:2154
 #, rust-format
 msgid "{n} page — Edited"
 msgid_plural "{n} pages — Edited"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2140 src/window.rs:2808
+#: src/window.rs:2156 src/window.rs:2824
 #, rust-format
 msgid "{n} page"
 msgid_plural "{n} pages"
@@ -450,170 +455,170 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. Translators: follows the box with the page number: "3 of 120".
-#: src/window.rs:2146
+#: src/window.rs:2162
 #, rust-format
 msgid "of {pages}"
 msgstr ""
 
 #. Translators: follows the box with a printed page number:
 #. "iv (4 of 120)".
-#: src/window.rs:2420
+#: src/window.rs:2436
 #, rust-format
 msgid "({position} of {pages})"
 msgstr ""
 
-#: src/window.rs:2481
+#: src/window.rs:2497
 msgid "Open PDF"
 msgstr ""
 
 #. Translators: a keyboard shortcut as tooltips show it, the
 #. Control key with another.
-#: src/window.rs:2500
+#: src/window.rs:2516
 #, rust-format
 msgid "Ctrl+{key}"
 msgstr ""
 
-#: src/window.rs:2506
+#: src/window.rs:2522
 #, rust-format
 msgid "Couldn't read “{name}”: {error}"
 msgstr ""
 
-#: src/window.rs:2513
+#: src/window.rs:2529
 #, rust-format
 msgid "Couldn't save “{name}”: {error}"
 msgstr ""
 
-#: src/window.rs:2574
+#: src/window.rs:2590
 msgid "PDF documents"
 msgstr ""
 
-#: src/window.rs:2604
+#: src/window.rs:2620
 msgid "reading failed"
 msgstr ""
 
-#: src/window.rs:2623
+#: src/window.rs:2639
 #, rust-format
 msgid "Undo Rotate Page"
 msgid_plural "Undo Rotate {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2626
+#: src/window.rs:2642
 #, rust-format
 msgid "Undo Delete Page"
 msgid_plural "Undo Delete {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2628
+#: src/window.rs:2644
 #, rust-format
 msgid "Undo Move Page"
 msgid_plural "Undo Move {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2630
+#: src/window.rs:2646
 #, rust-format
 msgid "Undo Insert Page"
 msgid_plural "Undo Insert {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2632
+#: src/window.rs:2648
 msgid "Undo Highlight"
 msgstr ""
 
-#: src/window.rs:2633
+#: src/window.rs:2649
 msgid "Undo Underline"
 msgstr ""
 
-#: src/window.rs:2634
+#: src/window.rs:2650
 msgid "Undo Strikethrough"
 msgstr ""
 
-#: src/window.rs:2635
+#: src/window.rs:2651
 msgid "Undo Add Annotation"
 msgstr ""
 
-#: src/window.rs:2636
+#: src/window.rs:2652
 msgid "Undo Delete Annotation"
 msgstr ""
 
-#: src/window.rs:2637
+#: src/window.rs:2653
 msgid "Undo Change Annotation"
 msgstr ""
 
-#: src/window.rs:2645
+#: src/window.rs:2661
 #, rust-format
 msgid "Redo Rotate Page"
 msgid_plural "Redo Rotate {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2648
+#: src/window.rs:2664
 #, rust-format
 msgid "Redo Delete Page"
 msgid_plural "Redo Delete {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2650
+#: src/window.rs:2666
 #, rust-format
 msgid "Redo Move Page"
 msgid_plural "Redo Move {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2652
+#: src/window.rs:2668
 #, rust-format
 msgid "Redo Insert Page"
 msgid_plural "Redo Insert {n} Pages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/window.rs:2654
+#: src/window.rs:2670
 msgid "Redo Highlight"
 msgstr ""
 
-#: src/window.rs:2655
+#: src/window.rs:2671
 msgid "Redo Underline"
 msgstr ""
 
-#: src/window.rs:2656
+#: src/window.rs:2672
 msgid "Redo Strikethrough"
 msgstr ""
 
-#: src/window.rs:2657
+#: src/window.rs:2673
 msgid "Redo Add Annotation"
 msgstr ""
 
-#: src/window.rs:2658
+#: src/window.rs:2674
 msgid "Redo Delete Annotation"
 msgstr ""
 
-#: src/window.rs:2659
+#: src/window.rs:2675
 msgid "Redo Change Annotation"
 msgstr ""
 
-#: src/window.rs:2712 src/window.rs:2716
+#: src/window.rs:2728 src/window.rs:2732
 msgid "saving failed"
 msgstr ""
 
-#: src/window.rs:2794
+#: src/window.rs:2810
 #, rust-format
 msgid "page {page}"
 msgstr ""
 
-#: src/window.rs:2806
+#: src/window.rs:2822
 #, rust-format
 msgid "pages {pages}"
 msgstr ""
 
-#: src/window.rs:2822
+#: src/window.rs:2838
 msgid "the document's password is needed"
 msgstr ""
 
-#: src/window.rs:2824
+#: src/window.rs:2840
 #, rust-format
 msgid "{app} can't save this document correctly yet"
 msgstr ""

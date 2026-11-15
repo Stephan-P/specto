@@ -131,6 +131,7 @@ fn write_as(
     let mut doc = load(main)?;
     let encryption = doc.encryption_state.take().filter(|_| protected);
     flatten_inherited(&mut doc)?;
+    annotate(&mut doc, main.id, annots)?;
     let catalog_id = doc
         .trailer
         .get(b"Root")
@@ -153,7 +154,7 @@ fn write_as(
         if !pages.iter().any(|p| p.source == source.id) {
             continue;
         }
-        for (n, id) in import(&mut doc, source)? {
+        for (n, id) in import(&mut doc, source, annots)? {
             page_ids.insert((source.id, n), id);
         }
     }
@@ -161,7 +162,6 @@ fn write_as(
     // The new page list.
     let mut kids = Vec::with_capacity(pages.len());
     let mut used = HashSet::new();
-    let mut annotated = HashSet::new();
     for p in pages {
         if p.source != main.id && !others.iter().any(|s| s.id == p.source) {
             return Err(WriteError::UnknownSource);
@@ -169,14 +169,6 @@ fn write_as(
         let id = *page_ids
             .get(&(p.source, p.page))
             .ok_or(WriteError::MissingPage(p.page))?;
-        // Before a second use of the page copies it, so that the copy has
-        // the same annotations.
-        if annotated.insert((p.source, p.page))
-            && let Some(changes) = annots.get(&(p.source, p.page))
-            && !changes.is_empty()
-        {
-            annots::apply(&mut doc, id, changes)?;
-        }
         let id = if used.insert(id) {
             id
         } else {
@@ -572,10 +564,15 @@ fn flatten_inherited(doc: &mut Document) -> Result<(), WriteError> {
 /// own. Returns the copied page objects by page index. Their catalog and
 /// page tree nodes are left behind; anything else they don't use is pruned
 /// later.
-fn import(doc: &mut Document, source: &Source) -> Result<BTreeMap<u32, ObjectId>, WriteError> {
+fn import(
+    doc: &mut Document,
+    source: &Source,
+    annots: &AnnotChanges,
+) -> Result<BTreeMap<u32, ObjectId>, WriteError> {
     let mut other = load(source)?;
     other.encryption_state = None;
     flatten_inherited(&mut other)?;
+    annotate(&mut other, source.id, annots)?;
     other.renumber_objects_with(doc.max_id + 1);
     doc.max_id = doc.max_id.max(other.max_id);
     let pages: BTreeMap<u32, ObjectId> = other
@@ -600,6 +597,27 @@ fn import(doc: &mut Document, source: &Source) -> Result<BTreeMap<u32, ObjectId>
         doc.objects.insert(id, obj);
     }
     Ok(pages)
+}
+
+/// Applies the annotation changes for pages of `source` to `doc`, that
+/// file as just loaded: before its objects are renumbered, so the object
+/// numbers the changes name are the file's, and before a page used twice
+/// is copied, so the copy has the same annotations.
+fn annotate(doc: &mut Document, source: SourceId, annots: &AnnotChanges) -> Result<(), WriteError> {
+    if !annots.keys().any(|(s, _)| *s == source) {
+        return Ok(());
+    }
+    let pages = doc.get_pages();
+    for ((_, page), changes) in annots
+        .iter()
+        .filter(|((s, _), c)| *s == source && !c.is_empty())
+    {
+        // A page that isn't there isn't written either.
+        if let Some(&id) = pages.get(&(page + 1)) {
+            annots::apply(doc, id, changes)?;
+        }
+    }
+    Ok(())
 }
 
 /// A second page object for a page used twice: a copy of the page

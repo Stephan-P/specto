@@ -1018,12 +1018,20 @@ impl ViewSession {
     /// Takes back the last edit. Returns what it was, or `None` if there
     /// was nothing to undo.
     pub fn undo(&self) -> Option<EditStep> {
-        self.shared.lock().session.undo().map(EditStep::from)
+        self.shared
+            .lock()
+            .session
+            .undo(&self.shared.scheduler)
+            .map(EditStep::from)
     }
 
     /// Does again what [`undo`](Self::undo) took back.
     pub fn redo(&self) -> Option<EditStep> {
-        self.shared.lock().session.redo().map(EditStep::from)
+        self.shared
+            .lock()
+            .session
+            .redo(&self.shared.scheduler)
+            .map(EditStep::from)
     }
 
     pub fn edit_state(&self) -> EditState {

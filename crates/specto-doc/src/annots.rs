@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use specto_annot::Annotation;
+use specto_annot::{Annotation, Origin};
 
 use crate::{Edit, EditDoc, SourceId};
 
@@ -34,11 +34,21 @@ pub enum AnnotId {
 /// What was done to the annotations, relative to the files.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct AnnotEdits {
-    /// Annotations of the files that are deleted (`None`) or changed, by
-    /// source, page and index.
-    changed: BTreeMap<(SourceId, u32, u32), Option<Arc<Annotation>>>,
+    /// Annotations of the files that are deleted or changed, by source,
+    /// page and index.
+    changed: BTreeMap<(SourceId, u32, u32), Changed>,
     /// New ones, in the order they were made (later ones lie on top).
     added: Vec<Added>,
+}
+
+/// What became of an annotation of a file.
+#[derive(Clone, Debug)]
+struct Changed {
+    /// Where the file has it, with its object number: saving checks that
+    /// it finds the same annotation there.
+    origin: Origin,
+    /// What it is now; `None` if it was deleted.
+    to: Option<Arc<Annotation>>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,10 +62,10 @@ struct Added {
 /// What to do to the annotations of one page of a file when saving it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PageAnnotChanges {
-    /// Entries of the page's `/Annots` to drop, by index.
-    pub removed: Vec<u32>,
-    /// Entries to write anew, by index.
-    pub replaced: Vec<(u32, Arc<Annotation>)>,
+    /// Entries of the page's `/Annots` to drop.
+    pub removed: Vec<Origin>,
+    /// Entries to write anew.
+    pub replaced: Vec<(Origin, Arc<Annotation>)>,
     /// Annotations to append, in order.
     pub added: Vec<Arc<Annotation>>,
 }
@@ -85,8 +95,8 @@ impl EditDoc {
             };
             match edits.changed.get(&(source, page, index)) {
                 None => Some((id, a.clone())),
-                Some(None) => None,
-                Some(Some(changed)) => Some((id, changed.clone())),
+                Some(Changed { to: None, .. }) => None,
+                Some(Changed { to: Some(to), .. }) => Some((id, to.clone())),
             }
         });
         let added = edits
@@ -103,14 +113,27 @@ impl EditDoc {
         !self.annots.changed.is_empty() || !self.annots.added.is_empty()
     }
 
+    /// The pages of files that have an annotation of the file deleted or
+    /// changed: source and page, each once.
+    pub fn pages_with_changed_annotations(&self) -> Vec<(SourceId, u32)> {
+        let mut pages: Vec<(SourceId, u32)> = self
+            .annots
+            .changed
+            .keys()
+            .map(|&(source, page, _)| (source, page))
+            .collect();
+        pages.dedup();
+        pages
+    }
+
     /// What saving has to do to the annotations of page `page` of `source`.
     pub fn annotation_changes(&self, source: SourceId, page: u32) -> PageAnnotChanges {
         let mut out = PageAnnotChanges::default();
         let all = (source, page, 0)..=(source, page, u32::MAX);
-        for (&(_, _, index), change) in self.annots.changed.range(all) {
-            match change {
-                None => out.removed.push(index),
-                Some(a) => out.replaced.push((index, a.clone())),
+        for change in self.annots.changed.range(all).map(|(_, c)| c) {
+            match &change.to {
+                None => out.removed.push(change.origin),
+                Some(a) => out.replaced.push((change.origin, a.clone())),
             }
         }
         out.added = self
@@ -167,50 +190,54 @@ impl EditDoc {
     /// [`annotations`](Self::annotations) gave it). Returns whether there
     /// was something to delete.
     pub fn remove_annotation(&mut self, id: AnnotId, annotation: &Annotation) -> bool {
-        if !self.has_annotation(id) {
+        if !self.has_annotation(id) || !origin_fits(id, annotation) {
             return false;
         }
         self.record(Edit::RemoveAnnotation(annotation.annot_type()));
-        let edits = Arc::make_mut(&mut self.annots);
-        match id {
-            AnnotId::File {
-                source,
-                page,
-                index,
-            } => {
-                edits.changed.insert((source, page, index), None);
-            }
-            AnnotId::New(n) => edits.added.retain(|a| a.id != n),
-        }
+        self.set_annotation(id, annotation.origin, None);
         true
     }
 
     /// Replaces the annotation `id` with `annotation`: the same one,
-    /// changed. Returns whether there was one to change.
+    /// changed (for one of a file, with the origin it had). Returns whether
+    /// there was one to change.
     pub fn change_annotation(&mut self, id: AnnotId, annotation: Annotation) -> bool {
-        if !self.has_annotation(id) {
+        if !self.has_annotation(id) || !origin_fits(id, &annotation) {
             return false;
         }
         self.record(Edit::ChangeAnnotation(annotation.annot_type()));
-        let annotation = Arc::new(annotation);
+        self.set_annotation(id, annotation.origin, Some(Arc::new(annotation)));
+        true
+    }
+
+    /// Makes the annotation `id` (of a file: the one at `origin`) into
+    /// `to`, or deletes it.
+    fn set_annotation(&mut self, id: AnnotId, origin: Option<Origin>, to: Option<Arc<Annotation>>) {
         let edits = Arc::make_mut(&mut self.annots);
-        match id {
-            AnnotId::File {
-                source,
-                page,
-                index,
-            } => {
+        match (id, origin) {
+            (
+                AnnotId::File {
+                    source,
+                    page,
+                    index,
+                },
+                Some(origin),
+            ) => {
                 edits
                     .changed
-                    .insert((source, page, index), Some(annotation));
+                    .insert((source, page, index), Changed { origin, to });
             }
-            AnnotId::New(n) => {
-                if let Some(a) = edits.added.iter_mut().find(|a| a.id == n) {
-                    a.annotation = annotation;
+            // Ruled out by `origin_fits`.
+            (AnnotId::File { .. }, None) => {}
+            (AnnotId::New(n), _) => match to {
+                Some(to) => {
+                    if let Some(a) = edits.added.iter_mut().find(|a| a.id == n) {
+                        a.annotation = to;
+                    }
                 }
-            }
+                None => edits.added.retain(|a| a.id != n),
+            },
         }
-        true
     }
 
     /// Whether `id` can be there: a new one that is, or one of a file that
@@ -221,8 +248,20 @@ impl EditDoc {
                 source,
                 page,
                 index,
-            } => !matches!(self.annots.changed.get(&(source, page, index)), Some(None)),
+            } => !matches!(
+                self.annots.changed.get(&(source, page, index)),
+                Some(Changed { to: None, .. })
+            ),
             AnnotId::New(n) => self.annots.added.iter().any(|a| a.id == n),
         }
+    }
+}
+
+/// Whether `annotation` can be the one `id` names: one of a file says
+/// where in the file it is, and that is where `id` points.
+fn origin_fits(id: AnnotId, annotation: &Annotation) -> bool {
+    match id {
+        AnnotId::File { index, .. } => annotation.origin.is_some_and(|o| o.index == index),
+        AnnotId::New(_) => true,
     }
 }

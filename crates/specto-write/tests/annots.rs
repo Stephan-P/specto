@@ -380,3 +380,160 @@ fn encrypted_and_on_a_page_used_twice() {
         assert!(r > 240 && g > 215 && b < 30, "page {page}: {r} {g} {b}");
     }
 }
+
+#[test]
+fn an_annotation_that_isnt_where_it_was_read_is_not_touched() {
+    let original = fixture();
+    let on_page = imported_arcs(&original, 0);
+    let (_, square) = EditDoc::from_source(MAIN, 2).annotations(MAIN, 0, &on_page)[0].clone();
+    let data = PdfData::from(original);
+    let source = Source {
+        id: MAIN,
+        data: &data,
+        password: None,
+    };
+    let pages = [PageRef::new(MAIN, 0)];
+    let removing = |origin: specto_annot::Origin| {
+        let changes = specto_doc::PageAnnotChanges {
+            removed: vec![origin],
+            ..Default::default()
+        };
+        write_edited(
+            &[source],
+            &pages,
+            &AnnotChanges::from([((MAIN, 0), changes)]),
+            true,
+        )
+    };
+    let origin = square.origin.unwrap();
+    assert!(removing(origin).is_ok());
+    // Another object at that place, a place that holds something else (the
+    // link, entry 0, is another object too), a place beyond the end, and
+    // one said to be written into the array that is a reference.
+    let (number, generation) = origin.object.unwrap();
+    for wrong in [
+        specto_annot::Origin {
+            object: Some((number + 1, generation)),
+            ..origin
+        },
+        specto_annot::Origin { index: 0, ..origin },
+        specto_annot::Origin { index: 9, ..origin },
+        specto_annot::Origin {
+            object: None,
+            ..origin
+        },
+    ] {
+        assert!(
+            matches!(removing(wrong), Err(specto_write::WriteError::Unsupported)),
+            "{wrong:?}"
+        );
+    }
+}
+
+/// Every annotation of the corpus, deleted on its own: the page is
+/// written without it, as the apps do to show the page then, and read back
+/// it has one annotation less and the others as before. Prints what
+/// couldn't be done; fails only on a result that is wrong.
+#[test]
+#[ignore = "needs corpus/files (run corpus/fetch.sh)"]
+fn corpus_annotations_can_be_deleted() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/files");
+    let mut stack = vec![dir];
+    let mut paths = Vec::new();
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "pdf") {
+                paths.push(p);
+            }
+        }
+    }
+    paths.sort();
+    let (mut annotations, mut deleted) = (0, 0);
+    let (mut refused, mut wrong, mut panics) = (Vec::new(), Vec::new(), Vec::new());
+    for path in &paths {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let data = PdfData::open(path).unwrap();
+        let Ok(doc) = SourceDocument::open(data.clone(), None) else {
+            continue;
+        };
+        let source = Source {
+            id: MAIN,
+            data: &data,
+            password: None,
+        };
+        for page in 0..doc.page_count().min(50) as u32 {
+            let before = import(&doc, page as usize);
+            for (i, a) in before.iter().enumerate() {
+                annotations += 1;
+                let what = format!("{name} page {} annotation {i}", page + 1);
+                let changes = specto_doc::PageAnnotChanges {
+                    removed: vec![a.origin.unwrap()],
+                    ..Default::default()
+                };
+                let r = catch_unwind(AssertUnwindSafe(|| {
+                    write_edited(
+                        &[source],
+                        &[PageRef::new(MAIN, page)],
+                        &AnnotChanges::from([((MAIN, page), changes)]),
+                        false,
+                    )
+                }));
+                let out = match r {
+                    Ok(Ok(out)) => out,
+                    Ok(Err(e)) => {
+                        refused.push(format!("{what}: {e}"));
+                        continue;
+                    }
+                    Err(_) => {
+                        panics.push(what);
+                        continue;
+                    }
+                };
+                let Ok(written) = SourceDocument::open(out, None) else {
+                    wrong.push(format!("{what}: the result doesn't open"));
+                    continue;
+                };
+                // What is left, by what it is and where: the one deleted is
+                // missing, and with it the replies to it at most.
+                // (Nearly where: a rewritten file has its numbers in
+                // single precision.)
+                let same = |a: &Annotation, b: &Annotation| {
+                    let corners = |r: PdfBox| [r.min.x, r.min.y, r.max.x, r.max.y];
+                    a.annot_type() == b.annot_type()
+                        && corners(a.rect)
+                            .iter()
+                            .zip(corners(b.rect))
+                            .all(|(x, y)| (x - y).abs() <= 0.01 + x.abs() * 1e-5)
+                };
+                let after = import(&written, 0);
+                let mut expected = before.clone();
+                expected.remove(i);
+                let is_rest = after.len() <= expected.len() && {
+                    let mut rest = expected.iter();
+                    after.iter().all(|a| rest.any(|e| same(e, a)))
+                };
+                if is_rest {
+                    deleted += 1;
+                } else {
+                    wrong.push(format!("{what}: {} left of {}", after.len(), before.len()));
+                }
+            }
+        }
+    }
+    println!("{annotations} annotations, {deleted} deleted");
+    for (title, list) in [
+        ("refused", &refused),
+        ("wrong", &wrong),
+        ("panicked", &panics),
+    ] {
+        println!("{title}: {}", list.len());
+        for l in list.iter().take(40) {
+            println!("  {l}");
+        }
+    }
+    assert!(wrong.is_empty() && panics.is_empty());
+}

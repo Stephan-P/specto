@@ -230,14 +230,25 @@ impl Document {
         Ok(range)
     }
 
+    /// Deletes the annotation that is picked (see the session's function
+    /// of this name). Deleting one of the file's changes what its page is
+    /// rendered from.
+    pub fn remove_picked_annotation(&mut self) -> Result<bool, specto_write::WriteError> {
+        let removed = self.session.remove_picked_annotation(scheduler())?;
+        if removed {
+            self.pages_changed();
+        }
+        Ok(removed)
+    }
+
     pub fn undo(&mut self) -> Option<Edit> {
-        let edit = self.session.undo()?;
+        let edit = self.session.undo(scheduler())?;
         self.pages_changed();
         Some(edit)
     }
 
     pub fn redo(&mut self) -> Option<Edit> {
-        let edit = self.session.redo()?;
+        let edit = self.session.redo(scheduler())?;
         self.pages_changed();
         Some(edit)
     }

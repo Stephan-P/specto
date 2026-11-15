@@ -78,10 +78,11 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 - Highlight, Underline and Strikethrough (the main menu, or Shift+*Primary*+H, U and X) mark the selected text; a selection over several pages is marked on each, as one edit
 - A highlight darkens the page beneath it like a highlighter pen, so the text stays black
-- A click on markup made since the document was opened picks it (a frame shows around it); Delete or Backspace deletes it, Escape lets go of it
+- A click on markup picks it (a frame shows around it); Delete or Backspace deletes it, Escape lets go of it. That goes for what the file already had too, of any kind (notes, text boxes, drawings, stamps), except what the file marks as locked or read-only
 - Undo and Redo cover markup like page edits, in the order things were done
 - Saved with the document as standard PDF annotations, which other programs show and can edit
-- Not yet: picking or deleting markup the file already had when it was opened; new markup in thumbnails and in print before the document is saved
+- Markup a file has without a ready-made look (some programs leave that out) is shown where it is text markup
+- Not yet: changing markup (colour, position); new markup in thumbnails and in print before the document is saved
 
 ## Saving
 

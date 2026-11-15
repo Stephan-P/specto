@@ -1616,7 +1616,23 @@ impl Window {
 
     /// Delete and Backspace: the annotation that is picked, else pages.
     fn delete_pages(&self) {
-        if self.annotate(|d| d.remove_picked_annotation()) {
+        let mut failed = None;
+        let mut removed = false;
+        // As after an edit to pages: the thumbnail of the page changes too.
+        self.edit(|d| {
+            match d.remove_picked_annotation() {
+                Ok(r) => removed = r,
+                Err(e) => failed = Some(e),
+            }
+            removed.then(Edited::default)
+        });
+        if let Some(e) = failed {
+            return self.toast(&gettext_f(
+                "Couldn't delete the annotation: {error}",
+                &[("error", &save_error(e))],
+            ));
+        }
+        if removed {
             return;
         }
         let selected = self

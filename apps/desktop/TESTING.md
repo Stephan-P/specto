@@ -146,7 +146,10 @@ Work on copies of the test files.
 - Click a highlight: a frame appears around it. Delete removes it and no page; Escape lets go of it instead. A click on a link under markup still follows the link.
 - ROTATED: highlights lie on the text there too. Rotate a page with a highlight (*Primary*+Right): the highlight turns with it.
 - Move a page with a highlight in the sidebar, and delete one and undo: the highlight stays with its page.
-- Save, close, open again: the markup is there and looks the same as before saving (compare closely: colour, position, the height of the lines). It can no longer be picked; that is expected for now.
+- Save, close, open again: the markup is there and looks the same as before saving (compare closely: colour, position, the height of the lines).
+- Markup the file already has: click one of the reopened highlights and press Delete. It disappears, nothing else on the page changes or moves, and the thumbnail follows. *Primary*+Z brings it back. Save and reopen: it is gone.
+- A file with other programs' annotations (`corpus/files/pdfjs/test/pdfs/freetexts.pdf`, `inks.pdf`, `comments.pdf`): each can be picked and deleted, one at a time, and the others stay as they were. Deleting one that has a reply or a popup takes those along.
+- LONG, a highlight deleted on one page: scrolling, zooming, selecting text, links and search on that page work as before.
 - The saved file in other programs (Papers or Evince, Firefox, Preview on macOS): the markup shows, in the same place and colour, and can be selected and deleted there. In a list of annotations it shows the marked text.
 - ENCRYPTED: highlight, save, reopen with the password: the highlight is there.
 - Expected for now: thumbnails and printed pages show new markup only after saving.

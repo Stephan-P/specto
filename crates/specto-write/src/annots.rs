@@ -8,8 +8,14 @@ use specto_doc::PageAnnotChanges;
 
 use crate::{WriteError, text_string};
 
-/// Applies `changes` to the `/Annots` of the page `page_id`. Their indices
-/// count the entries of the array as the file has it.
+/// Applies `changes` to the `/Annots` of the page `page_id`, in `doc` as
+/// loaded: object numbers are still the file's.
+///
+/// What is deleted or changed is named by where the import found it: its
+/// index among the entries of the array, and its object number. If lopdf
+/// has something else there (the two parsers read a damaged file
+/// differently), nothing is written rather than the wrong annotation
+/// changed.
 pub(crate) fn apply(
     doc: &mut Document,
     page_id: ObjectId,
@@ -26,10 +32,25 @@ pub(crate) fn apply(
         _ => Vec::new(),
     };
 
+    let origins = changes
+        .removed
+        .iter()
+        .chain(changes.replaced.iter().map(|(o, _)| o));
+    for origin in origins {
+        let same = match (entries.get(origin.index as usize), origin.object) {
+            (Some(Object::Reference(id)), Some(object)) => *id == object,
+            (Some(Object::Dictionary(_)), None) => true,
+            _ => false,
+        };
+        if !same {
+            return Err(WriteError::Unsupported);
+        }
+    }
+    let removed: HashSet<u32> = changes.removed.iter().map(|o| o.index).collect();
+
     // The objects that go, and with them what hangs on them: their popups
     // and the replies to them.
-    let mut gone: HashSet<ObjectId> = changes
-        .removed
+    let mut gone: HashSet<ObjectId> = removed
         .iter()
         .filter_map(|&i| entries.get(i as usize)?.as_reference().ok())
         .collect();
@@ -57,13 +78,13 @@ pub(crate) fn apply(
     let mut kept = Vec::with_capacity(entries.len() + changes.added.len());
     for (index, entry) in entries.into_iter().enumerate() {
         let index = index as u32;
-        if changes.removed.contains(&index) {
+        if removed.contains(&index) {
             continue;
         }
         if entry.as_reference().is_ok_and(|id| gone.contains(&id)) {
             continue;
         }
-        let replacement = changes.replaced.iter().find(|(i, _)| *i == index);
+        let replacement = changes.replaced.iter().find(|(o, _)| o.index == index);
         let Some((_, annotation)) = replacement else {
             kept.push(entry);
             continue;

@@ -514,6 +514,23 @@ impl Viewer {
         }
     }
 
+    /// Replaces the page list with one of the same pages in the same sizes
+    /// that are only rendered from elsewhere (another document, or another
+    /// page of one): nothing moves. If a size did change, this is
+    /// [`set_pages`](Self::set_pages).
+    pub fn set_page_sources(&mut self, pages: Vec<ViewPage>) {
+        let same = pages.len() == self.pages.len()
+            && pages
+                .iter()
+                .zip(&self.sizes)
+                .all(|(p, size)| p.displayed().size() == *size);
+        if same {
+            self.pages = pages;
+        } else {
+            self.set_pages(pages);
+        }
+    }
+
     /// Viewport size in logical pixels and the device scale factor
     /// (e.g. 2.0 on a Retina display, 1.25 on a fractionally scaled one).
     pub fn set_viewport(&mut self, size: ViewSize, scale_factor: f64) {

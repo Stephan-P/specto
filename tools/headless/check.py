@@ -67,7 +67,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - link_click: clicking a link follows it
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none); a click picks an annotation, Delete deletes it and
-  not the page, Escape lets go; undo; saved, they're in the file and shown
+  not the page, Escape lets go; undo; saved, they're in the file and shown;
+  one the file has is picked and deleted the same way, and the page is
+  then shown without it
 - select_by_dragging: the I-beam cursor over text; dragging selects,
   forwards and backwards over lines; Escape and a click clear it
 - select_words_and_lines: double-click selects a word, triple-click a line,
@@ -857,6 +859,24 @@ def yellow(c):
     return c[0] > 200 and c[1] > 180 and c[2] < 120
 
 
+def red(c):
+    return c[0] > 150 and c[1] < 110 and c[2] < 110
+
+
+def underlined(w, name, page, line, col):
+    """Whether there is red just below or at the baseline of character
+    `col`, where an underline is drawn."""
+    width, height, pixels = read_ppm(w.screenshot(name))
+    scale = w.app.ctx.scale
+    x = LEFT + (col + 0.5) * CHAR
+    for dy in range(-6, 3):
+        sx, sy = w.screen(page, x, TOP - line * LEADING + dy)
+        at = (min(round(sy * scale), height - 1) * width + min(round(sx * scale), width - 1)) * 3
+        if red(tuple(pixels[at:at + 3])):
+            return True
+    return False
+
+
 def test_mark_text(ctx):
     path = os.path.join(ctx.home, "marked.pdf")
     shutil.copy(ctx.text, path)
@@ -912,6 +932,32 @@ def test_mark_text(ctx):
     check(s["annotations"] == 2 and not s["modified"], s)
     gap = w.char(0, 0, 9)
     check(yellow(pixel(w, "reopened", *gap)), "the saved highlight isn't shown")
+    # Now that the file has them, they are part of the page as rendered.
+    # Deleting one renders the page without it; the underline stays.
+    inp = ctx.input().attach(w)
+    inp.click(*gap)
+    w.wait("the saved highlight picked", lambda s: s["annotation_picked"])
+    inp.keys(Input.DELETE)
+    s = w.wait("the saved highlight gone", lambda s: s["annotations"] == 1)
+    check(s["modified"] and s["undo"] == "Remove Highlight", s)
+    check(s["page_count"] == len(TEXT), "Delete deleted a page")
+    w.settled()
+    check(not yellow(pixel(w, "file-deleted", *gap)), "the deleted highlight is still shown")
+    check(underlined(w, "file-underline", 0, 0, 17), "the underline went with it")
+    w.action("undo")
+    w.wait("the saved highlight back", lambda s: s["annotations"] == 2)
+    w.settled()
+    check(yellow(pixel(w, "file-undone", *gap)), "the highlight didn't come back")
+    w.action("redo")
+    w.wait("gone again", lambda s: s["annotations"] == 1)
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    w.app.quit()
+    w = ctx.app([path]).window()
+    s = w.settled()
+    w.maximize()
+    check(s["annotations"] == 1, s)
+    check(not yellow(pixel(w, "file-saved", *w.char(0, 0, 9))), "the highlight is in the saved file")
 
 
 def test_select_words_and_lines(ctx):

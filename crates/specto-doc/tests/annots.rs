@@ -38,6 +38,13 @@ fn imported(indices: &[u32]) -> Vec<Arc<Annotation>> {
         .collect()
 }
 
+fn origin(index: u32) -> Origin {
+    Origin {
+        index,
+        object: None,
+    }
+}
+
 fn file(page: u32, index: u32) -> AnnotId {
     AnnotId::File {
         source: A,
@@ -91,6 +98,9 @@ fn adding_removing_and_changing() {
         !doc.remove_annotation(file(0, 1), &on_page[0]),
         "deleted twice"
     );
+    // Not with an annotation that is another one, or isn't of a file.
+    assert!(!doc.remove_annotation(file(0, 4), &on_page[0]));
+    assert!(!doc.remove_annotation(file(0, 4), &highlight(0.0)));
     assert_eq!(ids(&doc, 0, &on_page), [file(0, 4), new]);
 
     // Changing one of the file's, and a new one.
@@ -109,8 +119,8 @@ fn adding_removing_and_changing() {
     assert_eq!(
         doc.annotation_changes(A, 0),
         PageAnnotChanges {
-            removed: vec![1],
-            replaced: vec![(4, Arc::new(moved))],
+            removed: vec![origin(1)],
+            replaced: vec![(origin(4), Arc::new(moved))],
             added: vec![Arc::new(highlight(30.0))],
         }
     );

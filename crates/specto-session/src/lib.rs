@@ -131,6 +131,9 @@ pub struct Session {
     texts: TextCache,
     /// The text selection, if any.
     pub selection: Option<Selection>,
+    /// Pages rendered from a copy of theirs instead of from their file
+    /// (see [`annots`]), by page of the file.
+    variants: HashMap<FilePage, annots::Variant>,
     /// The annotation that is picked (to delete it, later to change it),
     /// if any: the position of its page, and which it is (from
     /// [`annotation_at`](Self::annotation_at)).
@@ -155,7 +158,8 @@ impl Session {
         let labels = source.labels.clone();
         let edit = EditDoc::from_source(MAIN, source.geometries.len() as u32);
         let sources = vec![source];
-        let pages = view_pages(&edit, &sources);
+        let variants = HashMap::new();
+        let pages = view_pages(&edit, &sources, &variants);
         Ok(Self {
             sources,
             labels,
@@ -163,6 +167,7 @@ impl Session {
             viewer: Viewer::new(pages, options.settings),
             texts: TextCache::new(options.text_pages),
             selection: None,
+            variants,
             picked: None,
             indexer: None,
             search: None,
@@ -193,6 +198,9 @@ impl Session {
     pub fn close(&mut self, scheduler: &Scheduler) {
         for s in &self.sources {
             scheduler.close(s.doc_id);
+        }
+        for (_, v) in self.variants.drain() {
+            scheduler.close(v.doc_id);
         }
         self.stop_indexing();
     }
@@ -289,15 +297,24 @@ impl Session {
     }
 }
 
-/// The viewer's pages for the pages of `edit`.
-fn view_pages(edit: &EditDoc, sources: &[Source]) -> Vec<ViewPage> {
+/// The viewer's pages for the pages of `edit`: each rendered from its
+/// file, or from the copy of it in `variants`, which has the one page.
+fn view_pages(
+    edit: &EditDoc,
+    sources: &[Source],
+    variants: &HashMap<FilePage, annots::Variant>,
+) -> Vec<ViewPage> {
     edit.pages()
         .iter()
         .map(|p| {
             let source = &sources[p.source.0 as usize];
+            let (doc, page) = match variants.get(&(p.source, p.page)) {
+                Some(v) => (v.doc_id, 0),
+                None => (source.doc_id, p.page),
+            };
             ViewPage {
-                doc: source.doc_id,
-                page: p.page,
+                doc,
+                page,
                 geometry: source.geometries[p.page as usize],
                 rotation: p.rotation,
             }
@@ -507,23 +524,29 @@ impl Session {
         Some(range)
     }
 
-    pub fn undo(&mut self) -> Option<Edit> {
+    /// Takes back the last edit; returns what it was. `scheduler` is the
+    /// one the session was opened with.
+    pub fn undo(&mut self, scheduler: &Scheduler) -> Option<Edit> {
         let edit = self.edit.undo()?;
-        self.undone_or_redone(edit);
+        self.undone_or_redone(scheduler, edit);
         Some(edit)
     }
 
-    pub fn redo(&mut self) -> Option<Edit> {
+    /// Does again what [`undo`](Self::undo) took back.
+    pub fn redo(&mut self, scheduler: &Scheduler) -> Option<Edit> {
         let edit = self.edit.redo()?;
-        self.undone_or_redone(edit);
+        self.undone_or_redone(scheduler, edit);
         Some(edit)
     }
 
     /// After undo or redo of `edit`: the pages are as they were unless it
-    /// was one to them.
-    fn undone_or_redone(&mut self, edit: Edit) {
+    /// was one to them; what they are rendered from may have changed with
+    /// an annotation of a file.
+    fn undone_or_redone(&mut self, scheduler: &Scheduler, edit: Edit) {
         self.picked = None;
-        if !edit.is_annotation() {
+        if edit.is_annotation() {
+            self.sync_variants(scheduler);
+        } else {
             self.pages_changed();
         }
     }
@@ -541,7 +564,7 @@ impl Session {
     /// search results hold positions, so the selection is dropped and the
     /// search runs again.
     fn pages_changed(&mut self) -> bool {
-        let pages = view_pages(&self.edit, &self.sources);
+        let pages = view_pages(&self.edit, &self.sources, &self.variants);
         let sources = &self.sources;
         self.labels = PageLabels::of_pages(self.edit.pages().iter().map(|p| {
             (

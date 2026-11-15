@@ -180,13 +180,13 @@ fn pages_keep_their_labels() {
     // Numbers that aren't labels are positions.
     assert_eq!(session.find_page("3"), Some(2));
 
-    assert!(session.undo().is_some());
-    assert!(session.undo().is_some());
+    assert!(session.undo(&scheduler).is_some());
+    assert!(session.undo(&scheduler).is_some());
     assert_eq!(session.page_label(1), "ii");
 
     // Back in the file's order, the labels are the file's again; a file
     // whose labels are 1, 2, 3, … has none.
-    assert!(session.undo().is_some());
+    assert!(session.undo(&scheduler).is_some());
     assert_eq!(session.labels(), session.main().page_labels().as_ref());
     session.close(&scheduler);
 }
@@ -255,7 +255,7 @@ fn search_follows_indexing_and_edits() {
     assert!(session.delete(&[0]));
     let status = session.search_status().unwrap();
     assert_eq!((status.matches, status.pages), (3, 3));
-    assert!(session.undo().is_some());
+    assert!(session.undo(&scheduler).is_some());
     assert_eq!(session.search_status().unwrap().matches, 4);
 
     // What is found on a page is found wherever the page goes.
@@ -318,9 +318,9 @@ fn pages_of_another_file() {
     assert_eq!(session.position_of(other, 2), Some(3));
 
     // Undone, the file stays known, for redo.
-    assert!(session.undo().is_some());
+    assert!(session.undo(&scheduler).is_some());
     assert_eq!(session.viewer.page_count(), 2);
-    assert!(session.redo().is_some());
+    assert!(session.redo(&scheduler).is_some());
     assert_eq!(session.viewer.page_count(), 5);
     session.close(&scheduler);
 }
@@ -399,7 +399,7 @@ fn saving_writes_the_pages_as_edited() {
     assert!(session.rotate(&[1], Rotation::Cw90));
     session.mark_saved(job.version);
     assert!(session.edit().is_modified());
-    assert!(session.undo().is_some());
+    assert!(session.undo(&scheduler).is_some());
     assert!(!session.edit().is_modified());
 
     let mut saved = open(&scheduler, written);
@@ -495,7 +495,7 @@ fn marking_text_and_saving_it() {
     let mut session = open(&scheduler, book(3, "alpha"));
     // Nothing selected: nothing to mark.
     assert!(!session.mark_selection(MarkupStyle::Highlight, yellow));
-    assert!(!session.has_overlay());
+    assert!(session.overlay(0).is_empty());
 
     // Everything on pages 1 to 3: one annotation a page, as one edit.
     session.selection = Some(Selection::all(3));
@@ -539,11 +539,11 @@ fn marking_text_and_saving_it() {
 
     // Undone and redone as one.
     assert_eq!(
-        session.undo(),
+        session.undo(&scheduler),
         Some(Edit::AddAnnotation(AnnotType::Highlight))
     );
     assert!((0..3).all(|p| session.annotations(p).is_empty()));
-    assert!(session.redo().is_some());
+    assert!(session.redo(&scheduler).is_some());
 
     // Underlining a word on page 2, then picking and deleting it. The page
     // is scrolled to first, as only pages near the view can be pointed at.
@@ -568,12 +568,13 @@ fn marking_text_and_saving_it() {
     let (position, corners) = session.picked_outline().unwrap();
     assert_eq!(position, 1);
     assert!(corners.iter().any(|c| (c.x - word.x).abs() < 30.0));
-    assert!(session.remove_picked_annotation());
+    assert!(session.remove_picked_annotation(&scheduler).unwrap());
     assert_eq!(
         session.edit().undo_edit(),
         Some(Edit::RemoveAnnotation(AnnotType::Underline))
     );
-    assert!(session.picked.is_none() && !session.remove_picked_annotation());
+    assert!(session.picked.is_none());
+    assert!(!session.remove_picked_annotation(&scheduler).unwrap());
     assert_eq!(session.annotations(1).len(), 1);
 
     // Saved: the highlights are in the file, with the page they are on
@@ -591,7 +592,76 @@ fn marking_text_and_saving_it() {
         assert!(annots[0].1.contents.as_deref().unwrap().starts_with(text));
     }
     // They are part of the page there, not drawn on top.
-    assert!(!saved.has_overlay() && saved.overlay(0).is_empty());
+    assert!(saved.overlay(0).is_empty());
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}
+
+#[test]
+fn deleting_an_annotation_the_file_has() {
+    use specto_annot::{Color, MarkupStyle};
+    use specto_doc::AnnotId;
+
+    // A file with a highlight on each of its two pages.
+    let scheduler = Scheduler::new(1, || {});
+    let mut first = open(&scheduler, book(2, "alpha"));
+    first.selection = Some(Selection::all(2));
+    assert!(first.mark_selection(MarkupStyle::Highlight, Color::new(1.0, 0.9, 0.0)));
+    let file = first.save_job().write().unwrap();
+    first.close(&scheduler);
+
+    let mut session = open(&scheduler, file);
+    let original = session.viewer.pages().to_vec();
+    assert_eq!(session.annotations(0).len(), 1);
+    // The renderer draws it with the page: nothing for the frontend to do.
+    assert!(session.overlay(0).is_empty());
+
+    // Picked like any other, and deleted: the page is then rendered from
+    // a copy of its own, without it; the other page from the file as before.
+    let on_it = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(25.0, 255.0))
+        .unwrap();
+    let picked = session
+        .annotation_at(on_it)
+        .expect("the highlight is there");
+    assert!(matches!(picked.1, AnnotId::File { page: 0, .. }));
+    session.picked = Some(picked);
+    assert!(session.picked_outline().is_some());
+    let scroll = session.viewer.scroll_offset();
+    assert!(session.remove_picked_annotation(&scheduler).unwrap());
+    assert!(session.annotations(0).is_empty());
+    assert!(session.edit().is_modified());
+    let now = session.viewer.pages().to_vec();
+    assert_ne!(now[0].doc, original[0].doc);
+    assert_eq!(now[0].page, 0);
+    assert_eq!(now[0].geometry, original[0].geometry);
+    assert_eq!((now[1].doc, now[1].page), (original[1].doc, 1));
+    assert_eq!(session.viewer.scroll_offset(), scroll, "the view moved");
+    // Its text is still the file's.
+    assert!(all_text(&mut session).starts_with("alpha page 1"));
+
+    // Undone: from the file again. Redone: a copy again.
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(session.viewer.pages()[0].doc, original[0].doc);
+    assert_eq!(session.annotations(0).len(), 1);
+    assert!(session.redo(&scheduler).is_some());
+    let copy = session.viewer.pages()[0].doc;
+    assert_ne!(copy, original[0].doc);
+
+    // The page moved and turned is still shown from its copy.
+    assert_eq!(session.move_pages(&[0], 2), Some(1..2));
+    assert!(session.rotate(&[1], Rotation::Cw90));
+    let copy = session.viewer.pages()[1];
+    assert!(copy.doc != original[0].doc && copy.page == 0);
+    assert_eq!(copy.rotation, Rotation::Cw90);
+    assert_eq!(session.viewer.pages()[0].doc, original[1].doc);
+
+    // Saved: the highlight is gone from that page only.
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    assert_eq!(saved.annotations(0).len(), 1);
+    assert!(saved.annotations(1).is_empty());
     saved.close(&scheduler);
     session.close(&scheduler);
 }

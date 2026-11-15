@@ -76,9 +76,14 @@ Annotations are plain data in the coordinates of their page of the file (`specto
 
 An `EditDoc` doesn't hold the annotations, only what was done to them relative to the files: which are deleted or changed (by source, page and index) and the new ones. That is small whatever the files contain, costs nothing for pages nobody looked at, is what saving needs, and can be kept per undo step (shared until it changes), so page and annotation edits are undone in the order they were made. Annotations belong to a page of a file, not to a position: they follow the page, come back with it when its deletion is undone, and copies of one page share them.
 
-**Drawing.** `specto_annot::shapes` turns an annotation into a few shapes (filled quads, lines). The apps draw those over the page for annotations made in the session (`Session::overlay`; a highlight darkens what is beneath through the toolkit's multiply blend), and `specto_annot::appearance` writes the same shapes as the appearance stream (`/AP /N`) saved with the annotation, because many viewers (hayro, Preview, pdf.js in some modes) show only that. A test saves a file and renders it with hayro to check the two agree.
+**Drawing.** `specto_annot::shapes` turns an annotation into a few shapes (filled quads, lines). `specto_annot::appearance` writes those shapes as the appearance stream (`/AP /N`) saved with the annotation, because many viewers (hayro, Preview, pdf.js in some modes) show only that. Who draws an annotation on screen depends on whether the file has such a look for it:
 
-The annotations a file already has are still drawn with the page, by hayro, which draws all of a page's annotations or none: its public interface has no way to draw just one. Until that changes (a page re-rendered from a rewritten copy without the annotation, or a filter upstream; see TASKS.md), they can't be picked, deleted or changed.
+- The annotations of a file are part of the page tiles: hayro draws them from their appearance streams.
+- The apps draw the rest over the page, from the same shapes (`Session::overlay`; a highlight darkens what is beneath through the toolkit's multiply blend): annotations made in the session, and ones the file gives no appearance for. A test saves a file and renders it with hayro to check that the two agree.
+
+hayro draws all of a page's annotations or none; its public interface has no way to draw or leave out just one. So when an annotation of a file is deleted, its page is rendered from a **variant**: a copy of that one page without the annotation, written by `specto-write` exactly as saving would and opened as a scheduler document of its own. Only the tiles come from the copy; text, links, search and saving still use the file. Undo closes the copy and goes back to the file. A page whose copy can't be written keeps its annotation, and the app says so.
+
+Saving names a changed or deleted annotation of a file by its `Origin`, and checks that lopdf finds the same object there before touching it.
 
 ### Forms
 
@@ -109,7 +114,7 @@ Frontend turns the tile into a GdkTexture (GTK) / Bitmap (Android)
 - **Toolkit pitfalls (GTK):** draw tiles with `append_texture`, not `append_scaled_texture` (GSK renders the latter at logical resolution on HiDPI surfaces), and translate the canvas so its own origin lands on a whole device pixel of the surface (CSD shadows put it at e.g. 31.25 px at scale 1.25).
 - **Tiling:** 512×512 physical-pixel tiles, so a 400% zoom on a poster PDF doesn't allocate a 100 MP bitmap.
 - **Thumbnails** draw the viewer's placeholder tiles (one small tile per page) from the shared cache, so each page is rendered once for both the sidebar and the canvas. On the desktop the sidebar is also the page organizer: a multi-selection, thumbnails dragged within it (the move is made once the drag has ended), and PDFs dropped on it to insert.
-- **Annotations** made in the session are drawn as an overlay over the page tiles, from a few shapes per annotation, so editing them never re-renders page content. The file's own annotations are part of the tiles for now (see "Annotations" above). Form widgets (M5) are still to come.
+- **Annotations** made in the session are drawn as an overlay over the page tiles, from a few shapes per annotation, so editing them never re-renders page content. The file's own annotations are part of the tiles; deleting one renders its page from a copy without it (see "Annotations" above). Form widgets (M5) are still to come.
 
 ## Text layer
 
