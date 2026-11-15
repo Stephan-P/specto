@@ -254,6 +254,6 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 
 ## Not yet
 
-- Text boxes and notes, and form filling
+- Form filling
 - Highlighting the current outline entry
 - Dark mode for page content
