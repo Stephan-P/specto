@@ -114,10 +114,10 @@ pub fn print(
             match rx.recv().await {
                 Ok(Ok(bitmap)) => {
                     if let Err(e) = draw(&context.cairo_context(), &bitmap, x, y, out_w, out_h) {
-                        glib::g_warning!("pdfrs", "printing page {}: {e}", position + 1);
+                        glib::g_warning!("specto", "printing page {}: {e}", position + 1);
                     }
                 }
-                Ok(Err(e)) => glib::g_warning!("pdfrs", "printing page {}: {e}", position + 1),
+                Ok(Err(e)) => glib::g_warning!("specto", "printing page {}: {e}", position + 1),
                 Err(_) => {}
             }
             op.draw_page_finish();
@@ -156,7 +156,7 @@ pub fn print(
         None => op.run(gtk::PrintOperationAction::PrintDialog, Some(parent)),
     };
     if let Err(e) = result {
-        glib::g_warning!("pdfrs", "printing: {e}");
+        glib::g_warning!("specto", "printing: {e}");
     }
 }
 

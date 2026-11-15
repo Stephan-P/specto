@@ -161,10 +161,10 @@ def book_pdf(count=14):
                 annotations.append(annotation)
                 annotation += 1
             y -= 50
-            content += f"0 0 0.7 rg BT /F2 14 Tf 60 {y} Td (External link: https://example.com/pdfrs) Tj ET\n"
+            content += f"0 0 0.7 rg BT /F2 14 Tf 60 {y} Td (External link: https://example.com/specto) Tj ET\n"
             objects[annotation] = (
                 f"<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [55 {y - 6} 500 {y + 16}] "
-                f"/A << /S /URI /URI (https://example.com/pdfrs) >> >>"
+                f"/A << /S /URI /URI (https://example.com/specto) >> >>"
             ).encode()
             annotations.append(annotation)
             annotation += 1
@@ -184,7 +184,7 @@ def book_pdf(count=14):
     # What the document says about itself, for "Properties".
     info = max(objects) + 1
     objects[info] = (
-        b"<< /Title (The pdfrs handbook) /Author (Ada Lovelace) /Creator (make-fixtures.py) "
+        b"<< /Title (The Specto handbook) /Author (Ada Lovelace) /Creator (make-fixtures.py) "
         b"/CreationDate (D:20240305142210+01'00') >>"
     )
     write("book.pdf", objects, trailer_extra=f"/Info {info} 0 R")
@@ -247,7 +247,7 @@ def locked_pdf(count=3, user_password=b"secret", owner_password=b"owner"):
     padding = bytes.fromhex(
         "28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9FE6453697A"
     )
-    file_id = hashlib.md5(b"pdfrs locked fixture").digest()
+    file_id = hashlib.md5(b"specto locked fixture").digest()
     permissions = (-4).to_bytes(4, "little", signed=True)
 
     def pad(password):

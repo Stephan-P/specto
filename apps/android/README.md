@@ -1,6 +1,6 @@
 # Specto for Android
 
-A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and Jetpack Compose, it shares its core with the desktop app. (The project and its code are called pdfrs; the app is called Specto.)
+A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and Jetpack Compose, it shares its core with the desktop app.
 
 <p align="center">
   <img src="screenshot-phone.png" width="20%" alt="Specto on a phone: a page of a manual with diagrams, the page number, and a strip of page thumbnails along the bottom">
@@ -67,7 +67,7 @@ CI builds the app and runs the unit tests on every change, and the UI tests on a
 
 ## Project structure
 
-In `app/src/main/kotlin/net/xfbs/pdfrs/`:
+In `app/src/main/kotlin/net/xfbs/specto/`:
 
 - `MainActivity.kt`: the activity, theme, top bar, menus and dialogs
 - `StartScreen.kt`: the start screen with recent documents

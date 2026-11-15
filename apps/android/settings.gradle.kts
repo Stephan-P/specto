@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "pdfrs"
+rootProject.name = "specto"
 include(":app")

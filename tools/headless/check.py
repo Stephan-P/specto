@@ -1295,7 +1295,7 @@ def test_drop_files_and_export(ctx):
     w.action("debug-export", gvariant_str(out))
     s = w.wait("the export", lambda s: s["toast"] == "Exported 6 pages to “export.pdf”")
     check(s["title"] == "doc.pdf" and s["modified"], s)
-    # pdfinfo (poppler-utils) reads it independently of pdfrs.
+    # pdfinfo (poppler-utils) reads it independently of Specto.
     info = subprocess.run(["pdfinfo", out], capture_output=True, text=True)
     check("Pages:           6" in info.stdout, f"pdfinfo: {info.stdout}{info.stderr}")
 
@@ -1385,7 +1385,7 @@ def test_file_changed(ctx):
 
 def printed_pages(path):
     """Each page of the PDF at `path`: (landscape, colour covering most of
-    it), read with poppler (pdfinfo, pdftoppm) rather than pdfrs."""
+    it), read with poppler (pdfinfo, pdftoppm) rather than Specto."""
     info = subprocess.run(["pdfinfo", "-f", "1", "-l", "999", path],
                           capture_output=True, text=True).stdout
     sizes = re.findall(r"^Page +\d+ size: +([\d.]+) x ([\d.]+)", info, re.M)

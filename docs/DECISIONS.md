@@ -89,7 +89,7 @@ Goal is to match Preview. Preview's behavior (checked on a Mac, 2026-11-14, exce
 - ✅ **Setting passwords:** Preview manages both the user (open) password and the owner (permissions) password in a settings panel reached from the File menu, where each can be added, changed or removed. This is a document setting that is saved with the file, not an Export-only option as first assumed.
 - **Owner password / permission flags only** (opens without a prompt, but e.g. editing or printing is restricted): *not yet checked.* Assumed: viewing works, and restricted actions ask for the owner password first.
 
-For pdfrs this means a "Security" (or "Passwords") dialog on the document, with user and owner password fields. Its changes are saved like any other edit (a full rewrite, since the encryption dictionary changes).
+For Specto this means a "Security" (or "Passwords") dialog on the document, with user and owner password fields. Its changes are saved like any other edit (a full rewrite, since the encryption dictionary changes).
 
 Implications:
 

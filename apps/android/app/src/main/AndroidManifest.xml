@@ -5,7 +5,7 @@
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Pdfrs">
+        android:theme="@style/Theme.Specto">
         <!-- Rotation and resizing are handled in Compose; recreating the
              activity would throw away the open document and its tiles. -->
         <activity

@@ -86,7 +86,7 @@ pub fn save(uri: &str, saved: &Saved) {
     }
     if let Err(e) = f.save_to_file(&path) {
         glib::g_warning!(
-            "pdfrs",
+            "specto",
             "couldn't save view state to {}: {e}",
             path.display()
         );

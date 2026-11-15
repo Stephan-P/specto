@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# System packages needed to build and test pdfrs on Fedora. Shared by GitHub
+# System packages needed to build and test Specto on Fedora. Shared by GitHub
 # Actions and (later) GitLab CI so both run the same environment.
 #
 #   ci/install-deps-fedora.sh             building, clippy and cargo test

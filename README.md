@@ -1,6 +1,6 @@
-# pdfrs
+# Specto
 
-A PDF viewer and light editor written in Rust, with a shared core and two apps, both called Specto:
+A PDF viewer and light editor written in Rust, with a shared core and two apps:
 
 - [Desktop](apps/desktop/README.md): GTK 4 and libadwaita, for Linux (also runs on macOS)
 - [Android](apps/android/README.md): Kotlin and Jetpack Compose
@@ -27,6 +27,8 @@ Not planned, at least for now: editing existing page content (reflowing text), X
 Both apps are usable as PDF viewers. They render pages sharply at any zoom and on HiDPI screens, and stay responsive on huge documents. They have the usual layouts, thumbnails, the table of contents, links and printed page numbers, open encrypted files, and remember where you were in each document. On the desktop you can also select, copy and search text, and edit pages: rotate, delete, reorder them by dragging thumbnails, insert pages from other PDFs, export a selection of pages, and save the result. It also prints. Android gets text selection and search next, then page editing. Annotations and forms come after that. The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 ## Building
+
+The code still carries the project's working name, pdfrs: the crates, the desktop program (`pdfrs-gtk`) and the command-line tool (`pdfrs`).
 
 ```sh
 cargo build --release

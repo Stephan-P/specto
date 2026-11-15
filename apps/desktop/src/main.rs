@@ -1,4 +1,4 @@
-//! pdfrs desktop app (GTK4 + libadwaita).
+//! Specto, the desktop app (GTK4 + libadwaita).
 //!
 //! `pdfrs-gtk [FILE…]` opens each file in its own window.
 

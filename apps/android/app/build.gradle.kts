@@ -9,15 +9,13 @@ plugins {
 val rustAbis = providers.gradleProperty("pdfrs.abis").map { it.split(',').map(String::trim) }
 
 android {
-    namespace = "net.xfbs.pdfrs"
+    namespace = "net.xfbs.specto"
     compileSdk {
         version = release(36) { minorApiLevel = 1 }
     }
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        // What Android and the stores know the app by. The code keeps the
-        // project's name (`namespace` above, the Kotlin package).
         applicationId = "net.xfbs.specto"
         minSdk = 26
         targetSdk = 36

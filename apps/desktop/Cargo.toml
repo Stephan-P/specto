@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "pdfrs desktop app (GTK4 + libadwaita)"
+description = "Specto, the desktop app (GTK4 + libadwaita)"
 
 [[bin]]
 name = "pdfrs-gtk"

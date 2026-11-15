@@ -163,7 +163,7 @@ impl Document {
                     self.cache.insert(f.key, texture.upcast(), bytes);
                 }
                 Err(e) => {
-                    glib::g_warning!("pdfrs", "rendering {:?} failed: {e}", f.key);
+                    glib::g_warning!("specto", "rendering {:?} failed: {e}", f.key);
                     self.failed.insert(f.key);
                 }
             }

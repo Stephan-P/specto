@@ -1,4 +1,4 @@
-//! JNI functions behind `net.xfbs.pdfrs.Native`: the per-frame path and tile
+//! JNI functions behind `net.xfbs.specto.Native`: the per-frame path and tile
 //! pixels, which are too hot (or too big) for UniFFI. Each is a thin wrapper
 //! around [`crate::hot`] or [`crate::claim_tile`]; sessions are looked up by
 //! id, so a closed session is simply not found.
@@ -24,7 +24,7 @@ fn guarded<T>(on_panic: T, f: impl FnOnce() -> T) -> T {
 
 /// `Native.setViewport(session: Long, width: Double, height: Double, scale: Double)`
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_xfbs_pdfrs_Native_setViewport(
+pub extern "system" fn Java_net_xfbs_specto_Native_setViewport(
     _env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -39,7 +39,7 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_setViewport(
 
 /// `Native.scrollBy(session: Long, dx: Double, dy: Double)`
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollBy(
+pub extern "system" fn Java_net_xfbs_specto_Native_scrollBy(
     _env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -53,7 +53,7 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollBy(
 
 /// `Native.selectTo(session: Long, x: Double, y: Double)`
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_xfbs_pdfrs_Native_selectTo(
+pub extern "system" fn Java_net_xfbs_specto_Native_selectTo(
     _env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -67,7 +67,7 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_selectTo(
 
 /// `Native.scrollInPageBy(session: Long, dx: Double, dy: Double)`
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollInPageBy(
+pub extern "system" fn Java_net_xfbs_specto_Native_scrollInPageBy(
     _env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -81,7 +81,7 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_scrollInPageBy(
 
 /// `Native.zoomBy(session: Long, factor: Double, x: Double, y: Double)`
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_xfbs_pdfrs_Native_zoomBy(
+pub extern "system" fn Java_net_xfbs_specto_Native_zoomBy(
     _env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -96,7 +96,7 @@ pub extern "system" fn Java_net_xfbs_pdfrs_Native_zoomBy(
 
 /// `Native.setThumbnailRange(session: Long, first: Int, count: Int)`
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_xfbs_pdfrs_Native_setThumbnailRange(
+pub extern "system" fn Java_net_xfbs_specto_Native_setThumbnailRange(
     _env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -139,7 +139,7 @@ unsafe fn direct_buffer<'a>(env: *mut JNIEnv, buffer: jobject) -> Option<&'a mut
 ///
 /// Must only be called by the JVM as the native method above.
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_frame(
+pub unsafe extern "system" fn Java_net_xfbs_specto_Native_frame(
     env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -158,7 +158,7 @@ pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_frame(
 ///
 /// Must only be called by the JVM as the native method above.
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_lastFrame(
+pub unsafe extern "system" fn Java_net_xfbs_specto_Native_lastFrame(
     env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -177,7 +177,7 @@ pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_lastFrame(
 ///
 /// Must only be called by the JVM as the native method above.
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_takeFinished(
+pub unsafe extern "system" fn Java_net_xfbs_specto_Native_takeFinished(
     env: *mut JNIEnv,
     _class: jclass,
     session: jlong,
@@ -201,7 +201,7 @@ pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_takeFinished(
 /// Must only be called by the JVM as the native method above, which
 /// guarantees that `env` and `bitmap` are valid for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "system" fn Java_net_xfbs_pdfrs_Native_copyTile(
+pub unsafe extern "system" fn Java_net_xfbs_specto_Native_copyTile(
     env: *mut JNIEnv,
     _class: jclass,
     session: jlong,

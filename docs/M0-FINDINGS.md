@@ -143,7 +143,7 @@ Two ways to get pixels into a `Bitmap`, measured warm on the same document objec
 
 **Caveats:** measured on the arm64 emulator on an Apple Silicon host, not a phone, and on a simple page where the copy overhead dominates. `rawHandle()` relies on Kotlin keeping the document open during the call, which the real `pdfrs-ffi` surface should make safe by construction. The file picker path is untested.
 
-**Viewer follow-up (M6, emulator, density 2.625):** the real viewer (`ViewSession` in `pdfrs-ffi`, Compose canvas) settles to exact-scale tiles like the desktop. With `adb shell setprop log.tag.pdfrs DEBUG` it logs the device scale, canvas origin and page rectangle of each settled frame; the page area of an `adb exec-out screencap` was compared against `pdfrs render -p N -s <device scale>` on a 40-page text PDF:
+**Viewer follow-up (M6, emulator, density 2.625):** the real viewer (`ViewSession` in `pdfrs-ffi`, Compose canvas) settles to exact-scale tiles like the desktop. With `adb shell setprop log.tag.specto DEBUG` it logs the device scale, canvas origin and page rectangle of each settled frame; the page area of an `adb exec-out screencap` was compared against `pdfrs render -p N -s <device scale>` on a 40-page text PDF:
 
 | State | Device px/pt | Result |
 |---|---|---|

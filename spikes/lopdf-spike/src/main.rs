@@ -1,4 +1,4 @@
-//! M0 spike: can lopdf handle the editing and saving pdfrs needs?
+//! M0 spike: can lopdf handle the editing and saving Specto needs?
 //!
 //! Throwaway code. Each scenario writes a file, then re-opens it with hayro (our
 //! renderer) and checks the result. Poppler is checked separately from the shell.
