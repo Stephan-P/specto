@@ -6,6 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+# No docs for this one-line program: its name is the same as the `uniffi_bindgen`
+# library it wraps, and the two would be written to the same place.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/main.rs"
+doc = false
+
 # Host-side generator for the Kotlin bindings of specto-ffi. Kept out of the
 # specto-ffi crate so the CLI's dependencies are never built for Android.
 [dependencies]
