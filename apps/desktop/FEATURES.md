@@ -128,8 +128,9 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 ## Markup
 
 - The pencil button in the header bar (or Shift+*Primary*+A) shows the markup
-  bar, with the text tools (Highlight, Underline and Strikethrough), the
-  drawing tools and seven colors, black among them
+  bar above the page view: the text tools (Highlight, Underline and
+  Strikethrough), the drawing tools, the signature button, and a color button
+  with seven colors, black among them
 - A text tool that is pressed in marks text as it is selected, by dragging or
   by double and triple clicks, until it is let go of (press it again, or close
   the bar). Pressing one in with text selected marks that text
@@ -142,12 +143,16 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   drawing stays on the page it started on, and Escape gives it up
 - Freehand strokes are smoothed. A click with the pen makes a dot, and a click
   with a shape tool draws nothing
-- Each tool has its own color, changed by choosing another while the tool is
-  pressed in. The highlighter starts in yellow, and the lines and the drawing
+- Each tool has its own color, changed with the color button while the tool
+  is pressed in. The button shows the color in use. The highlighter starts in yellow, and the lines and the drawing
   tools in red
-- Text tool: a click on the page asks for text and makes a text box of it
-  there, in Helvetica of 12 points. The box wraps its text and is as high as
-  the text needs. Resizing it changes its width
+- Text tool: a click on the page puts a text field there, and what is typed
+  becomes a text box, in Helvetica of 12 points. The text appears as it will
+  stand, in the same place, with the same line breaks. Escape or a click
+  elsewhere ends typing. The box is as high as its text needs, and resizing it
+  changes its width
+- A double click on a text box, or Enter with it picked, types into it again.
+  On pages shown rotated, a small editor is used instead
 - Note tool: a click on the page puts a note there and asks for its text
 - A double click on a text box or a note, or Enter with any markup picked,
   asks for its text again. For other markup that text is a comment, which other

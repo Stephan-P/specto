@@ -9,7 +9,7 @@ use specto_annot::{AnnotType, Color, MarkupStyle};
 use specto_doc::{Edit, Rotation, SourceId};
 use specto_geom::ViewPoint;
 use specto_render::{OpenError, PdfData};
-use specto_session::DraftKind;
+use specto_session::{DraftKind, TextBoxPlace};
 use specto_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
@@ -91,11 +91,17 @@ pub struct Inner {
     search_bar: gtk::SearchBar,
     /// The bar with the markup tools and colours.
     markup_bar: gtk::Revealer,
+    /// The dot on the colour button of the markup bar: the colour in use.
+    color_swatch: gtk::Box,
+    /// Lies over the page view, for typing text onto the page.
+    page_overlay: gtk::Overlay,
     /// The list of saved signatures, under its button on the markup bar.
     signature_menu: gtk::Popover,
     /// The signature that the next click on a page places, if one was
     /// chosen.
     placing: RefCell<Option<Signature>>,
+    /// The text field over the page, while a text box is typed into.
+    typing: RefCell<Option<Typing>>,
     /// The editor for an annotation's text, while it is open.
     text_editor: RefCell<Option<gtk::Popover>>,
     /// The colour of each tool of the markup bar (in the order of
@@ -137,8 +143,14 @@ impl Window {
             .vexpand(true)
             .build();
 
+        // Over the page view: where text is typed onto the page (see
+        // `edit_text_box`). Above it, the markup bar, added below.
+        let page_overlay = gtk::Overlay::new();
+        page_overlay.set_child(Some(&scrolled));
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content.append(&page_overlay);
         let split = adw::OverlaySplitView::builder()
-            .content(&scrolled)
+            .content(&content)
             .show_sidebar(true)
             .min_sidebar_width(170.0)
             .max_sidebar_width(260.0)
@@ -384,12 +396,16 @@ impl Window {
             (gettext("Underline"), "underline", "U"),
             (gettext("Strikethrough"), "strike-out", "X"),
         ] {
+            let kind = tool_named(tool).unwrap_or(HIGHLIGHTER);
             tools.append(
                 &gtk::ToggleButton::builder()
-                    .label(label)
+                    .child(&tool_icon(kind))
                     .tooltip_text(gettext_f(
-                        "Mark the selected text, and what is selected from now on ({shortcut} marks once)",
-                        &[("shortcut", &primary(&format!("Shift+{shortcut}")))],
+                        "{tool}: marks the selected text, and what is selected from now on ({shortcut} marks once)",
+                        &[
+                            ("tool", &label),
+                            ("shortcut", &primary(&format!("Shift+{shortcut}"))),
+                        ],
                     ))
                     .action_name("win.markup-tool")
                     .action_target(&tool.to_variant())
@@ -417,24 +433,40 @@ impl Window {
                     .build(),
             );
         }
+        // The colours, under a button that shows the one in use.
         let colors = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-        for (name, label, color) in markup_colors() {
+        let color_menu = gtk::Popover::builder().child(&colors).build();
+        for (name, label, _) in markup_colors() {
             let swatch = gtk::Box::builder()
                 .css_classes(["markup-swatch", &format!("markup-{name}")])
                 .valign(gtk::Align::Center)
                 .halign(gtk::Align::Center)
                 .build();
-            let _ = color;
-            colors.append(
-                &gtk::ToggleButton::builder()
-                    .child(&swatch)
-                    .tooltip_text(label)
-                    .css_classes(["flat", "circular"])
-                    .action_name("win.markup-color")
-                    .action_target(&name.to_variant())
-                    .build(),
-            );
+            let choose = gtk::ToggleButton::builder()
+                .child(&swatch)
+                .tooltip_text(label)
+                .css_classes(["flat", "circular"])
+                .action_name("win.markup-color")
+                .action_target(&name.to_variant())
+                .build();
+            let menu = color_menu.downgrade();
+            choose.connect_clicked(move |_| {
+                if let Some(menu) = menu.upgrade() {
+                    menu.popdown();
+                }
+            });
+            colors.append(&choose);
         }
+        let color_swatch = gtk::Box::builder()
+            .css_classes(["markup-swatch", "markup-yellow"])
+            .valign(gtk::Align::Center)
+            .halign(gtk::Align::Center)
+            .build();
+        let color_button = gtk::MenuButton::builder()
+            .child(&color_swatch)
+            .tooltip_text(gettext("Color"))
+            .popover(&color_menu)
+            .build();
         let markup_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(18)
@@ -451,11 +483,18 @@ impl Window {
             .popover(&signature_menu)
             .build();
         markup_row.append(&signature_button);
-        markup_row.append(&colors);
+        markup_row.append(&color_button);
+        // Over the page view only: the sidebar keeps its full height.
+        let markup_strip = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .css_classes(["markup-bar"])
+            .build();
+        markup_strip.append(&markup_row);
         let markup_bar = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::SlideDown)
-            .child(&markup_row)
+            .child(&markup_strip)
             .build();
+        content.prepend(&markup_bar);
         let markup_toggle = gtk::ToggleButton::builder()
             .icon_name("document-edit-symbolic")
             .tooltip_text(gettext("Markup"))
@@ -472,7 +511,6 @@ impl Window {
         let view = adw::ToolbarView::new();
         view.add_top_bar(&header);
         view.add_top_bar(&search_bar);
-        view.add_top_bar(&markup_bar);
         view.add_top_bar(&banner);
         view.set_content(Some(&toasts));
 
@@ -513,8 +551,11 @@ impl Window {
             last_toast: RefCell::default(),
             search_bar,
             markup_bar,
+            color_swatch,
+            page_overlay,
             signature_menu,
             placing: RefCell::default(),
+            typing: RefCell::default(),
             text_editor: RefCell::default(),
             tool_colors: Cell::new([
                 "yellow", "red", "red", "red", "red", "red", "red", "black", "yellow",
@@ -561,6 +602,22 @@ impl Window {
             }
         });
         this.fill_signature_menu();
+        // The text field for typing on the page goes where its text box
+        // is, as wide as the box and as high as its text needs. (Left to
+        // itself, the overlay gives a text view no height at all.)
+        let weak = Rc::downgrade(&this.0);
+        this.0
+            .page_overlay
+            .connect_get_child_position(move |_, widget| {
+                let inner = weak.upgrade()?;
+                let typing = inner.typing.borrow();
+                let typing = typing
+                    .as_ref()
+                    .filter(|t| t.view.upcast_ref::<gtk::Widget>() == widget)?;
+                let (x, y, width) = typing.area.get();
+                let (_, height, _, _) = widget.measure(gtk::Orientation::Vertical, width);
+                Some(gdk::Rectangle::new(x, y, width, height.max(1)))
+            });
         let weak = Rc::downgrade(&this.0);
         this.0.canvas.connect_place(move |x, y| {
             if let Some(inner) = weak.upgrade() {
@@ -1155,6 +1212,7 @@ impl Window {
 
     /// Updates header bar and sidebar after the view changed.
     fn view_changed(&self) {
+        self.place_typing();
         let inner = &self.0;
         let Some((page, zoom, mode, cover)) = inner.canvas.with_viewer(|v| {
             (
@@ -1431,6 +1489,21 @@ impl Window {
         let Some(focus) = gtk::prelude::GtkWindowExt::focus(&self.0.window) else {
             return false;
         };
+        // The text field for typing on the page: its own keys do these,
+        // if they get to it.
+        if let Some(view) = focus.downcast_ref::<gtk::TextView>() {
+            let buffer = view.buffer();
+            match action {
+                "selection.select-all" => {
+                    buffer.select_range(&buffer.start_iter(), &buffer.end_iter());
+                }
+                "clipboard.copy" => buffer.copy_clipboard(&view.clipboard()),
+                "text.undo" => buffer.undo(),
+                "text.redo" => buffer.redo(),
+                _ => return false,
+            }
+            return true;
+        }
         if focus.downcast_ref::<gtk::Text>().is_none() {
             return false;
         }
@@ -1780,7 +1853,19 @@ impl Window {
             json.num("annotations", count as f64)
                 .bool("annotation_picked", d.picked.is_some())
                 .str("annotation_text", &d.picked_text().unwrap_or_default())
-                .bool("text_editor", inner.text_editor.borrow().is_some());
+                .bool(
+                    "text_editor",
+                    inner.text_editor.borrow().is_some() || inner.typing.borrow().is_some(),
+                );
+            // The text field for typing on the page: where the overlay is
+            // asked to put it (left, top, width) and the size it has.
+            if let Some(t) = inner.typing.borrow().as_ref() {
+                let (x, y, w) = t.area.get();
+                json.raw(
+                    "typing",
+                    &format!("[{x}, {y}, {w}, {}, {}]", t.view.width(), t.view.height()),
+                );
+            }
             // The rows of the markup list: [page, kind, text] each.
             let rows: Vec<String> = inner
                 .markup_list
@@ -1998,6 +2083,23 @@ impl Window {
         let Some(doc) = inner.document.borrow().clone() else {
             return;
         };
+        // A text box is typed into where it is on the page. (Not on pages
+        // shown turned, where the text would have to be typed sideways:
+        // those get the small editor below, like notes and comments.)
+        let on_page = match new_at {
+            Some(p) => {
+                let color = color_named(inner.tool_colors.get()[tool_index(Tool::Text)]);
+                let place = doc.borrow().new_text_box_place(p, TEXT_SIZE, color);
+                place.map(|place| (place, String::new(), true))
+            }
+            None => {
+                let editing = doc.borrow_mut().begin_text_edit();
+                editing.map(|(place, text)| (place, text, false))
+            }
+        };
+        if let Some((place, text, new)) = on_page {
+            return self.type_on_page(place, &text, new);
+        }
         let (text, area) = match new_at {
             Some(p) => (
                 String::new(),
@@ -2052,6 +2154,149 @@ impl Window {
         view.grab_focus();
     }
 
+    /// Puts a text field over the page where a text box is (or is to be),
+    /// in the box's font, size and colour, so that what is typed appears
+    /// where it will stand. Escape, or a click elsewhere, keeps the text.
+    fn type_on_page(&self, place: TextBoxPlace, text: &str, new: bool) {
+        let inner = &self.0;
+        self.finish_typing();
+        let view = gtk::TextView::builder()
+            .wrap_mode(gtk::WrapMode::WordChar)
+            .accepts_tab(false)
+            // Filling what the overlay gives it, which is the text box's
+            // place: aligned to a side, it would be as narrow as a letter.
+            .halign(gtk::Align::Fill)
+            .valign(gtk::Align::Fill)
+            .css_classes(["page-text"])
+            .build();
+        view.buffer().set_text(text);
+        inner.page_overlay.add_overlay(&view);
+        let keys = gtk::EventControllerKey::new();
+        let weak = Rc::downgrade(inner);
+        keys.connect_key_pressed(move |_, key, _, _| {
+            if key != gdk::Key::Escape {
+                return glib::Propagation::Proceed;
+            }
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).finish_typing();
+            }
+            glib::Propagation::Stop
+        });
+        view.add_controller(keys);
+        // A click elsewhere takes the keyboard away: the text is kept.
+        // (Later: the focus is still on its way.)
+        let focus = gtk::EventControllerFocus::new();
+        let weak = Rc::downgrade(inner);
+        focus.connect_leave(move |_| {
+            let weak = weak.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(inner) = weak.upgrade() {
+                    Window(inner).finish_typing();
+                }
+            });
+        });
+        view.add_controller(focus);
+        inner.typing.replace(Some(Typing {
+            view: view.clone(),
+            place,
+            new,
+            area: Cell::new((0, 0, 1)),
+        }));
+        self.place_typing();
+        // The redraw first: the page without the box, if it had it.
+        inner.canvas.queue_draw();
+        view.grab_focus();
+        let end = view.buffer().end_iter();
+        view.buffer().place_cursor(&end);
+    }
+
+    /// Puts the text field where its text box is on screen now, at the
+    /// size the text has there: when it is shown, and when the view moves.
+    fn place_typing(&self) {
+        let inner = &self.0;
+        let typing = inner.typing.borrow();
+        let (Some(typing), Some(doc)) = (typing.as_ref(), inner.document.borrow().clone()) else {
+            return;
+        };
+        let Some((corner, zoom)) = doc.borrow().text_box_corner(&typing.place) else {
+            return typing.view.set_visible(false);
+        };
+        let place = &typing.place;
+        let view = &typing.view;
+        view.set_visible(true);
+        // Where the overlay puts it (see `Window::new`): its corner, and
+        // its width. Its height is what its text needs at that width.
+        typing.area.set((
+            corner.x.round() as i32,
+            corner.y.round() as i32,
+            (place.width * zoom).round().max(1.0) as i32,
+        ));
+        view.queue_resize();
+        let margin = (specto_annot::TEXT_MARGIN * zoom).round() as i32;
+        view.set_left_margin(margin);
+        view.set_right_margin(margin);
+        // A line of the field is higher than the letters, half of the rest
+        // above them: less of a margin on top makes up for it, so that the
+        // text stands where the box will have it.
+        let above = (specto_annot::TEXT_MARGIN - 0.12 * place.size) * zoom;
+        view.set_top_margin(above.max(0.0).round() as i32);
+        view.set_bottom_margin(margin);
+        let c = place.color;
+        let byte = |v: f32| (v * 255.0).round() as u8;
+        let rgb = format!("rgb({}, {}, {})", byte(c.r), byte(c.g), byte(c.b));
+        // Helvetica, or what stands in for it with the same widths, so that
+        // lines break where they will in the box.
+        let css = format!(
+            ".page-text, .page-text text {{ background: none; color: {rgb}; caret-color: {rgb}; \
+             font-family: Helvetica, \"Nimbus Sans\", Arimo, \"Liberation Sans\", Arial, sans-serif; \
+             font-size: {:.2}px; line-height: 1.2; }}\n\
+             .page-text {{ outline: 1px solid @accent_bg_color; outline-offset: 2px; border-radius: 2px; }}\n",
+            place.size * zoom
+        );
+        TYPING_CSS.with(|provider| {
+            provider.load_from_string(&css);
+            if let Some(display) = gdk::Display::default() {
+                gtk::style_context_add_provider_for_display(
+                    &display,
+                    provider,
+                    gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+                );
+            }
+        });
+    }
+
+    /// Ends typing on the page, if there is any: what was typed is the
+    /// text box's text now (a new box, if there is text for one).
+    fn finish_typing(&self) {
+        let inner = &self.0;
+        let Some(typing) = inner.typing.take() else {
+            return;
+        };
+        let buffer = typing.view.buffer();
+        let text = buffer
+            .text(&buffer.start_iter(), &buffer.end_iter(), false)
+            .to_string();
+        inner.page_overlay.remove_overlay(&typing.view);
+        let mut failed = None;
+        self.edit(|d| {
+            if typing.new {
+                d.add_text_box_at(&typing.place, &text);
+            } else if let Err(e) = d.end_text_edit(Some(&text)) {
+                failed = Some(e);
+            }
+            // Always: the page is drawn with the box again.
+            Some(Edited::default())
+        });
+        if let Some(e) = failed {
+            self.toast(&gettext_f(
+                "Couldn't change the annotation: {error}",
+                &[("error", &save_error(e))],
+            ));
+        }
+        self.show_markup_color();
+        inner.canvas.grab_focus();
+    }
+
     /// The text editor was closed with `text` in it: for the picked
     /// annotation, or for a new text box at `new_at`.
     fn set_text(&self, new_at: Option<ViewPoint>, text: &str) {
@@ -2098,6 +2343,9 @@ impl Window {
         inner
             .window
             .change_action_state("markup-color", &name.to_variant());
+        inner
+            .color_swatch
+            .set_css_classes(&["markup-swatch", &format!("markup-{name}")]);
     }
 
     /// A colour of the markup bar was chosen: the picked annotation gets
@@ -2262,9 +2510,9 @@ impl Window {
     ///
     /// [`pages_to_edit`]: Self::pages_to_edit
     fn rotate(&self, by: Rotation) {
-        if let Some(text) = gtk::prelude::GtkWindowExt::focus(&self.0.window)
-            .and_then(|f| f.downcast::<gtk::Text>().ok())
-        {
+        // In a text field, the keys move the cursor by words instead.
+        let focus = gtk::prelude::GtkWindowExt::focus(&self.0.window);
+        if let Some(text) = focus.filter(|f| f.is::<gtk::Text>() || f.is::<gtk::TextView>()) {
             let count = if by == Rotation::Cw90 { 1 } else { -1 };
             text.emit_by_name::<()>("move-cursor", &[&gtk::MovementStep::Words, &count, &false]);
             return;
@@ -3258,7 +3506,43 @@ fn tool_icon(kind: Tool) -> gtk::DrawingArea {
                 cr.move_to(5.0, 9.5);
                 cr.line_to(9.0, 9.5);
             }
-            Tool::Mark(_) => {}
+            // The text tools: a letter, with what the tool does to it.
+            Tool::Mark(style) => {
+                let letter = |cr: &gtk::cairo::Context, top: f64, bottom: f64| {
+                    let bar = bottom - (bottom - top) * 0.36;
+                    cr.move_to(4.0, bottom);
+                    cr.line_to(8.0, top);
+                    cr.line_to(12.0, bottom);
+                    cr.move_to(5.4, bar);
+                    cr.line_to(10.6, bar);
+                };
+                match style {
+                    // A band of the marker behind it.
+                    MarkupStyle::Highlight => {
+                        let _ = cr.save();
+                        cr.set_source_rgba(
+                            color.red().into(),
+                            color.green().into(),
+                            color.blue().into(),
+                            f64::from(color.alpha()) * 0.3,
+                        );
+                        cr.rectangle(1.0, 5.5, 14.0, 8.5);
+                        let _ = cr.fill();
+                        let _ = cr.restore();
+                        letter(cr, 2.5, 12.5);
+                    }
+                    MarkupStyle::Underline | MarkupStyle::Squiggly => {
+                        letter(cr, 1.5, 11.0);
+                        cr.move_to(2.5, 14.5);
+                        cr.line_to(13.5, 14.5);
+                    }
+                    MarkupStyle::StrikeOut => {
+                        letter(cr, 2.5, 13.5);
+                        cr.move_to(1.5, 7.5);
+                        cr.line_to(14.5, 7.5);
+                    }
+                }
+            }
         }
         let _ = cr.stroke();
     });
@@ -3311,6 +3595,25 @@ enum Tool {
     Note,
 }
 
+/// Typing into a text box on the page.
+struct Typing {
+    /// The text field over the page.
+    view: gtk::TextView,
+    /// Where the text box is.
+    place: TextBoxPlace,
+    /// Whether the box is yet to be made, of what is typed.
+    new: bool,
+    /// Where the field is over the page view: its left and top edge, and
+    /// its width.
+    area: Cell<(i32, i32, i32)>,
+}
+
+thread_local! {
+    /// The style of the text field for typing on the page, which follows
+    /// the box's text and the zoom.
+    static TYPING_CSS: gtk::CssProvider = gtk::CssProvider::new();
+}
+
 /// How wide a signature is when it is placed, in points.
 const SIGNATURE_WIDTH: f64 = 150.0;
 
@@ -3356,7 +3659,9 @@ fn load_css() {
         };
         let mut css = String::from(
             ".markup-swatch { min-width: 18px; min-height: 18px; border-radius: 9999px; \
-             box-shadow: inset 0 0 0 1px alpha(currentColor, 0.25); }\n",
+             box-shadow: inset 0 0 0 1px alpha(currentColor, 0.25); }\n\
+             .markup-bar { background-color: @headerbar_bg_color; \
+             box-shadow: inset 0 -1px alpha(currentColor, 0.12); }\n",
         );
         for (name, _, c) in markup_colors() {
             let byte = |v: f32| (v * 255.0).round() as u8;

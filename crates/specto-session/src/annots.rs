@@ -30,6 +30,34 @@ use specto_write::WriteError;
 
 use crate::{FilePage, Session, view_pages};
 
+/// An annotation taken out of its page for the time being (see
+/// `Session::held`).
+#[derive(Clone, Debug)]
+pub(crate) struct Held {
+    /// Its page of its file.
+    page: FilePage,
+    /// Where the file has it, if it is one of the file's.
+    origin: Option<Origin>,
+    annotation: Arc<Annotation>,
+}
+
+/// Where a text box is, or is to be, on screen: for typing into it there.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextBoxPlace {
+    /// The position of its page.
+    pub position: usize,
+    /// Its top left corner on the page.
+    pub at: PdfPoint,
+    /// That corner on screen now.
+    pub corner: ViewPoint,
+    /// Its width in points, and how many pixels a point is on screen.
+    pub width: f64,
+    pub zoom: f64,
+    /// The size of its text in points, and its colour.
+    pub size: f64,
+    pub color: Color,
+}
+
 /// A page rendered from a copy of itself with other annotations than the
 /// file has.
 pub(crate) struct Variant {
@@ -284,8 +312,9 @@ impl Session {
         } = self.edit.annotation_changes(source, page);
         removed.extend(replaced.iter().filter(|(_, a)| floats(a)).map(|(o, _)| *o));
         // And one that is being dragged about.
-        if let Some((lifted, origin)) = self.lifted
-            && lifted == (source, page)
+        if let Some(held) = &self.held
+            && held.page == (source, page)
+            && let Some(origin) = held.origin
             && !removed.contains(&origin)
         {
             removed.push(origin);
@@ -304,6 +333,12 @@ impl Session {
             .map(|(origin, a)| (Some(origin), a))
             .chain(changes.added.into_iter().map(|a| (None, a)))
             .filter(|(_, a)| bakes(a))
+            // Not one that is held out of the page for now.
+            .filter(|(_, a)| {
+                self.held
+                    .as_ref()
+                    .is_none_or(|h| !Arc::ptr_eq(&h.annotation, a))
+            })
             .collect()
     }
 
@@ -360,7 +395,7 @@ impl Session {
             .edit
             .pages_with_annotation_edits()
             .into_iter()
-            .chain(self.lifted.map(|(page, _)| page))
+            .chain(self.held.as_ref().map(|h| h.page))
             .map(|(source, page)| {
                 let spec = (self.hidden(source, page), self.baked(source, page));
                 ((source, page), spec)
@@ -518,9 +553,7 @@ impl Session {
         // One the renderer draws must be out of the page while it is
         // dragged about.
         let ready = self.page_without(id, &a)?;
-        if let (Some((page, _, _, _)), Some(origin)) = (&ready, a.origin) {
-            self.lifted = Some((*page, origin));
-        }
+        self.hold(position, &a);
         self.picked = Some((position, id));
         self.selection = None;
         self.adjust = Some(Adjust {
@@ -601,7 +634,7 @@ impl Session {
     /// Gives up moving or resizing: the annotation is as it was.
     pub fn cancel_adjust(&mut self, scheduler: &Scheduler) {
         self.adjust = None;
-        self.lifted = None;
+        self.held = None;
         self.sync_variants(scheduler);
     }
 
@@ -620,7 +653,7 @@ impl Session {
             changed = self.edit.change_annotation(adjust.id, a);
         }
         // The edit keeps it out of the page from here on, or nothing does.
-        self.lifted = None;
+        self.held = None;
         self.sync_variants(scheduler);
         changed
     }
@@ -1001,6 +1034,124 @@ impl Session {
         true
     }
 
+    /// Takes `a`, on the page at `position`, out of what the renderer
+    /// draws of its page until it is let go of (`held` set to `None` and
+    /// the variants made anew). Nothing to do for one the frontend draws.
+    fn hold(&mut self, position: usize, a: &Arc<Annotation>) {
+        let Some(&page) = self.edit.pages().get(position) else {
+            return;
+        };
+        if floats(a) {
+            return;
+        }
+        self.held = Some(Held {
+            page: (page.source, page.page),
+            origin: a.origin,
+            annotation: a.clone(),
+        });
+    }
+
+    /// How many pixels a point of the page at `position` is on screen.
+    fn zoom_of_page(&self, position: usize) -> Option<f64> {
+        let geometry = self.viewer.pages().get(position)?.displayed();
+        let from = geometry.visible_box().min;
+        let a = self.viewer.pdf_to_view(position, from)?;
+        let b = self
+            .viewer
+            .pdf_to_view(position, from + specto_geom::PdfVector::new(1.0, 0.0))?;
+        Some((b - a).length())
+    }
+
+    /// Where a new text box would go for a click at `p` (viewport
+    /// coordinates): its top left corner there, up to 220 points wide, less
+    /// where the page ends. `None` beside the pages, and on pages that are
+    /// shown turned, where text can't be typed in place.
+    pub fn new_text_box_place(
+        &self,
+        p: ViewPoint,
+        size: f64,
+        color: Color,
+    ) -> Option<TextBoxPlace> {
+        let (position, _) = self.viewer.hit_test(p)?;
+        let geometry = self.viewer.pages().get(position)?.displayed();
+        if geometry.rotation() != specto_geom::Rotation::None {
+            return None;
+        }
+        let at = self.viewer.view_to_pdf(position, p)?;
+        let room = geometry.visible_box().max.x - at.x - 4.0;
+        Some(TextBoxPlace {
+            position,
+            at,
+            corner: p,
+            width: room.clamp(40.0, 220.0),
+            zoom: self.zoom_of_page(position)?,
+            size,
+            color,
+        })
+    }
+
+    /// Where `place` is on screen now: the view may have moved since.
+    pub fn text_box_corner(&self, place: &TextBoxPlace) -> Option<(ViewPoint, f64)> {
+        Some((
+            self.viewer.pdf_to_view(place.position, place.at)?,
+            self.zoom_of_page(place.position)?,
+        ))
+    }
+
+    /// Starts typing into the picked text box: where it is, and its text.
+    /// The renderer stops drawing it until
+    /// [`end_text_edit`](Self::end_text_edit), so the frontend's editor
+    /// stands in its place. `None` if what is picked is no text box that
+    /// can be changed, or its page is shown turned.
+    pub fn begin_text_edit(&mut self, scheduler: &Scheduler) -> Option<(TextBoxPlace, String)> {
+        let (position, _) = self.picked?;
+        let (_, a) = self.picked_one()?;
+        let AnnotKind::FreeText { size } = a.kind else {
+            return None;
+        };
+        let geometry = self.viewer.pages().get(position)?.displayed();
+        if !a.is_redrawable()
+            || !a.flags.is_editable()
+            || geometry.rotation() != specto_geom::Rotation::None
+        {
+            return None;
+        }
+        let at = PdfPoint::new(a.rect.min.x, a.rect.max.y);
+        let place = TextBoxPlace {
+            position,
+            at,
+            corner: self.viewer.pdf_to_view(position, at)?,
+            width: a.rect.width(),
+            zoom: self.zoom_of_page(position)?,
+            size,
+            color: a.color.unwrap_or(Color::new(0.0, 0.0, 0.0)),
+        };
+        self.hold(position, &a);
+        self.sync_variants(scheduler);
+        Some((place, a.contents.clone().unwrap_or_default()))
+    }
+
+    /// Ends typing into the picked text box: with `text` it has that now
+    /// (none deletes it), without it stays as it was. Returns whether it
+    /// changed. Errors as
+    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
+    pub fn end_text_edit(
+        &mut self,
+        scheduler: &Scheduler,
+        text: Option<&str>,
+    ) -> Result<bool, WriteError> {
+        self.held = None;
+        let changed = match text {
+            Some(text) => self.set_picked_text(scheduler, text),
+            None => Ok(false),
+        };
+        // Back into its page, if nothing else did that.
+        if !matches!(changed, Ok(true)) {
+            self.sync_variants(scheduler);
+        }
+        changed
+    }
+
     /// Puts a text box of `text` at `p` (viewport coordinates), in
     /// Helvetica of `size` points and `color`, and picks it. It is up to
     /// 220 points wide, less where the page ends. Returns whether it did:
@@ -1013,21 +1164,48 @@ impl Session {
         size: f64,
         color: Color,
     ) -> bool {
-        if text.trim().is_empty() {
-            return false;
-        }
         let Some((position, _)) = self.viewer.hit_test(p) else {
             return false;
         };
-        let (Some(at), Some(view_page), Some(&page)) = (
+        let (Some(at), Some(view_page)) = (
             self.viewer.view_to_pdf(position, p),
             self.viewer.pages().get(position),
-            self.edit.pages().get(position),
         ) else {
             return false;
         };
         let room = view_page.displayed().visible_box().max.x - at.x - 4.0;
-        let mut text_box = Annotation::text_box(at, room.clamp(40.0, 220.0), text, size, color);
+        self.add_text_box_on(
+            scheduler,
+            position,
+            at,
+            room.clamp(40.0, 220.0),
+            text,
+            size,
+            color,
+        )
+    }
+
+    /// Like [`add_text_box`](Self::add_text_box), by where on which page:
+    /// its top left corner at `at` on the page at `position`, `width`
+    /// points wide.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_text_box_on(
+        &mut self,
+        scheduler: &Scheduler,
+        position: usize,
+        at: PdfPoint,
+        width: f64,
+        text: &str,
+        size: f64,
+        color: Color,
+    ) -> bool {
+        if text.trim().is_empty() {
+            return false;
+        }
+        let Some(&page) = self.edit.pages().get(position) else {
+            return false;
+        };
+        let mut text_box = Annotation::text_box(at, width, text, size, color);
         text_box.modified = Some(now());
         let id = self.edit.add_annotation(page.source, page.page, text_box);
         self.selection = None;

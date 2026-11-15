@@ -308,6 +308,41 @@ impl Document {
         added
     }
 
+    /// Starts typing into the picked text box (see the session's function
+    /// of this name).
+    pub fn begin_text_edit(&mut self) -> Option<(specto_session::TextBoxPlace, String)> {
+        let editing = self.session.begin_text_edit(scheduler());
+        if editing.is_some() {
+            self.pages_changed();
+        }
+        editing
+    }
+
+    /// Ends typing into the picked text box, with its new text or without
+    /// a change.
+    pub fn end_text_edit(&mut self, text: Option<&str>) -> Result<bool, specto_write::WriteError> {
+        let changed = self.session.end_text_edit(scheduler(), text);
+        self.pages_changed();
+        changed
+    }
+
+    /// Makes a text box at `place` (see `Session::add_text_box_on`).
+    pub fn add_text_box_at(&mut self, place: &specto_session::TextBoxPlace, text: &str) -> bool {
+        let added = self.session.add_text_box_on(
+            scheduler(),
+            place.position,
+            place.at,
+            place.width,
+            text,
+            place.size,
+            place.color,
+        );
+        if added {
+            self.pages_changed();
+        }
+        added
+    }
+
     /// Gives the picked annotation another text (see the session's
     /// function of this name).
     pub fn set_picked_text(&mut self, text: &str) -> Result<bool, specto_write::WriteError> {

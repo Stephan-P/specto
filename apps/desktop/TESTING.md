@@ -306,8 +306,11 @@ The markup bar and colors:
 - Pick a highlight: the bar shows its color. Choose another and it changes at
   once, and *Primary*+Z changes it back. The same works for a highlight the
   file already had, and nothing else on the page changes.
-- The swatches are easy to tell apart and to hit, in the light and the dark
-  style, and the one in use is visibly marked.
+- The color button shows the color in use. Its swatches are easy to tell apart
+  and to hit, in the light and the dark style. The icons of the three text
+  tools are clear enough to tell apart without their tooltips.
+- The markup bar is above the page view only, and the sidebar keeps its full
+  height. In a narrow window nothing of the bar is cut off.
 
 Drawing:
 
@@ -338,17 +341,26 @@ Moving and resizing:
 
 Saving, printing and other windows:
 
-- Text tool: click, type a few lines with line breaks and a long line, close
-  the editor with Escape or a click elsewhere. The text is where the click
-  was, wrapped, sharp at any zoom. Double click it and change it.
+- Text tool: click and type. The letters appear on the page as they are typed.
+  Type a few lines with line breaks and a long line that wraps, then press
+  Escape or click elsewhere. The text does not jump or reflow when typing
+  ends: same place, same size, same line breaks. Compare closely at 100% and
+  zoomed far in.
+- Double click the text box and change it. While typing, the old text is gone
+  from the page, not doubled behind the field.
+- Scroll and zoom while typing: the field stays on its box. *Primary*+A,
+  *Primary*+C, *Primary*+V, *Primary*+Z and *Primary*+Left and Right act on the
+  text, not on the document.
+- Typing near the right and bottom edge of the page view and of the window.
 - Type umlauts, quotes and a euro sign: they show. Characters outside Western
   European (Greek, Cyrillic, CJK, emoji) show as question marks for now.
 - Note tool: click, type, close. The mark is where the click was. Enter on the
   picked note shows its text again.
 - Pick a highlight and press Enter: a comment can be typed for it. It shows in
   other programs' annotation lists after saving.
-- The editor popover points at the annotation and is not cut off near the
-  window's edges. It takes the keyboard at once.
+- Notes and comments still use the small editor, which points at the
+  annotation, is not cut off near the window's edges, and takes the keyboard
+  at once.
 - Move and resize a text box. Known for now: while it is dragged only its frame
   moves, and the text follows when it is dropped.
 - Text boxes and notes after saving and reopening: they can still be edited.

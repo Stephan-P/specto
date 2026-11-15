@@ -1214,6 +1214,7 @@ def test_text_tools(ctx):
     w.wait("the editor", lambda s: s["text_editor"])
     time.sleep(0.4)
     inp.type("some words")
+    w.screenshot("typing")
     inp.keys(Input.ESCAPE)
     s = w.wait("a text box", lambda s: closed(s) and s["annotations"] == 2)
     check(s["undo"] == "Add FreeText" and s["annotation_text"] == "some words", s)

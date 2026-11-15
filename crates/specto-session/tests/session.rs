@@ -1063,3 +1063,68 @@ fn notes_and_text_boxes() {
     saved.close(&scheduler);
     session.close(&scheduler);
 }
+
+#[test]
+fn where_a_text_box_is_typed_into() {
+    use specto_annot::Color;
+
+    let black = Color::new(0.0, 0.0, 0.0);
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, book(2, "alpha"));
+    let file = session.viewer.pages()[0].doc;
+    // The page is 200 points wide in a view of 400: two pixels a point,
+    // less the margins around it.
+    let unit = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(1.0, 0.0))
+        .unwrap()
+        - session
+            .viewer
+            .pdf_to_view(0, PdfPoint::new(0.0, 0.0))
+            .unwrap();
+    let click = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(20.0, 200.0))
+        .unwrap();
+    let place = session
+        .new_text_box_place(click, 12.0, black)
+        .expect("on a page");
+    assert_eq!(place.position, 0);
+    assert!((place.at - PdfPoint::new(20.0, 200.0)).length() < 1e-6);
+    assert!(
+        (place.zoom - unit.length()).abs() < 1e-9,
+        "{} vs {}",
+        place.zoom,
+        unit.length()
+    );
+    assert!(place.zoom > 1.5, "{}", place.zoom);
+    // As wide as there is room for to the page's edge.
+    assert!((place.width - 176.0).abs() < 1e-6, "{}", place.width);
+    assert_eq!(session.text_box_corner(&place).map(|(c, _)| c), Some(click));
+
+    // Made there, and typed into again: out of the page meanwhile.
+    assert!(session.add_text_box_on(&scheduler, 0, place.at, place.width, "Words", 12.0, black));
+    let with_box = session.viewer.pages()[0].doc;
+    assert_ne!(with_box, file);
+    let (again, text) = session
+        .begin_text_edit(&scheduler)
+        .expect("a text box is picked");
+    assert_eq!(text, "Words");
+    assert!((again.at - place.at).length() < 1e-6 && (again.width - place.width).abs() < 1e-6);
+    assert_eq!(session.viewer.pages()[0].doc, file);
+    // Given up: back as it was. With other text: changed.
+    assert!(!session.end_text_edit(&scheduler, None).unwrap());
+    assert_ne!(session.viewer.pages()[0].doc, file);
+    assert!(session.begin_text_edit(&scheduler).is_some());
+    assert!(
+        session
+            .end_text_edit(&scheduler, Some("Other words"))
+            .unwrap()
+    );
+    assert_eq!(
+        session.annotations(0)[0].1.contents.as_deref(),
+        Some("Other words")
+    );
+    assert_ne!(session.viewer.pages()[0].doc, file);
+    session.close(&scheduler);
+}
