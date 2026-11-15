@@ -72,6 +72,8 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
     }
     let rect = rect(dict)?;
     let color = color_of(dict, b"C");
+    let look = appearance_of(dict);
+    let mut text_color = None;
     let fill = || color_of(dict, b"IC");
     let kind = match subtype {
         b"Highlight" => markup(dict, MarkupStyle::Highlight),
@@ -82,6 +84,13 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
         b"Square" => Some(AnnotKind::Square { fill: fill() }),
         b"Circle" => Some(AnnotKind::Circle { fill: fill() }),
         b"Line" => line(dict),
+        // Notes and text boxes only if their look was written here: other
+        // programs give theirs icons, borders and fonts of their own.
+        b"Text" if look == Appearance::Own => Some(AnnotKind::Note),
+        b"FreeText" if look == Appearance::Own => text_size(dict).map(|size| {
+            text_color = default_appearance_color(dict);
+            AnnotKind::FreeText { size }
+        }),
         _ => None,
     }
     // One of ours without what it needs is still shown as the file has it.
@@ -96,7 +105,7 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
     Some(Annotation {
         kind,
         rect,
-        color,
+        color: text_color.or(color),
         opacity: dict
             .get::<f32>(b"CA")
             .filter(|a| a.is_finite())
@@ -110,7 +119,7 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
         name: text(b"NM"),
         flags: Flags(dict.get::<u32>(b"F").unwrap_or(0)),
         origin: Some(origin),
-        appearance: appearance_of(dict),
+        appearance: look,
     })
 }
 
@@ -135,6 +144,35 @@ fn appearance_of(dict: &Dict<'_>) -> Appearance {
     } else {
         Appearance::Original
     }
+}
+
+/// The numbers before the operator `operator` in the default appearance
+/// string of a text box (`/DA`), e.g. the size before `Tf`.
+fn default_appearance(dict: &Dict<'_>, operator: &str, count: usize) -> Option<Vec<f64>> {
+    let da = dict.get::<PdfString<'_>>(b"DA")?;
+    let da = String::from_utf8_lossy(da.as_bytes()).into_owned();
+    let tokens: Vec<&str> = da.split_ascii_whitespace().collect();
+    let at = tokens.iter().position(|t| *t == operator)?;
+    let numbers: Vec<f64> = tokens[at.checked_sub(count)?..at]
+        .iter()
+        .filter_map(|t| t.parse().ok())
+        .filter(|n: &f64| n.is_finite())
+        .collect();
+    (numbers.len() == count).then_some(numbers)
+}
+
+/// The font size of a text box.
+fn text_size(dict: &Dict<'_>) -> Option<f64> {
+    default_appearance(dict, "Tf", 1)
+        .map(|n| n[0])
+        .filter(|size| (1.0..=1000.0).contains(size))
+}
+
+/// The colour of a text box's text.
+fn default_appearance_color(dict: &Dict<'_>) -> Option<Color> {
+    let c = default_appearance(dict, "rg", 3)?;
+    let part = |v: f64| (v as f32).clamp(0.0, 1.0);
+    Some(Color::new(part(c[0]), part(c[1]), part(c[2])))
 }
 
 /// The finite numbers of the array at `key`, up to a limit.

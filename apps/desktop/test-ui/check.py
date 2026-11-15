@@ -73,6 +73,10 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   shape; a line is picked near it only; a drag moves a shape and a handle
   resizes it, Escape gives that up; saved, they're in the file and shown,
   and move as before
+- text_tools: the note tool puts a note where the page is clicked and asks
+  for its text; the text tool asks for text and makes a text box of it; a
+  double click or Enter asks again; a text box moves with its text; saved,
+  both are in the file, and a text box emptied is deleted
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1145,6 +1149,121 @@ def test_draw_tools(ctx):
     w.settled()
     check(blue(pixel(w, "file-back", *at(210, 480))), "undo didn't put the saved rectangle back")
     check(not blue(pixel(w, "file-back-from", *at(350, 480))), "undo left the moved rectangle")
+
+
+def dark_pixels(w, name, top_left, bottom_right):
+    """How many dark pixels the window has between two points (text)."""
+    width, height, pixels = read_ppm(w.screenshot(name))
+    scale = w.app.ctx.scale
+    (x0, y0), (x1, y1) = top_left, bottom_right
+    count = 0
+    for y in range(round(y0 * scale), min(round(y1 * scale), height)):
+        for x in range(round(x0 * scale), min(round(x1 * scale), width)):
+            at = (y * width + x) * 3
+            count += max(pixels[at:at + 3]) < 110
+    return count
+
+
+def test_text_tools(ctx):
+    path = os.path.join(ctx.home, "texts.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)  # the bar slides in and moves the page down
+    at = lambda x, y: w.screen(0, x, y)
+    closed = lambda s: not s["text_editor"]
+    # A note where the page is clicked: its text is asked for at once, and
+    # kept when the editor is closed.
+    w.action("markup-tool", gvariant_str("note"))
+    w.wait("the note tool", lambda s: s["markup_tool"] == "note" and s["markup_color"] == "yellow")
+    inp.click(*at(400, 500))
+    s = w.wait("a note and its editor", lambda s: s["annotations"] == 1 and s["text_editor"])
+    check(s["undo"] == "Add Note" and s["annotation_picked"], s)
+    time.sleep(0.4)  # the popover takes the keyboard once it is up
+    w.screenshot("note-editor")
+    inp.type("check this")
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the note's text", lambda s: closed(s) and s["annotation_text"] == "check this")
+    check(yellow(pixel(w, "note", *at(414, 489))), "no note where the page was clicked")
+    # Text: asked for where the page is clicked, a text box once there is
+    # some. Nothing without.
+    w.action("markup-tool", gvariant_str("text"))
+    w.wait("the text tool", lambda s: s["markup_tool"] == "text" and s["markup_color"] == "black")
+    inp.click(*at(100, 450))
+    s = w.wait("the editor", lambda s: s["text_editor"])
+    check(s["annotations"] == 1, s)
+    time.sleep(0.4)
+    inp.keys(Input.ESCAPE)
+    s = w.wait("no text, no box", closed)
+    check(s["annotations"] == 1 and s["undo"] == "Change Note", s)
+    area = at(100, 452), at(330, 420)
+    before = dark_pixels(w, "before", *area)
+    inp.click(*at(100, 450))
+    w.wait("the editor", lambda s: s["text_editor"])
+    time.sleep(0.4)
+    inp.type("some words")
+    inp.keys(Input.ESCAPE)
+    s = w.wait("a text box", lambda s: closed(s) and s["annotations"] == 2)
+    check(s["undo"] == "Add FreeText" and s["annotation_text"] == "some words", s)
+    w.settled()
+    one_line = dark_pixels(w, "text-box", *area)
+    check(one_line > before + 40, f"no text on the page: {before} then {one_line} dark pixels")
+    # Without a tool: a double click on the text box asks for its text
+    # again, and more text is more ink.
+    w.action("markup-tool", gvariant_str("text"))
+    w.wait("no tool", lambda s: s["markup_tool"] == "none")
+    inp.click(*at(110, 442), times=2)
+    w.wait("the editor again", lambda s: s["text_editor"])
+    time.sleep(0.4)
+    inp.type(" and more")
+    inp.keys(Input.ESCAPE)
+    s = w.wait("more text", lambda s: closed(s) and s["annotation_text"] != "some words")
+    check(sorted(s["annotation_text"].split()) == sorted("some words and more".split()), s)
+    w.settled()
+    more = dark_pixels(w, "more-text", *area)
+    check(more > one_line + 20, f"no more text on the page: {one_line} then {more}")
+    # Enter on a picked annotation does the same; this one is the note.
+    inp.click(*at(409, 491))
+    w.wait("the note picked", lambda s: s["annotation_text"] == "check this")
+    inp.keys(Input.ENTER)
+    w.wait("the note's editor", lambda s: s["text_editor"])
+    time.sleep(0.4)
+    inp.keys(Input.ESCAPE)
+    w.wait("closed", closed)
+    # A drag moves the text box, text and all.
+    inp.drag(at(120, 442), at(120, 362))
+    w.wait("the text box moved", lambda s: s["undo"] == "Change FreeText")
+    w.settled()
+    check(dark_pixels(w, "moved-from", *area) <= before + 5, "text is left where the box was")
+    moved = at(100, 372), at(330, 340)
+    check(dark_pixels(w, "moved-to", *moved) > 60, "no text where the box was moved to")
+    # Saved and opened again: both there, with their text, which can still
+    # be changed. A text box emptied is deleted.
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    w = ctx.app([path]).window()
+    s = w.settled()
+    w.maximize()
+    check(s["annotations"] == 2 and not s["modified"], s)
+    at = lambda x, y: w.screen(0, x, y)
+    inp = ctx.input().attach(w)
+    inp.click(*at(120, 362), times=2)
+    s = w.wait("the saved text box's editor", lambda s: s["text_editor"])
+    check(sorted(s["annotation_text"].split()) == sorted("some words and more".split()), s)
+    time.sleep(0.4)
+    inp.keys(Input.CONTROL, Input.KEY_A)
+    inp.keys(Input.BACKSPACE)
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the text box gone", lambda s: closed(s) and s["annotations"] == 1)
+    check(s["undo"] == "Remove FreeText", s)
+    w.settled()
+    check(dark_pixels(w, "emptied", at(100, 372), at(330, 340)) < 10, "the deleted text is still shown")
 
 
 def test_select_words_and_lines(ctx):

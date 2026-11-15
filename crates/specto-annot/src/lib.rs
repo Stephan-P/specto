@@ -15,6 +15,7 @@
 
 mod import;
 mod shapes;
+mod text;
 
 use std::sync::Arc;
 
@@ -25,6 +26,10 @@ pub use import::import;
 pub use shapes::{
     AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, look_mark, shapes,
 };
+pub use text::{TEXT_MARGIN, box_height, text_width, wrap};
+
+/// How wide and high the mark of a note is, in points.
+pub const NOTE_SIZE: f64 = 18.0;
 
 /// A colour as PDF annotations have it: red, green and blue, each 0 to 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -74,6 +79,16 @@ pub enum AnnotKind {
         from: PdfPoint,
         to: PdfPoint,
     },
+    /// A note: a small mark on the page whose text (the annotation's
+    /// `contents`) is read elsewhere. Only for notes made here; one of
+    /// another program is [`AnnotKind::Other`].
+    Note,
+    /// A box of text on the page (the annotation's `contents`), set in
+    /// Helvetica of `size` points in the annotation's colour, broken into
+    /// lines to fit the width of its `rect`. Only for text boxes made here.
+    FreeText {
+        size: f64,
+    },
     /// A picture placed on the page: a signature, for instance. Only for
     /// stamps made here; one read from a file is [`AnnotKind::Other`], since
     /// its appearance is all there is to know about it.
@@ -116,6 +131,8 @@ pub enum AnnotType {
     Square,
     Circle,
     Line,
+    Note,
+    FreeText,
     Stamp,
     Other,
 }
@@ -133,6 +150,8 @@ impl AnnotKind {
             Self::Square { .. } => AnnotType::Square,
             Self::Circle { .. } => AnnotType::Circle,
             Self::Line { .. } => AnnotType::Line,
+            Self::Note => AnnotType::Note,
+            Self::FreeText { .. } => AnnotType::FreeText,
             Self::Stamp(_) => AnnotType::Stamp,
             Self::Other { .. } => AnnotType::Other,
         }
@@ -258,22 +277,68 @@ impl Annotation {
     /// file has no look or only a look written here for. Text markup always
     /// is: its values say all there is to it.
     pub fn is_redrawable(&self) -> bool {
-        shapes(self).is_some()
+        appearance(self).is_some()
             && (self.appearance != Appearance::Original
                 || matches!(self.kind, AnnotKind::TextMarkup { .. }))
     }
 
-    /// Whether the annotation can be moved and resized: a drawing or a
-    /// shape (text markup belongs to its text) that is
+    /// Whether the annotation can be moved: a drawing, a shape, a note or
+    /// a text box (text markup belongs to its text) that is
     /// [redrawable](Self::is_redrawable).
     pub fn is_adjustable(&self) -> bool {
-        matches!(
+        !matches!(
             self.kind,
-            AnnotKind::Ink { .. }
-                | AnnotKind::Square { .. }
-                | AnnotKind::Circle { .. }
-                | AnnotKind::Line { .. }
+            AnnotKind::TextMarkup { .. } | AnnotKind::Stamp(_) | AnnotKind::Other { .. }
         ) && self.is_redrawable()
+    }
+
+    /// Whether the annotation can also be resized: not a note, which is a
+    /// mark of one size.
+    pub fn is_resizable(&self) -> bool {
+        self.is_adjustable() && self.kind != AnnotKind::Note
+    }
+
+    /// Whether the annotation's text is what it shows, rather than a
+    /// comment that goes with it.
+    pub fn is_text_box(&self) -> bool {
+        matches!(self.kind, AnnotKind::FreeText { .. })
+    }
+
+    /// A note at `at` (its top left corner), in `color`.
+    pub fn note(at: PdfPoint, color: Color) -> Self {
+        let rect = PdfBox::new(
+            PdfPoint::new(at.x, at.y - NOTE_SIZE),
+            PdfPoint::new(at.x + NOTE_SIZE, at.y),
+        );
+        let mut a = Self::new(AnnotKind::Note, rect);
+        a.color = Some(color);
+        a.line_width = 0.0;
+        a
+    }
+
+    /// A text box of `text` in Helvetica of `size` points and `color`, its
+    /// top left corner at `at` and `width` wide; as high as the text needs.
+    pub fn text_box(at: PdfPoint, width: f64, text: &str, size: f64, color: Color) -> Self {
+        let rect = PdfBox::new(at, PdfPoint::new(at.x + width, at.y));
+        let mut a = Self::new(AnnotKind::FreeText { size }, rect);
+        a.color = Some(color);
+        a.line_width = 0.0;
+        a.contents = Some(text.to_owned());
+        a.fit_text();
+        a
+    }
+
+    /// For a text box: makes it as high as its text needs at its width,
+    /// keeping its top edge where it is. Its look is to be made anew.
+    pub fn fit_text(&mut self) {
+        let AnnotKind::FreeText { size } = self.kind else {
+            return;
+        };
+        let width = (self.rect.width() - 2.0 * TEXT_MARGIN).max(size);
+        let lines = wrap(self.contents.as_deref().unwrap_or(""), size, width).len();
+        self.rect.min.y = self.rect.max.y - box_height(lines, size);
+        self.rect.max.x = self.rect.min.x + width + 2.0 * TEXT_MARGIN;
+        self.appearance = Appearance::Generated;
     }
 
     /// The box of what the annotation draws, without the width of its
@@ -327,6 +392,8 @@ impl Annotation {
             _ => a.rect = around(&[f(frame.min), f(frame.max)]),
         }
         a.appearance = Appearance::Generated;
+        // A text box is as high as its text needs at its new width.
+        a.fit_text();
         a
     }
 

@@ -23,6 +23,8 @@ use specto_session::{DraftKind, Grip, ViewShape};
 const AUTOSCROLL_EDGE: f64 = 24.0;
 
 /// Handles a clicked link's URI (the window decides whether to open it).
+/// Called with where the page was clicked.
+type PlaceHandler = Box<dyn Fn(f64, f64)>;
 type UriHandler = Box<dyn Fn(&str)>;
 
 mod imp {
@@ -54,6 +56,11 @@ mod imp {
         /// A press was on an annotation that can be moved or resized: once
         /// the pointer has moved far enough, the drag does that.
         pub may_adjust: Cell<bool>,
+        /// A tool that puts something where the page is clicked (a note, a
+        /// text box) is in use.
+        pub place_tool: Cell<bool>,
+        pub on_place: RefCell<Option<PlaceHandler>>,
+        pub on_edit_text: RefCell<Option<Box<dyn Fn()>>>,
         /// Called with a link's URI; the window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links,
@@ -93,6 +100,9 @@ mod imp {
                 on_drawn: RefCell::default(),
                 draw_tool: Cell::default(),
                 may_adjust: Cell::default(),
+                place_tool: Cell::default(),
+                on_place: RefCell::default(),
+                on_edit_text: RefCell::default(),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -312,6 +322,42 @@ impl Canvas {
         self.imp().on_selected.replace(Some(Box::new(f)));
     }
 
+    /// `f` is called with where the page was clicked while a placing tool
+    /// is in use (see [`set_place_tool`](Self::set_place_tool)).
+    pub fn connect_place(&self, f: impl Fn(f64, f64) + 'static) {
+        self.imp().on_place.replace(Some(Box::new(f)));
+    }
+
+    /// `f` is called when the text of the picked annotation is asked for:
+    /// by a double click on it, or Enter.
+    pub fn connect_edit_text(&self, f: impl Fn() + 'static) {
+        self.imp().on_edit_text.replace(Some(Box::new(f)));
+    }
+
+    /// Makes clicks on a page put something there (see
+    /// [`connect_place`](Self::connect_place)) instead of picking.
+    pub fn set_place_tool(&self, on: bool) {
+        self.imp().place_tool.set(on);
+        let (x, y) = self.pointer();
+        self.update_cursor(x, y);
+    }
+
+    /// Where the picked annotation is in the widget, for a popover to
+    /// point at.
+    pub fn picked_area(&self) -> Option<gdk::Rectangle> {
+        let doc = self.imp().document.borrow().clone()?;
+        let (_, corners) = doc.borrow_mut().picked_outline()?;
+        let (xs, ys) = (corners.map(|c| c.x), corners.map(|c| c.y));
+        let min = |v: [f64; 4]| v.into_iter().fold(f64::INFINITY, f64::min);
+        let max = |v: [f64; 4]| v.into_iter().fold(f64::NEG_INFINITY, f64::max);
+        Some(gdk::Rectangle::new(
+            min(xs) as i32,
+            min(ys) as i32,
+            (max(xs) - min(xs)).ceil() as i32,
+            (max(ys) - min(ys)).ceil() as i32,
+        ))
+    }
+
     /// `f` is called when an annotation was drawn with the pointer.
     pub fn connect_drawn(&self, f: impl Fn() + 'static) {
         self.imp().on_drawn.replace(Some(Box::new(f)));
@@ -517,6 +563,32 @@ impl Canvas {
         picked.is_some()
     }
 
+    /// For a double click that picked an annotation: whether that is
+    /// marked text, where the click's word stays selected and the
+    /// annotation isn't picked after all.
+    fn clear_selection_on_markup(&self) -> bool {
+        let Some(doc) = self.imp().document.borrow().clone() else {
+            return false;
+        };
+        let mut d = doc.borrow_mut();
+        let Some((position, id)) = d.picked else {
+            return false;
+        };
+        let markup = d
+            .annotations(position)
+            .into_iter()
+            .find(|(i, _)| *i == id)
+            .is_some_and(|(_, a)| matches!(a.kind, specto_annot::AnnotKind::TextMarkup { .. }));
+        if markup {
+            d.picked = None;
+        } else {
+            d.selection = None;
+        }
+        drop(d);
+        self.picked_changed();
+        markup
+    }
+
     /// Lets go of the picked annotation. Returns whether there was one.
     pub fn unpick_annotation(&self) -> bool {
         let Some(doc) = self.imp().document.borrow().clone() else {
@@ -668,7 +740,7 @@ impl Canvas {
     /// over text.
     fn update_cursor(&self, x: f64, y: f64) {
         let p = ViewPoint::new(x, y);
-        let name = if self.imp().draw_tool.get().is_some() {
+        let name = if self.imp().draw_tool.get().is_some() || self.imp().place_tool.get() {
             Some("crosshair")
         } else if let Some(grip) = self.grip_at(x, y) {
             Some(match grip {
@@ -847,11 +919,26 @@ impl Canvas {
         let this = self.downgrade();
         click.connect_released(move |g, n_press, x, y| {
             let Some(c) = this.upgrade() else { return };
-            if n_press != 1
-                || c.imp().selecting.get()
-                || c.imp().draw_tool.get().is_some()
-                || c.is_adjusting()
-            {
+            if c.imp().selecting.get() || c.imp().draw_tool.get().is_some() || c.is_adjusting() {
+                return;
+            }
+            // A second click on an annotation other than marked text (where
+            // it selects the word) asks for its text.
+            if n_press == 2 {
+                let on_one = c.pick_annotation(x, y) && !c.clear_selection_on_markup();
+                if on_one && let Some(cb) = c.imp().on_edit_text.borrow().as_ref() {
+                    cb();
+                }
+                return;
+            }
+            if n_press != 1 {
+                return;
+            }
+            // A placing tool puts its thing where the click was.
+            if c.imp().place_tool.get() {
+                if let Some(cb) = c.imp().on_place.borrow().as_ref() {
+                    cb(x, y);
+                }
                 return;
             }
             if let Some((source, target)) = c.link_at(x, y) {
@@ -1051,6 +1138,13 @@ impl Canvas {
                     | gdk::ModifierType::META_MASK,
             ) {
                 return glib::Propagation::Proceed;
+            }
+            // Enter on a picked annotation asks for its text.
+            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) && c.picked_area().is_some() {
+                if let Some(cb) = c.imp().on_edit_text.borrow().as_ref() {
+                    cb();
+                }
+                return glib::Propagation::Stop;
             }
             if key == gdk::Key::Escape && c.is_drafting() {
                 c.draft(|d| d.cancel_draft());

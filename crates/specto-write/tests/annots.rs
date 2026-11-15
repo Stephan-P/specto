@@ -664,3 +664,76 @@ fn drawings_and_shapes_are_saved_and_show() {
     assert!(red(at(500, 600)) && red(at(503, 600)), "the dot");
     assert_eq!(at(508, 600), white);
 }
+
+#[test]
+fn notes_and_text_boxes_are_saved_and_show() {
+    let original = fixture();
+    let mut edit = EditDoc::from_source(MAIN, 2);
+    let blue = Color::new(0.0, 0.0, 1.0);
+    let mut note = Annotation::note(PdfPoint::new(50.0, 600.0), YELLOW);
+    note.contents = Some("Check this (again)".to_owned());
+    edit.add_annotation(MAIN, 1, note.clone());
+    // Wide enough for "Hello, world" in 20 points, not for the rest of it.
+    let text = "Hello, world of (bracketed) text\nGrüße";
+    let text_box = Annotation::text_box(PdfPoint::new(100.0, 500.0), 150.0, text, 20.0, blue);
+    assert!(text_box.rect.height() > 3.0 * 20.0, "three lines at least");
+    edit.add_annotation(MAIN, 1, text_box.clone());
+    let out = write(&original, None, &edit);
+
+    let annots = imported(&out, None, 1);
+    let types: Vec<AnnotType> = annots.iter().map(Annotation::annot_type).collect();
+    assert_eq!(types, [AnnotType::Note, AnnotType::FreeText]);
+    assert_eq!(annots[0].contents.as_deref(), Some("Check this (again)"));
+    assert_eq!(annots[0].color, Some(YELLOW));
+    assert_eq!(annots[0].rect, note.rect);
+    assert_eq!(annots[1].kind, AnnotKind::FreeText { size: 20.0 });
+    assert_eq!(annots[1].contents.as_deref(), Some(text));
+    assert_eq!(annots[1].color, Some(blue));
+    assert_eq!(annots[1].rect, text_box.rect);
+    // Both to be moved and changed another day.
+    assert!(
+        annots
+            .iter()
+            .all(|a| a.appearance == Appearance::Own && a.is_adjustable())
+    );
+    assert!(annots[1].is_resizable() && !annots[0].is_resizable());
+
+    // The note's mark is there, in its colour.
+    let [r, g, b] = pixel(&out, None, 1, 65, 593, true);
+    assert!(r > 200 && g > 180 && b < 80, "the note: {r} {g} {b}");
+    // The text box: blue ink on its lines, each within the box.
+    let ink = |x0: u32, x1: u32, y0: u32, y1: u32| {
+        (x0..x1)
+            .flat_map(|x| (y0..y1).map(move |y| (x, y)))
+            .filter(|&(x, y)| {
+                let [r, g, b] = pixel_of(&out, x, y);
+                b > 150 && r < 100 && g < 100
+            })
+            .count()
+    };
+    let top = text_box.rect.max.y as u32;
+    assert!(ink(100, 250, top - 24, top) > 50, "no first line");
+    assert!(ink(100, 250, top - 48, top - 24) > 50, "no second line");
+    assert_eq!(ink(252, 400, top - 100, top), 0, "text beyond the box");
+    assert_eq!(pixel(&out, None, 1, 175, top + 10, true), [255, 255, 255]);
+}
+
+/// The colour at a point of page 2 of an unencrypted file, as [`pixel`]
+/// gives it, rendering the page once however often it is asked.
+fn pixel_of(data: &[u8], x: u32, y: u32) -> [u8; 3] {
+    use std::cell::RefCell;
+    thread_local! {
+        static PAGE: RefCell<Option<(usize, specto_render::Bitmap)>> = const { RefCell::new(None) };
+    }
+    PAGE.with_borrow_mut(|page| {
+        let key = data.as_ptr() as usize;
+        if page.as_ref().is_none_or(|(k, _)| *k != key) {
+            let doc = HayroDocument::open(data.to_vec(), None).expect("the file opens");
+            let bitmap = doc.render(&RenderRequest::page(1, 1.0)).unwrap();
+            *page = Some((key, bitmap));
+        }
+        let bitmap = &page.as_ref().unwrap().1;
+        let at = ((799 - y) * bitmap.width + x) as usize * 4;
+        [bitmap.data[at], bitmap.data[at + 1], bitmap.data[at + 2]]
+    })
+}

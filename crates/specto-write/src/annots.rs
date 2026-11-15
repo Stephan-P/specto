@@ -142,6 +142,8 @@ fn dictionary_of(
         AnnotKind::Square { .. } => b"Square",
         AnnotKind::Circle { .. } => b"Circle",
         AnnotKind::Line { .. } => b"Line",
+        AnnotKind::Note => b"Text",
+        AnnotKind::FreeText { .. } => b"FreeText",
         AnnotKind::Stamp(_) => b"Stamp",
         AnnotKind::Other { subtype } => subtype.as_bytes(),
     };
@@ -178,9 +180,22 @@ fn dictionary_of(
                 vec![real(from.x), real(from.y), real(to.x), real(to.y)],
             );
         }
+        AnnotKind::Note => d.set("Name", "Note"),
+        AnnotKind::FreeText { size } => {
+            // How its text is set, for programs that draw it themselves or
+            // let it be edited: the font, its size and the colour.
+            let c = a.color.unwrap_or(Color::new(0.0, 0.0, 0.0));
+            d.set(
+                "DA",
+                Object::string_literal(format!("/Helv {size} Tf {} {} {} rg", c.r, c.g, c.b)),
+            );
+            d.set("Q", 0);
+        }
         AnnotKind::Stamp(_) | AnnotKind::Other { .. } => {}
     }
-    match a.color {
+    // For a text box, `/C` would be the colour of its background, which it
+    // has none of: the colour of its text is in `/DA`.
+    match a.color.filter(|_| !a.is_text_box()) {
         Some(c) => d.set("C", color(c)),
         None => {
             d.remove(b"C");
@@ -193,7 +208,7 @@ fn dictionary_of(
     }
     if !matches!(
         a.kind,
-        AnnotKind::TextMarkup { .. } | AnnotKind::Other { .. }
+        AnnotKind::TextMarkup { .. } | AnnotKind::Other { .. } | AnnotKind::Note
     ) {
         d.set("BS", dictionary! { "W" => real(a.line_width) });
         d.remove(b"Border");
@@ -219,7 +234,11 @@ fn dictionary_of(
     if a.appearance == Appearance::Generated {
         match appearance(a) {
             Some(ap) => {
-                rect = ap.bbox;
+                // The area of both: what is drawn can reach past the
+                // annotation's own area (the width of a line) or fall short
+                // of it (the mark of a note), and the two must be the same
+                // rectangle or readers stretch the one onto the other.
+                rect = rect.union(&ap.bbox);
                 let states: Dictionary = ap
                     .states
                     .iter()
@@ -244,6 +263,22 @@ fn dictionary_of(
                     ],
                     "Resources" => dictionary! { "ExtGState" => states },
                 };
+                let mut form = form;
+                if ap.helvetica
+                    && let Ok(resources) = form.get_mut(b"Resources").and_then(Object::as_dict_mut)
+                {
+                    resources.set(
+                        "Font",
+                        dictionary! {
+                            "Helv" => dictionary! {
+                                "Type" => "Font",
+                                "Subtype" => "Type1",
+                                "BaseFont" => "Helvetica",
+                                "Encoding" => "WinAnsiEncoding",
+                            },
+                        },
+                    );
+                }
                 // Marked as written here, so that it can be made anew
                 // another day without wondering what else it drew.
                 d.set("SpectoLook", look_mark(&ap.content));

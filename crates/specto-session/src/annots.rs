@@ -29,17 +29,30 @@ use specto_write::WriteError;
 
 use crate::{FilePage, Session, view_pages};
 
-/// A page rendered from a copy of itself without some of its annotations.
+/// A page rendered from a copy of itself with other annotations than the
+/// file has.
 pub(crate) struct Variant {
     /// The annotations of the file the copy leaves out.
     hidden: Vec<Origin>,
+    /// The annotations the copy has in addition: text boxes made or
+    /// changed here, which only the renderer can draw.
+    baked: Vec<Arc<Annotation>>,
     /// The copy, in the scheduler: a document of one page.
     pub(crate) doc_id: DocId,
 }
 
 /// A variant that is written but not opened yet: its page, the annotations
-/// it leaves out, and the file.
-type WrittenVariant = (FilePage, Vec<Origin>, Vec<u8>);
+/// it leaves out and has in addition, and the file.
+type WrittenVariant = (FilePage, Vec<Origin>, Vec<Arc<Annotation>>, Vec<u8>);
+
+/// Whether `annotation` is one made or changed here that the frontend
+/// can't draw, so that the renderer must, from a copy of the page with it
+/// in: a text box.
+fn bakes(annotation: &Annotation) -> bool {
+    annotation.appearance == Appearance::Generated
+        && shapes(annotation).is_none()
+        && specto_annot::appearance(annotation).is_some()
+}
 
 /// Whether the frontend draws `annotation` (see the module documentation)
 /// rather than the renderer.
@@ -118,6 +131,9 @@ fn corners(frame: PdfBox) -> [PdfPoint; 4] {
 
 /// The handles of `a`: the ends of a line, else the corners of its frame.
 fn grips(a: &Annotation) -> Vec<(Grip, PdfPoint)> {
+    if !a.is_resizable() {
+        return Vec::new();
+    }
     match a.kind {
         AnnotKind::Line { from, to } => vec![(Grip::End(0), from), (Grip::End(1), to)],
         _ => corners(a.frame())
@@ -228,7 +244,12 @@ impl Session {
             replaced,
             ..
         } = self.edit.annotation_changes(source, page);
-        removed.extend(replaced.iter().filter(|(_, a)| floats(a)).map(|(o, _)| *o));
+        removed.extend(
+            replaced
+                .iter()
+                .filter(|(_, a)| floats(a) || bakes(a))
+                .map(|(o, _)| *o),
+        );
         // And one that is being dragged about.
         if let Some((lifted, origin)) = self.lifted
             && lifted == (source, page)
@@ -240,12 +261,26 @@ impl Session {
         removed
     }
 
+    /// The annotations page `page` of `source` must be rendered with that
+    /// the file doesn't have: text boxes made or changed here.
+    fn baked(&self, source: SourceId, page: u32) -> Vec<Arc<Annotation>> {
+        let changes = self.edit.annotation_changes(source, page);
+        changes
+            .replaced
+            .into_iter()
+            .map(|(_, a)| a)
+            .chain(changes.added)
+            .filter(|a| bakes(a))
+            .collect()
+    }
+
     /// Page `page` of `source` as a file of its own, without the
-    /// annotations `hidden`.
+    /// annotations `hidden` and with `baked`.
     fn variant_file(
         &self,
         (source, page): FilePage,
         hidden: &[Origin],
+        baked: &[Arc<Annotation>],
     ) -> Result<Vec<u8>, WriteError> {
         let s = self
             .sources
@@ -258,6 +293,7 @@ impl Session {
         };
         let changes = PageAnnotChanges {
             removed: hidden.to_vec(),
+            added: baked.to_vec(),
             ..Default::default()
         };
         // Not encrypted: it never leaves the program.
@@ -279,19 +315,26 @@ impl Session {
     /// As [`sync_variants`](Self::sync_variants); `ready` is a copy that is
     /// written already: its page, what it leaves out, and the file.
     fn sync_variants_with(&mut self, scheduler: &Scheduler, mut ready: Option<WrittenVariant>) {
-        let wanted: HashMap<FilePage, Vec<Origin>> = self
+        let wanted: HashMap<FilePage, (Vec<Origin>, Vec<Arc<Annotation>>)> = self
             .edit
-            .pages_with_changed_annotations()
+            .pages_with_annotation_edits()
             .into_iter()
             .chain(self.lifted.map(|(page, _)| page))
-            .map(|(source, page)| ((source, page), self.hidden(source, page)))
-            .filter(|(_, hidden)| !hidden.is_empty())
+            .map(|(source, page)| {
+                let spec = (self.hidden(source, page), self.baked(source, page));
+                ((source, page), spec)
+            })
+            .filter(|(_, (hidden, baked))| !hidden.is_empty() || !baked.is_empty())
             .collect();
         let mut changed = false;
         let stale: Vec<FilePage> = self
             .variants
             .iter()
-            .filter(|(key, v)| wanted.get(key) != Some(&v.hidden))
+            .filter(|(key, v)| {
+                wanted
+                    .get(key)
+                    .is_none_or(|(hidden, baked)| *hidden != v.hidden || *baked != v.baked)
+            })
             .map(|(key, _)| *key)
             .collect();
         for key in stale {
@@ -300,18 +343,26 @@ impl Session {
                 changed = true;
             }
         }
-        for (key, hidden) in wanted {
+        for (key, (hidden, baked)) in wanted {
             if self.variants.contains_key(&key) {
                 continue;
             }
-            let file = match ready.take_if(|(k, h, _)| *k == key && *h == hidden) {
-                Some((_, _, file)) => Ok(file),
-                None => self.variant_file(key, &hidden),
+            let file = match ready.take_if(|(k, h, b, _)| *k == key && *h == hidden && *b == baked)
+            {
+                Some((_, _, _, file)) => Ok(file),
+                None => self.variant_file(key, &hidden, &baked),
             };
             let opened = file.ok().and_then(|f| scheduler.open(f, None).ok());
             if let Some(opened) = opened {
                 let doc_id = opened.id;
-                self.variants.insert(key, Variant { hidden, doc_id });
+                self.variants.insert(
+                    key,
+                    Variant {
+                        hidden,
+                        baked,
+                        doc_id,
+                    },
+                );
                 changed = true;
             }
         }
@@ -426,7 +477,7 @@ impl Session {
         // One the renderer draws must be out of the page while it is
         // dragged about.
         let ready = self.page_without(id, &a)?;
-        if let (Some((page, _, _)), Some(origin)) = (&ready, a.origin) {
+        if let (Some((page, _, _, _)), Some(origin)) = (&ready, a.origin) {
             self.lifted = Some((*page, origin));
         }
         self.picked = Some((position, id));
@@ -748,15 +799,15 @@ impl Session {
         ))
     }
 
-    /// For an edit to the picked annotation after which the renderer must
-    /// not draw it any more (it is deleted, or drawn by the frontend from
-    /// then on): the copy of its page without it, written first, so that
-    /// nothing changes if that can't be done. `None` if the renderer
-    /// doesn't draw it now either.
+    /// For an edit to the annotation `a` after which the renderer must not
+    /// draw it as it is any more (it is deleted, changed, or drawn by the
+    /// frontend from then on): the copy of its page without it, written
+    /// first, so that nothing changes if that can't be done. `None` if the
+    /// renderer doesn't draw it now either.
     fn page_without(
         &self,
         id: AnnotId,
-        a: &Annotation,
+        a: &Arc<Annotation>,
     ) -> Result<Option<WrittenVariant>, WriteError> {
         let (AnnotId::File { source, page, .. }, Some(origin)) = (id, a.origin) else {
             return Ok(None);
@@ -765,10 +816,14 @@ impl Session {
             return Ok(None);
         }
         let mut hidden = self.hidden(source, page);
-        hidden.push(origin);
+        if !hidden.contains(&origin) {
+            hidden.push(origin);
+        }
         hidden.sort_by_key(|o| o.index);
-        let file = self.variant_file((source, page), &hidden)?;
-        Ok(Some(((source, page), hidden, file)))
+        let mut baked = self.baked(source, page);
+        baked.retain(|b| !Arc::ptr_eq(b, a));
+        let file = self.variant_file((source, page), &hidden, &baked)?;
+        Ok(Some(((source, page), hidden, baked, file)))
     }
 
     /// Deletes the annotation that is picked. Returns whether there was
@@ -823,10 +878,125 @@ impl Session {
         Ok(done)
     }
 
+    /// Puts a note at `p` (viewport coordinates) in `color`, and picks it.
+    /// Returns whether it did: `p` must be on a page.
+    pub fn add_note(&mut self, p: ViewPoint, color: Color) -> bool {
+        let Some((position, _)) = self.viewer.hit_test(p) else {
+            return false;
+        };
+        let (Some(at), Some(&page)) = (
+            self.viewer.view_to_pdf(position, p),
+            self.edit.pages().get(position),
+        ) else {
+            return false;
+        };
+        let mut note = Annotation::note(at, color);
+        note.modified = Some(now());
+        let id = self.edit.add_annotation(page.source, page.page, note);
+        self.selection = None;
+        self.picked = Some((position, id));
+        true
+    }
+
+    /// Puts a text box of `text` at `p` (viewport coordinates), in
+    /// Helvetica of `size` points and `color`, and picks it. It is up to
+    /// 220 points wide, less where the page ends. Returns whether it did:
+    /// `p` must be on a page, and there must be text.
+    pub fn add_text_box(
+        &mut self,
+        scheduler: &Scheduler,
+        p: ViewPoint,
+        text: &str,
+        size: f64,
+        color: Color,
+    ) -> bool {
+        if text.trim().is_empty() {
+            return false;
+        }
+        let Some((position, _)) = self.viewer.hit_test(p) else {
+            return false;
+        };
+        let (Some(at), Some(view_page), Some(&page)) = (
+            self.viewer.view_to_pdf(position, p),
+            self.viewer.pages().get(position),
+            self.edit.pages().get(position),
+        ) else {
+            return false;
+        };
+        let room = view_page.displayed().visible_box().max.x - at.x - 4.0;
+        let mut text_box = Annotation::text_box(at, room.clamp(40.0, 220.0), text, size, color);
+        text_box.modified = Some(now());
+        let id = self.edit.add_annotation(page.source, page.page, text_box);
+        self.selection = None;
+        self.picked = Some((position, id));
+        self.sync_variants(scheduler);
+        true
+    }
+
+    /// The text of the picked annotation, to be edited: what a text box
+    /// shows, the text of a note, or the comment that goes with any other
+    /// (empty if it has none). `None` if nothing is picked, or its text
+    /// can't be changed here (a text box of another program, whose look
+    /// wouldn't follow).
+    pub fn picked_text(&mut self) -> Option<String> {
+        let (_, a) = self.picked_one()?;
+        text_is_editable(&a).then(|| a.contents.clone().unwrap_or_default())
+    }
+
+    /// Whether the picked annotation is a text box: its text is what it
+    /// shows.
+    pub fn picked_is_text_box(&mut self) -> bool {
+        self.picked_one().is_some_and(|(_, a)| a.is_text_box())
+    }
+
+    /// Gives the picked annotation the text `text` (see
+    /// [`picked_text`](Self::picked_text)). A text box left without text
+    /// is deleted. Returns whether anything changed. Errors as
+    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
+    pub fn set_picked_text(
+        &mut self,
+        scheduler: &Scheduler,
+        text: &str,
+    ) -> Result<bool, WriteError> {
+        let Some((id, a)) = self.picked_one() else {
+            return Ok(false);
+        };
+        if !text_is_editable(&a) || a.contents.as_deref().unwrap_or("") == text {
+            return Ok(false);
+        }
+        if a.is_text_box() && text.trim().is_empty() {
+            return self.remove_picked_annotation(scheduler);
+        }
+        let mut changed = (*a).clone();
+        changed.contents = Some(text.to_owned()).filter(|t| !t.is_empty());
+        changed.modified = Some(now());
+        // A text box shows its text, so it gets a new look and its page a
+        // new copy; for the others the text is beside what they show.
+        let ready = if a.is_text_box() {
+            changed.fit_text();
+            self.page_without(id, &a)?
+        } else {
+            None
+        };
+        let done = self.edit.change_annotation(id, changed);
+        if done {
+            self.sync_variants_with(scheduler, ready);
+        }
+        Ok(done)
+    }
+
     /// The colour of the picked annotation, if one is picked and has one.
     pub fn picked_color(&mut self) -> Option<Color> {
         self.picked_one()?.1.color
     }
+}
+
+/// Whether the text of `a` can be changed here: not that of a text box of
+/// another program (its look, which shows the text, wouldn't follow), and
+/// not where the file forbids changes.
+fn text_is_editable(a: &Annotation) -> bool {
+    let foreign_text_box = matches!(&a.kind, AnnotKind::Other { subtype } if subtype == "FreeText");
+    a.flags.is_editable() && !foreign_text_box
 }
 
 /// The shapes of `annotations` where `at` puts their points.

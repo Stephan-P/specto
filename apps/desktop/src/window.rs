@@ -86,6 +86,8 @@ pub struct Inner {
     search_bar: gtk::SearchBar,
     /// The bar with the markup tools and colours.
     markup_bar: gtk::Revealer,
+    /// The editor for an annotation's text, while it is open.
+    text_editor: RefCell<Option<gtk::Popover>>,
     /// The colour of each tool of the markup bar (in the order of
     /// `TOOLS`), by name (see `markup_colors`).
     tool_colors: Cell<[&'static str; TOOLS.len()]>,
@@ -387,12 +389,15 @@ impl Window {
         // The drawing tools, as pictures of what they draw: words would
         // make the bar too wide.
         let draw_tools = gtk::Box::builder().css_classes(["linked"]).build();
-        for (kind, tool, tip) in [
-            (DraftKind::Ink, "draw", gettext("Draw freehand")),
-            (DraftKind::Square, "rectangle", gettext("Draw rectangles")),
-            (DraftKind::Circle, "ellipse", gettext("Draw ellipses")),
-            (DraftKind::Line, "line", gettext("Draw lines")),
+        for (tool, tip) in [
+            ("draw", gettext("Draw freehand")),
+            ("rectangle", gettext("Draw rectangles")),
+            ("ellipse", gettext("Draw ellipses")),
+            ("line", gettext("Draw lines")),
+            ("text", gettext("Add text: click where it goes")),
+            ("note", gettext("Add notes: click where one goes")),
         ] {
+            let kind = tool_named(tool).unwrap_or(HIGHLIGHTER);
             draw_tools.append(
                 &gtk::ToggleButton::builder()
                     .child(&tool_icon(kind))
@@ -489,7 +494,10 @@ impl Window {
             last_toast: RefCell::default(),
             search_bar,
             markup_bar,
-            tool_colors: Cell::new(["yellow", "red", "red", "red", "red", "red", "red"]),
+            text_editor: RefCell::default(),
+            tool_colors: Cell::new([
+                "yellow", "red", "red", "red", "red", "red", "red", "black", "yellow",
+            ]),
             search_entry,
             search_status,
             undo_section,
@@ -521,6 +529,18 @@ impl Window {
         this.0.canvas.connect_picked(move || {
             if let Some(inner) = weak.upgrade() {
                 Window(inner).show_markup_color();
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_place(move |x, y| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).place(x, y);
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_edit_text(move || {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).edit_text(None);
             }
         });
         let weak = Rc::downgrade(&this.0);
@@ -1686,7 +1706,9 @@ impl Window {
             let page = d.viewer.current_page();
             let count = d.annotations(page).len();
             json.num("annotations", count as f64)
-                .bool("annotation_picked", d.picked.is_some());
+                .bool("annotation_picked", d.picked.is_some())
+                .str("annotation_text", &d.picked_text().unwrap_or_default())
+                .bool("text_editor", inner.text_editor.borrow().is_some());
         }
         inner.canvas.with_viewer(|v| {
             json.num("page", v.current_page() as f64)
@@ -1762,6 +1784,114 @@ impl Window {
             _ => None,
         };
         self.0.canvas.set_draw_tool(draw);
+        self.0
+            .canvas
+            .set_place_tool(matches!(self.markup_tool(), Some(Tool::Text | Tool::Note)));
+    }
+
+    /// The page was clicked at (`x`, `y`) with a placing tool: a note goes
+    /// there and asks for its text, or text is asked for and becomes a
+    /// text box there.
+    fn place(&self, x: f64, y: f64) {
+        let p = ViewPoint::new(x, y);
+        match self.markup_tool() {
+            Some(tool @ Tool::Note) => {
+                let color = color_named(self.0.tool_colors.get()[tool_index(tool)]);
+                if self.annotate(|d| d.add_note(p, color)) {
+                    self.edit_text(None);
+                }
+            }
+            Some(Tool::Text) => self.edit_text(Some(p)),
+            _ => {}
+        }
+    }
+
+    /// Shows a small editor for text: that of the picked annotation (what
+    /// a text box shows, the text of a note, a comment on anything else),
+    /// or, with `new_at`, of a text box to be made there. Closing it (a
+    /// click elsewhere, Escape) keeps the text.
+    fn edit_text(&self, new_at: Option<ViewPoint>) {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return;
+        };
+        let (text, area) = match new_at {
+            Some(p) => (
+                String::new(),
+                gdk::Rectangle::new(p.x as i32, p.y as i32, 1, 1),
+            ),
+            None => {
+                let Some(text) = doc.borrow_mut().picked_text() else {
+                    return;
+                };
+                let Some(area) = inner.canvas.picked_area() else {
+                    return;
+                };
+                (text, area)
+            }
+        };
+        let view = gtk::TextView::builder()
+            .wrap_mode(gtk::WrapMode::WordChar)
+            .top_margin(6)
+            .bottom_margin(6)
+            .left_margin(6)
+            .right_margin(6)
+            .build();
+        view.buffer().set_text(&text);
+        let scroller = gtk::ScrolledWindow::builder()
+            .child(&view)
+            .min_content_width(260)
+            .min_content_height(110)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        let popover = gtk::Popover::builder().child(&scroller).build();
+        popover.set_parent(&inner.canvas);
+        popover.set_pointing_to(Some(&area));
+        inner.text_editor.replace(Some(popover.clone()));
+        let weak = Rc::downgrade(inner);
+        let buffer = view.buffer();
+        popover.connect_closed(move |popover| {
+            let text = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .to_string();
+            // Later: the popover is still closing, and is taken off the
+            // page view once it has.
+            let (weak, popover) = (weak.clone(), popover.clone());
+            glib::idle_add_local_once(move || {
+                popover.unparent();
+                if let Some(inner) = weak.upgrade() {
+                    inner.text_editor.replace(None);
+                    Window(inner).set_text(new_at, &text);
+                }
+            });
+        });
+        popover.popup();
+        view.grab_focus();
+    }
+
+    /// The text editor was closed with `text` in it: for the picked
+    /// annotation, or for a new text box at `new_at`.
+    fn set_text(&self, new_at: Option<ViewPoint>, text: &str) {
+        let mut failed = None;
+        let tool = Tool::Text;
+        let color = color_named(self.0.tool_colors.get()[tool_index(tool)]);
+        self.edit(|d| {
+            let changed = match new_at {
+                Some(p) => d.add_text_box(p, text, TEXT_SIZE, color),
+                None => d.set_picked_text(text).unwrap_or_else(|e| {
+                    failed = Some(e);
+                    false
+                }),
+            };
+            changed.then(Edited::default)
+        });
+        if let Some(e) = failed {
+            self.toast(&gettext_f(
+                "Couldn't change the annotation: {error}",
+                &[("error", &save_error(e))],
+            ));
+        }
+        self.show_markup_color();
     }
 
     /// Shows, on the markup bar, the colour of the picked annotation if it
@@ -2629,6 +2759,11 @@ impl Window {
                 let w = Window(inner);
                 let current = action.state().and_then(|s| s.get::<String>());
                 let tool = tool_named(&name).filter(|_| current.as_deref() != Some(&name));
+                // Taking up a tool is to make something new: what was
+                // picked is let go of, and the bar shows the tool's colour.
+                if tool.is_some() {
+                    w.0.canvas.unpick_annotation();
+                }
                 w.set_markup_tool(tool);
                 // What is selected already is marked at once.
                 if let Some(Tool::Mark(style)) = tool {
@@ -2858,7 +2993,7 @@ fn color_named(name: &str) -> Color {
 /// A picture of what a drawing tool draws, for its button: there are no
 /// stock icons for these. Drawn in the button's text colour, so it follows
 /// the light and the dark style.
-fn tool_icon(kind: DraftKind) -> gtk::DrawingArea {
+fn tool_icon(kind: Tool) -> gtk::DrawingArea {
     let icon = gtk::DrawingArea::builder()
         .content_width(16)
         .content_height(16)
@@ -2880,23 +3015,39 @@ fn tool_icon(kind: DraftKind) -> gtk::DrawingArea {
         cr.scale(f64::from(width) / 16.0, f64::from(height) / 16.0);
         match kind {
             // A stroke as of a pen: a wave.
-            DraftKind::Ink => {
+            Tool::Draw(DraftKind::Ink) => {
                 cr.move_to(1.5, 11.0);
                 cr.curve_to(4.0, 1.0, 7.0, 1.0, 8.0, 8.0);
                 cr.curve_to(9.0, 15.0, 12.0, 15.0, 14.5, 5.0);
             }
-            DraftKind::Square => cr.rectangle(1.75, 3.25, 12.5, 9.5),
-            DraftKind::Circle => {
+            Tool::Draw(DraftKind::Square) => cr.rectangle(1.75, 3.25, 12.5, 9.5),
+            Tool::Draw(DraftKind::Circle) => {
                 let _ = cr.save();
                 cr.translate(8.0, 8.0);
                 cr.scale(6.25, 4.75);
                 cr.arc(0.0, 0.0, 1.0, 0.0, std::f64::consts::TAU);
                 let _ = cr.restore();
             }
-            DraftKind::Line => {
+            Tool::Draw(DraftKind::Line) => {
                 cr.move_to(2.5, 13.5);
                 cr.line_to(13.5, 2.5);
             }
+            // A capital T.
+            Tool::Text => {
+                cr.move_to(3.0, 3.0);
+                cr.line_to(13.0, 3.0);
+                cr.move_to(8.0, 3.0);
+                cr.line_to(8.0, 13.5);
+            }
+            // A slip of paper with writing on it, like the mark on the page.
+            Tool::Note => {
+                cr.rectangle(2.25, 2.25, 11.5, 11.5);
+                cr.move_to(5.0, 6.0);
+                cr.line_to(11.0, 6.0);
+                cr.move_to(5.0, 9.5);
+                cr.line_to(9.0, 9.5);
+            }
+            Tool::Mark(_) => {}
         }
         let _ = cr.stroke();
     });
@@ -2910,13 +3061,20 @@ enum Tool {
     Mark(MarkupStyle),
     /// Draws where the pointer is dragged.
     Draw(DraftKind),
+    /// Puts a text box where the page is clicked, once its text is typed.
+    Text,
+    /// Puts a note where the page is clicked.
+    Note,
 }
+
+/// The size of the text of new text boxes, in points.
+const TEXT_SIZE: f64 = 12.0;
 
 /// The tool whose colour the bar shows while none is pressed in.
 const HIGHLIGHTER: Tool = Tool::Mark(MarkupStyle::Highlight);
 
 /// The markup bar's tools, as the `markup-tool` action names them.
-const TOOLS: [(&str, Tool); 7] = [
+const TOOLS: [(&str, Tool); 9] = [
     ("highlight", Tool::Mark(MarkupStyle::Highlight)),
     ("underline", Tool::Mark(MarkupStyle::Underline)),
     ("strike-out", Tool::Mark(MarkupStyle::StrikeOut)),
@@ -2924,6 +3082,8 @@ const TOOLS: [(&str, Tool); 7] = [
     ("rectangle", Tool::Draw(DraftKind::Square)),
     ("ellipse", Tool::Draw(DraftKind::Circle)),
     ("line", Tool::Draw(DraftKind::Line)),
+    ("text", Tool::Text),
+    ("note", Tool::Note),
 ];
 
 /// Where a tool is in `TOOLS` (and its colour in `Inner::tool_colors`).
@@ -3076,6 +3236,8 @@ fn undo_label(edit: Edit) -> String {
         Edit::AddAnnotation(AnnotType::Square) => gettext("Undo Rectangle"),
         Edit::AddAnnotation(AnnotType::Circle) => gettext("Undo Ellipse"),
         Edit::AddAnnotation(AnnotType::Line) => gettext("Undo Line"),
+        Edit::AddAnnotation(AnnotType::Note) => gettext("Undo Note"),
+        Edit::AddAnnotation(AnnotType::FreeText) => gettext("Undo Text Box"),
         Edit::AddAnnotation(_) => gettext("Undo Add Annotation"),
         Edit::RemoveAnnotation(_) => gettext("Undo Delete Annotation"),
         Edit::ChangeAnnotation(_) => gettext("Undo Change Annotation"),
@@ -3102,6 +3264,8 @@ fn redo_label(edit: Edit) -> String {
         Edit::AddAnnotation(AnnotType::Square) => gettext("Redo Rectangle"),
         Edit::AddAnnotation(AnnotType::Circle) => gettext("Redo Ellipse"),
         Edit::AddAnnotation(AnnotType::Line) => gettext("Redo Line"),
+        Edit::AddAnnotation(AnnotType::Note) => gettext("Redo Note"),
+        Edit::AddAnnotation(AnnotType::FreeText) => gettext("Redo Text Box"),
         Edit::AddAnnotation(_) => gettext("Redo Add Annotation"),
         Edit::RemoveAnnotation(_) => gettext("Redo Delete Annotation"),
         Edit::ChangeAnnotation(_) => gettext("Redo Change Annotation"),

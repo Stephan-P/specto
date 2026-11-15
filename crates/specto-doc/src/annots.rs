@@ -113,15 +113,17 @@ impl EditDoc {
         !self.annots.changed.is_empty() || !self.annots.added.is_empty()
     }
 
-    /// The pages of files that have an annotation of the file deleted or
-    /// changed: source and page, each once.
-    pub fn pages_with_changed_annotations(&self) -> Vec<(SourceId, u32)> {
+    /// The pages of files whose annotations were edited in any way:
+    /// source and page, each once.
+    pub fn pages_with_annotation_edits(&self) -> Vec<(SourceId, u32)> {
         let mut pages: Vec<(SourceId, u32)> = self
             .annots
             .changed
             .keys()
             .map(|&(source, page, _)| (source, page))
+            .chain(self.annots.added.iter().map(|a| (a.source, a.page)))
             .collect();
+        pages.sort_unstable();
         pages.dedup();
         pages
     }

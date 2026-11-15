@@ -145,6 +145,13 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - Each tool has its own color, changed by choosing another while the tool is
   pressed in. The highlighter starts in yellow, and the lines and the drawing
   tools in red
+- Text tool: a click on the page asks for text and makes a text box of it
+  there, in Helvetica of 12 points. The box wraps its text and is as high as
+  the text needs. Resizing it changes its width
+- Note tool: a click on the page puts a note there and asks for its text
+- A double click on a text box or a note, or Enter with any markup picked,
+  asks for its text again. For other markup that text is a comment, which other
+  programs show in their annotation lists. A text box left empty is deleted
 - A click on markup picks it (a frame shows around it). Delete or Backspace
   deletes it, Escape lets go of it. That goes for what the file already had
   too, of any kind (notes, text boxes, drawings, stamps), except what the file
@@ -167,7 +174,7 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   show and can edit
 - Markup a file has without a ready-made look (some programs leave that out) is
   shown where it is text markup
-- Not yet: line width, text boxes and notes
+- Not yet: line width, text size, typing directly on the page
 
 ## Saving
 

@@ -957,3 +957,109 @@ fn moving_and_resizing() {
     saved.close(&scheduler);
     session.close(&scheduler);
 }
+
+#[test]
+fn notes_and_text_boxes() {
+    use specto_annot::{AnnotType, Color};
+    use specto_doc::Edit;
+    use specto_geom::ViewPoint;
+
+    let black = Color::new(0.0, 0.0, 0.0);
+    let yellow = Color::new(1.0, 0.9, 0.0);
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, book(2, "alpha"));
+    let file = session.viewer.pages()[0].doc;
+    let at = |s: &Session, x, y| s.viewer.pdf_to_view(0, PdfPoint::new(x, y)).unwrap();
+
+    // A note: picked when made, its text set afterwards. The frontend
+    // draws its mark; the page is still the file's.
+    assert!(!session.add_note(ViewPoint::new(-50.0, -50.0), yellow));
+    assert!(session.add_note(at(&session, 150.0, 100.0), yellow));
+    assert_eq!(
+        session.edit().undo_edit(),
+        Some(Edit::AddAnnotation(AnnotType::Note))
+    );
+    assert_eq!(session.picked_text().as_deref(), Some(""));
+    assert!(!session.picked_is_text_box());
+    assert!(session.set_picked_text(&scheduler, "Check this").unwrap());
+    assert!(!session.set_picked_text(&scheduler, "Check this").unwrap());
+    assert_eq!(session.picked_text().as_deref(), Some("Check this"));
+    assert!(!session.overlay(0).is_empty());
+    assert_eq!(session.viewer.pages()[0].doc, file);
+    // It moves, but has no handles to resize it by.
+    assert!(session.picked_handles().is_empty());
+    assert!(session.grip_at(at(&session, 155.0, 95.0)).is_some());
+
+    // A text box: no text, no box. With text, the renderer draws it, from
+    // a copy of the page with it in.
+    let place = at(&session, 20.0, 200.0);
+    assert!(!session.add_text_box(&scheduler, place, "  ", 12.0, black));
+    assert!(session.add_text_box(&scheduler, place, "Some words to wrap", 12.0, black));
+    assert!(session.picked_is_text_box());
+    assert_eq!(session.annotations(0).len(), 2);
+    let with_box = session.viewer.pages()[0].doc;
+    assert_ne!(with_box, file);
+    assert_eq!(session.viewer.pages()[1].doc, file);
+    // No more than the note for the frontend to draw.
+    let note_only = session.overlay(0).len();
+    assert_eq!(session.overlay_in(0, 100.0, 150.0).len(), note_only);
+    let one_line = session.annotations(0)[1].1.rect;
+    // More text: a higher box, with its top where it was, and another copy.
+    assert!(
+        session
+            .set_picked_text(&scheduler, "Some words to wrap\nand a second line")
+            .unwrap()
+    );
+    let two_lines = session.annotations(0)[1].1.rect;
+    assert_eq!(two_lines.max, one_line.max);
+    assert!(two_lines.height() > one_line.height() + 10.0);
+    assert_ne!(session.viewer.pages()[0].doc, with_box);
+    // Narrower by a handle: more lines.
+    let corner = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(two_lines.max.x, two_lines.min.y))
+        .unwrap();
+    assert!(session.begin_adjust(&scheduler, corner).unwrap());
+    session.adjust_to(at(&session, two_lines.min.x + 60.0, two_lines.min.y));
+    assert!(session.finish_adjust(&scheduler));
+    let narrow = session.annotations(0)[1].1.rect;
+    assert!(narrow.width() < 70.0 && narrow.height() > two_lines.height());
+
+    // Undo takes the page back through its copies to the file.
+    assert!(session.undo(&scheduler).is_some());
+    assert!(session.undo(&scheduler).is_some());
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(session.viewer.pages()[0].doc, file);
+    assert!(session.redo(&scheduler).is_some());
+    assert_ne!(session.viewer.pages()[0].doc, file);
+
+    // Saved and opened again: both are the file's, and their text can
+    // still be changed. Emptied, a text box is deleted.
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    let types: Vec<AnnotType> = saved
+        .annotations(0)
+        .iter()
+        .map(|(_, a)| a.annot_type())
+        .collect();
+    assert_eq!(types, [AnnotType::Note, AnnotType::FreeText]);
+    let on_box = saved
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(30.0, 195.0))
+        .unwrap();
+    saved.picked = saved.annotation_at(on_box);
+    assert_eq!(saved.picked_text().as_deref(), Some("Some words to wrap"));
+    assert!(saved.set_picked_text(&scheduler, "Other words").unwrap());
+    assert_eq!(
+        saved.annotations(0)[1].1.contents.as_deref(),
+        Some("Other words")
+    );
+    assert!(saved.set_picked_text(&scheduler, "").unwrap());
+    assert_eq!(saved.annotations(0).len(), 1);
+    assert_eq!(
+        saved.edit().undo_edit(),
+        Some(Edit::RemoveAnnotation(AnnotType::FreeText))
+    );
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}

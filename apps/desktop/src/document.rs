@@ -278,6 +278,31 @@ impl Document {
         self.pages_changed();
     }
 
+    /// Puts a text box at `p` (see the session's function of this name).
+    pub fn add_text_box(
+        &mut self,
+        p: specto_geom::ViewPoint,
+        text: &str,
+        size: f64,
+        color: specto_annot::Color,
+    ) -> bool {
+        let added = self.session.add_text_box(scheduler(), p, text, size, color);
+        if added {
+            self.pages_changed();
+        }
+        added
+    }
+
+    /// Gives the picked annotation another text (see the session's
+    /// function of this name).
+    pub fn set_picked_text(&mut self, text: &str) -> Result<bool, specto_write::WriteError> {
+        let changed = self.session.set_picked_text(scheduler(), text)?;
+        if changed {
+            self.pages_changed();
+        }
+        Ok(changed)
+    }
+
     pub fn undo(&mut self) -> Option<Edit> {
         let edit = self.session.undo(scheduler())?;
         self.pages_changed();

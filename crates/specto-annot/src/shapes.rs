@@ -172,8 +172,45 @@ pub fn shapes(annotation: &Annotation) -> Option<Vec<Shape>> {
             stroke: Some((color, annotation.line_width.max(0.1))),
             opacity,
         }]),
-        AnnotKind::Stamp(_) | AnnotKind::Other { .. } => None,
+        AnnotKind::Note => Some(note_mark(annotation.rect, color, opacity)),
+        // A text box is text, which only the renderer draws.
+        AnnotKind::FreeText { .. } | AnnotKind::Stamp(_) | AnnotKind::Other { .. } => None,
     }
+}
+
+/// The mark of a note in `r`: a slip of paper in `color` with a few lines
+/// of writing on it.
+fn note_mark(r: PdfBox, color: Color, opacity: f32) -> Vec<Shape> {
+    let ink = Color::new(color.r * 0.45, color.g * 0.45, color.b * 0.45);
+    let (w, h) = (r.width(), r.height());
+    let at = |x: f64, y: f64| PdfPoint::new(r.min.x + x * w, r.min.y + y * h);
+    let mut shapes = vec![Shape::Path {
+        path: Path {
+            start: at(0.06, 0.06),
+            segments: vec![
+                Segment::Line(at(0.94, 0.06)),
+                Segment::Line(at(0.94, 0.94)),
+                Segment::Line(at(0.06, 0.94)),
+            ],
+            closed: true,
+        },
+        fill: Some(color),
+        stroke: Some((ink, w / 18.0)),
+        opacity,
+    }];
+    for (y, to) in [(0.7, 0.76), (0.5, 0.76), (0.3, 0.56)] {
+        shapes.push(Shape::Path {
+            path: Path {
+                start: at(0.24, y),
+                segments: vec![Segment::Line(at(to, y))],
+                closed: false,
+            },
+            fill: None,
+            stroke: Some((ink, w / 14.0)),
+            opacity,
+        });
+    }
+    shapes
 }
 
 /// The pen of a rectangle or ellipse: none if its width is 0 (it is then
@@ -270,6 +307,9 @@ pub struct AppearanceStream {
     pub content: Vec<u8>,
     /// The graphics states the content uses.
     pub states: Vec<GraphicsState>,
+    /// Whether the content sets text in the font `/Helv`: Helvetica in
+    /// `WinAnsiEncoding`, which the stream's resources must then name.
+    pub helvetica: bool,
 }
 
 /// An `ExtGState`: how what follows is painted over what is beneath.
@@ -282,6 +322,9 @@ pub struct GraphicsState {
 /// The appearance stream for `annotation`, or `None` where [`shapes`]
 /// gives none.
 pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
+    if let AnnotKind::FreeText { size } = annotation.kind {
+        return Some(text_appearance(annotation, size));
+    }
     let shapes = shapes(annotation)?;
     let mut bbox: Option<PdfBox> = None;
     let mut grow = |b: PdfBox| bbox = Some(bbox.map_or(b, |a| a.union(&b)));
@@ -371,7 +414,52 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
         bbox: bbox?,
         content: content.into_bytes(),
         states,
+        helvetica: false,
     })
+}
+
+/// The appearance stream of a text box: its text in lines from the top of
+/// its rectangle down.
+fn text_appearance(annotation: &Annotation, size: f64) -> AppearanceStream {
+    let r = annotation.rect;
+    let color = annotation.color.unwrap_or(Color::new(0.0, 0.0, 0.0));
+    let width = (r.width() - 2.0 * crate::TEXT_MARGIN).max(size);
+    let lines = crate::wrap(annotation.contents.as_deref().unwrap_or(""), size, width);
+    let (first, leading) = crate::text::baselines(size);
+    let mut content = format!(
+        "/GS0 gs\nBT\n/Helv {} Tf\n{} {} {} rg\n{} TL\n{} {} Td\n",
+        n(size),
+        n(color.r.into()),
+        n(color.g.into()),
+        n(color.b.into()),
+        n(leading),
+        n(r.min.x + crate::TEXT_MARGIN),
+        n(r.max.y - first),
+    )
+    .into_bytes();
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 {
+            content.extend_from_slice(b"T*\n");
+        }
+        content.push(b'(');
+        for byte in crate::text::encode(line) {
+            if matches!(byte, b'(' | b')' | b'\\') {
+                content.push(b'\\');
+            }
+            content.push(byte);
+        }
+        content.extend_from_slice(b") Tj\n");
+    }
+    content.extend_from_slice(b"ET\n");
+    AppearanceStream {
+        bbox: r,
+        content,
+        states: vec![GraphicsState {
+            opacity: annotation.opacity,
+            multiply: false,
+        }],
+        helvetica: true,
+    }
 }
 
 /// A number that says "this appearance stream was written here": kept in

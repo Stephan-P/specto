@@ -338,6 +338,22 @@ Moving and resizing:
 
 Saving, printing and other windows:
 
+- Text tool: click, type a few lines with line breaks and a long line, close
+  the editor with Escape or a click elsewhere. The text is where the click
+  was, wrapped, sharp at any zoom. Double click it and change it.
+- Type umlauts, quotes and a euro sign: they show. Characters outside Western
+  European (Greek, Cyrillic, CJK, emoji) show as question marks for now.
+- Note tool: click, type, close. The mark is where the click was. Enter on the
+  picked note shows its text again.
+- Pick a highlight and press Enter: a comment can be typed for it. It shows in
+  other programs' annotation lists after saving.
+- The editor popover points at the annotation and is not cut off near the
+  window's edges. It takes the keyboard at once.
+- Move and resize a text box. Known for now: while it is dragged only its frame
+  moves, and the text follows when it is dropped.
+- Text boxes and notes after saving and reopening: they can still be edited.
+  In other programs the text shows in the same place and size, and can be
+  edited there.
 - Save, close and open again: markup, drawings and shapes look the same as
   before saving. Compare the color, the position and the height of the lines
   closely.
