@@ -2,7 +2,8 @@
 //!
 //! A full rewrite with lopdf. The first source is the document being
 //! edited: its catalog (outline, names, metadata, forms) is kept, and so is
-//! its encryption, re-applied with the original settings and passwords.
+//! its encryption, re-applied with the original settings and passwords
+//! ([`write_unprotected`] leaves it out).
 //! Pages of other sources are copied in with everything they use.
 //!
 //! What the edit changes:
@@ -82,12 +83,24 @@ pub enum WriteError {
 /// Writes `pages`, taken from `sources`, as a new PDF. The first source is
 /// the main document (see the crate documentation).
 pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
+    write_as(sources, pages, true)
+}
+
+/// Like [`write`], but the result isn't encrypted, whether the main source
+/// is or not. For handing the document to something that can't be given a
+/// password, such as a print service; not for saving, which would quietly
+/// take a document's protection away.
+pub fn write_unprotected(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
+    write_as(sources, pages, false)
+}
+
+fn write_as(sources: &[Source], pages: &[PageRef], protected: bool) -> Result<Vec<u8>, WriteError> {
     let (main, others) = sources.split_first().ok_or(WriteError::NoPages)?;
     if pages.is_empty() {
         return Err(WriteError::NoPages);
     }
     let mut doc = load(main)?;
-    let encryption = doc.encryption_state.take();
+    let encryption = doc.encryption_state.take().filter(|_| protected);
     flatten_inherited(&mut doc)?;
     let catalog_id = doc
         .trailer
@@ -177,6 +190,7 @@ pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteErro
 
     doc.prune_objects();
     let mut out = Vec::new();
+    let encrypted = encryption.is_some();
     match encryption {
         Some(state) => {
             doc.encrypt(&state).map_err(WriteError::Write)?;
@@ -190,7 +204,7 @@ pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteErro
             doc.save_with_options(&mut out, options)?;
         }
     }
-    verify(&out, sources, pages)?;
+    verify(&out, encrypted, sources, pages)?;
     Ok(out)
 }
 
@@ -223,10 +237,17 @@ fn resource_names(r: &specto_source::hayro_syntax::page::Resources<'_>) -> Vec<V
 }
 
 /// Reads `out` back and checks that it has the pages asked for, each with
-/// the same content and boxes as the page it came from.
-fn verify(out: &[u8], sources: &[Source], pages: &[PageRef]) -> Result<(), WriteError> {
+/// the same content and boxes as the page it came from. `encrypted` says
+/// whether `out` is, with the main source's passwords.
+fn verify(
+    out: &[u8],
+    encrypted: bool,
+    sources: &[Source],
+    pages: &[PageRef],
+) -> Result<(), WriteError> {
     let main = &sources[0];
-    let written = specto_source::open_pdf(PdfData::from(out), main.password)
+    let password = main.password.filter(|_| encrypted);
+    let written = specto_source::open_pdf(PdfData::from(out), password)
         .map_err(|_| WriteError::Unsupported)?;
     let mut originals = HashMap::new();
     for s in sources {

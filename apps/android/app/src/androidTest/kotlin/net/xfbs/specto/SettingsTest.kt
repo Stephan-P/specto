@@ -5,10 +5,13 @@ import android.view.WindowManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -87,5 +90,27 @@ class SettingsTest : AppTest() {
         flip("Volume keys turn pages")
         press(KeyEvent.KEYCODE_VOLUME_UP)
         compose.onNodeWithText("2 / 12").assertIsDisplayed()
+    }
+
+    @Test
+    fun theCrashLogCanBeReadAndDeleted() {
+        val log = File(instrumentation.targetContext.filesDir, SpectoApp.CRASH_LOG_FILE)
+        openPages()
+        menu("Settings")
+        compose.onNodeWithText("Nothing went wrong so far").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        waitForText("1 / 12")
+
+        // As the Rust library records a panic.
+        log.writeText("--- 2026-11-15T12:00:00Z Rust panic\nthread 'render': number 7 went wrong\nat src/lib.rs:1:2\n\n")
+        menu("Settings")
+        compose.onNodeWithText("Last entry", substring = true).assertIsDisplayed().performClick()
+        compose.onNodeWithTag(CRASH_LOG_TAG)
+            .assertTextContains("number 7 went wrong", substring = true)
+            // Which app and device it is from goes with it.
+            .assertTextContains("Specto 0.1.0", substring = true)
+        compose.onNodeWithText("Delete").performClick()
+        waitForText("Nothing went wrong so far")
+        assertEquals(false, log.exists())
     }
 }

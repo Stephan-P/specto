@@ -2,6 +2,7 @@ package net.xfbs.specto
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -29,6 +30,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.io.File
 import java.io.RandomAccessFile
@@ -37,16 +40,23 @@ import kotlinx.coroutines.withContext
 import uniffi.specto_ffi.EditKind
 import uniffi.specto_ffi.EditStep
 
-/** "rotate", "delete", …: what [step] did, to follow "Undo" or "Redo" in a menu. */
-internal fun editName(step: EditStep): String = when (step.kind) {
-    EditKind.ROTATE -> "rotate"
-    EditKind.DELETE -> "delete"
-    EditKind.MOVE -> "move"
-    EditKind.INSERT -> "insert"
+/** "Undo rotate", "Undo delete", …: the menu item that takes [step] back. */
+@StringRes
+internal fun undoLabel(step: EditStep): Int = when (step.kind) {
+    EditKind.ROTATE -> R.string.undo_rotate
+    EditKind.DELETE -> R.string.undo_delete
+    EditKind.MOVE -> R.string.undo_move
+    EditKind.INSERT -> R.string.undo_insert
 }
 
-/** "3 selected": how many pages are picked, short enough for a phone's top bar next to its buttons. */
-internal fun selectionSummary(pages: Int): String = "$pages selected"
+/** "Redo rotate", …: the menu item that does [step] again. */
+@StringRes
+internal fun redoLabel(step: EditStep): Int = when (step.kind) {
+    EditKind.ROTATE -> R.string.redo_rotate
+    EditKind.DELETE -> R.string.redo_delete
+    EditKind.MOVE -> R.string.redo_move
+    EditKind.INSERT -> R.string.redo_insert
+}
 
 /**
  * The top bar while pages are picked in the page grid: how many, and what
@@ -60,28 +70,31 @@ fun SelectionBar(state: PdfViewState) {
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         navigationIcon = {
             IconButton(onClick = { state.selectedPages = emptySet() }) {
-                Icon(Icons.Filled.Close, contentDescription = "Clear selection")
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.clear_selection))
             }
         },
-        title = { Text(selectionSummary(picked.size), maxLines = 1) },
+        title = {
+            // "3 selected": short, to fit a phone's top bar next to its buttons.
+            Text(pluralStringResource(R.plurals.pages_selected, picked.size, picked.size), maxLines = 1)
+        },
         actions = {
             IconButton(onClick = { state.rotatePages(picked, clockwise = false) }) {
-                Icon(rotateLeftIcon, contentDescription = "Rotate left")
+                Icon(rotateLeftIcon, contentDescription = stringResource(R.string.rotate_left))
             }
             IconButton(onClick = { state.rotatePages(picked, clockwise = true) }) {
-                Icon(rotateRightIcon, contentDescription = "Rotate right")
+                Icon(rotateRightIcon, contentDescription = stringResource(R.string.rotate_right))
             }
             // A document keeps at least one page.
             IconButton(onClick = { state.deletePages(picked) }, enabled = picked.size < state.pageCount) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete pages")
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete_pages))
             }
             var menu by remember { mutableStateOf(false) }
             IconButton(onClick = { menu = true }) {
-                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(
-                    text = { Text("Select all") },
+                    text = { Text(stringResource(R.string.select_all)) },
                     onClick = {
                         menu = false
                         state.selectedPages = (0 until state.pageCount).toSet()
@@ -107,23 +120,23 @@ fun UnsavedChangesDialog(
 ) {
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Save changes?") },
-        text = { Text("The changes to the pages of $name are lost unless you save them.") },
-        confirmButton = { TextButton(onClick = onSave) { Text(if (saveAs) "Save as…" else "Save") } },
+        title = { Text(stringResource(R.string.unsaved_title)) },
+        text = { Text(stringResource(R.string.unsaved_text, name)) },
+        confirmButton = { TextButton(onClick = onSave) { Text(stringResource(if (saveAs) R.string.save_as else R.string.save)) } },
         dismissButton = {
-            TextButton(onClick = onCancel) { Text("Cancel") }
-            TextButton(onClick = onDiscard) { Text("Discard") }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDiscard) { Text(stringResource(R.string.discard)) }
         },
     )
 }
 
-/** Shown while the document is being written; nothing else can be done meanwhile. */
+/** Says [what] the app is busy with (writing the document, say); nothing else can be done meanwhile. */
 @Composable
-fun SavingDialog() {
+fun BusyDialog(what: String) {
     AlertDialog(
         onDismissRequest = {},
         confirmButton = {},
-        text = { Text("Saving…") },
+        text = { Text(what) },
     )
 }
 

@@ -34,8 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,6 +57,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -179,6 +181,7 @@ fun PagesGrid(
     beside: Boolean = false,
 ) {
     val current = state.currentPage
+    val pick = stringResource(R.string.pick)
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = current)
     val owner = remember { Any() }
     val haptics = LocalHapticFeedback.current
@@ -312,7 +315,7 @@ fun PagesGrid(
                             // Screen readers (and UI tests) hear which pages
                             // are picked, and can pick without the gesture.
                             if (picking) selected = page in picked
-                            onLongClick("Pick") {
+                            onLongClick(pick) {
                                 state.togglePage(page)
                                 true
                             }
@@ -346,7 +349,7 @@ fun PagesGrid(
         // What is being dragged: above the finger, and kept on screen.
         drag.pointer?.let { pointer ->
             Text(
-                if (picked.size == 1) "1 page" else "${picked.size} pages",
+                pluralStringResource(R.plurals.pages_dragged, picked.size, picked.size),
                 Modifier
                     .layout { measurable, constraints ->
                         val badge = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))

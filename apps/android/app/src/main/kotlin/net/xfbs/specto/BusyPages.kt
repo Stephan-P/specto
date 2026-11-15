@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
@@ -51,6 +52,7 @@ fun BusyPages(state: PdfViewState, modifier: Modifier = Modifier) {
     if ((0 until frame.pageCount).none(frame::pageIsBusy)) return
     var view by remember { mutableStateOf(IntSize.Zero) }
     val plate = with(LocalDensity.current) { PLATE.toPx() }
+    val stillDrawing = stringResource(R.string.still_drawing)
     Box(modifier.fillMaxSize().clipToBounds().onSizeChanged { view = it }) {
         for (i in 0 until frame.pageCount) {
             if (!frame.pageIsBusy(i)) continue
@@ -74,7 +76,7 @@ fun BusyPages(state: PdfViewState, modifier: Modifier = Modifier) {
                         .shadow(3.dp, PLATE_SHAPE)
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh, PLATE_SHAPE)
                         .testTag(BUSY_PAGE_TAG)
-                        .semantics { contentDescription = "Still drawing this page" },
+                        .semantics { contentDescription = stillDrawing },
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(Modifier.size(SPINNER), strokeWidth = 3.dp)

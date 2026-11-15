@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, saving over a file from the system's file picker, how dragging pages looks, or how the selection, its handles and the copy menu look.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, the print dialog beyond what it is handed, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, saving over a file from the system's file picker, how dragging pages looks, or how the selection, its handles and the copy menu look.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 
@@ -27,13 +27,23 @@ Useful documents for a full round: a long book with an outline and links, a docu
 | Share | With a document open, ⋮ → "Share…", then pick an app (a mail or messaging app, a cloud drive) | The system's share sheet, naming the file; the app picked receives the whole file under its name, unchanged (a protected file stays protected). The reader is still on the same page afterwards. Try it with a file picked in the app and with one opened from another app With unsaved edits (see "Editing the pages"), what is shared is the document as edited, and sharing saves nothing |
 | Only for documents | Open the ⋮ menu on the start screen, and after a file failed to open | No "Share…" |
 
+## Printing
+
+| Feature | How to check | Expected |
+|---|---|---|
+| Print | With a document open, ⋮ → "Print…" | After a moment ("Preparing to print…" for a large document) the system's print dialog, under the document's name, with a preview of every page. Printer, copies, paper, and which pages are the system's to offer; "Save as PDF" writes them to a file. Text stays text: the pages are handed over as they are, not as pictures |
+| As edited | Rotate, delete or move pages, then print without saving | The preview shows the document as edited. Printing saves nothing: the title still says "Edited" |
+| Leave | Back, or cancel in the dialog | Back in the document, on the same page |
+| Wide pages | Print a document whose first page is wider than tall | The dialog starts with the paper lying on its side |
+| Protected documents | Open a password-protected file and print it | The preview shows the pages: the print service gets a copy without the password, which is deleted when the dialog closes. The file itself stays protected |
+
 ## The top bar
 
 | Feature | How to check | Expected |
 |---|---|---|
 | Buttons | Open a document | Left: Pages and Contents. Right: search (a magnifying glass), the view button, whose icon is a small picture of the current layout, and ⋮ |
 | View menu | Tap the view button | The layouts, each with its picture ("Single page" and "Continuous"; on wide windows also "Two pages" and "Two pages, continuous"), then "Fit page" and "Fit width". The current layout and fit are ticked. Everything in this menu is remembered for the document |
-| ⋮ menu | Tap ⋮ | Open…, Share…, Save as…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Save" (where the file can be written over) and "Undo …", and after undoing "Redo …" |
+| ⋮ menu | Tap ⋮ | Open…, Share…, Print…, Save as…, Go to page…, Properties, Settings, Close: what isn't about how the document is shown. After an edit also "Save" (where the file can be written over) and "Undo …", and after undoing "Redo …" |
 | Properties | ⋮ → "Properties" | A dialog with the file name, what the document says about itself (title, author, subject, keywords, the programs it was made with, when it was created and changed; whatever it doesn't state is left out), the number of pages, their size ("210 × 297 mm (A4)"; a note if pages differ), the file size and the PDF version. Values can be selected and copied |
 
 ## Reading, one page at a time (default)
@@ -177,6 +187,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 | Select and copy | Ctrl+A, Ctrl+C, Escape | Selects all text, copies the selection, lets go of it |
 | Undo and redo | Ctrl+Z; Shift+Ctrl+Z or Ctrl+Y | Takes back the last edit of the pages; does it again |
 | Save | Ctrl+S | Saves over the file if there are edits and that is possible, else asks where ("Save as…") |
+| Print | Ctrl+P | The system's print dialog, as with ⋮ → "Print…" |
 | Search | Ctrl+F; in the search field Enter, Shift+Enter and Escape | Opens the search; next match, previous match, and leaving it |
 
 ## Settings
@@ -187,6 +198,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 |---|---|---|
 | Keep the screen on | Switch it on, open a document and leave the phone alone | The screen stays on for ten minutes after the last touch or key, then goes dark after the system's usual wait. On the start screen, and with the switch off, it goes dark as usual |
 | Volume keys turn pages | Switch it on, open a document, press volume down and volume up | Volume down goes on, volume up goes back, like Page Down and Page Up: a page turn, or most of a screenful when scrolling or on a page taller than the screen. Holding a key keeps going. The volume doesn't change |
+| Crash log | Look at the last row of Settings | "Nothing went wrong so far", greyed out, unless something did: then when the last entry was written. Tapping it shows the log, headed by the app's version and the device: what ended the app (an error nothing caught) and errors inside the PDF library, which mostly end nothing. "Share" hands the text to another app, for a bug report; "Delete" empties the log. It stays on the device unless shared, and only its newest entries are kept. A crash outside the app's own code (out of memory, say) leaves no entry |
 | Volume keys otherwise | With the switch on: on the start screen, in Settings, in Pages or Contents on a phone, or with a menu or dialog open; and anywhere with the switch off | The keys change the volume as usual |
 
 ## Behaviour of the app as a whole
@@ -203,4 +215,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Adding pages of other files, keeping unsaved edits when Android ends the app, annotations and form filling, and printing.
+Adding pages of other files, keeping unsaved edits when Android ends the app, annotations and form filling. The app's texts are in English only.

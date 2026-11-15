@@ -24,7 +24,7 @@ What it can do today:
 - Fit page or fit width, full screen, keyboard navigation, light and dark mode
 - Password-protected PDFs
 - Recent documents, and continuing where you left off
-- Sharing the open document with other apps, and its properties (title, author, page size, …)
+- Printing, sharing the open document with other apps, and its properties (title, author, page size, …)
 - Optional: keep the screen on while reading, turn pages with the volume keys
 
 Coming next: inserting pages from other documents, annotations, and filling in forms.
@@ -48,7 +48,7 @@ cd apps/android
 ./gradlew :app:installDebug      # build and install on a connected device or emulator
 ```
 
-What to install first, release builds and emulators on Intel machines are in [BUILDING.md](BUILDING.md). The app runs on Android 8.0 (API 26) and newer.
+What to install first, release builds and their signing key, and emulators on Intel machines are in [BUILDING.md](BUILDING.md). The app runs on Android 8.0 (API 26) and newer.
 
 ## Testing
 
@@ -58,9 +58,9 @@ cd apps/android
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest  # UI tests on an emulator
 ```
 
-The UI tests (`ReaderTest`, `DocumentTest`) cover most of [FEATURES.md](FEATURES.md) on phone-sized and tablet-sized screens: turning pages by swipe and key, the strip, the page grid, the table of contents, links, printed page numbers, full screen, the sidebar and two pages on wide windows, rotation, passwords, and what is remembered. The serial matters when a phone is plugged in as well: a test run installs and then removes the app on its target.
+The UI tests (`ReaderTest`, `DocumentTest`) cover most of [FEATURES.md](FEATURES.md) on phone-sized and tablet-sized screens: turning pages by swipe and key, the strip, the page grid, the table of contents, links, printed page numbers, full screen, the sidebar and two pages on wide windows, rotation, passwords, and what is remembered; further classes cover search, text selection, page edits and saving, sharing, printing and the settings. The serial matters when a phone is plugged in as well: a test run installs and then removes the app on its target.
 
-CI builds the app and runs the unit tests on every change, and the UI tests on an emulator for pushes to `main`. What tests can't judge (how it looks and feels, the file picker, pinch zoom) is checked by hand with [FEATURES.md](FEATURES.md).
+CI builds the app (the release build too, so that code shrinking is known to go through) and runs the unit tests on every change, and the UI tests on an emulator for pushes to `main`. What tests can't judge (how it looks and feels, the file picker, pinch zoom) is checked by hand with [FEATURES.md](FEATURES.md).
 
 ## Project structure
 
@@ -73,9 +73,13 @@ In `app/src/main/kotlin/net/xfbs/specto/`:
 - `Native.kt`: the JNI functions (the rest of the Rust API comes through UniFFI's generated bindings)
 - `ThumbnailStrip.kt`, `PagesGrid.kt`, `OutlineList.kt`: the strip, the page grid and the table of contents
 - `DocumentStore.kt`: recent documents and where each was left off
+- `Share.kt`, `Print.kt`: handing the document to the share sheet and to the print dialog
+- `CrashLog.kt`, `SpectoApp.kt`: the log of crashes that Settings shows, set up as the app starts
 
 Elsewhere:
 
+- `app/src/main/res/values/strings.xml`: everything the app says; a translation is a copy of it in `values-<language>`
+- `app/proguard-rules.pro`: what code shrinking must leave alone in a release build
 - `app/src/test/`: unit tests
 - `app/src/androidTest/`: UI tests, with their test PDFs in `assets/` (written by `make-fixtures.py`)
 - `app/build.gradle.kts`: the build, including cross-compiling the Rust library

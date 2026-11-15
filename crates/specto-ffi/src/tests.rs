@@ -726,6 +726,17 @@ fn saving_what_was_edited() {
     );
     assert!(!saved.edit_state().modified);
 
+    // For printing: the same document, and it counts for nothing.
+    let print = std::env::temp_dir().join(format!("specto-ffi-print-{}.pdf", std::process::id()));
+    let print_fd = std::fs::File::create(&print).unwrap().into_raw_fd();
+    session.print_to_fd(print_fd).unwrap();
+    let printed = std::fs::read(&print).unwrap();
+    std::fs::remove_file(&print).unwrap();
+    let printed = ViewSession::open(printed, None, 64 << 20, listener.clone()).unwrap();
+    assert_eq!(printed.page_count(), session.page_count());
+    session.written_is_saved();
+    assert!(session.edit_state().modified);
+
     // A descriptor that can't be written to: an error, and still unsaved.
     let read_only = std::fs::File::open("/dev/null").unwrap().into_raw_fd();
     assert!(matches!(

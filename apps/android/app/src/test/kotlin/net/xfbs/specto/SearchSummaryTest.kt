@@ -10,20 +10,20 @@ class SearchSummaryTest {
 
     @Test
     fun noSearchSaysNothing() {
-        assertEquals("", searchSummary(null))
+        assertEquals("", searchSummary(null, EnglishTexts))
     }
 
     @Test
     fun countsFromOne() {
-        assertEquals("1 of 17", searchSummary(status(17, 0, 100)))
-        assertEquals("17 of 17", searchSummary(status(17, 16, 100)))
+        assertEquals("1 of 17", searchSummary(status(17, 0, 100), EnglishTexts))
+        assertEquals("17 of 17", searchSummary(status(17, 16, 100), EnglishTexts))
     }
 
     @Test
     fun saysWhenMoreMayCome() {
-        assertEquals("3 of 17…", searchSummary(status(17, 2, 40)))
+        assertEquals("3 of 17…", searchSummary(status(17, 2, 40), EnglishTexts))
         // Nothing yet is not the same as nothing at all.
-        assertEquals("…", searchSummary(status(0, null, 40)))
-        assertEquals("No matches", searchSummary(status(0, null, 100)))
+        assertEquals("…", searchSummary(status(0, null, 40), EnglishTexts))
+        assertEquals("No matches", searchSummary(status(0, null, 100), EnglishTexts))
     }
 }

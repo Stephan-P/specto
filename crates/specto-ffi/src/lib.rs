@@ -17,6 +17,7 @@
 //! through JNI. Which tiles exist is decided here: the cache bookkeeping
 //! lives in Rust, and [`Frame::evicted`] tells Kotlin which bitmaps to drop.
 
+pub mod crash;
 pub mod hot;
 #[cfg(target_os = "android")]
 mod jni;
@@ -793,6 +794,53 @@ impl ViewSession {
 }
 
 impl ViewSession {
+    /// Writes the document as edited to the descriptor `fd`, which is
+    /// closed either way, with its password protection or without.
+    /// Returns the version of the document that was written.
+    fn write_to_fd(&self, fd: i32, protected: bool) -> Result<specto_doc::Version, PdfError> {
+        if fd < 0 {
+            return Err(PdfError::Save {
+                reason: "invalid file descriptor".into(),
+            });
+        }
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::fd::FromRawFd;
+            // SAFETY: the caller hands over ownership of an open descriptor
+            // (detachFd), so nothing else closes or uses it.
+            #[allow(unsafe_code)]
+            let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+            let job = self.shared.lock().session.save_job();
+            // All of it in memory first, so that a failure writes nothing.
+            let data = if protected {
+                job.write()
+            } else {
+                job.write_unprotected()
+            }
+            .map_err(|e| PdfError::Save {
+                reason: e.to_string(),
+            })?;
+            file.write_all(&data)
+                .and_then(|()| file.flush())
+                .map_err(|e| PdfError::Save {
+                    reason: e.to_string(),
+                })?;
+            // Cuts off what a longer file had beyond this, and gets it onto
+            // the disk. Neither works on everything a descriptor can be (a
+            // pipe to a document provider), and neither is needed there.
+            let _ = file.set_len(data.len() as u64);
+            let _ = file.sync_all();
+            Ok(job.version)
+        }
+        #[cfg(not(unix))]
+        Err(PdfError::Save {
+            reason: "file descriptors are not supported here".into(),
+        })
+    }
+}
+
+impl ViewSession {
     fn open_data(
         data: PdfData,
         password: Option<String>,
@@ -996,47 +1044,23 @@ impl ViewSession {
     /// may be the one written to only if it isn't mapped
     /// ([`PdfFile::is_mapped`]): a mapped file must not change while open.
     pub fn save_to_fd(&self, fd: i32, counts_as_saved: bool) -> Result<(), PdfError> {
-        if fd < 0 {
-            return Err(PdfError::Save {
-                reason: "invalid file descriptor".into(),
-            });
+        let version = self.write_to_fd(fd, true)?;
+        let mut state = self.shared.lock();
+        if counts_as_saved {
+            state.session.mark_saved(version);
+        } else {
+            state.written = Some(version);
         }
-        #[cfg(unix)]
-        {
-            use std::io::Write;
-            use std::os::fd::FromRawFd;
-            // SAFETY: the caller hands over ownership of an open descriptor
-            // (detachFd), so nothing else closes or uses it.
-            #[allow(unsafe_code)]
-            let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
-            let job = self.shared.lock().session.save_job();
-            // All of it in memory first, so that a failure writes nothing.
-            let data = job.write().map_err(|e| PdfError::Save {
-                reason: e.to_string(),
-            })?;
-            file.write_all(&data)
-                .and_then(|()| file.flush())
-                .map_err(|e| PdfError::Save {
-                    reason: e.to_string(),
-                })?;
-            // Cuts off what a longer file had beyond this, and gets it onto
-            // the disk. Neither works on everything a descriptor can be (a
-            // pipe to a document provider), and neither is needed there.
-            let _ = file.set_len(data.len() as u64);
-            let _ = file.sync_all();
-            drop(file);
-            let mut state = self.shared.lock();
-            if counts_as_saved {
-                state.session.mark_saved(job.version);
-            } else {
-                state.written = Some(job.version);
-            }
-            Ok(())
-        }
-        #[cfg(not(unix))]
-        Err(PdfError::Save {
-            reason: "file descriptors are not supported here".into(),
-        })
+        Ok(())
+    }
+
+    /// Writes the document as edited to `fd` like
+    /// [`save_to_fd`](Self::save_to_fd), but without its password
+    /// protection, and without it counting as saved or as the copy
+    /// [`written_is_saved`](Self::written_is_saved) is about: what the
+    /// system's print service is given, which can't be told a password.
+    pub fn print_to_fd(&self, fd: i32) -> Result<(), PdfError> {
+        self.write_to_fd(fd, false).map(|_| ())
     }
 
     /// The copy last written with [`save_to_fd`](Self::save_to_fd) has

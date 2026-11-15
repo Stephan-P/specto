@@ -201,11 +201,13 @@ GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew'
 ### Android
 
 - Kotlin + Jetpack Compose for UI chrome.
-- `specto-ffi` exposes a coarse API via **UniFFI** (`ViewSession`: viewport, zoom, layout, outline, labels, links, selection, search, page edits with undo, saving to a file descriptor). Underneath is the same `specto-session` as on the desktop. Avoid chatty per-glyph calls across the FFI boundary.
+- `specto-ffi` exposes a coarse API via **UniFFI** (`ViewSession`: viewport, zoom, layout, outline, labels, links, selection, search, page edits with undo, saving to a file descriptor, and a copy without password protection for the system's print service, which prints PDFs itself). Underneath is the same `specto-session` as on the desktop. Avoid chatty per-glyph calls across the FFI boundary.
 - The per-frame path (frame layout, tile copies) uses hand-written JNI instead, because UniFFI's per-call overhead was too high (M0-FINDINGS.md).
 - Tiles are copied from Rust into an `android.graphics.Bitmap` through the NDK bitmap API, and Compose draws them on a `Canvas`.
 - File access via the Storage Access Framework. Today Kotlin reads the file into memory. Ready on the Rust side: `PdfFile.fromFd(pfd.detachFd())` reads or maps the file, and `ViewSession.openFile` opens it (reusable for a password retry). Saving will go through the same mechanism, writing to a temporary file first (see File data).
 - Build with `cargo-ndk` for `arm64-v8a` (+ `x86_64` for the emulator).
+- Texts are Android string resources (`res/values/strings.xml`); the Rust side contributes none, except the reasons in error messages.
+- A crash log in the app's private storage, which Settings shows and nothing sends: Kotlin records exceptions nothing caught, and `specto-ffi` installs a panic hook that appends to the same file (`log_panics_to`).
 
 ## Testing strategy
 

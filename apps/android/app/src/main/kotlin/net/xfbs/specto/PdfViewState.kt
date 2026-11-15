@@ -29,14 +29,14 @@ import kotlinx.coroutines.withContext
 import uniffi.specto_ffi.Activated
 import uniffi.specto_ffi.DocumentInfo
 import uniffi.specto_ffi.EditState
+import uniffi.specto_ffi.OutlineEntry
 import uniffi.specto_ffi.PageSize
 import uniffi.specto_ffi.PdfFile
-import uniffi.specto_ffi.OutlineEntry
 import uniffi.specto_ffi.SavedView
 import uniffi.specto_ffi.SearchStatus
 import uniffi.specto_ffi.ViewListener
-import uniffi.specto_ffi.ViewSession
 import uniffi.specto_ffi.ViewMode
+import uniffi.specto_ffi.ViewSession
 
 private const val TAG = "specto"
 
@@ -325,6 +325,13 @@ class PdfViewState(
         withContext(Dispatchers.IO) { session.saveToFd(fd, countsAsSaved) }
         if (!closed) editState = session.editState()
     }
+
+    /**
+     * Writes the document as edited to [fd] for the system's print service:
+     * like [writeTo], but without its password protection, and counting for
+     * nothing. Throws `PdfException.Save` if it can't be written.
+     */
+    suspend fun printTo(fd: Int) = withContext(Dispatchers.IO) { session.printToFd(fd) }
 
     /**
      * The copy last written with [writeTo] has been put where the document

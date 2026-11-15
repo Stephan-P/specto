@@ -1,3 +1,4 @@
+import java.util.Properties
 import javax.inject.Inject
 import org.gradle.process.ExecOperations
 
@@ -7,6 +8,14 @@ plugins {
 }
 
 val rustAbis = providers.gradleProperty("specto.abis").map { it.split(',').map(String::trim) }
+
+/**
+ * Where the release key is and how to open it: `keystore.properties` next to
+ * `settings.gradle.kts`, which is never committed. Null without that file.
+ */
+val releaseSigning: Properties? = rootProject.file("keystore.properties").takeIf { it.isFile }?.let { file ->
+    Properties().apply { file.inputStream().use(::load) }
+}
 
 android {
     namespace = "net.xfbs.specto"
@@ -28,13 +37,31 @@ android {
         }
     }
 
+    signingConfigs {
+        // The key releases are signed with, where there is one: see
+        // BUILDING.md ("A release for others").
+        releaseSigning?.let { key ->
+            create("release") {
+                storeFile = rootProject.file(key.getProperty("storeFile"))
+                storePassword = key.getProperty("storePassword")
+                keyAlias = key.getProperty("keyAlias")
+                keyPassword = key.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Signed with the debug key: good for measuring performance and
-            // for trying the app as users get it, not for distributing it.
-            // A real release needs its own key, and code shrinking with keep
-            // rules for the UniFFI bindings (see docs/TASKS.md).
-            signingConfig = signingConfigs.getByName("debug")
+            // Without a key of its own, a release is signed with the debug
+            // key: good for measuring performance and for trying the app as
+            // users get it, not for distributing it.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // R8 removes what the app doesn't use (most of Compose and the
+            // icon set) and shortens names; proguard-rules.pro says what it
+            // must leave alone.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

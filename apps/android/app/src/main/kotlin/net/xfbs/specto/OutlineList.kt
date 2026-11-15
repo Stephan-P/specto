@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,7 +86,7 @@ fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier =
                     IconButton(onClick = { expanded = if (open) expanded - i else expanded + i }) {
                         Icon(
                             if (open) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = if (open) "Collapse" else "Expand",
+                            contentDescription = stringResource(if (open) R.string.collapse else R.string.expand),
                         )
                     }
                 } else {

@@ -13,7 +13,7 @@ use lopdf::{
 use specto_doc::{PageRef, Rotation, SourceId};
 use specto_render::{Document as _, HayroDocument, RenderRequest};
 use specto_source::{OpenError, PdfData, SourceDocument, Target};
-use specto_write::{Source, WriteError, replace_file, write};
+use specto_write::{Source, WriteError, replace_file, write, write_unprotected};
 
 const MAIN: SourceId = SourceId(0);
 const OTHER: SourceId = SourceId(1);
@@ -356,6 +356,35 @@ fn encryption_is_kept() {
         // The owner password still works too.
         open(&out, Some("owner"));
     }
+}
+
+#[test]
+fn encryption_can_be_left_out() {
+    let data = PdfData::from(encrypted(&fixture(3, 0.6), "secret"));
+    let src = |password| Source {
+        id: MAIN,
+        data: &data,
+        password,
+    };
+    let pages = vec![rotated(MAIN, 2, Rotation::Cw90), page(MAIN, 0)];
+    // Not without the password, though.
+    assert!(matches!(
+        write_unprotected(&[src(None)], &pages),
+        Err(WriteError::PasswordRequired)
+    ));
+    let out = write_unprotected(&[src(Some("secret"))], &pages).unwrap();
+    qpdf_check(&out, None);
+    let (original, written) = (open(&data, Some("secret")), open(&out, None));
+    let expected: Vec<_> = pages.iter().map(|&p| (&original, p)).collect();
+    assert_pages(&written, &expected);
+
+    // A document without protection is written as ever.
+    let plain = PdfData::from(fixture(3, 0.6));
+    let out = write_unprotected(&[main_source(&plain)], &pages).unwrap();
+    qpdf_check(&out, None);
+    let (original, written) = (open(&plain, None), open(&out, None));
+    let expected: Vec<_> = pages.iter().map(|&p| (&original, p)).collect();
+    assert_pages(&written, &expected);
 }
 
 #[test]

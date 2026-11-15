@@ -41,12 +41,53 @@ adb devices
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:installDebug
 ```
 
-The release build is the one to judge speed by. For now it is signed with the
-debug key, so it is for trying the app, not for distributing it:
+The release build is the one to judge speed by, and the one users get: its
+code is shrunk by R8, which removes what the app doesn't use. Without a key
+of its own (see below) it is signed with the debug key, which is fine for
+trying it:
 
 ```sh
 ./gradlew :app:installRelease
 ```
+
+The UI tests run against the debug build, which isn't shrunk. What R8 must
+not touch is listed in `app/proguard-rules.pro`; after changing that file, or
+how Kotlin reaches the Rust library, open a document in the release build
+and see that it draws.
+
+## A release for others
+
+A build to hand out has to be signed with a key that stays the same for as
+long as the app exists: Android installs an update only if it is signed with
+the key of the version it replaces. Create one once, and keep the file and
+its password somewhere safe, outside the repository:
+
+```sh
+keytool -genkeypair -v -keystore ~/specto-release.jks -alias specto \
+    -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then say where it is in `apps/android/keystore.properties`, which Git
+ignores:
+
+```properties
+storeFile=/home/me/specto-release.jks
+storePassword=…
+keyAlias=specto
+keyPassword=…
+```
+
+With that file in place, `./gradlew :app:assembleRelease` signs
+`app/build/outputs/apk/release/app-release.apk` with the key (and
+`:app:bundleRelease` an app bundle, for stores that want one); without it,
+the debug key is used as before. To see which key signed an APK:
+
+```sh
+$ANDROID_HOME/build-tools/<version>/apksigner verify --print-certs app-release.apk
+```
+
+Before a release, raise `versionCode` (and `versionName`) in
+`app/build.gradle.kts`: Android takes an update only with a higher code.
 
 ## Emulators on Intel and AMD machines
 

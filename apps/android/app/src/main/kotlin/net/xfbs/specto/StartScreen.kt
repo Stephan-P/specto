@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -34,7 +35,7 @@ fun StartScreen(
 ) {
     if (recents.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Button(onClick = onOpen) { Text("Open PDF") }
+            Button(onClick = onOpen) { Text(stringResource(R.string.open_pdf)) }
         }
         return
     }
@@ -45,10 +46,10 @@ fun StartScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 Button(onClick = onOpen, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    Text("Open PDF")
+                    Text(stringResource(R.string.open_pdf))
                 }
                 Text(
-                    "Recent",
+                    stringResource(R.string.recent),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -80,10 +81,14 @@ fun StartScreen(
 }
 
 /** "Page 12 of 240 · 2 hours ago" */
+@Composable
 private fun DocumentStore.Entry.summary(): String {
     val ago = DateUtils.getRelativeTimeSpanString(
         opened, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
-    )
-    val page = view?.let { "Page ${it.page.toInt() + 1}" + (if (pageCount > 0) " of $pageCount" else "") + " · " }
-    return (page ?: "") + ago
+    ).toString()
+    val page = view?.page?.toInt()?.plus(1) ?: return ago
+    val where =
+        if (pageCount > 0) stringResource(R.string.recent_page_of, page, pageCount)
+        else stringResource(R.string.recent_page, page)
+    return stringResource(R.string.recent_summary, where, ago)
 }

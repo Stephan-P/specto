@@ -1,5 +1,6 @@
 package net.xfbs.specto
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
@@ -21,14 +22,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 /** How pages are laid out and moved through. */
-enum class ViewLayout(val label: String, val paged: Boolean, val twoPages: Boolean) {
-    SinglePage("Single page", paged = true, twoPages = false),
-    Continuous("Continuous", paged = false, twoPages = false),
-    TwoPages("Two pages", paged = true, twoPages = true),
-    TwoPagesContinuous("Two pages, continuous", paged = false, twoPages = true);
+enum class ViewLayout(@param:StringRes val label: Int, val paged: Boolean, val twoPages: Boolean) {
+    SinglePage(R.string.layout_single_page, paged = true, twoPages = false),
+    Continuous(R.string.layout_continuous, paged = false, twoPages = false),
+    TwoPages(R.string.layout_two_pages, paged = true, twoPages = true),
+    TwoPagesContinuous(R.string.layout_two_pages_continuous, paged = false, twoPages = true);
 
     companion object {
         fun of(paged: Boolean, twoPages: Boolean): ViewLayout =
@@ -67,28 +69,28 @@ fun ViewMenu(state: PdfViewState, wide: Boolean) {
     var open by remember { mutableStateOf(false) }
     val current = state.layout(wide)
     IconButton(onClick = { open = true }, modifier = Modifier.testTag(VIEW_BUTTON_TAG)) {
-        Icon(current.icon, contentDescription = "View: ${current.label}")
+        Icon(current.icon, contentDescription = stringResource(R.string.view_description, stringResource(current.label)))
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         for (layout in ViewLayout.choices(wide)) {
-            Choice(layout.label, chosen = layout == current, icon = layout.icon) {
+            Choice(stringResource(layout.label), chosen = layout == current, icon = layout.icon) {
                 open = false
                 state.show(layout, wide)
             }
         }
         if (current.twoPages) {
             HorizontalDivider()
-            Choice("First page alone", chosen = state.coverAlone) {
+            Choice(stringResource(R.string.first_page_alone), chosen = state.coverAlone) {
                 open = false
                 state.setSpread(true, !state.coverAlone)
             }
         }
         HorizontalDivider()
-        Choice("Fit page", chosen = !state.fitWidth) {
+        Choice(stringResource(R.string.fit_page), chosen = !state.fitWidth) {
             open = false
             state.fit(width = false)
         }
-        Choice("Fit width", chosen = state.fitWidth) {
+        Choice(stringResource(R.string.fit_width), chosen = state.fitWidth) {
             open = false
             state.fit(width = true)
         }
@@ -101,7 +103,7 @@ private fun Choice(label: String, chosen: Boolean, icon: ImageVector? = null, on
     DropdownMenuItem(
         text = { Text(label) },
         leadingIcon = icon?.let { { Icon(it, contentDescription = null) } },
-        trailingIcon = { if (chosen) Icon(Icons.Filled.Check, contentDescription = "Chosen") },
+        trailingIcon = { if (chosen) Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.chosen)) },
         onClick = onClick,
     )
 }

@@ -2,9 +2,9 @@ package net.xfbs.specto
 
 import android.app.Activity
 import android.app.ActivityManager
+import android.content.ActivityNotFoundException
 import android.content.ComponentCallbacks2
 import android.content.Context
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -39,14 +39,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -105,6 +105,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -113,12 +116,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import uniffi.specto_ffi.Activated
-import uniffi.specto_ffi.PdfFile
 import uniffi.specto_ffi.PdfException
+import uniffi.specto_ffi.PdfFile
 
 class MainActivity : ComponentActivity() {
     /** The document to show: from "Open with", or picked in the app. */
@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
                     document = document,
                     store = store,
                     settings = settings,
+                    crashLog = (application as SpectoApp).crashLog,
                     onDocument = { document = it },
                     incoming = incoming,
                     onIncoming = { incoming = null },
@@ -290,7 +291,7 @@ private fun Context.displayName(uri: Uri): String {
             if (it.moveToFirst()) it.getString(0) else null
         }
     }.getOrNull()
-    return fromProvider ?: uri.lastPathSegment ?: "PDF"
+    return fromProvider ?: uri.lastPathSegment ?: getString(R.string.unnamed_document)
 }
 
 /** Where the reader wants to go from a document with unsaved edits: another one, or (null) the start screen. */
@@ -421,6 +422,7 @@ private fun App(
     document: Uri?,
     store: DocumentStore,
     settings: AppSettings,
+    crashLog: CrashLog,
     onDocument: (Uri?) -> Unit,
     /** A document asked for from outside the app, to show when the open one can be left; [onIncoming] takes note. */
     incoming: Uri?,
@@ -440,6 +442,8 @@ private fun App(
     // What follows a "Save as…" other than showing the saved document.
     var afterSaving by remember { mutableStateOf<(() -> Unit)?>(null) }
     var saving by remember { mutableStateOf(false) }
+    // The copy for the print service is being written.
+    var preparingToPrint by remember { mutableStateOf(false) }
 
     /** Shows [next] (null: the start screen) instead, asking first if edits would be lost. */
     fun leaveFor(next: Uri?) {
@@ -534,7 +538,7 @@ private fun App(
                 } catch (e: Exception) {
                     if (!open.mapped) throw e
                     // Nothing is open any more; what was written is.
-                    Toast.makeText(context, "Couldn't save there. This is the edited copy.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, R.string.could_not_save_there, Toast.LENGTH_LONG).show()
                     onDocument(Uri.fromFile(written))
                     return@launch
                 }
@@ -554,9 +558,28 @@ private fun App(
                 throw e
             } catch (e: Exception) {
                 val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
-                Toast.makeText(context, "Couldn't save: $reason", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.could_not_save, reason), Toast.LENGTH_LONG).show()
             } finally {
                 saving = false
+            }
+        }
+    }
+
+    /** "Print…": the system's print dialog, for the document as it is now. */
+    fun print() {
+        val open = loaded as? Loaded.Ready ?: return
+        if (preparingToPrint) return
+        scope.launch {
+            preparingToPrint = true
+            try {
+                context.printDocument(open.state, open.name)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
+                Toast.makeText(context, context.getString(R.string.could_not_print, reason), Toast.LENGTH_LONG).show()
+            } finally {
+                preparingToPrint = false
             }
         }
     }
@@ -610,7 +633,7 @@ private fun App(
                 throw e
             } catch (e: Exception) {
                 val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
-                Toast.makeText(context, "Couldn't save: $reason", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.could_not_save, reason), Toast.LENGTH_LONG).show()
             } finally {
                 saving = false
             }
@@ -649,7 +672,7 @@ private fun App(
         // In place of everything else; the document stays open underneath.
         BackHandler { showSettings = false }
         SideEffect { onPageKeys(null) }
-        SettingsScreen(settings, onBack = { showSettings = false })
+        SettingsScreen(settings, crashLog, onBack = { showSettings = false })
         return
     }
     // The volume keys move through the document like Page Down and Page Up,
@@ -693,9 +716,9 @@ private fun App(
                             },
                         ) {
                             if (overlay) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to document")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_to_document))
                             } else {
-                                Icon(Icons.Filled.Menu, contentDescription = "Contents and pages")
+                                Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.contents_and_pages))
                             }
                         }
                     }
@@ -711,7 +734,7 @@ private fun App(
                         if (ready?.state?.editState?.modified == true) {
                             // Changed, and not saved anywhere yet.
                             Text(
-                                "Edited",
+                                stringResource(R.string.edited),
                                 Modifier.padding(start = 8.dp),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -723,18 +746,18 @@ private fun App(
                 actions = {
                     if (ready != null && !overlay) {
                         IconButton(onClick = { searching = true }) {
-                            Icon(Icons.Filled.Search, contentDescription = "Search")
+                            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
                         }
                         // How this document is shown; everything else is behind ⋮.
                         ViewMenu(ready.state, wide)
                     }
                     var menu by remember { mutableStateOf(false) }
                     IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
-                            text = { Text("Open…") },
+                            text = { Text(stringResource(R.string.menu_open)) },
                             onClick = {
                                 menu = false
                                 pick()
@@ -742,7 +765,7 @@ private fun App(
                         )
                         if (ready != null && document != null) {
                             DropdownMenuItem(
-                                text = { Text("Share…") },
+                                text = { Text(stringResource(R.string.menu_share)) },
                                 onClick = {
                                     menu = false
                                     scope.launch {
@@ -757,16 +780,23 @@ private fun App(
                                             throw e
                                         } catch (e: Exception) {
                                             // Moved or deleted since it was opened.
-                                            Toast.makeText(context, "Couldn't share this file", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, R.string.could_not_share, Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
                             )
                         }
                         if (ready != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_print)) },
+                                onClick = {
+                                    menu = false
+                                    print()
+                                },
+                            )
                             if (canSave && ready.state.editState.modified) {
                                 DropdownMenuItem(
-                                    text = { Text("Save") },
+                                    text = { Text(stringResource(R.string.save)) },
                                     onClick = {
                                         menu = false
                                         save()
@@ -774,7 +804,7 @@ private fun App(
                                 )
                             }
                             DropdownMenuItem(
-                                text = { Text("Save as…") },
+                                text = { Text(stringResource(R.string.save_as)) },
                                 onClick = {
                                     menu = false
                                     saveAs(ready.name)
@@ -783,7 +813,7 @@ private fun App(
                             val edits = ready.state.editState
                             edits.undo?.let { step ->
                                 DropdownMenuItem(
-                                    text = { Text("Undo ${editName(step)}") },
+                                    text = { Text(stringResource(undoLabel(step))) },
                                     onClick = {
                                         menu = false
                                         ready.state.undo()
@@ -792,7 +822,7 @@ private fun App(
                             }
                             edits.redo?.let { step ->
                                 DropdownMenuItem(
-                                    text = { Text("Redo ${editName(step)}") },
+                                    text = { Text(stringResource(redoLabel(step))) },
                                     onClick = {
                                         menu = false
                                         ready.state.redo()
@@ -800,14 +830,14 @@ private fun App(
                                 )
                             }
                             DropdownMenuItem(
-                                text = { Text("Go to page…") },
+                                text = { Text(stringResource(R.string.menu_go_to_page)) },
                                 onClick = {
                                     menu = false
                                     showGoTo = true
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Properties") },
+                                text = { Text(stringResource(R.string.menu_properties)) },
                                 onClick = {
                                     menu = false
                                     showProperties = true
@@ -815,7 +845,7 @@ private fun App(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("Settings") },
+                            text = { Text(stringResource(R.string.menu_settings)) },
                             onClick = {
                                 menu = false
                                 showSettings = true
@@ -824,7 +854,7 @@ private fun App(
                         if (document != null) {
                             // Back to the start screen and its recent documents.
                             DropdownMenuItem(
-                                text = { Text("Close") },
+                                text = { Text(stringResource(R.string.menu_close)) },
                                 onClick = {
                                     menu = false
                                     leaveFor(null)
@@ -852,9 +882,14 @@ private fun App(
                     modifier = safe,
                 )
                 Loaded.Loading -> CircularProgressIndicator(safe)
-                is Loaded.Failed -> Message("Couldn't open this file", l.message, "Open another PDF", pick, safe)
+                is Loaded.Failed -> Message(
+                    stringResource(R.string.could_not_open), l.message, stringResource(R.string.open_another), pick, safe,
+                )
                 is Loaded.Locked -> {
-                    Message("${l.name} is password protected", "", "Open another PDF", pick, safe)
+                    Message(
+                        stringResource(R.string.password_protected, l.name), "",
+                        stringResource(R.string.open_another), pick, safe,
+                    )
                     // A fresh dialog for every attempt, so a wrong password
                     // doesn't stay in the field.
                     key(l) { PasswordDialog(
@@ -862,7 +897,7 @@ private fun App(
                         wrongPassword = l.wrongPassword,
                         onDismiss = {
                             l.file.close()
-                            show(Loaded.Failed("A password is needed to open ${l.name}."))
+                            show(Loaded.Failed(context.getString(R.string.password_needed, l.name)))
                         },
                         onPassword = { password ->
                             loaded = Loaded.Loading
@@ -926,6 +961,7 @@ private fun App(
                                     onSave = {
                                         if (canSave && l.state.editState.modified) save() else saveAs(l.name)
                                     },
+                                    onPrint = ::print,
                                     refocus = searchesClosed,
                                 )
                                 // Always there in the normal view; in full screen it
@@ -987,7 +1023,11 @@ private fun App(
             )
         }
     }
-    if (saving) SavingDialog()
+    if (saving) {
+        BusyDialog(stringResource(R.string.saving))
+    } else if (preparingToPrint) {
+        BusyDialog(stringResource(R.string.preparing_to_print))
+    }
 
     if (showProperties && ready != null) {
         PropertiesDialog(ready.state, ready.name, ready.bytes, onDismiss = { showProperties = false })
@@ -1076,11 +1116,11 @@ private fun Navigator(
     LaunchedEffect(pager.settledPage) { onTab(pager.settledPage == 1) }
     Column(background) {
         PrimaryTabRow(selectedTabIndex = pager.currentPage) {
-            for ((index, title) in listOf("Pages", "Contents").withIndex()) {
+            for ((index, title) in listOf(R.string.tab_pages, R.string.tab_contents).withIndex()) {
                 Tab(
                     selected = pager.currentPage == index,
                     onClick = { scope.launch { pager.animateScrollToPage(index) } },
-                    text = { Text(title) },
+                    text = { Text(stringResource(title)) },
                 )
             }
         }
@@ -1108,7 +1148,7 @@ private fun ExternalLinkDialog(link: String, onDismiss: () -> Unit) {
     val openable = uri.scheme?.lowercase() in OPENABLE_SCHEMES
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (openable) "Open this link?" else "This link can't be opened") },
+        title = { Text(stringResource(if (openable) R.string.link_open_title else R.string.link_blocked_title)) },
         text = { Text(link, maxLines = 6, overflow = TextOverflow.Ellipsis) },
         confirmButton = {
             if (openable) {
@@ -1121,10 +1161,14 @@ private fun ExternalLinkDialog(link: String, onDismiss: () -> Unit) {
                             // No app for it; nothing to do.
                         }
                     },
-                ) { Text("Open") }
+                ) { Text(stringResource(R.string.open)) }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(if (openable) "Cancel" else "Close") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(if (openable) R.string.cancel else R.string.close))
+            }
+        },
     )
 }
 
@@ -1140,19 +1184,19 @@ private fun PasswordDialog(
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Password required") },
+        title = { Text(stringResource(R.string.password_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Enter the password to open $name.")
+                Text(stringResource(R.string.password_prompt, name))
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.focusRequester(focus),
-                    label = { Text("Password") },
+                    label = { Text(stringResource(R.string.password_label)) },
                     singleLine = true,
                     isError = wrongPassword,
                     supportingText = if (wrongPassword) {
-                        { Text("That password didn't work.") }
+                        { Text(stringResource(R.string.password_wrong)) }
                     } else {
                         null
                     },
@@ -1162,8 +1206,10 @@ private fun PasswordDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onPassword(password) }) { Text("Open") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            TextButton(onClick = { onPassword(password) }) { Text(stringResource(R.string.open)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -1176,7 +1222,7 @@ private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Go to page") },
+        title = { Text(stringResource(R.string.go_to_title)) },
         text = {
             OutlinedTextField(
                 value = text,
@@ -1186,11 +1232,17 @@ private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (
                     text = if (state.hasPageLabels) new.take(20) else new.filter(Char::isDigit).take(9)
                 },
                 modifier = Modifier.focusRequester(focus),
-                label = { Text("Page (${state.pageLabel(0)}–${state.pageLabel(last)})") },
+                label = { Text(stringResource(R.string.go_to_label, state.pageLabel(0), state.pageLabel(last))) },
                 supportingText = if (state.hasPageLabels) {
                     {
                         // A typed number may be a printed number or a position.
-                        Text(page?.let { "Page ${it + 1} of ${state.pageCount}" } ?: "Or a position, 1–${state.pageCount}")
+                        Text(
+                            if (page != null) {
+                                stringResource(R.string.go_to_position, page + 1, state.pageCount)
+                            } else {
+                                stringResource(R.string.go_to_position_hint, state.pageCount)
+                            },
+                        )
                     }
                 } else {
                     null
@@ -1205,9 +1257,9 @@ private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (
             )
         },
         confirmButton = {
-            TextButton(onClick = { page?.let(onPage) }, enabled = page != null) { Text("Go") }
+            TextButton(onClick = { page?.let(onPage) }, enabled = page != null) { Text(stringResource(R.string.go)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

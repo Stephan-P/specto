@@ -10,24 +10,24 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.splineBasedDecay
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.IntSize
@@ -121,7 +122,7 @@ private class SelectionDrag {
  * down scroll; Home and End go to the first and last page; Ctrl with plus,
  * minus and zero zooms; Ctrl+A selects all text, Ctrl+C copies the selection
  * ([onCopy]) and Escape drops it; Ctrl+F searches ([onSearch]); Ctrl+S saves
- * ([onSave]); Ctrl+Z takes back the last edit of the pages, and Shift+Ctrl+Z
+ * ([onSave]); Ctrl+P prints ([onPrint]); Ctrl+Z takes back the last edit of the pages, and Shift+Ctrl+Z
  * or Ctrl+Y does it again.
  * Returns whether the key was used.
  */
@@ -131,6 +132,7 @@ private fun PdfViewState.handleKey(
     onCopy: () -> Unit,
     onSearch: () -> Unit,
     onSave: () -> Unit,
+    onPrint: () -> Unit,
 ): Boolean {
     if (event.isCtrlPressed) {
         when (event.key) {
@@ -141,6 +143,7 @@ private fun PdfViewState.handleKey(
             Key.C -> if (hasSelection) onCopy() else return false
             Key.F -> onSearch()
             Key.S -> onSave()
+            Key.P -> onPrint()
             Key.Z -> if (event.isShiftPressed) redo() else undo()
             Key.Y -> redo()
             else -> return false
@@ -178,7 +181,7 @@ private fun PdfViewState.handleKey(
  *
  * What a search found is highlighted too. The search itself is run from
  * outside (see [PdfViewState.search]); [onSearch] is called for Ctrl+F, and
- * [onSave] for Ctrl+S. The
+ * [onSave] for Ctrl+S and [onPrint] for Ctrl+P. The
  * page takes the keyboard focus when it appears, and again whenever
  * [refocus] changes.
  *
@@ -193,10 +196,11 @@ fun PdfView(
     onTap: () -> Unit = {},
     onSearch: () -> Unit = {},
     onSave: () -> Unit = {},
+    onPrint: () -> Unit = {},
     refocus: Any? = null,
 ) {
     Box(modifier) {
-        PageCanvas(state, Modifier.fillMaxSize(), onExternalLink, onTap, onSearch, onSave, refocus)
+        PageCanvas(state, Modifier.fillMaxSize(), onExternalLink, onTap, onSearch, onSave, onPrint, refocus)
         BusyPages(state)
     }
 }
@@ -210,9 +214,11 @@ private fun PageCanvas(
     onTap: () -> Unit,
     onSearch: () -> Unit,
     onSave: () -> Unit,
+    onPrint: () -> Unit,
     refocus: Any?,
 ) {
     val density = LocalDensity.current.density
+    val textSelected = stringResource(R.string.text_selected)
     val scope = rememberCoroutineScope()
     val exactPaint = remember { Paint().apply { isFilterBitmap = false } }
     val scaledPaint = remember { Paint().apply { isFilterBitmap = true } }
@@ -243,7 +249,7 @@ private fun PageCanvas(
             if (text == null) return@launch
             val copied = text.length <= CLIPBOARD_MAX_CHARS && try {
                 context.getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText("Text from a PDF", text))
+                    .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.clip_label), text))
                 true
             } catch (e: RuntimeException) {
                 // Still too large for the system to pass around.
@@ -251,9 +257,9 @@ private fun PageCanvas(
             }
             // Android 13 and later show what was copied themselves.
             if (!copied) {
-                Toast.makeText(context, "That is too much text to copy at once", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, R.string.too_much_to_copy, Toast.LENGTH_LONG).show()
             } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -272,7 +278,7 @@ private fun PageCanvas(
                 false
             }
             if (!shared) {
-                Toast.makeText(context, "That is too much text to share at once", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, R.string.too_much_to_share, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -329,9 +335,9 @@ private fun PageCanvas(
         menu.show(
             beside.left, beside.top, beside.right, beside.bottom,
             listOf(
-                TextMenu.Item("Copy", ::copy),
-                TextMenu.Item("Share", ::share),
-                TextMenu.Item("Select all") { state.selectAll() },
+                TextMenu.Item(context.getString(R.string.copy), ::copy),
+                TextMenu.Item(context.getString(R.string.share), ::share),
+                TextMenu.Item(context.getString(R.string.select_all)) { state.selectAll() },
             ),
         )
     }
@@ -364,7 +370,7 @@ private fun PageCanvas(
             .clipToBounds()
             .focusRequester(focus)
             .focusable()
-            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy, onSearch, onSave) }
+            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy, onSearch, onSave, onPrint) }
             .onGloballyPositioned {
                 origin = it.positionInWindow()
                 originInRoot = it.positionInRoot()
@@ -374,7 +380,7 @@ private fun PageCanvas(
                 state.setViewport(it.width / density, it.height / density, density)
             }
             // For screen readers, and for UI tests, which can't see the page.
-            .semantics { if (state.hasSelection) stateDescription = "Text selected" }
+            .semantics { if (state.hasSelection) stateDescription = textSelected }
             .pointerInput(state) {
                 detectTapGestures(
                     onTap = {

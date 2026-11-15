@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.time.DateTimeException
 import java.time.OffsetDateTime
@@ -35,18 +36,20 @@ import uniffi.specto_ffi.PageSize
 fun PropertiesDialog(state: PdfViewState, name: String, bytes: Long, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val rows = remember(state) {
+        val texts = context.resources.texts()
         propertyRows(
             name = name,
             info = state.info(),
             pageCount = state.pageCount,
-            pageSize = pageSizesText(state.pageSizes),
+            pageSize = pageSizesText(state.pageSizes, texts),
             fileSize = Formatter.formatShortFileSize(context, bytes),
+            texts = texts,
             date = ::documentDate,
         )
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Properties") },
+        title = { Text(stringResource(R.string.menu_properties)) },
         text = {
             SelectionContainer {
                 Column(
@@ -66,7 +69,7 @@ fun PropertiesDialog(state: PdfViewState, name: String, bytes: Long, onDismiss: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
     )
 }
 
@@ -81,22 +84,23 @@ internal fun propertyRows(
     pageCount: Int,
     pageSize: String?,
     fileSize: String,
+    texts: Texts,
     date: (String) -> String,
 ): List<Pair<String, String>> = listOfNotNull(
-    "File name" to name,
-    info.title?.let { "Title" to it },
-    info.author?.let { "Author" to it },
-    info.subject?.let { "Subject" to it },
-    info.keywords?.let { "Keywords" to it },
-    info.creator?.let { "Created with" to it },
-    info.producer?.let { "PDF producer" to it },
-    info.created?.let { "Created" to date(it) },
-    info.modified?.let { "Modified" to date(it) },
-    "Pages" to pageCount.toString(),
-    pageSize?.let { "Page size" to it },
-    "File size" to fileSize,
-    "PDF version" to info.pdfVersion,
-)
+    R.string.property_file_name to name,
+    info.title?.let { R.string.property_title to it },
+    info.author?.let { R.string.property_author to it },
+    info.subject?.let { R.string.property_subject to it },
+    info.keywords?.let { R.string.property_keywords to it },
+    info.creator?.let { R.string.property_creator to it },
+    info.producer?.let { R.string.property_producer to it },
+    info.created?.let { R.string.property_created to date(it) },
+    info.modified?.let { R.string.property_modified to date(it) },
+    R.string.property_pages to pageCount.toString(),
+    pageSize?.let { R.string.property_page_size to it },
+    R.string.property_file_size to fileSize,
+    R.string.property_pdf_version to info.pdfVersion,
+).map { (label, value) -> texts.get(label) to value }
 
 /**
  * A date from a document (ISO 8601 with an offset), on the reader's clock
@@ -136,29 +140,30 @@ private const val PAPER_TOLERANCE = 2f
  * landscape)", or just "152 × 229 mm" for a size without a name. Width
  * first; [width] and [height] are in points.
  */
-internal fun pageSizeText(width: Float, height: Float): String {
+internal fun pageSizeText(width: Float, height: Float, texts: Texts): String {
     val (short, long) = if (width <= height) width to height else height to width
     val paper = PAPER_SIZES.firstOrNull {
         abs(it.short - short) <= PAPER_TOLERANCE && abs(it.long - long) <= PAPER_TOLERANCE
     }
     val size = if (paper?.inches == true) {
         fun inches(points: Float) = "%.2f".format(Locale.ROOT, points / 72).trimEnd('0').trimEnd('.')
-        "${inches(width)} × ${inches(height)} in"
+        texts.get(R.string.page_size_in, inches(width), inches(height))
     } else {
         fun millimetres(points: Float) = (points / 72 * 25.4f).roundToInt()
-        "${millimetres(width)} × ${millimetres(height)} mm"
+        texts.get(R.string.page_size_mm, millimetres(width), millimetres(height))
     }
     val landscape = width > height
     return when {
-        paper != null && landscape -> "$size (${paper.name}, landscape)"
-        paper != null -> "$size (${paper.name})"
+        paper != null && landscape -> texts.get(R.string.page_size_named_landscape, size, paper.name)
+        paper != null -> texts.get(R.string.page_size_named, size, paper.name)
         else -> size
     }
 }
 
 /** The size of a document's pages: that of the first, with a note if others differ. */
-internal fun pageSizesText(sizes: List<PageSize>): String? {
+internal fun pageSizesText(sizes: List<PageSize>, texts: Texts): String? {
     val first = sizes.firstOrNull() ?: return null
     val same = sizes.all { abs(it.width - first.width) <= 1 && abs(it.height - first.height) <= 1 }
-    return pageSizeText(first.width, first.height) + if (same) "" else "; other pages differ"
+    val size = pageSizeText(first.width, first.height, texts)
+    return if (same) size else texts.get(R.string.page_size_others_differ, size)
 }

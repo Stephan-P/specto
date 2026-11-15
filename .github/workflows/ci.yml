@@ -92,7 +92,9 @@ jobs:
 
   android:
     # Builds the Android app (which cross-compiles the Rust library and
-    # generates its Kotlin bindings) and runs the Kotlin unit tests.
+    # generates its Kotlin bindings) and runs the Kotlin unit tests. The
+    # release build is built too: its code shrinking (R8) fails on classes
+    # it can't account for, which the debug build never shows.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,7 +118,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and unit tests
         working-directory: apps/android
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:assembleRelease
 
   android-ui:
     # The Android app's UI tests, on an emulator. Slow (the emulator renders

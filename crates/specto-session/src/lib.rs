@@ -338,6 +338,12 @@ impl SaveJob {
         specto_write::write(&self.sources(), &self.pages)
     }
 
+    /// The new file's bytes without the document's password protection:
+    /// for a print service, which can't be given a password.
+    pub fn write_unprotected(&self) -> Result<Vec<u8>, specto_write::WriteError> {
+        specto_write::write_unprotected(&self.sources(), &self.pages)
+    }
+
     /// Writes the new file to `path`, replacing it safely if it exists.
     pub fn save(&self, path: &std::path::Path) -> Result<(), specto_write::WriteError> {
         specto_write::save(path, &self.sources(), &self.pages)
