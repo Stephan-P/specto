@@ -194,7 +194,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [ ] **S** Signed APK/AAB (Android)
 - [x] **S** The app's name and application ID, settled before anything is published (Flathub ID, Android package name; both are painful to change later): "Specto", `net.xfbs.specto`. The crates (`specto-*`), the desktop program (`specto-gtk`), the `specto` dev tool and the `SPECTO_*` environment variables are named after it; only the repository is still called pdfrs. Android: `applicationId` and `namespace` in `apps/android/app/build.gradle.kts`, the Kotlin package (and with it the JNI function names in `crates/specto-ffi/src/jni.rs`), `app_name` in its `strings.xml`. Desktop: `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, the files in `apps/desktop/data` and `packaging/flatpak`, the ID in `tools/headless`. The desktop keeps its view state in `$XDG_STATE_HOME/specto`
 - [x] **S** Desktop integration files (`apps/desktop/data`): `.desktop` file with the PDF MIME type (so "Open with" lists the app), a placeholder icon, AppStream metainfo (screenshots, homepage and releases still missing)
-- [ ] **S** A real icon
+- [x] **S** A real icon: a page under a magnifying glass. Desktop: `apps/desktop/data/icons` (full colour and symbolic). Android: an adaptive icon with a themed (monochrome) layer in `res/drawable/ic_launcher_*.xml`, and the 512 px image for store listings in `apps/android/store`
 - [ ] **S** deb and rpm packages (`cargo-deb`, `cargo-generate-rpm`), with the files from `apps/desktop/data`; they need libadwaita 1.6 or newer from the distribution
 - [ ] **S** Desktop: an About dialog (version, licence, links), from the metainfo
 - [ ] **S–M** macOS app bundle: file association, Dock icon, bundled GTK

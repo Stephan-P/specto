@@ -10,7 +10,8 @@ In `apps/desktop/data/`, used by every Linux package:
 
 - `net.xfbs.specto.desktop`: the launcher entry, which also registers the app for PDF files ("Open With")
 - `net.xfbs.specto.metainfo.xml`: the description software centres show
-- `icons/net.xfbs.specto.svg`: the icon (a placeholder)
+- `icons/net.xfbs.specto.svg`: the icon
+- `icons/net.xfbs.specto-symbolic.svg`: its one-colour version, which GNOME uses where it draws small monochrome icons
 
 Check them with:
 
