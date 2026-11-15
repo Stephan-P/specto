@@ -816,3 +816,144 @@ fn drawing_with_the_pointer() {
     saved.close(&scheduler);
     session.close(&scheduler);
 }
+
+#[test]
+fn moving_and_resizing() {
+    use specto_annot::{AnnotKind, AnnotType, Appearance, Color};
+    use specto_doc::{AnnotId, Edit};
+    use specto_geom::ViewVector;
+    use specto_session::{DraftKind, Grip};
+
+    let red = Color::new(1.0, 0.0, 0.0);
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, book(1, "alpha"));
+    let at = |s: &Session, x, y| s.viewer.pdf_to_view(0, PdfPoint::new(x, y)).unwrap();
+    // How far a point of the page is on screen.
+    let unit = (at(&session, 1.0, 0.0) - at(&session, 0.0, 0.0)).length();
+    let draw = |s: &mut Session, kind, from: (f64, f64), to: (f64, f64)| {
+        assert!(s.begin_draft(kind, red, 2.0, at(s, from.0, from.1)));
+        s.extend_draft(at(s, to.0, to.1));
+        assert!(s.finish_draft());
+    };
+    draw(
+        &mut session,
+        DraftKind::Square,
+        (50.0, 50.0),
+        (100.0, 100.0),
+    );
+    draw(&mut session, DraftKind::Line, (20.0, 150.0), (120.0, 150.0));
+    let frame = |s: &mut Session, i: usize| s.annotations(0)[i].1.frame();
+
+    // Nothing to take hold of on the empty page; the rectangle is taken
+    // by its inside, and moved by as far as the pointer goes.
+    assert_eq!(session.grip_at(at(&session, 150.0, 250.0)), None);
+    let inside = at(&session, 75.0, 75.0);
+    assert_eq!(session.grip_at(inside), Some(Grip::Move));
+    assert!(session.begin_adjust(&scheduler, inside).unwrap());
+    assert!(session.is_adjusting() && session.picked.is_some());
+    session.adjust_to(inside + ViewVector::new(10.0 * unit, 0.0));
+    // Shown where it is going; the document has it where it was.
+    assert_eq!(frame(&mut session, 0).min.x, 50.0);
+    assert_eq!(session.picked_handles().len(), 4);
+    assert!(session.finish_adjust(&scheduler));
+    assert_eq!(
+        session.edit().undo_edit(),
+        Some(Edit::ChangeAnnotation(AnnotType::Square))
+    );
+    let f = frame(&mut session, 0);
+    assert!((f.min.x - 60.0).abs() < 1e-6 && (f.max.x - 110.0).abs() < 1e-6);
+    assert!((f.min.y - 50.0).abs() < 1e-6);
+
+    // Its top right corner dragged out: the corner across stays.
+    let corner = at(&session, 110.0, 100.0);
+    assert_eq!(session.grip_at(corner), Some(Grip::Corner(2)));
+    assert!(session.begin_adjust(&scheduler, corner).unwrap());
+    session.adjust_to(at(&session, 140.0, 130.0));
+    assert!(session.finish_adjust(&scheduler));
+    let f = frame(&mut session, 0);
+    assert!((f.min.x - 60.0).abs() < 1e-6 && (f.min.y - 50.0).abs() < 1e-6);
+    assert!((f.max.x - 140.0).abs() < 1e-6 && (f.max.y - 130.0).abs() < 1e-6);
+
+    // A drag that ends where it began changes nothing, and Escape gives
+    // one up.
+    assert!(
+        session
+            .begin_adjust(&scheduler, at(&session, 100.0, 90.0))
+            .unwrap()
+    );
+    assert!(!session.finish_adjust(&scheduler));
+    assert!(
+        session
+            .begin_adjust(&scheduler, at(&session, 100.0, 90.0))
+            .unwrap()
+    );
+    session.adjust_to(at(&session, 10.0, 10.0));
+    session.cancel_adjust(&scheduler);
+    assert!(!session.is_adjusting());
+    assert!((frame(&mut session, 0).min.x - 60.0).abs() < 1e-6);
+
+    // The line: taken on the line (it gets picked by that), and then by
+    // an end, which goes where the pointer does.
+    let on_line = at(&session, 70.0, 150.0);
+    assert_eq!(session.grip_at(on_line), Some(Grip::Move));
+    assert!(session.begin_adjust(&scheduler, on_line).unwrap());
+    assert!(!session.finish_adjust(&scheduler));
+    assert_eq!(session.picked_handles().len(), 2);
+    let end = at(&session, 120.0, 150.0);
+    assert_eq!(session.grip_at(end), Some(Grip::End(1)));
+    assert!(session.begin_adjust(&scheduler, end).unwrap());
+    session.adjust_to(at(&session, 150.0, 200.0));
+    assert!(session.finish_adjust(&scheduler));
+    let AnnotKind::Line { from, to } = session.annotations(0)[1].1.kind else {
+        panic!("not a line");
+    };
+    assert!((from - PdfPoint::new(20.0, 150.0)).length() < 1e-6);
+    assert!((to - PdfPoint::new(150.0, 200.0)).length() < 1e-6);
+    // Not beyond the page.
+    assert!(
+        session
+            .begin_adjust(&scheduler, at(&session, 150.0, 200.0))
+            .unwrap()
+    );
+    session.adjust_to(at(&session, 900.0, 900.0));
+    assert!(session.finish_adjust(&scheduler));
+    let AnnotKind::Line { to, .. } = session.annotations(0)[1].1.kind else {
+        panic!("not a line");
+    };
+    assert!((to - PdfPoint::new(200.0, 300.0)).length() < 1e-6, "{to:?}");
+
+    // Saved and opened again, they are the file's, drawn with the page,
+    // and still to be moved: the look in the file is known to be ours.
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    let (id, square) = saved.annotations(0)[0].clone();
+    assert!(matches!(id, AnnotId::File { .. }));
+    assert_eq!(square.appearance, Appearance::Own);
+    assert!(saved.overlay(0).is_empty());
+    let original = saved.viewer.pages()[0].doc;
+    let inside = saved
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(100.0, 90.0))
+        .unwrap();
+    assert!(saved.begin_adjust(&scheduler, inside).unwrap());
+    // Out of the page while it is dragged, and drawn over it instead.
+    assert_ne!(saved.viewer.pages()[0].doc, original);
+    assert_eq!(saved.overlay(0).len(), 1);
+    saved.adjust_to(inside + ViewVector::new(0.0, 20.0 * unit));
+    assert!(saved.finish_adjust(&scheduler));
+    assert_ne!(saved.viewer.pages()[0].doc, original);
+    assert!((saved.annotations(0)[0].1.frame().min.y - 30.0).abs() < 1e-3);
+    // Given up, it is back in the page as the file has it.
+    assert!(saved.undo(&scheduler).is_some());
+    assert_eq!(saved.viewer.pages()[0].doc, original);
+    let inside = saved
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(100.0, 90.0))
+        .unwrap();
+    assert!(saved.begin_adjust(&scheduler, inside).unwrap());
+    saved.cancel_adjust(&scheduler);
+    assert_eq!(saved.viewer.pages()[0].doc, original);
+    assert!(saved.overlay(0).is_empty());
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}

@@ -32,7 +32,7 @@ use specto_source::{Link, PageLabels, PdfData, SourceDocument, Target};
 use specto_text::SearchText;
 use specto_view::{Selection, Settings, ViewPage, Viewer};
 
-pub use annots::{DraftKind, ViewShape};
+pub use annots::{DraftKind, Grip, ViewShape};
 pub use search::{Indexed, SearchStatus};
 pub use text::TextLayer;
 
@@ -136,6 +136,12 @@ pub struct Session {
     variants: HashMap<FilePage, annots::Variant>,
     /// The annotation being drawn with the pointer, if any.
     draft: Option<annots::Draft>,
+    /// The annotation being moved or resized with the pointer, if any.
+    adjust: Option<annots::Adjust>,
+    /// An annotation of a file that is taken out of its page for the time
+    /// being, because it is being moved or resized: its page, and where
+    /// the file has it.
+    lifted: Option<(FilePage, specto_annot::Origin)>,
     /// The annotation that is picked (to delete it, later to change it),
     /// if any: the position of its page, and which it is (from
     /// [`annotation_at`](Self::annotation_at)).
@@ -171,6 +177,8 @@ impl Session {
             selection: None,
             variants,
             draft: None,
+            adjust: None,
+            lifted: None,
             picked: None,
             indexer: None,
             search: None,
@@ -627,6 +635,8 @@ impl Session {
         self.selection = None;
         self.picked = None;
         self.draft = None;
+        self.adjust = None;
+        self.lifted = None;
         self.search_again();
         true
     }

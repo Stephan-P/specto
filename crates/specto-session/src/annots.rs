@@ -44,7 +44,10 @@ type WrittenVariant = (FilePage, Vec<Origin>, Vec<u8>);
 /// Whether the frontend draws `annotation` (see the module documentation)
 /// rather than the renderer.
 fn floats(annotation: &Annotation) -> bool {
-    annotation.appearance != Appearance::Original && shapes(annotation).is_some()
+    matches!(
+        annotation.appearance,
+        Appearance::Missing | Appearance::Generated
+    ) && shapes(annotation).is_some()
 }
 
 /// A piece of an annotation's look where it is on screen, in viewport
@@ -71,6 +74,58 @@ pub enum ViewShape {
         stroke: Option<(Color, f64)>,
         opacity: f32,
     },
+}
+
+/// What of an annotation a drag takes hold of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grip {
+    /// The whole of it, to move it.
+    Move,
+    /// A corner of its frame (0 to 3, around it), to resize it: the corner
+    /// across stays where it is.
+    Corner(usize),
+    /// An end of a line (0 or 1), to put it elsewhere.
+    End(usize),
+}
+
+/// An annotation being moved or resized: the document has it as it was
+/// until the drag ends.
+#[derive(Clone, Debug)]
+pub(crate) struct Adjust {
+    id: AnnotId,
+    /// The position of its page.
+    position: usize,
+    grip: Grip,
+    /// Where on the page the drag started.
+    from: PdfPoint,
+    original: Arc<Annotation>,
+    /// As it would be if the drag ended now.
+    current: Annotation,
+}
+
+/// How near a handle the pointer must be to take it, in pixels.
+const GRIP_REACH: f64 = 9.0;
+
+/// The corners of `frame`, around it.
+fn corners(frame: PdfBox) -> [PdfPoint; 4] {
+    [
+        frame.min,
+        PdfPoint::new(frame.max.x, frame.min.y),
+        frame.max,
+        PdfPoint::new(frame.min.x, frame.max.y),
+    ]
+}
+
+/// The handles of `a`: the ends of a line, else the corners of its frame.
+fn grips(a: &Annotation) -> Vec<(Grip, PdfPoint)> {
+    match a.kind {
+        AnnotKind::Line { from, to } => vec![(Grip::End(0), from), (Grip::End(1), to)],
+        _ => corners(a.frame())
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| (Grip::Corner(i), c))
+            .collect(),
+    }
 }
 
 /// What a drag of the pointer draws.
@@ -174,6 +229,13 @@ impl Session {
             ..
         } = self.edit.annotation_changes(source, page);
         removed.extend(replaced.iter().filter(|(_, a)| floats(a)).map(|(o, _)| *o));
+        // And one that is being dragged about.
+        if let Some((lifted, origin)) = self.lifted
+            && lifted == (source, page)
+            && !removed.contains(&origin)
+        {
+            removed.push(origin);
+        }
         removed.sort_by_key(|o| o.index);
         removed
     }
@@ -221,6 +283,7 @@ impl Session {
             .edit
             .pages_with_changed_annotations()
             .into_iter()
+            .chain(self.lifted.map(|(page, _)| page))
             .map(|(source, page)| ((source, page), self.hidden(source, page)))
             .filter(|(_, hidden)| !hidden.is_empty())
             .collect();
@@ -267,12 +330,202 @@ impl Session {
             .filter(|d| d.position == position)
             .and_then(Draft::annotation)
             .map(Arc::new);
-        self.annotations(position)
+        // The one being moved or resized is drawn as it would become,
+        // whoever draws it otherwise.
+        let adjusted = self
+            .adjust
+            .as_ref()
+            .filter(|a| a.position == position)
+            .map(|a| (a.id, Arc::new(a.current.clone())));
+        let mut all: Vec<Arc<Annotation>> = self
+            .annotations(position)
             .into_iter()
-            .map(|(_, a)| a)
-            .filter(|a| a.flags.is_visible() && floats(a))
-            .chain(draft)
+            .filter(|(id, a)| {
+                adjusted.as_ref().is_some_and(|(i, _)| i == id)
+                    || (a.flags.is_visible() && floats(a))
+            })
+            .map(|(id, a)| match &adjusted {
+                Some((i, current)) if *i == id => current.clone(),
+                _ => a,
+            })
+            .collect();
+        all.extend(draft);
+        all
+    }
+
+    /// The annotation that could be moved or resized by a drag from `p`
+    /// (viewport coordinates), and what of it the drag would take hold of:
+    /// a handle of the picked one, the picked one itself, or another one
+    /// under `p` that can be moved.
+    fn grip_under(&mut self, p: ViewPoint) -> Option<(usize, AnnotId, Arc<Annotation>, Grip)> {
+        if let Some((position, id)) = self.picked
+            && let Some((_, a)) = self.picked_one()
+            && a.is_adjustable()
+        {
+            let near = grips(&a).into_iter().find(|(_, at)| {
+                self.viewer
+                    .pdf_to_view(position, *at)
+                    .is_some_and(|v| (v - p).length() <= GRIP_REACH)
+            });
+            if let Some((grip, _)) = near {
+                return Some((position, id, a, grip));
+            }
+        }
+        let (position, id) = self.annotation_at(p)?;
+        let (_, a) = self
+            .annotations(position)
+            .into_iter()
+            .find(|(i, _)| *i == id)?;
+        a.is_adjustable().then_some((position, id, a, Grip::Move))
+    }
+
+    /// What a drag from `p` would take hold of, if anything: for choosing
+    /// the pointer's shape, and whether a drag is to move something rather
+    /// than select text.
+    pub fn grip_at(&mut self, p: ViewPoint) -> Option<Grip> {
+        self.grip_under(p).map(|(_, _, _, grip)| grip)
+    }
+
+    /// Where the handles of the picked annotation are on screen, if it can
+    /// be resized.
+    pub fn picked_handles(&mut self) -> Vec<ViewPoint> {
+        let Some((position, _)) = self.picked else {
+            return Vec::new();
+        };
+        let Some((_, a)) = self.picked_one().filter(|(_, a)| a.is_adjustable()) else {
+            return Vec::new();
+        };
+        // While it is dragged, where it is now.
+        let shown = match &self.adjust {
+            Some(adjust) => grips(&adjust.current),
+            None => grips(&a),
+        };
+        shown
+            .into_iter()
+            .filter_map(|(_, at)| self.viewer.pdf_to_view(position, at))
             .collect()
+    }
+
+    /// Starts moving or resizing what [`grip_at`](Self::grip_at) finds at
+    /// `p`, which becomes the picked annotation. Returns whether there was
+    /// something. Follow with [`adjust_to`](Self::adjust_to) as the pointer
+    /// moves and [`finish_adjust`](Self::finish_adjust) when the button is
+    /// let go. Errors as
+    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
+    pub fn begin_adjust(
+        &mut self,
+        scheduler: &Scheduler,
+        p: ViewPoint,
+    ) -> Result<bool, WriteError> {
+        let Some((position, id, a, grip)) = self.grip_under(p) else {
+            return Ok(false);
+        };
+        let Some(from) = self.viewer.view_to_pdf(position, p) else {
+            return Ok(false);
+        };
+        // One the renderer draws must be out of the page while it is
+        // dragged about.
+        let ready = self.page_without(id, &a)?;
+        if let (Some((page, _, _)), Some(origin)) = (&ready, a.origin) {
+            self.lifted = Some((*page, origin));
+        }
+        self.picked = Some((position, id));
+        self.selection = None;
+        self.adjust = Some(Adjust {
+            id,
+            position,
+            grip,
+            from,
+            current: (*a).clone(),
+            original: a,
+        });
+        self.sync_variants_with(scheduler, ready);
+        Ok(true)
+    }
+
+    /// The pointer of a drag that moves or resizes is at `p` now. The
+    /// pointer counts as far as its page goes.
+    pub fn adjust_to(&mut self, p: ViewPoint) {
+        let Some(adjust) = self.adjust.as_mut() else {
+            return;
+        };
+        let (Some(page), Some(at)) = (
+            self.viewer.pages().get(adjust.position),
+            self.viewer.view_to_pdf(adjust.position, p),
+        ) else {
+            return;
+        };
+        let bounds = page.displayed().visible_box();
+        let at = PdfPoint::new(
+            at.x.clamp(bounds.min.x, bounds.max.x),
+            at.y.clamp(bounds.min.y, bounds.max.y),
+        );
+        let original = &adjust.original;
+        adjust.current = match adjust.grip {
+            Grip::Move => {
+                let by = at - adjust.from;
+                original.transformed(|q| q + by)
+            }
+            Grip::Corner(i) => {
+                let all = corners(original.frame());
+                let (held, fixed) = (all[i % 4], all[(i + 2) % 4]);
+                // A frame of no width (a straight stroke) keeps it.
+                let scale = |held: f64, fixed: f64, at: f64| {
+                    if (held - fixed).abs() > 1e-6 {
+                        (at - fixed) / (held - fixed)
+                    } else {
+                        1.0
+                    }
+                };
+                let (sx, sy) = (scale(held.x, fixed.x, at.x), scale(held.y, fixed.y, at.y));
+                original.transformed(|q| {
+                    PdfPoint::new(
+                        fixed.x + (q.x - fixed.x) * sx,
+                        fixed.y + (q.y - fixed.y) * sy,
+                    )
+                })
+            }
+            Grip::End(i) => {
+                let mut moved = (**original).clone();
+                if let AnnotKind::Line { from, to } = &mut moved.kind {
+                    *(if i == 0 { from } else { to }) = at;
+                }
+                // Through `transformed` for the area and the look.
+                moved.transformed(|q| q)
+            }
+        };
+    }
+
+    /// Whether something is being moved or resized.
+    pub fn is_adjusting(&self) -> bool {
+        self.adjust.is_some()
+    }
+
+    /// Gives up moving or resizing: the annotation is as it was.
+    pub fn cancel_adjust(&mut self, scheduler: &Scheduler) {
+        self.adjust = None;
+        self.lifted = None;
+        self.sync_variants(scheduler);
+    }
+
+    /// The drag has ended: the annotation stays as it is now. Returns
+    /// whether it changed.
+    pub fn finish_adjust(&mut self, scheduler: &Scheduler) -> bool {
+        let Some(adjust) = self.adjust.take() else {
+            return false;
+        };
+        let mut changed = false;
+        let moved = adjust.current.kind != adjust.original.kind
+            || adjust.current.rect != adjust.original.rect;
+        if moved {
+            let mut a = adjust.current;
+            a.modified = Some(now());
+            changed = self.edit.change_annotation(adjust.id, a);
+        }
+        // The edit keeps it out of the page from here on, or nothing does.
+        self.lifted = None;
+        self.sync_variants(scheduler);
+        changed
     }
 
     /// Starts drawing at `p` (viewport coordinates) with a pen of
@@ -477,8 +730,12 @@ impl Session {
     /// the position of its page.
     pub fn picked_outline(&mut self) -> Option<(usize, [ViewPoint; 4])> {
         let (position, _) = self.picked?;
-        let (_, a) = self.picked_one()?;
-        let r = a.rect;
+        let (id, a) = self.picked_one()?;
+        // While it is dragged about, where it is now.
+        let r = match &self.adjust {
+            Some(adjust) if adjust.id == id => adjust.current.rect,
+            _ => a.rect,
+        };
         let at = |x, y| self.viewer.pdf_to_view(position, (x, y).into());
         Some((
             position,
@@ -544,15 +801,13 @@ impl Session {
         let Some((id, a)) = self.picked_one() else {
             return Ok(false);
         };
-        if a.color == Some(color) || shapes(&a).is_none() {
+        if a.color == Some(color) {
             return Ok(false);
         }
-        // One of a file that has its own look is only redrawn from its
-        // values where those say all there is to it: text markup. A line
-        // can have arrowheads and a rectangle a dashed border, which
-        // drawing them anew here would lose.
-        let own_look = matches!(id, AnnotId::File { .. }) && a.appearance == Appearance::Original;
-        if own_look && !matches!(a.kind, AnnotKind::TextMarkup { .. }) {
+        // Not one whose look in the file may hold more than its values
+        // say: a line can have arrowheads and a rectangle a dashed border,
+        // which drawing them anew here would lose.
+        if !a.is_redrawable() {
             return Ok(false);
         }
         let ready = self.page_without(id, &a)?;

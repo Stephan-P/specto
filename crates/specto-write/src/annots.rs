@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream, dictionary};
-use specto_annot::{AnnotKind, Annotation, Appearance, Color, MarkupStyle, appearance};
+use specto_annot::{AnnotKind, Annotation, Appearance, Color, MarkupStyle, appearance, look_mark};
 use specto_doc::PageAnnotChanges;
 
 use crate::{WriteError, text_string};
@@ -244,6 +244,9 @@ fn dictionary_of(
                     ],
                     "Resources" => dictionary! { "ExtGState" => states },
                 };
+                // Marked as written here, so that it can be made anew
+                // another day without wondering what else it drew.
+                d.set("SpectoLook", look_mark(&ap.content));
                 let id = doc.add_object(Stream::new(form, ap.content));
                 d.set("AP", dictionary! { "N" => id });
                 d.remove(b"AS");
@@ -251,6 +254,7 @@ fn dictionary_of(
             None => {
                 d.remove(b"AP");
                 d.remove(b"AS");
+                d.remove(b"SpectoLook");
             }
         }
     }

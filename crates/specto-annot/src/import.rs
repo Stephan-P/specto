@@ -2,11 +2,11 @@
 
 use specto_geom::{PdfBox, PdfPoint, PdfQuad};
 use specto_source::hayro_syntax::object::{
-    Array, Dict, MaybeRef, Name, Object, String as PdfString,
+    Array, Dict, MaybeRef, Name, Object, Stream, String as PdfString,
 };
 use specto_source::{Date, SourceDocument, decode_text};
 
-use crate::{AnnotKind, Annotation, Appearance, Color, Flags, MarkupStyle, Origin};
+use crate::{AnnotKind, Annotation, Appearance, Color, Flags, MarkupStyle, Origin, look_mark};
 
 /// Entries of a page's `/Annots` beyond this many are ignored, as are
 /// quads, strokes and points of one annotation: a guard against broken
@@ -110,19 +110,31 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
         name: text(b"NM"),
         flags: Flags(dict.get::<u32>(b"F").unwrap_or(0)),
         origin: Some(origin),
-        appearance: if has_appearance(dict) {
-            Appearance::Original
-        } else {
-            Appearance::Missing
-        },
+        appearance: appearance_of(dict),
     })
 }
 
-/// Whether the annotation has a normal appearance (`/AP /N`): a stream, or
-/// a dictionary of them by state.
-fn has_appearance(dict: &Dict<'_>) -> bool {
-    dict.get::<Dict<'_>>(b"AP")
-        .is_some_and(|ap| ap.contains_key(b"N"))
+/// What the file gives the annotation as its normal appearance (`/AP
+/// /N`): nothing, a look written here (the stream is the one `/SpectoLook`
+/// marks, see [`look_mark`]), or one of unknown making. A dictionary of
+/// looks by state is never one of ours.
+fn appearance_of(dict: &Dict<'_>) -> Appearance {
+    let Some(ap) = dict.get::<Dict<'_>>(b"AP") else {
+        return Appearance::Missing;
+    };
+    if !ap.contains_key(b"N") {
+        return Appearance::Missing;
+    }
+    let ours = (|| {
+        let mark = dict.get::<i64>(b"SpectoLook")?;
+        let content = ap.get::<Stream<'_>>(b"N")?.decoded().ok()?;
+        Some(look_mark(&content) == mark)
+    })();
+    if ours == Some(true) {
+        Appearance::Own
+    } else {
+        Appearance::Original
+    }
 }
 
 /// The finite numbers of the array at `key`, up to a limit.

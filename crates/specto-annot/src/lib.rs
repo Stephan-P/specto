@@ -22,7 +22,9 @@ use specto_geom::{PdfBox, PdfPoint, PdfQuad};
 pub use specto_source::Date;
 
 pub use import::import;
-pub use shapes::{AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, shapes};
+pub use shapes::{
+    AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, look_mark, shapes,
+};
 
 /// A colour as PDF annotations have it: red, green and blue, each 0 to 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -175,8 +177,14 @@ pub struct Origin {
 /// How an annotation gets its look.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Appearance {
-    /// As the file draws it (its `/AP` stream), untouched.
+    /// As the file draws it (its `/AP` stream), untouched. What exactly
+    /// that draws isn't known: it may be more than the annotation's values
+    /// say (arrowheads, a dashed border).
     Original,
+    /// As the file draws it, and that is a look written from
+    /// [`appearance`] for these very values (see [`look_mark`]): drawing it
+    /// anew after a change loses nothing.
+    Own,
     /// The file gives none; it is drawn from the annotation's parameters.
     Missing,
     /// Made or changed here: drawn from the parameters, and an appearance
@@ -243,6 +251,83 @@ impl Annotation {
 
     pub fn annot_type(&self) -> AnnotType {
         self.kind.annot_type()
+    }
+
+    /// Whether the annotation is drawn from its values alone, so that it
+    /// can be changed and drawn anew: one made or changed here, or one a
+    /// file has no look or only a look written here for. Text markup always
+    /// is: its values say all there is to it.
+    pub fn is_redrawable(&self) -> bool {
+        shapes(self).is_some()
+            && (self.appearance != Appearance::Original
+                || matches!(self.kind, AnnotKind::TextMarkup { .. }))
+    }
+
+    /// Whether the annotation can be moved and resized: a drawing or a
+    /// shape (text markup belongs to its text) that is
+    /// [redrawable](Self::is_redrawable).
+    pub fn is_adjustable(&self) -> bool {
+        matches!(
+            self.kind,
+            AnnotKind::Ink { .. }
+                | AnnotKind::Square { .. }
+                | AnnotKind::Circle { .. }
+                | AnnotKind::Line { .. }
+        ) && self.is_redrawable()
+    }
+
+    /// The box of what the annotation draws, without the width of its
+    /// line: the corners a rectangle was dragged between, the points of a
+    /// stroke. This is what handles for resizing sit on.
+    pub fn frame(&self) -> PdfBox {
+        match &self.kind {
+            AnnotKind::Ink { strokes } => PdfBox::from_points(strokes.iter().flatten()),
+            AnnotKind::Line { from, to } => PdfBox::from_points([*from, *to]),
+            AnnotKind::Square { .. } | AnnotKind::Circle { .. } => {
+                let inset = (self.line_width / 2.0)
+                    .min(self.rect.width() / 2.0)
+                    .min(self.rect.height() / 2.0)
+                    .max(0.0);
+                self.rect.inflate(-inset, -inset)
+            }
+            _ => self.rect,
+        }
+    }
+
+    /// The annotation with every point of it put through `f`, which moves
+    /// or scales but doesn't turn: for moving and resizing a drawing or a
+    /// shape. Its look is to be made anew.
+    pub fn transformed(&self, f: impl Fn(PdfPoint) -> PdfPoint) -> Self {
+        let mut a = self.clone();
+        let half = self.line_width / 2.0;
+        let frame = self.frame();
+        let around = |points: &[PdfPoint]| PdfBox::from_points(points).inflate(half, half);
+        match &mut a.kind {
+            AnnotKind::Ink { strokes } => {
+                for p in strokes.iter_mut().flatten() {
+                    *p = f(*p);
+                }
+                let all: Vec<PdfPoint> = strokes.iter().flatten().copied().collect();
+                a.rect = around(&all);
+            }
+            AnnotKind::Line { from, to } => {
+                (*from, *to) = (f(*from), f(*to));
+                a.rect = around(&[*from, *to]);
+            }
+            AnnotKind::TextMarkup { quads, .. } => {
+                for q in quads.iter_mut() {
+                    q.points = q.points.map(&f);
+                }
+                a.rect = quads
+                    .iter()
+                    .map(PdfQuad::bounds)
+                    .reduce(|x, y| x.union(&y))
+                    .unwrap_or(a.rect);
+            }
+            _ => a.rect = around(&[f(frame.min), f(frame.max)]),
+        }
+        a.appearance = Appearance::Generated;
+        a
     }
 
     /// How near a line a point must be to count as on it: half the line's

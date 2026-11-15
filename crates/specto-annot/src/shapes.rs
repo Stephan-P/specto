@@ -334,7 +334,10 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
             Shape::Path {
                 path, fill, stroke, ..
             } => {
-                let margin = stroke.map_or(0.0, |(_, width)| width);
+                // A round pen reaches half its width beyond the outline, no
+                // further: the area of a rectangle or ellipse must come out
+                // as it went in, or it would grow with every save.
+                let margin = stroke.map_or(0.0, |(_, width)| width / 2.0);
                 grow(PdfBox::from_points(path.points()).inflate(margin, margin));
                 if let Some(fill) = fill {
                     content.push_str(&format!("{} rg\n", rgb(*fill)));
@@ -369,6 +372,21 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
         content: content.into_bytes(),
         states,
     })
+}
+
+/// A number that says "this appearance stream was written here": kept in
+/// the annotation (`/SpectoLook`) next to the stream, and compared with the
+/// stream when the file is read. As long as they agree, the look is the
+/// one [`appearance`] made, and nothing is lost by making it anew. Another
+/// program that changes the look changes the stream, and the two no longer
+/// agree. (FNV-1a over the stream's content.)
+pub fn look_mark(content: &[u8]) -> i64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in content {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash as i64
 }
 
 /// A number as content streams want it: no exponent, no needless digits.

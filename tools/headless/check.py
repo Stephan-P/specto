@@ -70,7 +70,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   is picked recolours it; closing the bar lets go of the tool
 - draw_tools: the pen, rectangle, ellipse and line tools draw where the
   pointer is dragged, also over text, each in its colour; a click draws no
-  shape; a line is picked near it only; saved, they're in the file and shown
+  shape; a line is picked near it only; a drag moves a shape and a handle
+  resizes it, Escape gives that up; saved, they're in the file and shown,
+  and move as before
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1094,16 +1096,55 @@ def test_draw_tools(ctx):
     w.wait("the line gone", lambda s: s["annotations"] == 4)
     w.action("undo")
     w.wait("the line back", lambda s: s["annotations"] == 5)
+    # A drag from inside the rectangle moves it (60 to the right), without
+    # picking it first; it is picked then, and the pointer says "move".
+    inp.keys(Input.ESCAPE)
+    w.wait("nothing picked", lambda s: not s["annotation_picked"])
+    inp.drag(at(150, 440), at(210, 440))
+    s = w.wait("the rectangle moved", lambda s: s["undo"] == "Change Square")
+    check(s["annotation_picked"] and s["annotations"] == 5 and s["selection"] == "", s)
+    check(blue(pixel(w, "moved", *at(210, 480))), "the rectangle isn't where it was moved to")
+    check(not blue(pixel(w, "moved-from", *at(110, 480))), "the rectangle is still where it was")
+    inp.move(*at(210, 440))
+    check(w.pointer_at(*at(210, 440))["cursor"] == "move", "no move cursor on the picked rectangle")
+    # Its lower right corner dragged down: its top stays, its bottom goes.
+    inp.drag(at(260, 400), at(260, 360))
+    w.wait("the rectangle resized", lambda s: s["annotations"] == 5 and not s["saving"])
+    time.sleep(0.3)
+    check(blue(pixel(w, "resized", *at(210, 360))), "the bottom didn't follow the corner")
+    check(blue(pixel(w, "resized-top", *at(210, 480))), "the top moved too")
+    check(not blue(pixel(w, "resized-old", *at(210, 400))), "the old bottom is still drawn")
+    # Escape during a drag puts it back.
+    inp.drag(at(210, 420), at(300, 420), release=False)
+    inp.keys(Input.ESCAPE)
+    inp.button(False)
+    time.sleep(0.3)
+    check(blue(pixel(w, "given-up", *at(210, 480))), "Escape didn't put the rectangle back")
     # Saved and opened again: all there, drawn with the page now.
     w.action("save")
     w.wait("the save", lambda s: not s["modified"] and not s["saving"])
     app.quit()
-    w = ctx.app([path]).window()
+    app = ctx.app([path])
+    w = app.window()
     s = w.settled()
     w.maximize()
     check(s["annotations"] == 5 and not s["modified"], s)
     check(red(pixel(w, "reopened", *w.screen(0, 180, 520))), "the saved stroke isn't shown")
-    check(blue(pixel(w, "reopened-rectangle", *w.screen(0, 150, 480))), "the saved rectangle isn't shown")
+    at = lambda x, y: w.screen(0, x, y)
+    check(blue(pixel(w, "reopened-rectangle", *at(210, 480))), "the saved rectangle isn't shown")
+    # Now that the file has it, the rectangle moves just the same, and
+    # nothing is left where it was.
+    inp = ctx.input().attach(w)
+    inp.drag(at(210, 420), at(310, 420))
+    s = w.wait("the saved rectangle moved", lambda s: s["undo"] == "Change Square")
+    w.settled()
+    check(blue(pixel(w, "file-moved", *at(310, 480))), "the saved rectangle didn't move")
+    check(not blue(pixel(w, "file-moved-from", *at(180, 480))), "the saved rectangle is still drawn where it was")
+    w.action("undo")
+    w.wait("moved back", lambda s: not s["modified"])
+    w.settled()
+    check(blue(pixel(w, "file-back", *at(210, 480))), "undo didn't put the saved rectangle back")
+    check(not blue(pixel(w, "file-back-from", *at(350, 480))), "undo left the moved rectangle")
 
 
 def test_select_words_and_lines(ctx):

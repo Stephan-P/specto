@@ -246,7 +246,8 @@ fn new_markup_is_saved_and_shows() {
         h.modified.map(|d| d.to_string()).as_deref(),
         Some("2026-11-15T19:00:00+01:00")
     );
-    assert_eq!(h.appearance, Appearance::Original);
+    // Recognised as a look written here.
+    assert_eq!(h.appearance, Appearance::Own);
     assert!(h.flags.is_visible());
     assert_eq!(
         h.rect,
@@ -631,8 +632,12 @@ fn drawings_and_shapes_are_saved_and_show() {
     assert_eq!(annots[0].line_width, 4.0);
     assert_eq!(annots[0].color, Some(RED));
     assert_eq!(annots[1].kind, AnnotKind::Square { fill: Some(green) });
+    // Its area as it went in: it doesn't grow with every save.
+    assert_eq!(annots[1].rect, area(300.0, 100.0, 400.0, 200.0));
+    assert_eq!(annots[2].rect, area(300.0, 300.0, 500.0, 400.0));
     assert_eq!(annots[3].kind, AnnotKind::Line { from, to });
-    assert!(annots.iter().all(|a| a.appearance == Appearance::Original));
+    assert!(annots.iter().all(|a| a.appearance == Appearance::Own));
+    assert!(annots.iter().all(|a| a.is_adjustable()));
 
     let at = |x, y| pixel(&out, None, 1, x, y, true);
     let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;

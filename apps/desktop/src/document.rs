@@ -254,6 +254,30 @@ impl Document {
         Ok(changed)
     }
 
+    /// Starts moving or resizing the annotation at `p` (see the session's
+    /// function of this name). `false` also if its page can't be shown
+    /// without it.
+    pub fn begin_adjust(&mut self, p: specto_geom::ViewPoint) -> bool {
+        let began = self.session.begin_adjust(scheduler(), p).unwrap_or(false);
+        if began {
+            self.pages_changed();
+        }
+        began
+    }
+
+    /// Ends moving or resizing; returns whether the annotation changed.
+    pub fn finish_adjust(&mut self) -> bool {
+        let changed = self.session.finish_adjust(scheduler());
+        self.pages_changed();
+        changed
+    }
+
+    /// Gives up moving or resizing.
+    pub fn cancel_adjust(&mut self) {
+        self.session.cancel_adjust(scheduler());
+        self.pages_changed();
+    }
+
     pub fn undo(&mut self) -> Option<Edit> {
         let edit = self.session.undo(scheduler())?;
         self.pages_changed();

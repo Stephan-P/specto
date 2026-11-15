@@ -16,7 +16,7 @@ use specto_view::{
 use crate::document::SharedDocument;
 use specto_annot::Segment;
 use specto_doc::SourceId;
-use specto_session::{DraftKind, ViewShape};
+use specto_session::{DraftKind, Grip, ViewShape};
 
 /// Dragging a selection this close to the top or bottom edge (logical px)
 /// scrolls the view.
@@ -51,6 +51,9 @@ mod imp {
         /// What a drag draws instead of selecting text, if a drawing tool
         /// is in use: what, its colour and the width of its line in points.
         pub draw_tool: Cell<Option<(DraftKind, specto_annot::Color, f64)>>,
+        /// A press was on an annotation that can be moved or resized: once
+        /// the pointer has moved far enough, the drag does that.
+        pub may_adjust: Cell<bool>,
         /// Called with a link's URI; the window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links,
@@ -89,6 +92,7 @@ mod imp {
                 on_picked: RefCell::default(),
                 on_drawn: RefCell::default(),
                 draw_tool: Cell::default(),
+                may_adjust: Cell::default(),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -331,6 +335,22 @@ impl Canvas {
             .is_some_and(|d| d.borrow().is_drafting())
     }
 
+    /// Whether the pointer is moving or resizing an annotation.
+    fn is_adjusting(&self) -> bool {
+        self.imp()
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| d.borrow().is_adjusting())
+    }
+
+    /// What a drag from here would take hold of (see `Session::grip_at`).
+    fn grip_at(&self, x: f64, y: f64) -> Option<Grip> {
+        let doc = self.imp().document.borrow().clone()?;
+        let mut d = doc.borrow_mut();
+        d.grip_at(ViewPoint::new(x, y))
+    }
+
     /// Applies `f` to the document, then redraws.
     fn draft<R: Default>(&self, f: impl FnOnce(&mut crate::document::Document) -> R) -> R {
         let Some(doc) = self.imp().document.borrow().clone() else {
@@ -465,13 +485,19 @@ impl Canvas {
         );
         let builder = gsk::PathBuilder::new();
         builder.add_rounded_rect(&gsk::RoundedRect::from_rect(frame, 3.0));
+        let accent = adw::StyleManager::default().accent_color_rgba();
         snapshot.push_clip(&logical(page.rect, scale));
-        snapshot.append_stroke(
-            &builder.to_path(),
-            &gsk::Stroke::new(1.5),
-            &adw::StyleManager::default().accent_color_rgba(),
-        );
+        snapshot.append_stroke(&builder.to_path(), &gsk::Stroke::new(1.5), &accent);
         snapshot.pop();
+        // Handles to resize it by, where it can be: over the page's edge
+        // too, so one at the edge can be taken.
+        for handle in d.picked_handles() {
+            let dot = gsk::PathBuilder::new();
+            dot.add_circle(&graphene::Point::new(handle.x as f32, handle.y as f32), 4.5);
+            let dot = dot.to_path();
+            snapshot.append_fill(&dot, gsk::FillRule::Winding, &gdk::RGBA::WHITE);
+            snapshot.append_stroke(&dot, &gsk::Stroke::new(1.5), &accent);
+        }
     }
 
     /// Picks the annotation under the pointer, or none. Returns whether
@@ -644,6 +670,11 @@ impl Canvas {
         let p = ViewPoint::new(x, y);
         let name = if self.imp().draw_tool.get().is_some() {
             Some("crosshair")
+        } else if let Some(grip) = self.grip_at(x, y) {
+            Some(match grip {
+                Grip::Move => "move",
+                Grip::Corner(_) | Grip::End(_) => "crosshair",
+            })
         } else if self.link_at(x, y).is_some() {
             Some("pointer")
         } else {
@@ -816,7 +847,11 @@ impl Canvas {
         let this = self.downgrade();
         click.connect_released(move |g, n_press, x, y| {
             let Some(c) = this.upgrade() else { return };
-            if n_press != 1 || c.imp().selecting.get() || c.imp().draw_tool.get().is_some() {
+            if n_press != 1
+                || c.imp().selecting.get()
+                || c.imp().draw_tool.get().is_some()
+                || c.is_adjusting()
+            {
                 return;
             }
             if let Some((source, target)) = c.link_at(x, y) {
@@ -846,7 +881,12 @@ impl Canvas {
                 if c.draft(|d| d.begin_draft(kind, color, width, p)) {
                     g.set_state(gtk::EventSequenceState::Claimed);
                 }
+                return;
             }
+            // On a drawing or a shape, or a handle of the picked one: a
+            // drag from here moves or resizes it.
+            let on_one = c.grip_at(x, y).is_some();
+            c.imp().may_adjust.set(on_one);
         });
         let this = self.downgrade();
         drag.connect_drag_update(move |g, dx, dy| {
@@ -860,6 +900,25 @@ impl Canvas {
             if imp.draw_tool.get().is_some() {
                 c.draft(|d| d.extend_draft(ViewPoint::new(x, y)));
                 return;
+            }
+            if c.is_adjusting() {
+                c.draft(|d| d.adjust_to(ViewPoint::new(x, y)));
+                return;
+            }
+            if imp.may_adjust.get() {
+                let threshold =
+                    gtk::Settings::default().map_or(8, |s| s.gtk_dnd_drag_threshold()) as f64;
+                if dx.hypot(dy) < threshold {
+                    return;
+                }
+                imp.may_adjust.set(false);
+                // From where the press was, so that it doesn't jump.
+                if c.draft(|d| d.begin_adjust(ViewPoint::new(x0, y0))) {
+                    g.set_state(gtk::EventSequenceState::Claimed);
+                    c.picked_changed();
+                    c.draft(|d| d.adjust_to(ViewPoint::new(x, y)));
+                    return;
+                }
             }
             if !imp.selecting.get() {
                 let threshold =
@@ -885,10 +944,20 @@ impl Canvas {
             let Some(c) = this.upgrade() else { return };
             let imp = c.imp();
             imp.drag_start.set(None);
+            imp.may_adjust.set(false);
             if c.is_drafting() {
                 if c.draft(|d| d.finish_draft())
                     && let Some(cb) = imp.on_drawn.borrow().as_ref()
                 {
+                    cb();
+                }
+                return;
+            }
+            if c.is_adjusting() {
+                c.draft(|d| d.finish_adjust());
+                // Also when nothing changed: what the page is drawn from
+                // went there and back.
+                if let Some(cb) = imp.on_drawn.borrow().as_ref() {
                     cb();
                 }
                 return;
@@ -985,6 +1054,13 @@ impl Canvas {
             }
             if key == gdk::Key::Escape && c.is_drafting() {
                 c.draft(|d| d.cancel_draft());
+                return glib::Propagation::Stop;
+            }
+            if key == gdk::Key::Escape && c.is_adjusting() {
+                c.draft(|d| d.cancel_adjust());
+                if let Some(cb) = c.imp().on_drawn.borrow().as_ref() {
+                    cb();
+                }
                 return glib::Propagation::Stop;
             }
             if key == gdk::Key::Escape && (c.unpick_annotation() || c.clear_selection()) {

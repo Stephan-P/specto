@@ -88,12 +88,14 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - A click on markup picks it (a frame shows around it); Delete or Backspace deletes it, Escape lets go of it. That goes for what the file already had too, of any kind (notes, text boxes, drawings, stamps), except what the file marks as locked or read-only
 - With markup picked, the bar shows its color, and choosing another recolors it. For markup the file already had this works for text markup only, because other kinds can have details (arrowheads, dashed borders) that redrawing would lose
 - Drawings and lines are picked by clicking on the line itself, shapes anywhere in their area
+- A drag on a drawing or a shape moves it, whether it was picked before or not. The picked one has handles: on the corners of its frame to resize it, or on the two ends of a line. Escape during a drag puts it back
+- Drawings and shapes saved by Specto can still be moved, resized and recolored after the file is opened again. Those from other programs can be deleted only
 - Undo and Redo cover markup like page edits, in the order things were done
 - Thumbnails and printed pages show markup as the page view does, saved or not
 - Thumbnails dragged to another window take their pages' markup along
 - Saved with the document as standard PDF annotations, which other programs show and can edit
 - Markup a file has without a ready-made look (some programs leave that out) is shown where it is text markup
-- Not yet: moving and resizing markup, line width, text boxes and notes
+- Not yet: line width, text boxes and notes
 
 ## Saving
 
