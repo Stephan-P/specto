@@ -1238,11 +1238,17 @@ def test_text_tools(ctx):
     w.settled()
     more = dark_pixels(w, "more-text", *area)
     check(more > one_line + 20, f"no more text on the page: {one_line} then {more}")
-    # Enter on a picked annotation does the same; this one is the note.
+    # A click on a note shows its text, to read or change; Enter on a
+    # picked annotation does the same.
     inp.click(*at(409, 491))
-    w.wait("the note picked", lambda s: s["annotation_text"] == "check this")
+    s = w.wait("the note's editor", lambda s: s["text_editor"])
+    check(s["annotation_text"] == "check this", s)
+    time.sleep(0.4)
+    inp.keys(Input.ESCAPE)
+    s = w.wait("closed", closed)
+    check(s["annotation_picked"] and s["annotation_text"] == "check this", s)
     inp.keys(Input.ENTER)
-    w.wait("the note's editor", lambda s: s["text_editor"])
+    w.wait("the note's editor again", lambda s: s["text_editor"])
     time.sleep(0.4)
     inp.keys(Input.ESCAPE)
     w.wait("closed", closed)

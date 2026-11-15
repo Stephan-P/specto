@@ -597,6 +597,15 @@ impl Canvas {
         }
     }
 
+    /// Whether the picked annotation is a note.
+    fn picked_is_note(&self) -> bool {
+        self.imp()
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| d.borrow_mut().picked_is_note())
+    }
+
     /// Lets go of the picked annotation. Returns whether there was one.
     pub fn unpick_annotation(&self) -> bool {
         let Some(doc) = self.imp().document.borrow().clone() else {
@@ -890,6 +899,24 @@ impl Canvas {
     }
 
     fn setup_input(&self) {
+        // Resting on a note, or anything with a comment, shows its text.
+        self.set_has_tooltip(true);
+        self.connect_query_tooltip(|c, x, y, _keyboard, tooltip| {
+            let Some(doc) = c.imp().document.borrow().clone() else {
+                return false;
+            };
+            let hint = doc
+                .borrow_mut()
+                .hint_at(ViewPoint::new(f64::from(x), f64::from(y)));
+            match hint {
+                Some(text) => {
+                    tooltip.set_text(Some(&text));
+                    true
+                }
+                None => false,
+            }
+        });
+
         let motion = gtk::EventControllerMotion::new();
         let this = self.downgrade();
         motion.connect_motion(move |_, x, y| {
@@ -950,8 +977,14 @@ impl Canvas {
                 c.follow(source, &target);
                 return;
             }
-            // A click on an annotation picks it, and one elsewhere lets go.
-            c.pick_annotation(x, y);
+            // A click on an annotation picks it, and one elsewhere lets go. A note shows its
+            // text for that, as its mark says nothing.
+            if c.pick_annotation(x, y)
+                && c.picked_is_note()
+                && let Some(cb) = c.imp().on_edit_text.borrow().as_ref()
+            {
+                cb();
+            }
         });
         self.add_controller(click);
 

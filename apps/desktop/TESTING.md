@@ -366,8 +366,10 @@ Saving, printing and other windows:
   when the text controls appear.
 - Type umlauts, quotes and a euro sign: they show. Characters outside Western
   European (Greek, Cyrillic, CJK, emoji) show as question marks for now.
-- Note tool: click, type, close. The mark is where the click was. Enter on the
-  picked note shows its text again.
+- Note tool: click, type, close. The mark is where the click was. Resting the
+  pointer on it shows its text as a tooltip, and a click opens the text again.
+  The editor is roomy enough for a few lines. Dragging a note still moves it
+  without opening it.
 - Pick a highlight and press Enter: a comment can be typed for it. It shows in
   other programs' annotation lists after saving.
 - Notes and comments still use the small editor, which points at the

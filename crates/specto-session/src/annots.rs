@@ -832,6 +832,35 @@ impl Session {
             .map(|(id, _)| (position, id))
     }
 
+    /// The text to show for the annotation under `p` (viewport
+    /// coordinates) when the pointer rests on it: what a note says, or the
+    /// comment on a drawing, a shape or anything of another program. Not
+    /// for marked text and text boxes, whose text is on the page.
+    pub fn hint_at(&mut self, p: ViewPoint) -> Option<String> {
+        let (position, id) = self.annotation_at(p)?;
+        let (_, a) = self
+            .annotations(position)
+            .into_iter()
+            .find(|(i, _)| *i == id)?;
+        if matches!(
+            a.kind,
+            AnnotKind::TextMarkup { .. } | AnnotKind::FreeText { .. }
+        ) {
+            return None;
+        }
+        a.contents.clone().filter(|t| !t.trim().is_empty())
+    }
+
+    /// Whether the picked annotation is a note: a mark whose text is read
+    /// elsewhere, made here or by another program.
+    pub fn picked_is_note(&mut self) -> bool {
+        self.picked_one().is_some_and(|(_, a)| match &a.kind {
+            AnnotKind::Note => true,
+            AnnotKind::Other { subtype } => subtype == "Text",
+            _ => false,
+        })
+    }
+
     /// The annotation that is picked, if it is still there.
     fn picked_one(&mut self) -> Option<(AnnotId, Arc<Annotation>)> {
         let (position, id) = self.picked?;

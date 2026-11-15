@@ -160,6 +160,9 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - A double click on a text box, or Enter with it picked, types into it again.
   On pages shown rotated, a small editor is used instead
 - Note tool: a click on the page puts a note there and asks for its text
+- A note shows its text when the pointer rests on it, and a click on it opens
+  the text to read or change. Comments on drawings, shapes and other programs'
+  annotations show on hover too
 - A double click on a text box or a note, or Enter with any markup picked,
   asks for its text again. For other markup that text is a comment, which other
   programs show in their annotation lists. A text box left empty is deleted

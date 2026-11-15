@@ -8,7 +8,7 @@
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here/.."
-# The functions of src/i18n.rs. Plain file order, so the template doesn't
+# The functions of src/i18n.rs, in every source file. Plain file order, so the template doesn't
 # change with the locale of whoever runs this.
 xgettext --language=Rust --from-code=UTF-8 --add-comments=Translators: --no-git \
     --keyword=gettext --keyword=gettext_f \
@@ -16,7 +16,7 @@ xgettext --language=Rust --from-code=UTF-8 --add-comments=Translators: --no-git 
     --package-name=specto --msgid-bugs-address=https://github.com/xfbs/specto/issues \
     --copyright-holder="The Specto contributors" \
     --output=po/specto.pot \
-    $(LC_ALL=C ls src/*.rs)
+    $(find src -name '*.rs' | LC_ALL=C sort)
 # Without the creation date, running this again changes nothing unless a
 # string did.
 sed -i.bak '/^"POT-Creation-Date: /d' po/specto.pot && rm po/specto.pot.bak
