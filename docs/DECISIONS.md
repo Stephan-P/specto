@@ -1,125 +1,234 @@
-# Technology decisions (draft)
+# Technology decisions
 
-Status legend: **Proposed** (recommendation, not validated), **Spike** (needs a prototype before deciding), **Decided**.
+The choices Specto is built on, with the alternatives that were considered. All
+of them were decided on 2026-11-14 unless a section says otherwise. The
+measurements they refer to are in [M0-FINDINGS.md](M0-FINDINGS.md).
 
-## D1: Rendering engine: `hayro` (Decided, 2026-11-14, after the M0 spike)
+## D1: Rendering engine
 
-| Option | Pros | Cons |
-|---|---|---|
-| **hayro** (pure Rust, LaurenzV) | No C deps, `forbid(unsafe)` core, modular (`hayro-syntax`, `hayro-interpret` with an abstract `Device`, `hayro` raster, `hayro-svg`), own JPEG2000/CCITT/Type1/CFF decoders, MIT/Apache | Still pre-1.0 and self-described as experimental. CPU-only. Performance on heavy pages is unknown. |
-| pdfium-render (PDFium bindings) | Battle-tested (Chromium), renders + forms + annotations | Must ship a PDFium binary per platform (incl. Android ABIs). C++ attack surface. Less control. |
-| mupdf bindings | Excellent quality and speed | **AGPL** (or commercial license). Viral for the whole app. |
-| pdf-rs/`pdf` + own renderer | Pure Rust | Far more work than hayro. |
+**Decision:** hayro, behind a trait of our own, so that the rest of the code
+never sees hayro's types.
 
-**Recommendation:** hayro behind the `Renderer` trait, with a `PdfiumRenderer` used in CI as a reference for render regression tests and kept as an emergency fallback. The `Device` abstraction in `hayro-interpret` is also exactly what we need for text extraction.
+The options were:
 
-**M0 result:** 1095 pdf.js test files, 0 crashes, median 2.8 ms per page at 2×. It decrypts encrypted files, and `RenderContent::PAGE` renders pages without annotations. Known gaps: knockout groups, transfer functions, and no cancellation. Details in [M0-FINDINGS.md](M0-FINDINGS.md).
+- **hayro**, in pure Rust. It has no C dependencies, a core without unsafe
+  code, and its own decoders for JPEG 2000, CCITT, Type 1 and CFF. It is split
+  into a parser, an interpreter with an abstract device, and a rasterizer. It
+  is licensed MIT or Apache. Against it: it is before 1.0, calls itself
+  experimental, and renders on the CPU only.
+- **PDFium**, through pdfium-render. It is battle-tested in Chromium and also
+  handles forms and annotations. Against it: a PDFium binary has to be shipped
+  for every platform, including each Android ABI, it brings C++ attack surface,
+  and it gives less control.
+- **mupdf**, through its bindings. Its quality and speed are excellent, but it
+  is licensed AGPL (or commercially), which would apply to the whole app.
+- **The pdf crate with a renderer of our own.** Pure Rust, but far more work
+  than hayro.
 
-## D2: PDF object model / writer: lopdf (Decided, 2026-11-14, after the M0 spike)
+The interpreter's device abstraction in hayro is also what text extraction
+needs.
 
-Rendering only needs read access. Editing and saving need a mutable object model and a writer.
+**Outcome:** on 1,095 pdf.js test files, hayro had no crashes and a median of
+2.8 ms per page at twice the size. It decrypts encrypted files and can render
+pages without their annotations. Known gaps are knockout groups, transfer
+functions, and that a render can't be cancelled. PDFium as a reference renderer
+in tests is still planned.
 
-| Option | Notes |
-|---|---|
-| **lopdf** | Mature pure-Rust read/write object model, widely used (also by form crates like `pdfer_forms`). Good for copying objects between documents and writing. |
-| hayro-syntax + own writer | One parser for everything, but we'd write the serializer (incl. xref streams, object streams, incremental updates) ourselves. |
-| pdf-writer (typst) | Excellent low-level *writer*, but no reader. Could be combined with hayro-syntax. |
+## D2: PDF object model and writer
 
-**Concern:** lopdf for editing + hayro-syntax for rendering means two parsers seeing the same file. That's acceptable because the edit model never re-parses (sources are immutable). But the two parsers may disagree on malformed files.
+**Decision:** lopdf in the write crate, for the object model and saving, with
+hayro for viewing.
 
-**Decision:** lopdf in `specto-write` for the object model and saving, with hayro for viewing. In M0, lopdf loaded 1092/1095 corpus files and passed every editing scenario (delete, merge, reorder, incremental annotation, encryption). Merging needs our own page-import code (renumber objects, push down inherited attributes), because lopdf has none. See [M0-FINDINGS.md](M0-FINDINGS.md).
+Rendering only needs to read. Editing and saving need an object model that can
+be changed, and a writer. The options were:
 
-**Since (M3):** the concern above came true in a few corpus files: lopdf drops streams without a valid `/Length`, decrypts per-stream `/Crypt` filters wrongly, and loses objects behind damaged cross-reference tables. `specto-write` now takes each stream's bytes from hayro where the two disagree, and reads every result back with hayro, refusing to save if any page differs from its source. A writer built entirely on hayro-syntax's reading (with pdf-writer for output) remains the fallback if lopdf's gaps grow.
+- **lopdf.** A mature object model in pure Rust for reading and writing, widely
+  used. It is good at copying objects between documents.
+- **hayro's parser with a writer of our own.** One parser for everything, but
+  we would write the serializer ourselves, including cross-reference streams,
+  object streams and incremental updates.
+- **pdf-writer**, from the Typst project. An excellent low-level writer, but it
+  has no reader. It could be combined with hayro's parser.
 
-## D3: Desktop UI toolkit: GTK4 + libadwaita (Decided, 2026-11-14)
+The concern with lopdf was that two parsers see the same file and may disagree
+on malformed ones.
 
-The desktop app targets **Linux only**. That removes gpui's main advantage (consistency across platforms), while GTK4 already has what a Preview-class app needs: print, DnD list/grid views, file dialogs via portals, stylus and touchpad gestures, accessibility. We give up idiomatic Rust ergonomics (GObject subclassing) and some rendering headroom. The comparison below is kept for reference.
+**Outcome:** lopdf loaded 1,092 of 1,095 corpus files and passed every editing
+scenario: delete, merge, reorder, incremental annotation, encryption. Merging
+needs page-import code of our own, because lopdf has none.
 
-| | GTK4 (+ libadwaita) via gtk-rs | gpui (Zed) |
-|---|---|---|
-| Maturity | Very mature, stable API | Pre-1.0, API changes with Zed's needs, versioning is tied to the Zed repo |
-| Widgets | Complete: sidebars, list views with DnD (page organizer), popovers, file chooser, **print dialog**, accessibility | Minimal built-in widgets; `gpui-component` (third-party) fills gaps. No print support. |
-| Custom canvas | `GtkSnapshot` + `GdkTexture`s, GPU-composited through GSK. Good enough for tiles. | Excellent: GPU-first, immediate-feeling, great for a fast scrolling canvas |
-| Rust ergonomics | GObject subclassing is verbose; `Rc<RefCell<…>>` everywhere | Idiomatic Rust, entity/context model |
-| Platforms | Linux great; macOS/Windows functional but look foreign | macOS + Linux good, Windows maturing |
-| Look | Native GNOME look | Custom look (whatever you design) |
+The concern came true in a few corpus files. lopdf drops streams without a
+valid length, decrypts some streams wrongly, and loses objects behind damaged
+cross-reference tables. The write crate now takes each stream's bytes from
+hayro where the two disagree, and reads every result back with hayro, refusing
+to save if any page differs from its source. A writer built on hayro's parser
+with pdf-writer remains the fallback if lopdf's gaps grow.
 
-Because `specto-view` is UI-agnostic, a later port (e.g. to gpui) would only replace `apps/desktop`. The M0 canvas spike measured about 55 fps during sustained fast scroll and zoom of a 384-page PDF, with negligible snapshot cost. See [M0-FINDINGS.md](M0-FINDINGS.md).
+## D3: Desktop UI toolkit
 
-## D4: Android UI: Kotlin + Jetpack Compose with Rust core via UniFFI (Proposed)
+**Decision:** GTK 4 with libadwaita.
 
-| Option | Notes |
-|---|---|
-| **Compose + UniFFI** | Native look, system file picker (SAF), stylus/palm rejection, IME, accessibility, Material components all work out of the box. Rust only renders and does logic. |
-| Slint / egui / Dioxus native | Single-language, but weaker on IME, accessibility, stylus input, and native feel. |
-| gpui-mobile | Third-party, 0.1.0, platform implementation "coming soon". Too early. |
-| Android's built-in `PdfRenderer` | Not our engine. No editing. Defeats the purpose. |
+The desktop app targets Linux first. That takes away gpui's main advantage,
+consistency across platforms, while GTK 4 already has what an app like Preview
+needs: printing, list views with drag and drop, file dialogs through portals,
+stylus and touchpad gestures, and accessibility. We give up idiomatic Rust,
+since GObject subclassing is verbose, and some rendering headroom.
 
-**Recommendation:** Compose + UniFFI, with tiles written directly into `Bitmap`s from Rust via the NDK bitmap API.
+How the two compared:
 
-## D5: FFI: UniFFI for the coarse API, hand-written JNI for the hot path (Decided, 2026-11-14)
+- **Maturity.** GTK is very mature, with a stable API. gpui is before 1.0, and
+  its API and versioning follow the needs of the Zed editor.
+- **Widgets.** GTK is complete, including a print dialog. gpui has few built-in
+  widgets and no print support.
+- **Custom canvas.** GTK's snapshots and textures are composited on the GPU,
+  which is good enough for tiles. gpui is built for the GPU first and would be
+  excellent for a fast scrolling canvas.
+- **Rust ergonomics.** GTK means verbose subclassing and shared mutable state.
+  gpui is idiomatic Rust.
+- **Platforms.** GTK is great on Linux and works on macOS and Windows, where it
+  looks foreign. gpui is good on macOS and Linux.
+- **Look.** GTK gives the native GNOME look. gpui gives whatever we design.
 
-UniFFI (Mozilla) generates the Kotlin bindings for everything called occasionally: opening documents, changing modes, callbacks such as `tiles_ready`. Anything per frame or per tile goes through a few hand-written JNI functions instead (`crates/specto-ffi/src/jni.rs` over `hot.rs`), using only `jni-sys` and the `ndk` crate:
+Because the viewer is independent of the UI, a later port to another toolkit
+would only replace the desktop app.
 
-- **Tile pixels:** returning a 6.6 MB page through UniFFI cost about 6 ms extra; JNI copies once into the locked `Bitmap` (M0).
-- **Per-frame calls** (scroll, zoom, frame, finished tiles): even a trivial UniFFI call cost 200–370 µs through JNA, against about 4 µs of actual work. On a Pixel 9a, moving these to JNI cut slow frames from 1.65% to 0.61% (debug build; M0-FINDINGS.md, "On a phone").
+**Outcome:** the canvas prototype measured about 55 frames per second during
+sustained fast scrolling and zooming of a 384-page PDF. The app also runs on
+macOS with Homebrew's GTK.
 
-JNI functions take a session id, not a raw pointer, and frames are written into a direct `ByteBuffer` in a documented layout (`hot.rs`). `jni.rs` only compiles for Android, so CI lints the FFI crate a second time with `--target aarch64-linux-android`.
+## D4: Android UI
 
-## D6: License: MIT OR Apache-2.0 (Decided, 2026-11-14)
+**Decision:** Kotlin with Jetpack Compose over the Rust core, on Android 8.0
+(API 26) and newer.
 
-Dual license, the Rust ecosystem convention, matching hayro and lopdf. Users can pick either. Apache-2.0 adds an explicit patent grant, and MIT keeps us compatible with GPLv2 projects. Avoid mupdf (AGPL) and other copyleft dependencies.
+The options were:
 
-## D7: Prior art to study
+- **Compose with a Rust core.** The native look, the system file picker, stylus
+  and palm rejection, input methods, accessibility and Material components all
+  work without extra effort. Rust only renders and holds the logic.
+- **Slint, egui or Dioxus.** One language, but weaker on input methods,
+  accessibility, stylus input and native feel.
+- **gpui-mobile.** A third-party project at version 0.1.0. Too early.
+- **Android's built-in PDF renderer.** Not our engine, and it can't edit.
 
-- **PDFCraft** (getartcraft.com): Rust PDF editor, Acrobat-style. Worth looking at for scope and stack choices.
-- **Evince / Papers (GNOME)**: GTK document viewers. The page organizer and annotation UX are good references for the GTK path.
-- **pdf.js**: reference for annotation and form rendering edge cases and appearance-stream generation.
-- **Rnote**: Rust + GTK4 handwriting app. Good reference for ink smoothing, stylus input, and GTK canvas performance (and it has PDF import).
+**Outcome:** the app is built this way. Tiles are written straight into Android
+bitmaps from Rust.
 
-## D8: Annotations are saved as annotations (Decided, 2026-11-14)
+## D5: FFI for Android
 
-Same as Preview: markup is written as standard PDF annotation objects with generated appearance streams, so other viewers can show, edit and delete it. Flattening into page content isn't the default. At most, it's a later "Export (flattened)" option.
+**Decision:** UniFFI for the coarse API, and hand-written JNI for what runs on
+every frame.
 
-## D9: Encrypted PDFs follow Preview (Decided, 2026-11-14)
+UniFFI generates the Kotlin bindings for everything called occasionally:
+opening documents, changing modes, callbacks. Anything per frame or per tile
+goes through a few hand-written JNI functions instead. The reasons are
+measurements:
 
-Goal is to match Preview. Preview's behavior (checked on a Mac, 2026-11-14, except where marked):
+- **Tile pixels.** Returning a 6.6 MB page through UniFFI cost about 6 ms
+  extra. JNI copies once into the locked bitmap.
+- **Calls per frame**, such as scrolling, zooming and planning a frame. Even a
+  trivial UniFFI call cost 200 to 370 microseconds, against about 4
+  microseconds of actual work. On a Pixel 9a, moving these to JNI cut slow
+  frames from 1.65% to 0.61%.
 
-- **User (open) password:** prompt on open. ✅ Saving keeps the document encrypted with the same password.
-- ✅ **Setting passwords:** Preview manages both the user (open) password and the owner (permissions) password in a settings panel reached from the File menu, where each can be added, changed or removed. This is a document setting that is saved with the file, not an Export-only option as first assumed.
-- **Owner password / permission flags only** (opens without a prompt, but e.g. editing or printing is restricted): *not yet checked.* Assumed: viewing works, and restricted actions ask for the owner password first.
+JNI functions take a session id, not a raw pointer, and frames are written into
+a byte buffer in a documented layout. The JNI code only compiles for Android,
+so CI lints the FFI crate a second time for an Android target.
 
-For Specto this means a "Security" (or "Passwords") dialog on the document, with user and owner password fields. Its changes are saved like any other edit (a full rewrite, since the encryption dictionary changes).
+## D6: License
 
-Implications:
+**Decision:** MIT or Apache 2.0, at the user's option.
 
-- We need to **write** encrypted PDFs, not just read them: RC4-40/128 for legacy files, AES-128 (V4) and AES-256 (V5/R6). Re-saving keeps the original algorithm, and new encryption uses AES-256.
-- ✅ M0: lopdf 0.47 handles all of this. It writes RC4 through AES-256, and `IncrementalDocument` re-encrypts appended objects with the original key. Decrypt → edit → re-encrypt with the original `EncryptionState` works for full rewrites. hayro 0.9 decrypts for viewing.
-- Honoring permission flags is policy: the file is technically readable without the owner password. We honor them like Preview, but only as a default: a setting turns that off (2026-11-14), as Evince and Okular allow too. Whether honoring should be the default at all is open.
+This is the convention in the Rust ecosystem, and matches hayro and lopdf.
+Apache 2.0 adds an explicit patent grant, and MIT keeps us compatible with
+GPLv2 projects. We avoid mupdf and other copyleft dependencies.
 
-## D10: Other document formats: images on desktop later, PDF only on Android (Decided, 2026-11-14)
+## D7: Prior art
 
-Preview and GNOME Papers open more than PDF. We stay PDF-first until the PDF features work well, then aim for Preview parity on desktop, which in practice means PDF plus images.
+Not a decision, but projects worth studying:
 
-| Format | Cost | Verdict |
-|---|---|---|
-| **Images** (PNG, JPEG, TIFF, WebP) | Low. A one-page document, and the `image` crate is already in the workspace. | Desktop, after the PDF milestones. Also gives "insert image as page" and "images to PDF". |
-| Comic archives (CBZ) | Low. A zip of images. | Maybe, once images exist. |
-| DjVu, XPS, PostScript | High. Each needs its own engine, and the mature DjVu library (DjVuLibre) is GPL, which conflicts with D6. | Out of scope. |
-| EPUB | Very high. Reflowable, so it doesn't fit the page-and-tile model. | Out of scope. |
+- **PDFCraft**: a PDF editor in Rust, in the style of Acrobat. Worth looking at
+  for scope and choice of stack.
+- **Evince and Papers**: GNOME's document viewers. Their page organizer and
+  annotation interface are good references for GTK.
+- **pdf.js**: a reference for edge cases in rendering annotations and forms,
+  and for generating appearance streams.
+- **Rnote**: a handwriting app in Rust with GTK 4. A good reference for ink
+  smoothing, stylus input and canvas performance.
 
-**Decision:**
+## D8: Annotations are saved as annotations
 
-- **Desktop:** add image viewing as a later milestone. Nothing is built for it now.
-- **Android:** PDF only. The system already handles images, and the gap (notably on GrapheneOS) is a good PDF viewer. Each non-PDF backend is a cargo feature that the Android build leaves off, so it adds no size there.
-- Editing (page operations, annotations, forms, saving) stays PDF-specific. Marking up images the way Preview does is a separate feature and not part of this decision.
+**Decision:** markup is written as standard PDF annotation objects with
+generated appearance streams, as Preview does.
 
-**What this asks of M1–M5:** keep the door open, at no extra cost.
+Other viewers can then show, edit and delete it. Flattening into page content
+isn't the default. At most it becomes a separate export option later.
 
-- `Document`, the scheduler and `specto-view` stay free of PDF-only assumptions. Today's `Document` trait (page count, page geometry, render a region) already is.
-- Text, outline and editing are capabilities a document may or may not have, not things every document is assumed to support.
+## D9: Encrypted PDFs follow Preview
+
+**Decision:** match what Preview does.
+
+Preview's behavior, checked on a Mac:
+
+- **Open password.** Preview asks for it on opening. Saving keeps the document
+  encrypted with the same password.
+- **Setting passwords.** Preview manages both the open password and the owner
+  (permissions) password in a panel reached from the File menu, where each can
+  be added, changed or removed. This is a setting of the document that is saved
+  with the file, not an option of exporting.
+- **Owner password only**, where the file opens without asking but editing or
+  printing is restricted. This is not checked yet. We assume that viewing
+  works, and that restricted actions ask for the owner password first.
+
+What this means for Specto:
+
+- A dialog on the document for the two passwords. Its changes are saved like
+  any other edit.
+- We need to write encrypted PDFs, not only read them. Saving again keeps the
+  original algorithm, and new encryption uses AES-256. lopdf handles all of
+  this, and hayro decrypts for viewing.
+- Honoring permission flags is policy, because the file is readable without the
+  owner password. We will honor them by default, like Preview, and a setting
+  will turn that off, as Evince and Okular allow too. Whether honoring should be the
+  default at all is open.
+
+**Outcome:** opening with a password, and saving with the encryption kept, are
+implemented. The password dialog, the permission flags and their setting are
+not.
+
+## D10: Other document formats
+
+**Decision:** images on the desktop later, and PDF only on Android.
+
+Preview and GNOME Papers open more than PDF. We stay with PDF until the PDF
+features work well, then aim for parity with Preview on the desktop, which in
+practice means PDF and images.
+
+- **Images** (PNG, JPEG, TIFF, WebP) are cheap: an image is a one-page
+  document. They come to the desktop after the PDF milestones, and would also
+  allow inserting an image as a page.
+- **Comic archives** are cheap too, being a zip of images. Maybe, once images
+  exist.
+- **DjVu, XPS and PostScript** are expensive. Each needs its own engine, and
+  the mature DjVu library is GPL, which conflicts with D6. Out of scope.
+- **EPUB** is very expensive. It reflows, so it doesn't fit the model of pages
+  and tiles. Out of scope.
+
+On Android the system already handles images, and the gap is a good PDF viewer.
+Each backend other than PDF would be a Cargo feature that the Android build
+leaves off, so it adds no size there.
+
+Editing stays specific to PDF. Marking up images the way Preview does is a
+separate feature and not part of this decision.
+
+Until then, the code keeps the door open at no extra cost:
+
+- The document trait, the scheduler and the viewer stay free of assumptions
+  that only hold for PDF.
+- Text, outline and editing are capabilities a document may or may not have.
 
 ## Open questions
 
-1. Do we need to handle signed PDFs specially beyond "use incremental save so signatures stay valid"? (Preview warns that edits invalidate signatures.)
-2. Min Android API level: 26+ is a reasonable default.
+- Do signed PDFs need special handling beyond saving incrementally so that
+  signatures stay valid? Preview warns that edits invalidate signatures.
+- Should honoring permission flags be the default (see D9)?
