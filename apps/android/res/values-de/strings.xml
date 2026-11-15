@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  German. What each text is for is explained in `values/strings.xml`, which
+  this file follows line for line.
+-->
+<resources>
+    <string name="cancel">Abbrechen</string>
+    <string name="close">Schließen</string>
+    <string name="open">Öffnen</string>
+    <string name="save">Speichern</string>
+    <string name="save_as">Speichern unter</string>
+    <string name="discard">Verwerfen</string>
+    <string name="delete">Löschen</string>
+    <string name="share">Teilen</string>
+    <string name="select_all">Alles auswählen</string>
+    <string name="more">Mehr</string>
+    <string name="back">Zurück</string>
+
+    <string name="back_to_document">Zurück zum Dokument</string>
+    <string name="contents_and_pages">Inhalt und Seiten</string>
+    <string name="edited">Bearbeitet</string>
+    <string name="search">Suchen</string>
+
+    <string name="menu_open">Öffnen</string>
+    <string name="menu_share">Teilen</string>
+    <string name="menu_print">Drucken</string>
+    <string name="menu_go_to_page">Gehe zu Seite</string>
+    <string name="menu_properties">Eigenschaften</string>
+    <string name="menu_settings">Einstellungen</string>
+    <string name="menu_close">Schließen</string>
+    <string name="undo_rotate">Drehen rückgängig machen</string>
+    <string name="undo_delete">Löschen rückgängig machen</string>
+    <string name="undo_move">Verschieben rückgängig machen</string>
+    <string name="undo_insert">Einfügen rückgängig machen</string>
+    <string name="undo_add_annotation">Anmerkung rückgängig machen</string>
+    <string name="undo_remove_annotation">Löschen der Anmerkung rückgängig machen</string>
+    <string name="undo_change_annotation">Ändern der Anmerkung rückgängig machen</string>
+    <string name="redo_rotate">Drehen wiederholen</string>
+    <string name="redo_delete">Löschen wiederholen</string>
+    <string name="redo_move">Verschieben wiederholen</string>
+    <string name="redo_insert">Einfügen wiederholen</string>
+    <string name="redo_add_annotation">Anmerkung wiederholen</string>
+    <string name="redo_remove_annotation">Löschen der Anmerkung wiederholen</string>
+    <string name="redo_change_annotation">Ändern der Anmerkung wiederholen</string>
+
+    <string name="open_pdf">PDF öffnen</string>
+    <string name="recent">Zuletzt geöffnet</string>
+    <string name="recent_page">Seite %1$d</string>
+    <string name="recent_page_of">Seite %1$d von %2$d</string>
+    <string name="recent_summary">%1$s · %2$s</string>
+
+    <string name="unnamed_document">PDF</string>
+    <string name="could_not_open">Diese Datei konnte nicht geöffnet werden</string>
+    <string name="open_another">Anderes PDF öffnen</string>
+    <string name="password_protected">%1$s ist passwortgeschützt</string>
+    <string name="password_needed">Zum Öffnen von %1$s wird ein Passwort benötigt.</string>
+    <string name="password_title">Passwort erforderlich</string>
+    <string name="password_prompt">Passwort zum Öffnen von %1$s eingeben.</string>
+    <string name="password_label">Passwort</string>
+    <string name="password_wrong">Dieses Passwort war nicht richtig.</string>
+
+    <string name="tab_pages">Seiten</string>
+    <string name="tab_contents">Inhalt</string>
+    <string name="collapse">Einklappen</string>
+    <string name="expand">Ausklappen</string>
+    <string name="pick">Auswählen</string>
+    <plurals name="pages_dragged">
+        <item quantity="one">%d Seite</item>
+        <item quantity="other">%d Seiten</item>
+    </plurals>
+
+    <string name="link_open_title">Diesen Link öffnen?</string>
+    <string name="link_blocked_title">Dieser Link kann nicht geöffnet werden</string>
+
+    <string name="go_to_title">Gehe zu Seite</string>
+    <string name="go_to_label">Seite (%1$s–%2$s)</string>
+    <string name="go_to_position">Seite %1$d von %2$d</string>
+    <string name="go_to_position_hint">Oder eine Position, 1–%1$d</string>
+    <string name="go">Los</string>
+
+    <string name="close_search">Suche schließen</string>
+    <string name="previous_match">Vorheriger Treffer</string>
+    <string name="next_match">Nächster Treffer</string>
+    <string name="search_count">%1$d von %2$d</string>
+    <string name="search_count_so_far">%1$d von %2$d…</string>
+    <string name="search_running">…</string>
+    <string name="no_matches">Keine Treffer</string>
+
+    <string name="copy">Kopieren</string>
+    <string name="copied">Kopiert</string>
+    <string name="too_much_to_copy">Das ist zu viel Text, um ihn auf einmal zu kopieren</string>
+    <string name="too_much_to_share">Das ist zu viel Text, um ihn auf einmal zu teilen</string>
+    <string name="clip_label">Text aus einem PDF</string>
+    <string name="text_selected">Text ausgewählt</string>
+
+    <string name="still_drawing">Diese Seite wird noch gezeichnet</string>
+
+    <string name="view_description">Ansicht: %1$s</string>
+    <string name="layout_single_page">Einzelne Seite</string>
+    <string name="layout_continuous">Fortlaufend</string>
+    <string name="layout_two_pages">Zwei Seiten</string>
+    <string name="layout_two_pages_continuous">Zwei Seiten, fortlaufend</string>
+    <string name="first_page_alone">Erste Seite einzeln</string>
+    <string name="fit_page">Ganze Seite</string>
+    <string name="fit_width">Seitenbreite</string>
+    <string name="chosen">Ausgewählt</string>
+
+    <plurals name="pages_selected">
+        <item quantity="one">%d ausgewählt</item>
+        <item quantity="other">%d ausgewählt</item>
+    </plurals>
+    <string name="clear_selection">Auswahl aufheben</string>
+    <string name="rotate_left">Nach links drehen</string>
+    <string name="rotate_right">Nach rechts drehen</string>
+    <string name="delete_pages">Seiten löschen</string>
+    <string name="unsaved_title">Änderungen speichern?</string>
+    <string name="unsaved_text">Die Änderungen an den Seiten von %1$s gehen verloren, wenn sie nicht gespeichert werden.</string>
+    <string name="saving">Wird gespeichert…</string>
+    <string name="could_not_save">Speichern nicht möglich: %1$s</string>
+    <string name="could_not_save_there">Dort konnte nicht gespeichert werden. Dies ist die bearbeitete Kopie.</string>
+
+    <string name="could_not_share">Diese Datei konnte nicht geteilt werden</string>
+    <string name="preparing_to_print">Drucken wird vorbereitet…</string>
+    <string name="could_not_print">Drucken nicht möglich: %1$s</string>
+
+    <string name="property_file_name">Dateiname</string>
+    <string name="property_title">Titel</string>
+    <string name="property_author">Autor</string>
+    <string name="property_subject">Thema</string>
+    <string name="property_keywords">Stichwörter</string>
+    <string name="property_creator">Erstellt mit</string>
+    <string name="property_producer">PDF erzeugt mit</string>
+    <string name="property_created">Erstellt</string>
+    <string name="property_modified">Geändert</string>
+    <string name="property_pages">Seiten</string>
+    <string name="property_page_size">Seitengröße</string>
+    <string name="property_file_size">Dateigröße</string>
+    <string name="property_pdf_version">PDF-Version</string>
+    <string name="page_size_mm">%1$d × %2$d mm</string>
+    <string name="page_size_in">%1$s × %2$s Zoll</string>
+    <string name="page_size_named">%1$s (%2$s)</string>
+    <string name="page_size_named_landscape">%1$s (%2$s, Querformat)</string>
+    <string name="page_size_others_differ">%1$s; andere Seiten weichen ab</string>
+
+    <string name="setting_keep_screen_on">Bildschirm eingeschaltet lassen</string>
+    <plurals name="setting_keep_screen_on_detail">
+        <item quantity="one">Solange ein Dokument geöffnet ist, für %d Minute nach der letzten Berührung</item>
+        <item quantity="other">Solange ein Dokument geöffnet ist, für %d Minuten nach der letzten Berührung</item>
+    </plurals>
+    <string name="setting_volume_keys">Mit den Lautstärketasten blättern</string>
+    <string name="setting_volume_keys_detail">Leiser blättert weiter, lauter zurück</string>
+    <string name="crash_log">Absturzprotokoll</string>
+    <string name="crash_log_empty">Bisher ist nichts schiefgegangen</string>
+    <string name="crash_log_detail">Letzter Eintrag: %1$s. Bleibt auf diesem Gerät; nichts wird gesendet, außer es wird geteilt.</string>
+</resources>

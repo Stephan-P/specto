@@ -26,6 +26,7 @@ What it can do today:
 - Recent documents, and continuing where you left off
 - Printing, sharing the open document with other apps, and its properties (title, author, page size, …)
 - Optional: keep the screen on while reading, turn pages with the volume keys
+- In English and German
 
 Coming next: inserting pages from other documents, annotations, and filling in forms.
 
@@ -81,7 +82,7 @@ In `src/`:
 Elsewhere:
 
 - `AndroidManifest.xml`, `res/`: the manifest and Android's resources (icons, themes)
-- `res/values/strings.xml`: everything the app says; a translation is a copy of it in `values-<language>`
+- `res/values/strings.xml`: everything the app says, in English; `res/values-de/` has the German translation, and another language is another such copy (a unit test checks that each has every text, with its placeholders)
 - `proguard-rules.pro`: what code shrinking must leave alone in a release build
 - `test/`: unit tests
 - `test-ui/`: UI tests, with their test PDFs in `assets/` (written by `make-fixtures.py`)

@@ -1,0 +1,72 @@
+package net.xfbs.specto
+
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.w3c.dom.Element
+
+/**
+ * The translations (`res/values-<language>/strings.xml`) against the English
+ * texts: each has every text and no others, with the same placeholders. A
+ * placeholder lost or mistyped in a translation would otherwise only show,
+ * as a crash, when that text comes up in that language.
+ */
+class TranslationsTest {
+    /** A file's texts by name; a plural's forms as "name/one", "name/other". */
+    private fun texts(file: File): Map<String, String> {
+        val root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).documentElement
+        val children = root.childNodes
+        val texts = mutableMapOf<String, String>()
+        for (i in 0 until children.length) {
+            val element = children.item(i) as? Element ?: continue
+            val name = element.getAttribute("name")
+            when (element.tagName) {
+                "string" -> if (element.getAttribute("translatable") != "false") texts[name] = element.textContent
+                "plurals" -> {
+                    val items = element.getElementsByTagName("item")
+                    for (j in 0 until items.length) {
+                        val item = items.item(j) as Element
+                        texts["$name/${item.getAttribute("quantity")}"] = item.textContent
+                    }
+                }
+            }
+        }
+        return texts
+    }
+
+    /** "%1$s", "%d", …, in order of appearance. */
+    private fun placeholders(text: String): List<String> =
+        Regex("""%(\d+\$)?[sd]""").findAll(text).map { it.value }.toList().sorted()
+
+    private val english = texts(File("res/values/strings.xml"))
+
+    private val translations: Map<String, Map<String, String>> = File("res").listFiles()!!
+        .filter { it.name.startsWith("values-") && File(it, "strings.xml").isFile }
+        .associate { it.name.removePrefix("values-") to texts(File(it, "strings.xml")) }
+
+    @Test
+    fun thereIsAGermanTranslation() {
+        assertTrue("de" in translations)
+    }
+
+    @Test
+    fun translationsHaveEveryTextAndNoOthers() {
+        for ((language, texts) in translations) {
+            // English and German have the same plural forms; a language with
+            // more of them will need this to be told so.
+            assertEquals("texts of $language", english.keys.sorted(), texts.keys.sorted())
+        }
+    }
+
+    @Test
+    fun translationsKeepThePlaceholders() {
+        for ((language, texts) in translations) {
+            for ((name, text) in texts) {
+                val original = english[name] ?: continue
+                assertEquals("$name in $language", placeholders(original), placeholders(text))
+            }
+        }
+    }
+}

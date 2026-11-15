@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.time.DateTimeException
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -140,13 +142,20 @@ private const val PAPER_TOLERANCE = 2f
  * landscape)", or just "152 × 229 mm" for a size without a name. Width
  * first; [width] and [height] are in points.
  */
-internal fun pageSizeText(width: Float, height: Float, texts: Texts): String {
+internal fun pageSizeText(
+    width: Float,
+    height: Float,
+    texts: Texts,
+    locale: Locale = Locale.getDefault(),
+): String {
     val (short, long) = if (width <= height) width to height else height to width
     val paper = PAPER_SIZES.firstOrNull {
         abs(it.short - short) <= PAPER_TOLERANCE && abs(it.long - long) <= PAPER_TOLERANCE
     }
     val size = if (paper?.inches == true) {
-        fun inches(points: Float) = "%.2f".format(Locale.ROOT, points / 72).trimEnd('0').trimEnd('.')
+        // "8.5", or "8,5" where that is how it is written.
+        val number = DecimalFormat("0.##", DecimalFormatSymbols.getInstance(locale))
+        fun inches(points: Float) = number.format(points / 72.0)
         texts.get(R.string.page_size_in, inches(width), inches(height))
     } else {
         fun millimetres(points: Float) = (points / 72 * 25.4f).roundToInt()
@@ -161,9 +170,13 @@ internal fun pageSizeText(width: Float, height: Float, texts: Texts): String {
 }
 
 /** The size of a document's pages: that of the first, with a note if others differ. */
-internal fun pageSizesText(sizes: List<PageSize>, texts: Texts): String? {
+internal fun pageSizesText(
+    sizes: List<PageSize>,
+    texts: Texts,
+    locale: Locale = Locale.getDefault(),
+): String? {
     val first = sizes.firstOrNull() ?: return null
     val same = sizes.all { abs(it.width - first.width) <= 1 && abs(it.height - first.height) <= 1 }
-    val size = pageSizeText(first.width, first.height, texts)
+    val size = pageSizeText(first.width, first.height, texts, locale)
     return if (same) size else texts.get(R.string.page_size_others_differ, size)
 }

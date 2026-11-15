@@ -74,6 +74,13 @@ android {
         compose = true
     }
 
+    androidResources {
+        // Lists the languages there are texts for (res/values-*), so that
+        // Android 13 and later offer them in the system's settings for the
+        // app; res/resources.properties names the language of res/values.
+        generateLocaleConfig = true
+    }
+
     testOptions {
         // android.util.Log and friends do nothing in JVM unit tests instead of throwing.
         unitTests.isReturnDefaultValues = true

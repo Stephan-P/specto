@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Everything the app says, in English. A translation is a copy of this file
-  in `values-<language>`.
+  in `values-<language>` (German: `values-de`); TranslationsTest checks that
+  each has every text, with the same placeholders.
 
   The UI tests find buttons and menu items by these texts, and the unit tests
   read this file (EnglishTexts.kt): change a text and its tests change too.

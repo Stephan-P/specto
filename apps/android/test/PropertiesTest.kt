@@ -11,31 +11,36 @@ import uniffi.specto_ffi.PageSize
 class PropertiesTest {
     @Test
     fun paperSizesAreNamed() {
-        assertEquals("210 × 297 mm (A4)", pageSizeText(595f, 842f, EnglishTexts))
-        assertEquals("210 × 297 mm (A4)", pageSizeText(595.276f, 841.89f, EnglishTexts))
-        assertEquals("297 × 210 mm (A4, landscape)", pageSizeText(842f, 595f, EnglishTexts))
-        assertEquals("148 × 210 mm (A5)", pageSizeText(420f, 595f, EnglishTexts))
-        assertEquals("8.5 × 11 in (Letter)", pageSizeText(612f, 792f, EnglishTexts))
-        assertEquals("11 × 8.5 in (Letter, landscape)", pageSizeText(792f, 612f, EnglishTexts))
-        assertEquals("8.5 × 14 in (Legal)", pageSizeText(612f, 1008f, EnglishTexts))
+        assertEquals("210 × 297 mm (A4)", pageSizeText(595f, 842f, EnglishTexts, Locale.UK))
+        assertEquals("210 × 297 mm (A4)", pageSizeText(595.276f, 841.89f, EnglishTexts, Locale.UK))
+        assertEquals("297 × 210 mm (A4, landscape)", pageSizeText(842f, 595f, EnglishTexts, Locale.UK))
+        assertEquals("148 × 210 mm (A5)", pageSizeText(420f, 595f, EnglishTexts, Locale.UK))
+        assertEquals("8.5 × 11 in (Letter)", pageSizeText(612f, 792f, EnglishTexts, Locale.UK))
+        assertEquals("11 × 8.5 in (Letter, landscape)", pageSizeText(792f, 612f, EnglishTexts, Locale.UK))
+        assertEquals("8.5 × 14 in (Legal)", pageSizeText(612f, 1008f, EnglishTexts, Locale.UK))
+    }
+
+    @Test
+    fun inchesAreWrittenAsTheReaderWritesNumbers() {
+        assertEquals("8,5 × 11 in (Letter)", pageSizeText(612f, 792f, EnglishTexts, Locale.GERMANY))
     }
 
     @Test
     fun otherSizesAreMeasured() {
         // 6 × 9 inches, a common book size without a name here.
-        assertEquals("152 × 229 mm", pageSizeText(432f, 648f, EnglishTexts))
-        assertEquals("254 × 143 mm", pageSizeText(720f, 405f, EnglishTexts))
+        assertEquals("152 × 229 mm", pageSizeText(432f, 648f, EnglishTexts, Locale.UK))
+        assertEquals("254 × 143 mm", pageSizeText(720f, 405f, EnglishTexts, Locale.UK))
     }
 
     @Test
     fun aDocumentsPageSizeIsItsFirstPages() {
         val a4 = PageSize(595f, 842f)
-        assertEquals("210 × 297 mm (A4)", pageSizesText(listOf(a4, a4, PageSize(595.4f, 841.6f)), EnglishTexts))
+        assertEquals("210 × 297 mm (A4)", pageSizesText(listOf(a4, a4, PageSize(595.4f, 841.6f)), EnglishTexts, Locale.UK))
         assertEquals(
             "210 × 297 mm (A4); other pages differ",
-            pageSizesText(listOf(a4, PageSize(842f, 595f)), EnglishTexts),
+            pageSizesText(listOf(a4, PageSize(842f, 595f)), EnglishTexts, Locale.UK),
         )
-        assertEquals(null, pageSizesText(emptyList(), EnglishTexts))
+        assertEquals(null, pageSizesText(emptyList(), EnglishTexts, Locale.UK))
     }
 
     @Test

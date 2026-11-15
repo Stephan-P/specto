@@ -205,6 +205,7 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 | Feature | How to check | Expected |
 |---|---|---|
+| Language | Set the device to German; or, on Android 13 and later, leave it as it is and choose German for Specto alone (system settings → Apps → Specto → Language) | Menus, dialogs, messages and Settings are in German, dates and numbers as Germans write them; any other language gets English. Still English in either: what a failed save or open gives as the reason, and the crash log |
 | Rotation | Rotate while reading, zoomed, and with Pages or Contents open | Same document and page; pages refit; nothing reloads |
 | Landscape | Hold the phone sideways | The page view extends beside the camera cutout; the top bar, Pages, Contents and dialogs keep clear of it |
 | Dark mode | Switch the system between light and dark, with the app open and closed | Bars, backgrounds and dialogs follow (on Android 12+ with the system's colours); pages stay as the document defines them |
@@ -215,4 +216,4 @@ With a keyboard attached (tablets, Chromebooks, Bluetooth keyboards). The page t
 
 ## Not there yet
 
-Adding pages of other files, keeping unsaved edits when Android ends the app, annotations and form filling. The app's texts are in English only.
+Adding pages of other files, keeping unsaved edits when Android ends the app, annotations and form filling.
