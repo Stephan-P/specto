@@ -1,10 +1,9 @@
 //! Saving: writes the pages of an edited document as a new PDF.
 //!
-//! A full rewrite with lopdf. The first source is the document being
-//! edited: its catalog (outline, names, metadata, forms) is kept, and so is
-//! its encryption, re-applied with the original settings and passwords
-//! ([`write_unprotected`] leaves it out).
-//! Pages of other sources are copied in with everything they use.
+//! A full rewrite with lopdf. The first source is the document being edited: its catalog (outline,
+//! names, metadata, forms) is kept, and so is its encryption, re-applied with the original settings
+//! and passwords ([`write_unprotected`] leaves it out). Pages of other sources are copied in with
+//! everything they use.
 //!
 //! What the edit changes:
 //!
@@ -17,7 +16,7 @@
 //!   readers treat as null: the entry stays, but goes nowhere.
 //! - Page labels: each page keeps the label it had in its file. If the
 //!   pages are all still there, in order, the file's `/PageLabels` stays as
-//!   it is; otherwise new ones are written (`PageLabels::of_pages`: pages
+//!   it is. Otherwise new ones are written (`PageLabels::of_pages`: pages
 //!   of files without labels are numbered by position), or none if no page
 //!   has a label of its own.
 //! - Annotations added, changed or deleted are written into their pages'
@@ -29,19 +28,18 @@
 //! - A page used twice gets a copy of its page dictionary (and of its
 //!   annotations, except form fields), sharing contents and resources.
 //!
-//! lopdf drops the data of streams without a valid `/Length`, and gets
-//! the decryption of some unusual files wrong, where hayro, which the apps
-//! render with, recovers. So every stream lopdf loaded is checked against
-//! hayro's reading of the same object, and hayro's bytes win where they
+//! lopdf drops the data of streams without a valid `/Length`, and gets the decryption of some
+//! unusual files wrong, where hayro, which the apps render with, recovers. So every stream lopdf
+//! loaded is checked against hayro's reading of the same object, and hayro's bytes win where they
 //! differ: the saved file then shows what the app showed.
 //!
-//! Before returning, the result is read back and every page's content
-//! compared with the page it came from. If anything differs, writing fails
-//! with [`WriteError::Unsupported`] rather than producing a damaged file.
+//! Before returning, the result is read back and every page's content compared with the page it
+//! came from. If anything differs, writing fails with [`WriteError::Unsupported`] rather than
+//! producing a damaged file.
 //!
-//! [`save`] writes the result to a temporary file next to the target and
-//! renames it into place, so the old file stays intact until the new one is
-//! complete, and a reader that mapped the old file keeps its copy.
+//! [`save`] writes the result to a temporary file next to the target and renames it into place, so
+//! the old file stays intact until the new one is complete, and a reader that mapped the old file
+//! keeps its copy.
 
 mod annots;
 
@@ -88,19 +86,20 @@ pub enum WriteError {
     Io(#[from] io::Error),
 }
 
-/// What to do to the annotations of pages of the files, by source and
-/// page of it. Pages not named keep theirs.
+/// What to do to the annotations of pages of the files, by source and page of it. Pages not named
+/// keep theirs.
 pub type AnnotChanges = HashMap<(SourceId, u32), PageAnnotChanges>;
 
-/// Writes `pages`, taken from `sources`, as a new PDF. The first source is
-/// the main document (see the crate documentation).
+/// Writes `pages`, taken from `sources`, as a new PDF.
+///
+/// The first source is the main document (see the crate documentation).
 pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
     write_as(sources, pages, &AnnotChanges::new(), true)
 }
 
-/// Like [`write`], with the annotations changed as `annots` says;
-/// `protected` is whether the main source's encryption is kept (see
-/// [`write_unprotected`]).
+/// Like [`write()`], with the annotations changed as `annots` says.
+///
+/// `protected` is whether the main source's encryption is kept (see [`write_unprotected`]).
 pub fn write_edited(
     sources: &[Source],
     pages: &[PageRef],
@@ -110,10 +109,10 @@ pub fn write_edited(
     write_as(sources, pages, annots, protected)
 }
 
-/// Like [`write`], but the result isn't encrypted, whether the main source
-/// is or not. For handing the document to something that can't be given a
-/// password, such as a print service; not for saving, which would quietly
-/// take a document's protection away.
+/// Like [`write()`], but the result isn't encrypted, whether the main source is or not.
+///
+/// For handing the document to something that can't be given a password, such as a print service.
+/// Not for saving, which would quietly take a document's protection away.
 pub fn write_unprotected(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
     write_as(sources, pages, &AnnotChanges::new(), false)
 }
@@ -184,8 +183,8 @@ fn write_as(
         kids.push(id);
     }
 
-    // Pages of the main document that are gone. (Imported ones that aren't
-    // used were never referenced, and are pruned.)
+    // Pages of the main document that are gone. (Imported ones that aren't used were never
+    // referenced, and are pruned.)
     for id in main_pages {
         if !used.contains(&id) {
             doc.objects.remove(&id);
@@ -238,8 +237,7 @@ fn write_as(
     Ok(out)
 }
 
-/// The names of a page's resources (fonts, images, …) that resolve to
-/// something, by kind.
+/// The names of a page's resources (fonts, images and so on) that resolve to something, by kind.
 fn resource_names(r: &specto_source::hayro_syntax::page::Resources<'_>) -> Vec<Vec<Vec<u8>>> {
     [
         &r.ext_g_states,
@@ -266,9 +264,10 @@ fn resource_names(r: &specto_source::hayro_syntax::page::Resources<'_>) -> Vec<V
     .collect()
 }
 
-/// Reads `out` back and checks that it has the pages asked for, each with
-/// the same content and boxes as the page it came from. `encrypted` says
-/// whether `out` is, with the main source's passwords.
+/// Reads `out` back and checks that it has the pages asked for, each with the same content and
+/// boxes as the page it came from.
+///
+/// `encrypted` says whether `out` is, with the main source's passwords.
 fn verify(
     out: &[u8],
     encrypted: bool,
@@ -376,9 +375,10 @@ fn doc_page_count_before(page_ids: &HashMap<(SourceId, u32), ObjectId>, main: So
     page_ids.keys().filter(|(s, _)| *s == main).count()
 }
 
-/// Writes `pages` (see [`write`]) to `path`, replacing it if it exists.
-/// The data goes to a temporary file in the same directory first, which
-/// then takes the old file's place, keeping its permissions.
+/// Writes `pages` (see [`write()`]) to `path`, replacing it if it exists.
+///
+/// The data goes to a temporary file in the same directory first, which then takes the old file's
+/// place, keeping its permissions.
 pub fn save(path: &Path, sources: &[Source], pages: &[PageRef]) -> Result<(), WriteError> {
     save_edited(path, sources, pages, &AnnotChanges::new())
 }
@@ -395,10 +395,9 @@ pub fn save_edited(
     Ok(())
 }
 
-/// Replaces the file at `path` with `data` atomically: other processes see
-/// either the old file or the new one, and the old one is untouched until
-/// the new one is complete on disk. A symbolic link is followed, so the
-/// link stays a link.
+/// Replaces the file at `path` with `data` atomically: other processes see either the old file or
+/// the new one, and the old one is untouched until the new one is complete on disk. A symbolic link
+/// is followed, so the link stays a link.
 pub fn replace_file(path: &Path, data: &[u8]) -> io::Result<()> {
     let target = match fs::canonicalize(path) {
         Ok(p) => p,
@@ -466,10 +465,9 @@ fn load(source: &Source) -> Result<Document, WriteError> {
     Ok(doc)
 }
 
-/// Replaces the data of streams that lopdf read differently from hayro
-/// with hayro's (decrypted, unfiltered) bytes, and drops `/Crypt` filters,
-/// since the document is encrypted with its default filter when written.
-/// Returns how many streams were replaced.
+/// Replaces the data of streams that lopdf read differently from hayro with hayro's (decrypted,
+/// unfiltered) bytes, and drops `/Crypt` filters, since the document is encrypted with its default
+/// filter when written. Returns how many streams were replaced.
 fn repair_streams(doc: &mut Document, source: &Source) -> usize {
     let Ok(pdf) = specto_source::open_pdf(source.data.clone(), source.password) else {
         return 0;
@@ -523,8 +521,8 @@ fn drop_crypt_filter(dict: &mut Dictionary) {
     dict.set("Filter", filters);
 }
 
-/// Copies inheritable attributes from ancestors onto every page that
-/// doesn't set them itself, so pages can move to another parent.
+/// Copies inheritable attributes from ancestors onto every page that doesn't set them itself, so
+/// pages can move to another parent.
 fn flatten_inherited(doc: &mut Document) -> Result<(), WriteError> {
     let pages: Vec<ObjectId> = doc.get_pages().into_values().collect();
     for page in pages {
@@ -560,10 +558,10 @@ fn flatten_inherited(doc: &mut Document) -> Result<(), WriteError> {
     Ok(())
 }
 
-/// Copies the objects of another source into `doc`, renumbered past its
-/// own. Returns the copied page objects by page index. Their catalog and
-/// page tree nodes are left behind; anything else they don't use is pruned
-/// later.
+/// Copies the objects of another source into `doc`, renumbered past its own.
+///
+/// Returns the copied page objects by page index. Their catalog and page tree nodes are left
+/// behind, and anything else they don't use is pruned later.
 fn import(
     doc: &mut Document,
     source: &Source,
@@ -599,10 +597,9 @@ fn import(
     Ok(pages)
 }
 
-/// Applies the annotation changes for pages of `source` to `doc`, that
-/// file as just loaded: before its objects are renumbered, so the object
-/// numbers the changes name are the file's, and before a page used twice
-/// is copied, so the copy has the same annotations.
+/// Applies the annotation changes for pages of `source` to `doc`, that file as just loaded: before
+/// its objects are renumbered, so the object numbers the changes name are the file's, and before a
+/// page used twice is copied, so the copy has the same annotations.
 fn annotate(doc: &mut Document, source: SourceId, annots: &AnnotChanges) -> Result<(), WriteError> {
     if !annots.keys().any(|(s, _)| *s == source) {
         return Ok(());
@@ -620,9 +617,8 @@ fn annotate(doc: &mut Document, source: SourceId, annots: &AnnotChanges) -> Resu
     Ok(())
 }
 
-/// A second page object for a page used twice: a copy of the page
-/// dictionary, with copies of its annotations (form fields left out, as a
-/// field can't sit on two pages).
+/// A second page object for a page used twice: a copy of the page dictionary, with copies of its
+/// annotations (form fields left out, as a field can't sit on two pages).
 fn duplicate_page(doc: &mut Document, id: ObjectId) -> Result<ObjectId, WriteError> {
     let mut page = doc.get_dictionary(id).map_err(WriteError::Read)?.clone();
     let new_id = doc.new_object_id();

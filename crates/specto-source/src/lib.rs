@@ -1,9 +1,9 @@
-//! Read access to the structure of a PDF: opening (incl. decryption),
-//! metadata, the outline (table of contents) and links.
+//! Read access to the structure of a PDF: opening and decryption, metadata, the outline (table of
+//! contents) and links.
 //!
-//! Rendering lives in `specto-render`; this crate is about everything else a
-//! viewer reads from the file. Everything here is defensive: outline and name
-//! trees in broken files can be cyclic or huge, so every walk is bounded.
+//! Rendering lives in `specto-render`. This crate is about everything else a viewer reads from the
+//! file. Everything here is defensive: outline and name trees in broken files can be cyclic or
+//! huge, so every walk is bounded.
 
 mod data;
 mod labels;
@@ -25,8 +25,8 @@ pub use hayro_syntax;
 pub use labels::{LabelRange, LabelStyle, PageLabel, PageLabels};
 pub use text::decode_text;
 
-/// Outline items beyond this many are ignored (a guard against huge or
-/// cyclic outlines in broken files).
+/// Outline items beyond this many are ignored (a guard against huge or cyclic outlines in broken
+/// files).
 const MAX_OUTLINE_ITEMS: usize = 100_000;
 const MAX_DEPTH: usize = 32;
 
@@ -42,8 +42,9 @@ pub enum OpenError {
     Invalid,
 }
 
-/// Parses (and if needed decrypts) a PDF. Parsing is lazy: this reads the
-/// cross-reference table and page tree, not the page contents.
+/// Parses (and if needed decrypts) a PDF.
+///
+/// Parsing is lazy: this reads the cross-reference table and page tree, not the page contents.
 pub fn open_pdf(data: PdfData, password: Option<&str>) -> Result<Pdf, OpenError> {
     Pdf::new_with_password(Arc::new(data), password.unwrap_or("")).map_err(|e| match e {
         LoadPdfError::Decryption(DecryptionError::PasswordProtected) => OpenError::PasswordRequired,
@@ -68,8 +69,8 @@ pub struct Metadata {
     pub modified: Option<Date>,
 }
 
-/// A date and time as a document states it: on the clock of wherever it was
-/// written, with that place's offset from UTC.
+/// A date and time as a document states it: on the clock of wherever it was written, with that
+/// place's offset from UTC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Date {
     pub year: u16,
@@ -82,7 +83,7 @@ pub struct Date {
     pub utc_offset_minutes: i16,
 }
 
-/// ISO 8601 with the offset, e.g. `2024-03-05T14:22:10+01:00`.
+/// ISO 8601 with the offset, such as `2024-03-05T14:22:10+01:00`.
 impl std::fmt::Display for Date {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let offset = self.utc_offset_minutes;
@@ -106,9 +107,8 @@ impl Date {
     /// The date and time `seconds` after the start of 1970, in UTC.
     pub fn from_unix(seconds: u64) -> Self {
         let (days, rest) = (seconds / 86_400, seconds % 86_400);
-        // Days to a date in the Gregorian calendar (Howard Hinnant's
-        // `civil_from_days`), counting years from March so that the leap
-        // day comes last.
+        // Days to a date in the Gregorian calendar (Howard Hinnant's `civil_from_days`), counting
+        // years from March so that the leap day comes last.
         let z = days + 719_468;
         let (era, day_of_era) = (z / 146_097, z % 146_097);
         let year_of_era =
@@ -129,8 +129,8 @@ impl Date {
         }
     }
 
-    /// Reads a PDF date string: `D:YYYYMMDDHHmmSSOHH'mm'`, where everything
-    /// after the year may be missing and `O` is `+`, `-` or `Z`.
+    /// Reads a PDF date string: `D:YYYYMMDDHHmmSSOHH'mm'`, where everything after the year may be
+    /// missing and `O` is `+`, `-` or `Z`.
     pub fn parse(bytes: &[u8]) -> Option<Self> {
         let text = std::str::from_utf8(bytes).ok()?.trim();
         let text = text.strip_prefix("D:").unwrap_or(text);
@@ -200,15 +200,15 @@ impl From<DateTime> for Date {
 pub struct Destination {
     /// Zero-based page index.
     pub page: usize,
-    /// The point that should end up at the top-left of the view, in PDF user
-    /// space of that page. Either coordinate may be missing ("keep current").
+    /// The point that should end up at the top-left of the view, in PDF user space of that page.
+    /// A missing coordinate keeps the current one.
     pub left: Option<f64>,
     pub top: Option<f64>,
 }
 
 impl Destination {
-    /// The target position as a PDF-space point, with missing coordinates
-    /// filled from `fallback` (usually the page's visible top-left corner).
+    /// The target position as a PDF-space point, with missing coordinates filled from `fallback`
+    /// (usually the page's visible top-left corner).
     pub fn point_or(&self, fallback: PdfPoint) -> PdfPoint {
         PdfPoint::new(
             self.left.unwrap_or(fallback.x),
@@ -231,7 +231,7 @@ pub enum NamedAction {
 pub enum Target {
     /// Go to a place in this document.
     Destination(Destination),
-    /// Open a URI (usually a web page). Opening it is the frontend's call.
+    /// Open a URI (usually a web page), which is left to the frontend.
     Uri(String),
     Named(NamedAction),
 }
@@ -239,8 +239,8 @@ pub enum Target {
 #[derive(Clone, Debug, PartialEq)]
 pub struct OutlineItem {
     pub title: String,
-    /// `None` for items without a target, or with one we don't support
-    /// (e.g. other files, JavaScript).
+    /// `None` for items without a target, or with one we don't support (such as other files or
+    /// JavaScript).
     pub target: Option<Target>,
     pub children: Vec<OutlineItem>,
 }
@@ -264,7 +264,7 @@ impl Link {
 /// An opened PDF, for everything except rendering.
 pub struct SourceDocument {
     pdf: Pdf,
-    /// Page object id → page index, for resolving destinations.
+    /// Maps a page's object id to its page index, for resolving destinations.
     page_ids: HashMap<ObjectIdentifier, usize>,
 }
 
@@ -311,7 +311,7 @@ impl SourceDocument {
         }
     }
 
-    /// The version of PDF the file says it is written in, e.g. "1.7".
+    /// The version of PDF the file says it is written in, such as "1.7".
     pub fn version(&self) -> &'static str {
         match self.pdf.version() {
             PdfVersion::Pdf10 => "1.0",
@@ -331,7 +331,7 @@ impl SourceDocument {
         xref.get::<Dict<'_>>(xref.root_id())
     }
 
-    /// The outline (bookmarks / table of contents). Empty if there is none.
+    /// The outline (the bookmarks, or table of contents), empty if there is none.
     pub fn outline(&self) -> Vec<OutlineItem> {
         let Some(first) = self
             .catalog()
@@ -358,7 +358,7 @@ impl SourceDocument {
             if *budget == 0 {
                 break;
             }
-            // Siblings and children are references; a repeat means a cycle.
+            // Siblings and children are references. A repeat means a cycle.
             if let Some(id) = item.obj_id()
                 && !seen.insert(id)
             {
@@ -439,7 +439,7 @@ impl SourceDocument {
                 .map(Target::Destination),
             b"URI" => {
                 let uri = action.get::<hayro_syntax::object::String<'_>>(URI)?;
-                // URIs are 7-bit ASCII by spec; be lenient with what's there.
+                // URIs are 7-bit ASCII by the specification. Be lenient with what's there.
                 let uri = String::from_utf8_lossy(uri.as_bytes()).trim().to_owned();
                 (!uri.is_empty()).then_some(Target::Uri(uri))
             }
@@ -453,13 +453,13 @@ impl SourceDocument {
                     _ => return None,
                 }))
             }
-            // GoToR, Launch, JavaScript, …: not supported.
+            // GoToR, Launch, JavaScript and the rest aren't supported.
             _ => None,
         }
     }
 
-    /// Resolves an explicit destination (array), a named one (name or
-    /// string), or a destination dictionary (`<< /D [...] >>`).
+    /// Resolves an explicit destination (array), a named one (name or string), or a destination
+    /// dictionary (`<< /D [...] >>`).
     fn resolve_dest(&self, dest: Object<'_>, depth: usize) -> Option<Destination> {
         if depth > 4 {
             return None;
@@ -473,13 +473,12 @@ impl SourceDocument {
         }
     }
 
-    /// `[page /XYZ left top zoom]`, `[page /Fit]`, `[page /FitH top]`, …
+    /// `[page /XYZ left top zoom]`, `[page /Fit]`, `[page /FitH top]` and the other forms.
     fn explicit_dest(&self, a: &Array<'_>) -> Option<Destination> {
         let mut items = a.raw_iter();
         let page = match items.next()? {
             MaybeRef::Ref(r) => *self.page_ids.get(&ObjectIdentifier::from(r))?,
-            // Remote destinations use page numbers; some broken files use
-            // them for local ones too.
+            // Remote destinations use page numbers. Some broken files use them for local ones too.
             MaybeRef::NotRef(Object::Number(n)) => usize::try_from(n.as_i64())
                 .ok()
                 .filter(|&p| p < self.page_count())?,
@@ -509,8 +508,7 @@ impl SourceDocument {
         Some(Destination { page, left, top })
     }
 
-    /// Looks up a named destination in `/Dests` (PDF 1.1) or the `/Names`
-    /// name tree.
+    /// Looks up a named destination in `/Dests` (PDF 1.1) or the `/Names` name tree.
     fn named_dest(&self, name: &[u8]) -> Option<Object<'_>> {
         let catalog = self.catalog()?;
         if let Some(d) = catalog
@@ -524,8 +522,8 @@ impl SourceDocument {
     }
 }
 
-/// Collects the ranges of a page-label number tree (`/Nums` pairs of start
-/// page and label dictionary, possibly spread over `/Kids`).
+/// Collects the ranges of a page-label number tree (`/Nums` pairs of start page and label
+/// dictionary, possibly spread over `/Kids`).
 fn collect_label_ranges(
     node: &Dict<'_>,
     depth: usize,
@@ -579,8 +577,7 @@ fn collect_label_ranges(
     }
 }
 
-/// Finds `key` in a name tree, descending only into kids whose `/Limits`
-/// can contain it.
+/// Finds `key` in a name tree, descending only into kids whose `/Limits` can contain it.
 fn name_tree_lookup<'a>(node: Dict<'a>, key: &[u8], depth: usize) -> Option<Object<'a>> {
     if depth > MAX_DEPTH {
         return None;
@@ -614,8 +611,7 @@ fn name_tree_lookup<'a>(node: Dict<'a>, key: &[u8], depth: usize) -> Option<Obje
     None
 }
 
-/// Value for `key` in a `/Names` array, resolving references (the raw
-/// iterator above doesn't).
+/// Value for `key` in a `/Names` array, resolving references (the raw iterator above doesn't).
 fn names_value<'a>(names: &Array<'a>, key: &[u8]) -> Option<Object<'a>> {
     let mut it = names.iter::<Object<'_>>();
     while let (Some(k), Some(v)) = (it.next(), it.next()) {

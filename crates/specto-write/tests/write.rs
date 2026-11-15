@@ -1,6 +1,6 @@
-//! Round trips: write edited documents, read them back with our own
-//! parser, render every page and compare it with the original page, and
-//! check the file with `qpdf --check` where qpdf is installed.
+//! Round trips: write edited documents, read them back with our own parser, render every page and
+//! compare it with the original page, and check the file with `qpdf --check` where qpdf is
+//! installed.
 
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -18,10 +18,11 @@ use specto_write::{Source, WriteError, replace_file, write, write_unprotected};
 const MAIN: SourceId = SourceId(0);
 const OTHER: SourceId = SourceId(1);
 
-/// A document of `n` pages, each with a different filled rectangle, in a
-/// two-level page tree whose inner node passes down the media box,
-/// resources and (for the second half) a rotation of 90°. Page labels
-/// i, ii, 1, 2, …; an outline entry and a link to the last page.
+/// A document of `n` pages, each with a different filled rectangle, in a two-level page tree whose
+/// inner node passes down the media box, resources and (for the second half) a rotation of 90
+/// degrees.
+///
+/// Page labels i, ii, then 1, 2 and so on. An outline entry and a link to the last page.
 fn fixture(n: usize, colour: f64) -> Vec<u8> {
     let mut doc = Document::with_version("1.5");
     let font = doc.add_object(dictionary! {
@@ -161,8 +162,8 @@ fn render(doc: &HayroDocument, page: usize, rotation: Rotation) -> Vec<u8> {
     doc.render(&req).unwrap().data
 }
 
-/// Each page of `written` looks like the page it came from (in `sources`,
-/// by source id), turned by its rotation.
+/// Each page of `written` looks like the page it came from (in `sources`, by source id), turned by
+/// its rotation.
 fn assert_pages(written: &HayroDocument, expected: &[(&HayroDocument, PageRef)]) {
     assert_eq!(written.page_count(), expected.len());
     for (i, (source, p)) in expected.iter().enumerate() {
@@ -224,7 +225,7 @@ fn unchanged_pages_look_the_same() {
 #[test]
 fn rotation_adds_to_the_page_and_inherited_rotation() {
     let data = PdfData::from(fixture(4, 0.3));
-    // Page 1 has no /Rotate of its own, page 3 inherits 90°.
+    // Page 1 has no /Rotate of its own, page 3 inherits 90 degrees.
     let pages = vec![
         rotated(MAIN, 0, Rotation::Cw90),
         page(MAIN, 1),
@@ -430,10 +431,11 @@ fn replacing_a_file() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// Rewrites every corpus file twice, unchanged and with the pages reversed
-/// and the first one rotated, and compares page count, page geometry and
-/// renders of the first pages with the original. Prints the files that
-/// differ. `cargo test --release -p specto-write -- --ignored --nocapture`
+/// Rewrites every corpus file twice, unchanged and with the pages reversed and the first one
+/// rotated, and compares page count, page geometry and renders of the first pages with the
+/// original.
+///
+/// Prints the files that differ. `cargo test --release -p specto-write -- --ignored --nocapture`
 #[test]
 #[ignore = "needs corpus/files (run corpus/fetch.sh)"]
 fn corpus_round_trip() {

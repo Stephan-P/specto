@@ -1,7 +1,9 @@
 //! Decoding PDF text strings (titles, outline entries, metadata).
 
-/// Decodes a PDF "text string": UTF-16BE or UTF-8 with a byte-order mark,
-/// otherwise PDFDocEncoding. Invalid sequences become U+FFFD.
+/// Decodes a PDF "text string".
+///
+/// UTF-16BE or UTF-8 with a byte-order mark, otherwise PDFDocEncoding. Invalid sequences become
+/// U+FFFD.
 pub fn decode_text(bytes: &[u8]) -> String {
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
         let (pairs, _odd_byte) = rest.as_chunks::<2>();

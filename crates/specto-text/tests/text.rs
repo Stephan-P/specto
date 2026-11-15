@@ -2,7 +2,7 @@ use specto_geom::PdfPoint;
 use specto_source::SourceDocument;
 use specto_text::{Extractor, Query, SearchText, TextPage};
 
-/// A one-page PDF (600 × 800 pt) with Helvetica as /F1 and `content`.
+/// A one-page PDF (600 by 800 points) with Helvetica as /F1 and `content`.
 fn pdf(content: &str) -> Vec<u8> {
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
@@ -37,8 +37,7 @@ fn lines_and_words() {
     assert_eq!(page.text(), "Hello World\nSecond line here");
     assert_eq!(page.lines.len(), 2);
     assert_eq!(page.words.len(), 5);
-    // Characters sit where the text was drawn: "H" starts at x = 72 on the
-    // baseline at y = 700.
+    // Characters sit where the text was drawn: "H" starts at x = 72 on the baseline at y = 700.
     let h = &page.chars[0];
     assert_eq!(h.text, "H");
     assert!((h.origin().x - 72.0).abs() < 0.01);
@@ -48,8 +47,8 @@ fn lines_and_words() {
 
 #[test]
 fn kerning_joins_and_gaps_split() {
-    // -60/1000 em of kerning keeps "Hel" and "lo" together; a 400/1000 em
-    // gap without a space character still separates words.
+    // -60/1000 em of kerning keeps "Hel" and "lo" together, while a 400/1000 em gap without a space
+    // character still separates words.
     let page = text_page("BT /F1 12 Tf 72 700 Td [(Hel) -60 (lo) -400 (World)] TJ ET");
     assert_eq!(page.text(), "Hello World");
 }
@@ -65,7 +64,7 @@ fn superscripts_stay_on_the_line() {
 
 #[test]
 fn rotated_text() {
-    // Rotated 90° counter-clockwise, reading upwards.
+    // Rotated by 90 degrees counter-clockwise, reading upwards.
     let page = text_page("BT /F1 12 Tf 0 1 -1 0 300 100 Tm (Going up) Tj ET");
     assert_eq!(page.text(), "Going up");
     let g = &page.chars[0];
@@ -91,7 +90,7 @@ fn lookups_and_ranges() {
 
 #[test]
 fn positions_for_selection() {
-    // "one two" at y = 700, "three" at y = 686; Helvetica 12 pt.
+    // "one two" at y = 700, "three" at y = 686, in Helvetica at 12 points.
     let page = text_page("BT /F1 12 Tf 72 700 Td (one two) Tj 0 -14 Td (three) Tj ET");
     let mid = |c: usize| page.chars[c].quad.bounds().center();
     let left_half = |c: usize| {
@@ -122,9 +121,9 @@ fn positions_for_selection() {
 
 #[test]
 fn positions_in_two_columns() {
-    // Left column at x = 72, right column at x = 320 with its baseline 3 pt
-    // higher. A pointer in the gutter, right of the left column's first
-    // line and just below the right column's line, belongs to the left one.
+    // Left column at x = 72, right column at x = 320 with its baseline 3 pt higher. A pointer in
+    // the gutter, right of the left column's first line and just below the right column's line,
+    // belongs to the left one.
     let page = text_page(
         "BT /F1 12 Tf 72 700 Td (left one) Tj 0 -14 Td (left two) Tj ET \
          BT /F1 12 Tf 320 703 Td (right one) Tj ET",
@@ -184,7 +183,7 @@ fn search_within_and_across_lines() {
         "the quick brown fox jumps over the lazy dog in a hyphenated cafe line"
     );
     let find = |q: &str| search.find(&Query::new(q).unwrap());
-    // Case doesn't matter; both "The" and "the", as character ranges.
+    // Case doesn't matter: both "The" and "the" are found, as character ranges.
     let the = find("THE");
     assert_eq!(the.len(), 2);
     assert_eq!(page.text_range(the[0].clone()), "The");
@@ -228,8 +227,8 @@ fn left_to_right(glyphs: &[&str]) -> Vec<specto_text::TextChar> {
 
 #[test]
 fn rtl_in_visual_order_comes_out_logical() {
-    // "שלום עולם" ("hello world") drawn left to right, as most generators
-    // do: on the page it reads (from the left) "םלוע םולש".
+    // "שלום עולם" ("hello world") drawn left to right, as most generators do: on the page it reads
+    // (from the left) "םלוע םולש".
     let visual = ["ם", "ל", "ו", "ע", " ", "ם", "ו", "ל", "ש"];
     let page = TextPage::from_chars(left_to_right(&visual));
     assert_eq!(page.text(), "שלום עולם");
@@ -258,6 +257,7 @@ fn rtl_line_with_a_number() {
 }
 
 /// Extracts the first pages of every corpus file: no panics.
+///
 /// `cargo test -p specto-text --release -- --ignored --nocapture`
 #[test]
 #[ignore = "needs corpus/files (run corpus/fetch.sh)"]

@@ -11,8 +11,8 @@ pub enum Rotation {
 }
 
 impl Rotation {
-    /// Interprets a `/Rotate` value. The spec requires a multiple of 90; anything
-    /// else is treated as 0, like other viewers do. Negative values are allowed.
+    /// Interprets a `/Rotate` value. The specification requires a multiple of
+    /// 90. Anything else is treated as 0, as other viewers do. Negative values are allowed.
     pub fn from_degrees(degrees: i64) -> Self {
         if degrees % 90 != 0 {
             return Self::None;

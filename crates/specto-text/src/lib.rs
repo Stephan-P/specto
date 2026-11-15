@@ -1,15 +1,13 @@
-//! The text layer: the characters on a page with their positions, grouped
-//! into words and lines in reading order. Selection, copy and search are
-//! built on this.
+//! The text layer: the characters on a page with their positions, grouped into words and lines in
+//! reading order. Selection, copy and search are built on this.
 //!
-//! Glyphs come from hayro's interpreter through a custom [`Device`]; hayro
-//! maps them to Unicode (`ToUnicode`, glyph names). Positions are in **PDF
-//! space** of the page, which doesn't change when the user rotates a page;
-//! viewers convert with the page's geometry.
+//! Glyphs come from hayro's interpreter through a custom [`Device`], and hayro maps them to Unicode
+//! (`ToUnicode`, glyph names). Positions are in **PDF space** of the page, which doesn't change
+//! when the user rotates a page. Viewers convert with the page's geometry.
 //!
-//! Reading order is the order of the content stream (like `pdftotext -raw`),
-//! which is what most generators produce. Lines are built from consecutive
-//! glyphs that share a direction and baseline; words split at spaces and gaps.
+//! Reading order is the order of the content stream (like `pdftotext -raw`), which is what most
+//! generators produce. Lines are built from consecutive glyphs that share a direction and baseline,
+//! and words split at spaces and gaps.
 
 mod bidi;
 mod group;
@@ -31,15 +29,18 @@ use specto_geom::{PdfPoint, PdfQuad, PdfVector};
 
 /// Glyph space is 1000 units per em (hayro's convention).
 const EM: f64 = 1000.0;
+
 /// Approximate ascent and descent, as fractions of the em.
 const ASCENT: f64 = 0.8;
 const DESCENT: f64 = -0.2;
 
-/// One character (or ligature, e.g. "ﬁ" → "fi") on the page.
+/// One character on the page, or a ligature such as "ﬁ", which stands for "fi".
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextChar {
-    /// Usually one character. Empty if the glyph has no known Unicode value;
-    /// it still takes part in geometry (selection), but not in text.
+    /// The glyph's text, usually one character.
+    ///
+    /// Empty if the glyph has no known Unicode value. It still takes part in geometry (selection),
+    /// but not in text.
     pub text: String,
     /// The glyph's box: baseline to ascent, origin to advance.
     pub quad: PdfQuad,
@@ -105,9 +106,8 @@ impl TextPage {
         self.text_range(0..self.chars.len())
     }
 
-    /// The text of characters `range`, with spaces between words and
-    /// newlines between lines, as copied from a selection. Right-to-left
-    /// text comes out in logical order.
+    /// The text of characters `range`, with spaces between words and newlines between lines, as
+    /// copied from a selection. Right-to-left text comes out in logical order.
     pub fn text_range(&self, range: Range<usize>) -> String {
         let mut out = String::new();
         for line in &self.lines {
@@ -125,7 +125,7 @@ impl TextPage {
                 if text.is_empty() {
                     continue;
                 }
-                // RTL drawn left to right (visual order): reverse.
+                // Right-to-left text drawn left to right (visual order): reverse.
                 let along = |c: &TextChar| c.origin().to_vector().dot(dir);
                 let visual = along(&chars[chars.len() - 1]) >= along(&chars[0]);
                 if bidi::mostly_rtl(&text) && visual && chars.len() > 1 {
@@ -136,8 +136,8 @@ impl TextPage {
             if words.is_empty() {
                 continue;
             }
-            // An RTL line whose words were drawn left to right: reverse them.
-            // Numbers and punctuation are neutral and don't count.
+            // A right-to-left line whose words were drawn left to right: reverse them. Numbers and
+            // punctuation are neutral and don't count.
             let rtl_words = words.iter().filter(|(t, _)| bidi::mostly_rtl(t)).count();
             let ltr_words = words
                 .iter()
@@ -175,10 +175,11 @@ impl TextPage {
 
     // --- selection ------------------------------------------------------
 
-    /// The position between characters (`0..=chars.len()`) closest to `p`,
-    /// for selecting: on the nearest line, before or after the character
-    /// nearest to `p` along it, whichever half `p` is in. Works for points
-    /// off the text too (margins, between lines), so a drag can go anywhere.
+    /// The position between characters (`0..=chars.len()`) closest to `p`, for selecting: on the
+    /// nearest line, before or after the character nearest to `p` along it, whichever half `p` is
+    /// in.
+    ///
+    /// Works for points off the text too (margins, between lines), so a drag can go anywhere.
     pub fn position_at(&self, p: PdfPoint) -> usize {
         let Some(line) = self
             .lines
@@ -221,8 +222,8 @@ impl TextPage {
             .find(|l| self.line_frame(l).distance(p) == 0.0)
     }
 
-    /// Characters of the word containing character `c`, or just `c` if it
-    /// isn't part of a word (a space).
+    /// Characters of the word containing character `c`, or just `c` if it isn't part of a word (a
+    /// space).
     pub fn word_range(&self, c: usize) -> Range<usize> {
         self.word_of(c)
             .map_or(c..(c + 1).min(self.chars.len()), |w| w.chars.clone())
@@ -234,9 +235,8 @@ impl TextPage {
             .map_or(c..(c + 1).min(self.chars.len()), |l| l.chars.clone())
     }
 
-    /// The area to highlight for selected characters `range`: one quad per
-    /// line (rotated with the text), spanning the selected characters along
-    /// the line and the full line height across it.
+    /// The area to highlight for selected characters `range`: one quad per line (rotated with the
+    /// text), spanning the selected characters along the line and the full line height across it.
     pub fn selection_quads(&self, range: Range<usize>) -> Vec<PdfQuad> {
         let mut out = Vec::new();
         for line in &self.lines {
@@ -289,11 +289,11 @@ struct LineFrame {
 }
 
 impl LineFrame {
-    /// How far `p` is from the line, for picking the line a pointer is on:
-    /// the distance across the line counts fully, the distance along it a
-    /// tenth. So in the margin the line at the pointer's height wins over a
-    /// longer line above it, while in two columns the line in the pointer's
-    /// own column still wins.
+    /// How far `p` is from the line, for picking the line a pointer is on: the distance across the
+    /// line counts fully, the distance along it a tenth.
+    ///
+    /// So in the margin the line at the pointer's height wins over a longer line above it, while in
+    /// two columns the line in the pointer's own column still wins.
     fn distance(&self, p: PdfPoint) -> f64 {
         let outside = |v: f64, (lo, hi): (f64, f64)| (lo - v).max(v - hi).max(0.0);
         let along = outside(p.to_vector().dot(self.dir), self.along);
@@ -330,6 +330,7 @@ impl<'a> Extractor<'a> {
     }
 
     /// Also extract text drawn by annotations (form field values, notes).
+    ///
     /// Off by default: annotations are drawn and edited separately.
     pub fn with_annotations(mut self, include: bool) -> Self {
         self.settings.render_content = if include {
@@ -357,7 +358,7 @@ impl<'a> Extractor<'a> {
     }
 }
 
-/// Collects glyphs; ignores everything else.
+/// Collects glyphs and ignores everything else.
 #[derive(Default)]
 struct TextDevice {
     chars: Vec<TextChar>,
@@ -396,8 +397,8 @@ impl<'a> Device<'a> for TextDevice {
                 PdfPoint::new(p.x, p.y)
             };
             let quad = if vertical {
-                // Vertical text advances downwards; the glyph spans the em
-                // horizontally, centred on the origin.
+                // Vertical text advances downwards. The glyph spans the em horizontally, centered
+                // on the origin.
                 PdfQuad::new([
                     at(-EM / 2.0, 0.0),
                     at(-EM / 2.0, -EM),

@@ -2,8 +2,8 @@ use specto_annot::{AnnotKind, AnnotType, Appearance, Color, Flags, MarkupStyle, 
 use specto_geom::{PdfBox, PdfPoint};
 use specto_source::SourceDocument;
 
-/// Builds a PDF from numbered object bodies (object `i + 1` = `objects[i]`),
-/// with object 1 as the catalog. The xref is left out; hayro rebuilds it.
+/// Builds a PDF from numbered object bodies (`objects[i]` becomes object `i + 1`), with object 1 as
+/// the catalog. The xref is left out, and hayro rebuilds it.
 fn pdf(objects: &[&str]) -> SourceDocument {
     let mut out = String::from("%PDF-1.7\n");
     for (i, body) in objects.iter().enumerate() {
@@ -20,16 +20,14 @@ fn sample() -> SourceDocument {
     pdf(&[
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 /MediaBox [0 0 600 800] >>",
-        // 3: page 1. A link, a highlight, a number (not an annotation), an
-        // underline written straight into the array, ink, a note with its
-        // popup, a square, a line, a form field.
+        // 3: page 1. A link, a highlight, a number (not an annotation), an underline written
+        // straight into the array, ink, a note with its popup, a square, a line, a form field.
         "<< /Type /Page /Parent 2 0 R /Annots [5 0 R 6 0 R 42
             << /Subtype /Underline /Rect [10 10 50 20] /QuadPoints [10 20 50 20 10 10 50 10] >>
             7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R] >>",
         "<< /Type /Page /Parent 2 0 R >>",
         "<< /Subtype /Link /Rect [0 0 10 10] /A << /S /URI /URI (https://example.org/) >> >>",
-        // 6: a highlight over two lines, quads in the usual Z order, with
-        // everything set.
+        // 6: a highlight over two lines, quads in the usual Z order, with everything set.
         "<< /Type /Annot /Subtype /Highlight /Rect [100 700 300 730]
             /QuadPoints [100 730 300 730 100 715 300 715  100 715 200 715 100 700 200 700]
             /C [1 0.9 0] /CA 0.5 /T (Ada) /Contents <FEFF004E006F00740065> /NM (h1)
@@ -40,7 +38,7 @@ fn sample() -> SourceDocument {
         // 8: a note: not a kind with parameters here.
         "<< /Subtype /Text /Rect [400 400 420 420] /Contents (Check this) /Popup 9 0 R /F 68 >>",
         "<< /Subtype /Popup /Rect [420 300 600 400] /Parent 8 0 R >>",
-        // 10: a square, its rectangle given backwards, grey outline, CMYK fill.
+        // 10: a square, its rectangle given backwards, gray outline, CMYK fill.
         "<< /Subtype /Square /Rect [300 200 200 100] /C [0.5] /IC [0 1 1 0] /Border [0 0 3] >>",
         "<< /Subtype /Line /Rect [0 0 50 50] /L [5 5 45 45] >>",
         "<< /Subtype /Widget /FT /Tx /Rect [0 0 50 50] >>",

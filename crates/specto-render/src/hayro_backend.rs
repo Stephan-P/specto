@@ -28,10 +28,9 @@ self_cell::self_cell!(
 
 /// A PDF opened with the pure-Rust hayro renderer.
 ///
-/// Keeps hayro's font/glyph/image cache across renders, which makes tiles of
-/// the same page 1.4–6× faster (measured in M1). The cache only grows, so
-/// long-lived users should re-open the document now and then.
-/// Not `Send`: the cache uses `Rc`.
+/// Keeps hayro's cache of fonts, glyphs and images across renders, which makes tiles of the same
+/// page 1.4 to 6 times faster. The cache only grows, so long-lived users should re-open the
+/// document now and then. Not `Send`: the cache uses `Rc`.
 pub struct HayroDocument {
     inner: PdfWithCache,
     settings: InterpreterSettings,
@@ -44,8 +43,8 @@ impl HayroDocument {
         let geometries = pdf.pages().iter().map(geometry_of).collect();
         Ok(Self {
             inner: PdfWithCache::new(pdf, |_| RenderCache::new()),
-            // Defaults use hayro's embedded standard fonts and CMaps.
-            // TODO: resolve fallback fonts via fontconfig for better CJK coverage.
+            // Defaults use hayro's embedded standard fonts and CMaps. TODO: resolve fallback fonts
+            // via fontconfig for better CJK coverage.
             settings: InterpreterSettings::default(),
             geometries,
         })
@@ -55,13 +54,12 @@ impl HayroDocument {
         self.inner.borrow_owner()
     }
 
-    /// Total pixels of the images page `page` draws through XObjects, looking
-    /// into form XObjects a few levels deep (inline images are ignored).
+    /// Total pixels of the images page `page` draws through XObjects, looking into form XObjects a
+    /// few levels deep (inline images are ignored).
     ///
-    /// Reads dictionaries only, so it's cheap. hayro decodes images whole,
-    /// and at high zoom a big scan costs gigabytes per render (M1: 4.5 GB for
-    /// one tile of a 4.4 × 5.9 m JPEG 2000 page), so the scheduler treats
-    /// pages above a threshold specially.
+    /// Reads dictionaries only, so it's cheap. hayro decodes images whole, and at high zoom a big
+    /// scan costs gigabytes per render (4.5 GB for one tile of a 4.4 by 5.9 m JPEG 2000 page), so
+    /// the scheduler treats pages above a threshold specially.
     pub fn page_image_pixels(&self, page: usize) -> u64 {
         let Some(p) = self.pdf().pages().get(page) else {
             return 0;
@@ -144,8 +142,8 @@ impl Document for HayroDocument {
             return Err(RenderError::TooLarge(w, h));
         }
 
-        // Scale non-uniformly by a hair so the page exactly fills the rounded
-        // pixel dimensions; tiles then line up seamlessly with full renders.
+        // Scale non-uniformly by a hair so the page exactly fills the rounded pixel dimensions.
+        // Tiles then line up seamlessly with full renders.
         let size = geometry.size();
         let sx = full.width as f64 / size.width;
         let sy = full.height as f64 / size.height;
@@ -198,6 +196,7 @@ impl Document for HayroDocument {
 }
 
 /// Checks that our page transform agrees with hayro's own for every page.
+///
 /// Otherwise annotation positions, hit-testing and rendering would drift apart.
 pub fn check_geometry_matches_hayro(doc: &HayroDocument) -> Result<(), String> {
     use hayro::hayro_interpret::util::TransformExt;
@@ -209,7 +208,7 @@ pub fn check_geometry_matches_hayro(doc: &HayroDocument) -> Result<(), String> {
         let size = doc.geometries[i].size();
         let size_ok =
             (size.width - rw as f64).abs() < 1e-3 && (size.height - rh as f64).abs() < 1e-3;
-        // hayro computes in f32 in places; compare relative to page size.
+        // hayro computes in f32 in places, so compare relative to page size.
         let tol = 1e-4 * (1.0 + size.width.max(size.height));
         let tf_ok = ours.iter().zip(theirs).all(|(a, b)| (a - b).abs() < tol);
         if !(size_ok && tf_ok) {

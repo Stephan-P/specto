@@ -1,19 +1,19 @@
-//! Typed coordinate spaces for specto.
+//! Typed coordinate spaces for Specto.
 //!
-//! Every point, size, rectangle and transform carries the space it lives in, so
-//! mixing them up is a compile error (`PdfPoint` vs `PagePoint`). Transforms are
-//! typed `Src → Dst`.
+//! Every point, size, rectangle and transform carries the space it lives in, so mixing them up is a
+//! compile error. A `PdfPoint` can't be used where a `PagePoint` is expected, and a transform
+//! carries both its source and its destination space.
 //!
-//! | Space         | Unit                  | Origin / axes                                             |
+//! | Space         | Unit                  | Origin and axes                                           |
 //! |---------------|-----------------------|-----------------------------------------------------------|
 //! | [`PdfSpace`]  | PDF points            | page user space: y up, as written in the file             |
 //! | [`PageSpace`] | PDF points            | displayed page: top-left of the crop box after rotation, y down |
 //! | [`LayoutSpace`] | logical pixels      | whole document as laid out by the viewer at the current zoom, y down |
 //! | [`ViewSpace`] | logical pixels        | top-left of the viewport (what the UI toolkit uses)       |
-//! | [`DeviceSpace`] | physical pixels     | top-left of the viewport / bitmap                         |
+//! | [`DeviceSpace`] | physical pixels     | top-left of the viewport or bitmap                        |
 //!
-//! Annotation rectangles, quad points and link targets are in [`PdfSpace`].
-//! Hit-testing, selection and drawing use [`PageSpace`] and upward.
+//! Annotation rectangles, quad points and link targets are in [`PdfSpace`]. Hit-testing, selection
+//! and drawing use [`PageSpace`] and upward.
 
 mod rotation;
 
@@ -25,16 +25,20 @@ use euclid::{Box2D, Point2D, Rect, Size2D, Transform2D, Vector2D};
 /// PDF user space of one page (points, y up).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PdfSpace {}
+
 /// The page as displayed: origin at the top-left of the visible area, y down, points.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PageSpace {}
-/// The whole document as laid out by the viewer at the current zoom
-/// (logical pixels, y down). [`ViewSpace`] is this minus the scroll offset.
+
+/// The whole document as laid out by the viewer at the current zoom (logical pixels, y down).
+/// Without the scroll offset, this is [`ViewSpace`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LayoutSpace {}
+
 /// Logical pixels relative to the viewport.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ViewSpace {}
+
 /// Physical pixels relative to the viewport or a bitmap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DeviceSpace {}
@@ -56,16 +60,18 @@ pub type ViewRect = Rect<f64, ViewSpace>;
 pub type ViewSize = Size2D<f64, ViewSpace>;
 pub type DevicePoint = Point2D<f64, DeviceSpace>;
 pub type DeviceRect = Rect<f64, DeviceSpace>;
-/// Integer pixel rectangle, e.g. a tile within a page bitmap.
+
+/// Integer pixel rectangle, such as a tile within a page bitmap.
 pub type DeviceIntRect = Box2D<u32, DeviceSpace>;
 pub type DeviceIntSize = Size2D<u32, DeviceSpace>;
 
 pub type PdfToPage = Transform2D<f64, PdfSpace, PageSpace>;
 pub type PageToPdf = Transform2D<f64, PageSpace, PdfSpace>;
 
-/// A quadrilateral, e.g. a glyph or a highlighted run of text that may be
-/// rotated. Points go around in order; for text: bottom-left, bottom-right,
-/// top-right, top-left *in the text's own direction*.
+/// A quadrilateral, such as a glyph or a highlighted run of text that may be rotated.
+///
+/// Points go around in order. For text they are bottom-left, bottom-right, top-right and top-left,
+/// in the text's own direction.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Quad<U> {
     pub points: [Point2D<f64, U>; 4],
@@ -110,21 +116,23 @@ impl<U> Quad<U> {
 pub type PdfQuad = Quad<PdfSpace>;
 pub type PageQuad = Quad<PageSpace>;
 
-/// Fallback size for degenerate pages: A4 (210 × 297 mm), matching hayro.
+/// Fallback size for degenerate pages: A4 (210 by 297 mm), matching hayro.
 const A4: (f64, f64) = (210.0 / 25.4 * 72.0, 297.0 / 25.4 * 72.0);
 
 /// The geometry of one page: which part of user space is visible and how it is rotated.
 ///
-/// Mirrors how renderers interpret the page dictionary: the visible area is
-/// CropBox ∩ MediaBox, and `/Rotate` turns it clockwise for display.
+/// Mirrors how renderers interpret the page dictionary: the visible area is the crop box clipped to
+/// the media box, and `/Rotate` turns it clockwise for display.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PageGeometry {
-    /// CropBox ∩ MediaBox, normalized (min ≤ max).
+    /// The crop box clipped to the media box, with its corners in order.
     visible: PdfBox,
     rotation: Rotation,
 }
 
 impl PageGeometry {
+    /// Creates the geometry of a page from its boxes and its `/Rotate` value.
+    ///
     /// `crop_box` defaults to the media box. Boxes may be given with any corner order.
     pub fn new(media_box: PdfBox, crop_box: Option<PdfBox>, rotation: Rotation) -> Self {
         let media = normalize(media_box);
@@ -135,8 +143,8 @@ impl PageGeometry {
         Self { visible, rotation }
     }
 
-    /// The same page with an additional clockwise rotation applied on top of
-    /// `/Rotate` (the user's "rotate page" command).
+    /// The same page with an additional clockwise rotation applied on top of `/Rotate`, as the
+    /// user's rotate command does.
     pub fn rotated(self, extra: Rotation) -> Self {
         Self {
             rotation: self.rotation + extra,
@@ -153,8 +161,9 @@ impl PageGeometry {
         self.visible
     }
 
-    /// Unrotated width and height of the visible area. Degenerate (zero-area)
-    /// pages are treated as A4, and each side is at least 1 pt.
+    /// Unrotated width and height of the visible area.
+    ///
+    /// Pages without an area are treated as A4, and each side is at least 1 point.
     fn base_size(&self) -> (f64, f64) {
         let (w, h) = (self.visible.width(), self.visible.height());
         if !(w > f64::EPSILON && h > f64::EPSILON) {
@@ -182,11 +191,11 @@ impl PageGeometry {
         DeviceIntSize::new(pixel_extent(s.width, scale), pixel_extent(s.height, scale))
     }
 
-    /// PDF user space → displayed page space.
+    /// Maps PDF user space to displayed page space.
     pub fn pdf_to_page(&self) -> PdfToPage {
         let (w, h) = self.base_size();
-        // Flip y and move the visible area's top-left to the origin:
-        // u = x - x0, v = base_h - (y - y0)
+        // Flip y and move the visible area's top-left to the origin: u = x - x0, v = base_h - (y -
+        // y0)
         let flip = Transform2D::<f64, PdfSpace, PageSpace>::new(
             1.0,
             0.0,
@@ -197,17 +206,17 @@ impl PageGeometry {
         );
         let rotate = match self.rotation {
             Rotation::None => Transform2D::identity(),
-            // (u, v) → (h - v, u)
+            // (u, v) becomes (h - v, u)
             Rotation::Cw90 => Transform2D::new(0.0, 1.0, -1.0, 0.0, h, 0.0),
-            // (u, v) → (w - u, h - v)
+            // (u, v) becomes (w - u, h - v)
             Rotation::Cw180 => Transform2D::new(-1.0, 0.0, 0.0, -1.0, w, h),
-            // (u, v) → (v, w - u)
+            // (u, v) becomes (v, w - u)
             Rotation::Cw270 => Transform2D::new(0.0, -1.0, 1.0, 0.0, 0.0, w),
         };
         flip.then(&rotate)
     }
 
-    /// Displayed page space → PDF user space.
+    /// Maps displayed page space to PDF user space.
     pub fn page_to_pdf(&self) -> PageToPdf {
         self.pdf_to_page()
             .inverse()
@@ -215,7 +224,7 @@ impl PageGeometry {
     }
 }
 
-/// Number of pixels covering `points` at `scale` px/pt (at least 1).
+/// Number of pixels covering `points` at `scale` pixels per point, at least 1.
 pub fn pixel_extent(points: f64, scale: f64) -> u32 {
     (points * scale).round().max(1.0) as u32
 }
@@ -246,7 +255,7 @@ mod tests {
     fn geometry(rotation: Rotation) -> PageGeometry {
         PageGeometry::new(
             pdf_box(0.0, 0.0, 612.0, 792.0),
-            Some(pdf_box(100.0, 200.0, 400.0, 600.0)), // 300 × 400
+            Some(pdf_box(100.0, 200.0, 400.0, 600.0)), // 300 by 400
             rotation,
         )
     }
@@ -316,7 +325,7 @@ mod tests {
 
     #[test]
     fn quads_contain_points_and_transform() {
-        // A square rotated 45°, centred on (10, 10).
+        // A square rotated by 45 degrees, centered on (10, 10).
         let q = PdfQuad::new([
             PdfPoint::new(10.0, 5.0),
             PdfPoint::new(15.0, 10.0),

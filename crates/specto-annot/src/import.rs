@@ -10,15 +10,15 @@ use crate::{
     AnnotKind, Annotation, Appearance, Color, Flags, MarkupStyle, Origin, TextFont, look_mark,
 };
 
-/// Entries of a page's `/Annots` beyond this many are ignored, as are
-/// quads, strokes and points of one annotation: a guard against broken
-/// files.
+/// Entries of a page's `/Annots` beyond this many are ignored, as are quads, strokes and points of
+/// one annotation: a guard against broken files.
 const MAX_ITEMS: usize = 10_000;
 
-/// The markup annotations of page `page` of `source`, in the order the
-/// file draws them (later ones on top). What isn't markup (links, form
-/// fields, popups, media) is left out, and so is anything without a usable
-/// `/Rect`.
+/// The markup annotations of page `page` of `source`, in the order the file draws them (later ones
+/// on top).
+///
+/// What isn't markup (links, form fields, popups, media) is left out, and so is anything without a
+/// usable `/Rect`.
 pub fn import(source: &SourceDocument, page: usize) -> Vec<Annotation> {
     let Some(p) = source.pdf().pages().get(page) else {
         return Vec::new();
@@ -26,8 +26,8 @@ pub fn import(source: &SourceDocument, page: usize) -> Vec<Annotation> {
     let Some(annots) = p.raw().get::<Array<'_>>(b"Annots") else {
         return Vec::new();
     };
-    // The raw entries say which are references, and count the entries that
-    // aren't dictionaries; the resolved ones are the dictionaries.
+    // The raw entries say which are references, and count the entries that aren't dictionaries. The
+    // resolved ones are the dictionaries.
     annots
         .raw_iter()
         .zip(annots.iter::<Object<'_>>())
@@ -53,9 +53,8 @@ pub fn import(source: &SourceDocument, page: usize) -> Vec<Annotation> {
 fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
     let subtype = dict.get::<Name<'_>>(b"Subtype")?;
     let subtype = subtype.as_ref();
-    // Not markup: links and form fields have their own crates, a popup is
-    // the window of another annotation, and the rest are media and marks
-    // for printers.
+    // Not markup: links and form fields have their own crates, a popup is the window of another
+    // annotation, and the rest are media and marks for printers.
     if matches!(
         subtype,
         b"Link"
@@ -86,8 +85,8 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
         b"Square" => Some(AnnotKind::Square { fill: fill() }),
         b"Circle" => Some(AnnotKind::Circle { fill: fill() }),
         b"Line" => line(dict),
-        // Notes and text boxes only if their look was written here: other
-        // programs give theirs icons, borders and fonts of their own.
+        // Notes and text boxes only if their look was written here: other programs give theirs
+        // icons, borders and fonts of their own.
         b"Text" if look == Appearance::Own => Some(AnnotKind::Note),
         b"Stamp" if look == Appearance::Own => Some(AnnotKind::Stamp(crate::StampArt::InFile)),
         b"FreeText" if look == Appearance::Own => text_style(dict).map(|(size, font)| {
@@ -126,10 +125,9 @@ fn annotation(dict: &Dict<'_>, origin: Origin) -> Option<Annotation> {
     })
 }
 
-/// What the file gives the annotation as its normal appearance (`/AP
-/// /N`): nothing, a look written here (the stream is the one `/SpectoLook`
-/// marks, see [`look_mark`]), or one of unknown making. A dictionary of
-/// looks by state is never one of ours.
+/// What the file gives the annotation as its normal appearance (`/AP /N`): nothing, a look written
+/// here (the stream is the one `/SpectoLook` marks, see [`look_mark`]), or one of unknown making. A
+/// dictionary of looks by state is never one of ours.
 fn appearance_of(dict: &Dict<'_>) -> Appearance {
     let Some(ap) = dict.get::<Dict<'_>>(b"AP") else {
         return Appearance::Missing;
@@ -156,8 +154,8 @@ fn default_appearance_words(dict: &Dict<'_>) -> Option<Vec<String>> {
     Some(da.split_ascii_whitespace().map(str::to_owned).collect())
 }
 
-/// The numbers before the operator `operator` in the default appearance
-/// string of a text box, e.g. the three of the colour before `rg`.
+/// The numbers before the operator `operator` in the default appearance string of a text box, such
+/// as the three of the color before `rg`.
 fn default_appearance(dict: &Dict<'_>, operator: &str, count: usize) -> Option<Vec<f64>> {
     let words = default_appearance_words(dict)?;
     let at = words.iter().position(|t| t == operator)?;
@@ -169,8 +167,9 @@ fn default_appearance(dict: &Dict<'_>, operator: &str, count: usize) -> Option<V
     (numbers.len() == count).then_some(numbers)
 }
 
-/// The size and the font of a text box: `/Name size Tf`. A font that
-/// isn't one of ours by name counts as Helvetica.
+/// The size and the font of a text box: `/Name size Tf`.
+///
+/// A font that isn't one of ours by name counts as Helvetica.
 fn text_style(dict: &Dict<'_>) -> Option<(f64, TextFont)> {
     let words = default_appearance_words(dict)?;
     let at = words.iter().position(|t| t == "Tf")?;
@@ -183,7 +182,7 @@ fn text_style(dict: &Dict<'_>) -> Option<(f64, TextFont)> {
     (1.0..=1000.0).contains(&size).then_some((size, font))
 }
 
-/// The colour of a text box's text.
+/// The color of a text box's text.
 fn default_appearance_color(dict: &Dict<'_>) -> Option<Color> {
     let c = default_appearance(dict, "rg", 3)?;
     let part = |v: f64| (v as f32).clamp(0.0, 1.0);
@@ -213,8 +212,7 @@ fn rect(dict: &Dict<'_>) -> Option<PdfBox> {
     ))
 }
 
-/// `/C` and `/IC`: grey, RGB or CMYK by the number of components; an
-/// empty array means none.
+/// `/C` and `/IC`: gray, RGB or CMYK by the number of components. An empty array means none.
 fn color_of(dict: &Dict<'_>, key: &[u8]) -> Option<Color> {
     let c: Vec<f32> = numbers(dict, key)?
         .iter()
@@ -249,10 +247,11 @@ fn markup(dict: &Dict<'_>, style: MarkupStyle) -> Option<AnnotKind> {
     (!quads.is_empty()).then_some(AnnotKind::TextMarkup { style, quads })
 }
 
-/// The standard asks for the corners counterclockwise, and nearly every
-/// program writes them in a Z (top left, top right, bottom left, bottom
-/// right). Both are read here by going round the corners by angle, which
-/// gives a proper quad for either, starting from the first corner given.
+/// Reads the four corners of a quad, in whichever of the two usual orders the file has them.
+///
+/// The standard asks for the corners counterclockwise, and nearly every program writes them in a Z
+/// (top left, top right, bottom left, bottom right). Both are read here by going round the corners
+/// by angle, which gives a proper quad for either, starting from the first corner given.
 fn quad(n: &[f64; 8]) -> PdfQuad {
     let mut points = [0, 2, 4, 6].map(|i| PdfPoint::new(n[i], n[i + 1]));
     let cx = points.iter().map(|p| p.x).sum::<f64>() / 4.0;

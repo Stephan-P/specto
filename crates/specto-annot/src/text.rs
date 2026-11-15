@@ -1,10 +1,12 @@
-//! Text in annotations: text boxes are set in one of the fonts every PDF
-//! program has (Helvetica, Times and Courier, each also bold and italic),
-//! so nothing needs embedding. That limits them to the characters of
-//! Windows' Latin code page for now.
+//! Text in annotations: text boxes are set in one of the fonts every PDF program has (Helvetica,
+//! Times and Courier, each also bold and italic), so nothing needs embedding.
 //!
-//! The same line breaks are used wherever a text box is measured or
-//! written, so its text sits the same on screen and in the file.
+//! That limits them to the characters of Windows' Latin code page for now.
+//!
+//! That limits them to the characters of Windows' Latin code page for now.
+//!
+//! The same line breaks are used wherever a text box is measured or written, so its text sits the
+//! same on screen and in the file.
 
 /// A family of fonts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -45,8 +47,8 @@ impl TextFont {
         }
     }
 
-    /// The short name the font goes by in a text box's resources and its
-    /// default appearance string: the ones other programs use too.
+    /// The short name the font goes by in a text box's resources and its default appearance string:
+    /// the ones other programs use too.
     pub fn resource_name(self) -> &'static str {
         match (self.family, self.bold, self.italic) {
             (FontFamily::Sans, false, false) => "Helv",
@@ -64,8 +66,8 @@ impl TextFont {
         }
     }
 
-    /// The font that goes by `name` in a text box's default appearance
-    /// string (see [`resource_name`](Self::resource_name)).
+    /// The font that goes by `name` in a text box's default appearance string (see
+    /// [`resource_name`](Self::resource_name)).
     pub fn from_resource_name(name: &str) -> Option<Self> {
         let families = [FontFamily::Sans, FontFamily::Serif, FontFamily::Mono];
         families
@@ -82,8 +84,9 @@ impl TextFont {
             .find(|f| f.resource_name() == name)
     }
 
-    /// The width of each character from code 32 on, in thousandths of the
-    /// font size; `None` for Courier, where every character is 600 wide.
+    /// The width of each character from code 32 on, in thousandths of the font size, or `None` for
+    /// Courier, where every character is 600 wide.
+    ///
     /// (Helvetica's slanted fonts are as wide as its upright ones.)
     fn widths(self) -> Option<&'static [u16; 224]> {
         match (self.family, self.bold, self.italic) {
@@ -97,8 +100,8 @@ impl TextFont {
         }
     }
 
-    /// How far above the baseline the family's tallest letters reach, and
-    /// how far below it the longest tails, as parts of the font size.
+    /// How far above the baseline the family's tallest letters reach, and how far below it the
+    /// longest tails, as parts of the font size.
     fn ascent_descent(self) -> (f64, f64) {
         match self.family {
             FontFamily::Sans => (0.718, 0.207),
@@ -108,9 +111,8 @@ impl TextFont {
     }
 }
 
-// The widths of the fonts' characters, from their metrics as Adobe
-// publishes them; codes are those of Windows' Latin code page
-// (`WinAnsiEncoding`).
+// The widths of the fonts' characters, from their metrics as Adobe publishes them. Codes are those
+// of Windows' Latin code page (`WinAnsiEncoding`).
 
 #[rustfmt::skip]
 const HELVETICA: [u16; 224] = [
@@ -226,8 +228,8 @@ const LEADING: f64 = 1.2;
 /// The space between a text box's edge and its text, in points.
 pub const TEXT_MARGIN: f64 = 2.0;
 
-/// The byte for `c` in Windows' Latin code page, which text boxes are
-/// written in; `None` for characters it doesn't have.
+/// The byte for `c` in Windows' Latin code page, which text boxes are written in, or `None` for
+/// characters it doesn't have.
 pub fn winansi(c: char) -> Option<u8> {
     let code = c as u32;
     match code {
@@ -267,8 +269,8 @@ pub fn winansi(c: char) -> Option<u8> {
     }
 }
 
-/// `text` as the bytes a text box is written in: characters the code page
-/// doesn't have become question marks.
+/// `text` as the bytes a text box is written in: characters the code page doesn't have become
+/// question marks.
 pub(crate) fn encode(text: &str) -> Vec<u8> {
     text.chars().map(|c| winansi(c).unwrap_or(b'?')).collect()
 }
@@ -286,9 +288,9 @@ pub fn text_width(text: &str, size: f64, font: TextFont) -> f64 {
     f64::from(thousandths) * size / 1000.0
 }
 
-/// `text` broken into lines no wider than `width` in `font` at font size
-/// `size`: at its own line breaks, and between words where a line would
-/// get too long. A word longer than a line is broken where it has to be.
+/// `text` broken into lines no wider than `width` in `font` at font size `size`: at its own line
+/// breaks, and between words where a line would get too long. A word longer than a line is broken
+/// where it has to be.
 pub fn wrap(text: &str, size: f64, width: f64, font: TextFont) -> Vec<String> {
     let wide = |s: &str| text_width(s, size, font);
     let mut lines = Vec::new();
@@ -331,16 +333,14 @@ pub fn wrap(text: &str, size: f64, width: f64, font: TextFont) -> Vec<String> {
     lines
 }
 
-/// How high a text box of `lines` lines in `font` at font size `size` is,
-/// margins included.
+/// How high a text box of `lines` lines in `font` at font size `size` is, margins included.
 pub fn box_height(lines: usize, size: f64, font: TextFont) -> f64 {
     let lines = lines.max(1) as f64;
     let (ascent, descent) = font.ascent_descent();
     2.0 * TEXT_MARGIN + (ascent + descent) * size + (lines - 1.0) * LEADING * size
 }
 
-/// Where the first baseline of a text box is below its top edge, and how
-/// far apart baselines are.
+/// Where the first baseline of a text box is below its top edge, and how far apart baselines are.
 pub(crate) fn baselines(size: f64, font: TextFont) -> (f64, f64) {
     (TEXT_MARGIN + font.ascent_descent().0 * size, LEADING * size)
 }

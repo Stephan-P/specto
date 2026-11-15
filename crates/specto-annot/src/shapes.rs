@@ -1,9 +1,8 @@
 //! What an annotation looks like, as a few simple shapes.
 //!
-//! Annotations are drawn in two places: on screen, by each app's toolkit,
-//! and in the saved file, as an appearance stream that other programs
-//! show. Both are made from the [`Shape`]s here, so that what is saved is
-//! what was on screen.
+//! Annotations are drawn in two places: on screen, by each app's toolkit, and in the saved file, as
+//! an appearance stream that other programs show. Both are made from the [`Shape`]s here, so that
+//! what is saved is what was on screen.
 
 use specto_geom::euclid::Point2D;
 use specto_geom::{PdfBox, PdfPoint, PdfQuad, PdfSpace};
@@ -36,8 +35,7 @@ impl<U> Clone for Segment<U> {
 impl<U> Copy for Segment<U> {}
 
 impl<U> Path<U> {
-    /// The path with every point put through `f`; `None` if `f` gives none
-    /// for one of them.
+    /// The path with every point put through `f`, or `None` if `f` gives none for one of them.
     pub fn map<V>(
         &self,
         f: impl Fn(Point2D<f64, U>) -> Option<Point2D<f64, V>>,
@@ -67,8 +65,7 @@ impl<U> Path<U> {
     }
 }
 
-/// One piece of an annotation's look, in the coordinates of its page of the
-/// file.
+/// One piece of an annotation's look, in the coordinates of its page of the file.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     /// A filled quadrilateral.
@@ -76,8 +73,8 @@ pub enum Shape {
         quad: PdfQuad,
         color: Color,
         opacity: f32,
-        /// Darkens what is beneath instead of covering it, as a highlighter
-        /// pen does: text under it stays black.
+        /// Darkens what is beneath instead of covering it, as a highlighter pen does: text under it
+        /// stays black.
         multiply: bool,
     },
     /// A straight line with square ends.
@@ -88,8 +85,7 @@ pub enum Shape {
         color: Color,
         opacity: f32,
     },
-    /// An outline, filled, drawn with a pen of a width with round ends and
-    /// corners, or both.
+    /// An outline, filled, drawn with a pen of a width with round ends and corners, or both.
     Path {
         path: Path<PdfSpace>,
         fill: Option<Color>,
@@ -98,12 +94,11 @@ pub enum Shape {
     },
 }
 
-/// The colour of markup that has none.
+/// The color of markup that has none.
 const DEFAULT: Color = Color::new(1.0, 0.92, 0.23);
 
-/// The shapes that draw `annotation`, bottom to top; `None` for kinds that
-/// are only ever shown as their file draws them, or that nothing here
-/// draws yet.
+/// The shapes that draw `annotation`, bottom to top, or `None` for kinds that are only ever shown
+/// as their file draws them, or that nothing here draws yet.
 pub fn shapes(annotation: &Annotation) -> Option<Vec<Shape>> {
     let color = annotation.color.unwrap_or(DEFAULT);
     let opacity = annotation.opacity;
@@ -118,7 +113,7 @@ pub fn shapes(annotation: &Annotation) -> Option<Vec<Shape>> {
                         opacity,
                         multiply: true,
                     },
-                    // A wavy line isn't drawn yet; a straight one stands in.
+                    // A wavy line isn't drawn yet, so a straight one stands in.
                     MarkupStyle::Underline | MarkupStyle::Squiggly => {
                         line_across(&quad, 0.08, color, opacity)
                     }
@@ -178,8 +173,7 @@ pub fn shapes(annotation: &Annotation) -> Option<Vec<Shape>> {
     }
 }
 
-/// The mark of a note in `r`: a slip of paper in `color` with a few lines
-/// of writing on it.
+/// The mark of a note in `r`: a slip of paper in `color` with a few lines of writing on it.
 fn note_mark(r: PdfBox, color: Color, opacity: f32) -> Vec<Shape> {
     let ink = Color::new(color.r * 0.45, color.g * 0.45, color.b * 0.45);
     let (w, h) = (r.width(), r.height());
@@ -213,15 +207,15 @@ fn note_mark(r: PdfBox, color: Color, opacity: f32) -> Vec<Shape> {
     shapes
 }
 
-/// The pen of a rectangle or ellipse: none if its width is 0 (it is then
-/// only filled) or it has no colour of its own.
+/// The pen of a rectangle or ellipse: none if its width is 0 (it is then only filled) or it has no
+/// color of its own.
 fn stroke_of(annotation: &Annotation) -> Option<(Color, f64)> {
     let color = annotation.color?;
     (annotation.line_width > 0.0).then_some((color, annotation.line_width))
 }
 
-/// Where the pen of a rectangle or ellipse runs: inside the annotation's
-/// rectangle by half its width, so that the line is within it.
+/// Where the pen of a rectangle or ellipse runs: inside the annotation's rectangle by half its
+/// width, so that the line is within it.
 fn outline(annotation: &Annotation) -> PdfBox {
     let r = annotation.rect;
     let inset = (annotation.line_width / 2.0)
@@ -233,8 +227,7 @@ fn outline(annotation: &Annotation) -> PdfBox {
 
 /// An ellipse touching the sides of `r`, as four curves.
 fn ellipse(r: PdfBox) -> Path<PdfSpace> {
-    // How far the control points of a quarter circle are from its ends, for
-    // a radius of 1.
+    // How far the control points of a quarter circle are from its ends, for a radius of 1.
     const K: f64 = 0.552_284_749_8;
     let c = r.center();
     let (rx, ry) = (r.width() / 2.0, r.height() / 2.0);
@@ -251,9 +244,9 @@ fn ellipse(r: PdfBox) -> Path<PdfSpace> {
     }
 }
 
-/// A smooth curve through the points of a freehand stroke (a Catmull-Rom
-/// spline, as Bézier curves); a single point becomes a dot. `None` without
-/// points.
+/// A smooth curve through the points of a freehand stroke (a Catmull-Rom spline, as Bézier curves).
+///
+/// A single point becomes a dot. `None` without points.
 fn smooth(points: &[PdfPoint]) -> Option<Path<PdfSpace>> {
     let (&start, rest) = points.split_first()?;
     let segments = match rest {
@@ -276,9 +269,8 @@ fn smooth(points: &[PdfPoint]) -> Option<Path<PdfSpace>> {
     })
 }
 
-/// A line along the text of `quad` (bottom left, bottom right, top right,
-/// top left in the text's direction), `height` of the way up from its
-/// bottom edge.
+/// A line along the text of `quad` (bottom left, bottom right, top right, top left in the text's
+/// direction), `height` of the way up from its bottom edge.
 fn line_across(quad: &PdfQuad, height: f64, color: Color, opacity: f32) -> Shape {
     let [bl, br, tr, tl] = quad.points;
     let from = bl + (tl - bl) * height;
@@ -293,27 +285,27 @@ fn line_across(quad: &PdfQuad, height: f64, color: Color, opacity: f32) -> Shape
     }
 }
 
-/// An annotation's look as a PDF appearance stream: a form whose content
-/// is in page coordinates, so its bounding box is the annotation's
-/// rectangle and it needs no matrix.
+/// An annotation's look as a PDF appearance stream: a form whose content is in page coordinates, so
+/// its bounding box is the annotation's rectangle and it needs no matrix.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppearanceStream {
-    /// The form's `/BBox`, and the annotation's `/Rect` to go with it: the
-    /// shapes' bounds, which can reach past the annotation's own rectangle
-    /// (the width of a line).
+    /// The form's `/BBox`, and the annotation's `/Rect` to go with it: the shapes' bounds, which
+    /// can reach past the annotation's own rectangle (the width of a line).
     pub bbox: PdfBox,
-    /// The content stream. It selects the graphics state `/GS0`, …, one
-    /// per entry of `states`.
+    /// The content stream.
+    ///
+    /// It selects the graphics states `/GS0` and up, one per entry of `states`.
     pub content: Vec<u8>,
     /// The graphics states the content uses.
     pub states: Vec<GraphicsState>,
-    /// The font the content sets text in, if it does, by its
-    /// `resource_name`: one of the fonts no file needs to bring along, in
-    /// `WinAnsiEncoding`, which the stream's resources must then name.
+    /// The font the content sets text in, if it does, by its `resource_name`: one of the fonts no
+    /// file needs to bring along, in `WinAnsiEncoding`, which the stream's resources must then
+    /// name.
     pub font: Option<crate::TextFont>,
-    /// The image the content draws as `/Im0`, if it does. The stream's box
-    /// is then not `bbox` but the unit square, which the image fills and
-    /// readers stretch onto the annotation's area, wherever that is moved.
+    /// The image the content draws as `/Im0`, if it does.
+    ///
+    /// The stream's box is then not `bbox` but the unit square, which the image fills and readers
+    /// stretch onto the annotation's area, wherever that is moved.
     pub image: Option<std::sync::Arc<crate::StampImage>>,
 }
 
@@ -324,8 +316,7 @@ pub struct GraphicsState {
     pub multiply: bool,
 }
 
-/// The appearance stream for `annotation`, or `None` where [`shapes`]
-/// gives none.
+/// The appearance stream for `annotation`, or `None` where [`shapes`] gives none.
 pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
     if let AnnotKind::FreeText { size, font } = annotation.kind {
         return Some(text_appearance(annotation, size, font));
@@ -394,9 +385,9 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
             Shape::Path {
                 path, fill, stroke, ..
             } => {
-                // A round pen reaches half its width beyond the outline, no
-                // further: the area of a rectangle or ellipse must come out
-                // as it went in, or it would grow with every save.
+                // A round pen reaches half its width beyond the outline, no further: the area of a
+                // rectangle or ellipse must come out as it went in, or it would grow with every
+                // save.
                 let margin = stroke.map_or(0.0, |(_, width)| width / 2.0);
                 grow(PdfBox::from_points(path.points()).inflate(margin, margin));
                 if let Some(fill) = fill {
@@ -436,8 +427,7 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
     })
 }
 
-/// The appearance stream of a text box: its text in lines from the top of
-/// its rectangle down.
+/// The appearance stream of a text box: its text in lines from the top of its rectangle down.
 fn text_appearance(annotation: &Annotation, size: f64, font: crate::TextFont) -> AppearanceStream {
     let r = annotation.rect;
     let color = annotation.color.unwrap_or(Color::new(0.0, 0.0, 0.0));
@@ -487,12 +477,12 @@ fn text_appearance(annotation: &Annotation, size: f64, font: crate::TextFont) ->
     }
 }
 
-/// A number that says "this appearance stream was written here": kept in
-/// the annotation (`/SpectoLook`) next to the stream, and compared with the
-/// stream when the file is read. As long as they agree, the look is the
-/// one [`appearance`] made, and nothing is lost by making it anew. Another
-/// program that changes the look changes the stream, and the two no longer
-/// agree. (FNV-1a over the stream's content.)
+/// A number that says "this appearance stream was written here": kept in the annotation
+/// (`/SpectoLook`) next to the stream, and compared with the stream when the file is read.
+///
+/// As long as they agree, the look is the one [`appearance`] made, and nothing is lost by making it
+/// anew. Another program that changes the look changes the stream, and the two no longer agree.
+/// (FNV-1a over the stream's content.)
 pub fn look_mark(content: &[u8]) -> i64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for &byte in content {

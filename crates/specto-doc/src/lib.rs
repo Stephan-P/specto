@@ -1,20 +1,18 @@
 //! The edit model: what a document being edited consists of.
 //!
-//! Editing never changes the files a document came from. An [`EditDoc`] is
-//! a list of [`PageRef`]s, each naming a page of one of the source files
-//! plus the rotation the user added. Rotating, deleting, moving and
-//! inserting pages only change this list; the bytes of a new file are
-//! produced when saving. Which source is which, and how to read it, is up
-//! to the frontend: here a source is just a [`SourceId`].
+//! Editing never changes the files a document came from. An [`EditDoc`] is a list of [`PageRef`]s,
+//! each naming a page of one of the source files plus the rotation the user added. Rotating,
+//! deleting, moving and inserting pages only change this list. The bytes of a new file are produced
+//! when saving. Which source is which, and how to read it, is up to the frontend: here a source is
+//! just a [`SourceId`].
 //!
-//! Undo keeps a copy of the page list from before each edit. A [`PageRef`]
-//! is 12 bytes, so even for 10,000 pages a step costs 120 KB, and undo can't
-//! drift out of step with redo the way hand-written inverse commands can.
+//! Undo keeps a copy of the page list from before each edit. A [`PageRef`] is 12 bytes, so even for
+//! 10,000 pages a step costs 120 KB, and undo can't drift out of step with redo the way
+//! hand-written inverse commands can.
 //!
-//! Annotations are edited the same way (see [`annots`](AnnotId)): the
-//! document keeps what was done to them, each undo step has that as it was
-//! (shared until it changes), and page and annotation edits are undone in
-//! the order they were made.
+//! Annotations are edited the same way (see [`annots`](AnnotId)): the document keeps what was done
+//! to them, each undo step has that as it was (shared until it changes), and page and annotation
+//! edits are undone in the order they were made.
 
 mod annots;
 
@@ -30,13 +28,12 @@ pub use annots::{AnnotId, PageAnnotChanges};
 /// How many edits can be undone.
 pub const UNDO_LIMIT: usize = 100;
 
-/// One of the files a document's pages come from, as numbered by the
-/// frontend.
+/// One of the files a document's pages come from, as numbered by the frontend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceId(pub u32);
 
-/// A page of the document: page `page` of source `source`, turned by
-/// `rotation` on top of its own `/Rotate`.
+/// A page of the document: page `page` of source `source`, turned by `rotation` on top of its own
+/// `/Rotate`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PageRef {
     pub source: SourceId,
@@ -54,9 +51,8 @@ impl PageRef {
     }
 }
 
-/// What an edit did, for the frontends to name it in their Undo and Redo
-/// menu items ("Undo Rotate Page", "Undo Highlight"). The count is of pages
-/// affected.
+/// What an edit did, for the frontends to name it in their Undo and Redo menu items ("Undo Rotate
+/// Page", "Undo Highlight"). The count is of pages affected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Edit {
     Rotate { pages: usize },
@@ -98,8 +94,10 @@ pub struct EditDoc {
     annots: Arc<AnnotEdits>,
     /// The number the next new annotation gets.
     next_annot: u64,
-    /// Identifies the current state; each edit gets a new one, undo and
-    /// redo bring back old ones. Compared with `saved` for "modified".
+    /// Identifies the current state.
+    ///
+    /// Each edit gets a new one, and undo and redo bring back old ones. Compared with `saved` for
+    /// "modified".
     version: u64,
     next_version: u64,
     saved: Option<u64>,
@@ -145,9 +143,9 @@ impl EditDoc {
         self.saved = Some(self.version);
     }
 
-    /// Identifies the current state, for [`mark_saved_version`]: a save in
-    /// the background takes a copy of the pages, and when it's done, only
-    /// that state counts as saved, not edits made meanwhile.
+    /// Identifies the current state, for [`mark_saved_version`]: a save in the background takes a
+    /// copy of the pages, and when it's done, only that state counts as saved, not edits made
+    /// meanwhile.
     ///
     /// [`mark_saved_version`]: Self::mark_saved_version
     pub fn version(&self) -> Version {
@@ -170,8 +168,9 @@ impl EditDoc {
         out
     }
 
-    /// Turns pages `which` (positions; duplicates and ones out of range are
-    /// ignored) clockwise by `by`. Returns whether anything changed.
+    /// Turns the pages at positions `which` clockwise by `by`.
+    ///
+    /// Duplicates and positions out of range are ignored. Returns whether anything changed.
     pub fn rotate(&mut self, which: &[usize], by: Rotation) -> bool {
         let which = self.valid(which);
         if which.is_empty() || by == Rotation::None {
@@ -186,8 +185,10 @@ impl EditDoc {
         true
     }
 
-    /// Removes pages `which`. A document keeps at least one page, so
-    /// deleting all of them does nothing. Returns whether anything changed.
+    /// Removes pages `which`.
+    ///
+    /// A document keeps at least one page, so deleting all of them does nothing. Returns whether
+    /// anything changed.
     pub fn delete(&mut self, which: &[usize]) -> bool {
         let which = self.valid(which);
         if which.is_empty() || which.len() == self.pages.len() {
@@ -205,9 +206,10 @@ impl EditDoc {
         true
     }
 
-    /// Moves pages `which` to before the page at position `to` (counted
-    /// before the move; the page count means the end), keeping their order.
-    /// Returns where they ended up, or `None` if nothing moved.
+    /// Moves pages `which` to before the page at position `to`, keeping their order.
+    ///
+    /// `to` is counted before the move, and the page count means the end. Returns where they ended
+    /// up, or `None` if nothing moved.
     pub fn move_pages(&mut self, which: &[usize], to: usize) -> Option<Range<usize>> {
         let which = self.valid(which);
         if which.is_empty() {
@@ -236,8 +238,8 @@ impl EditDoc {
         Some(range)
     }
 
-    /// Inserts `pages` before position `at` (the page count means the end).
-    /// Returns where they ended up.
+    /// Inserts `pages` before position `at` (the page count means the end). Returns where they
+    /// ended up.
     pub fn insert(&mut self, at: usize, pages: Vec<PageRef>) -> Option<Range<usize>> {
         if pages.is_empty() {
             return None;
@@ -249,9 +251,8 @@ impl EditDoc {
         Some(range)
     }
 
-    /// Like [`insert`](Self::insert), for pages copied from another
-    /// document that come with what was done to their annotations there
-    /// (source, page of it, the changes): one edit.
+    /// Like [`insert`](Self::insert), for pages copied from another document that come with what
+    /// was done to their annotations there (source, page of it, the changes): one edit.
     pub fn insert_annotated(
         &mut self,
         at: usize,
@@ -273,7 +274,7 @@ impl EditDoc {
         self.redo.last().map(|s| s.edit)
     }
 
-    /// Undoes the last edit; returns it.
+    /// Undoes the last edit and returns it.
     pub fn undo(&mut self) -> Option<Edit> {
         let step = self.undo.pop()?;
         let edit = step.edit;
@@ -282,7 +283,7 @@ impl EditDoc {
         Some(edit)
     }
 
-    /// Redoes the last undone edit; returns it.
+    /// Redoes the last undone edit and returns it.
     pub fn redo(&mut self) -> Option<Edit> {
         let step = self.redo.pop()?;
         let edit = step.edit;
@@ -291,8 +292,7 @@ impl EditDoc {
         Some(edit)
     }
 
-    /// Makes `step` current; returns the state it replaced, under the same
-    /// edit.
+    /// Makes `step` current and returns the state it replaced, under the same edit.
     fn swap(&mut self, step: Step) -> Step {
         let old = Step {
             edit: step.edit,
@@ -304,8 +304,7 @@ impl EditDoc {
         old
     }
 
-    /// Saves the current state for undo before an edit, which then gets a
-    /// new version.
+    /// Saves the current state for undo before an edit, which then gets a new version.
     fn record(&mut self, edit: Edit) {
         self.undo.push(Step {
             edit,

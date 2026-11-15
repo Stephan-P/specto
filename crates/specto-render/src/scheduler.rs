@@ -1,36 +1,33 @@
 //! Background rendering of tiles.
 //!
-//! The frontend tells the scheduler, once per frame, which tiles it wants in
-//! priority order ([`Scheduler::request`]). That list *replaces* the queue, so
-//! tiles that scrolled out of view are never rendered. Finished tiles are
-//! collected with [`Scheduler::take_finished`] after the `notify` callback
-//! fires (the frontend uses it to wake its main loop).
+//! The frontend tells the scheduler, once per frame, which tiles it wants in priority order
+//! ([`Scheduler::request`]). That list *replaces* the queue, so tiles that scrolled out of view are
+//! never rendered. Finished tiles are collected with [`Scheduler::take_finished`] after the
+//! `notify` callback fires (the frontend uses it to wake its main loop).
 //!
-//! Several views (windows) can share one scheduler and its threads: each gets
-//! a [`Client`] with its own queue, finished tiles and `notify` callback, so
-//! their requests don't replace each other. Workers serve the clients'
-//! queues round-robin. `Scheduler::request` and friends use a built-in
+//! Several views (windows) can share one scheduler and its threads: each gets a [`Client`] with its
+//! own queue, finished tiles and `notify` callback, so their requests don't replace each other.
+//! Workers serve the clients' queues round-robin. `Scheduler::request` and friends use a built-in
 //! default client.
 //!
-//! Each worker thread opens its own copy of every document it renders, because
-//! hayro's caches are not `Send`. A panic while rendering is caught and
-//! reported as [`RenderError::Panicked`] for that tile only.
+//! Each worker thread opens its own copy of every document it renders, because hayro's caches are
+//! not `Send`. A panic while rendering is caught and reported as [`RenderError::Panicked`] for that
+//! tile only.
 //!
 //! # Guards against expensive pages
 //!
-//! hayro can't be cancelled and interprets the whole page for every tile, so
-//! one complex page can cost seconds per tile, and pages with huge images can
-//! cost gigabytes (M1: 4.5 GB and 10 s for one tile of a 212-megapixel JPEG
-//! 2000 page). The scheduler therefore:
+//! hayro can't be cancelled and interprets the whole page for every tile, so one complex page can
+//! cost seconds per tile, and pages with huge images can cost gigabytes (4.5 GB and 10 s for one
+//! tile of a 212-megapixel JPEG 2000 page). The scheduler therefore:
 //!
 //! - marks a page **expensive** when it has more than
 //!   [`Limits::heavy_image_pixels`] of images (checked at open, from the image
 //!   dictionaries), or when one of its renders runs longer than
-//!   [`Limits::slow_after`];
+//!   [`Limits::slow_after`]
 //! - renders **one tile at a time** of an expensive page, so it can occupy at
-//!   most one worker (and one copy of its decoded images);
+//!   most one worker (and one copy of its decoded images)
 //! - drops a worker's copy of the document after rendering a heavy page, which
-//!   frees hayro's image cache;
+//!   frees hayro's image cache
 //! - starts **extra workers** while renders are stalled (running longer than
 //!   [`Limits::stall_after`]) and other work is waiting, so the rest of the
 //!   document keeps rendering. Extra workers exit once nothing is stalled.
@@ -45,8 +42,8 @@ use specto_source::PdfData;
 use crate::tile::{DocId, TileKey};
 use crate::{Bitmap, Document, HayroDocument, OpenError, PageGeometry, RenderError, RenderRequest};
 
-/// After a worker has rendered this many distinct pages of one document, it
-/// re-opens the document to drop hayro's ever-growing cache.
+/// After a worker has rendered this many distinct pages of one document, it re-opens the document
+/// to drop hayro's ever-growing cache.
 const CACHE_RESET_PAGES: usize = 32;
 
 /// Thresholds for the guards described in the [module docs](self).
@@ -54,8 +51,8 @@ const CACHE_RESET_PAGES: usize = 32;
 pub struct Limits {
     /// A page whose render takes longer than this is expensive.
     pub slow_after: Duration,
-    /// A render running longer than this is stalled: if other work is waiting
-    /// and no worker is free, an extra worker starts.
+    /// A render running longer than this is stalled: if other work is waiting and no worker is
+    /// free, an extra worker starts.
     pub stall_after: Duration,
     /// A page drawing more image pixels than this is expensive from the start.
     pub heavy_image_pixels: u64,
@@ -68,8 +65,8 @@ impl Default for Limits {
         Self {
             slow_after: Duration::from_millis(500),
             stall_after: Duration::from_secs(1),
-            // Pages around 50 MP render in ≤ 160 ms and ≤ 70 MB per tile in
-            // the corpus; the problem case was 212 MP.
+            // Pages around 50 MP render in at most 160 ms and 70 MB per tile in the corpus. The
+            // problem case was 212 MP.
             heavy_image_pixels: 100_000_000,
             max_extra_workers: 4,
         }
@@ -163,8 +160,8 @@ pub struct Scheduler {
     default: Client,
 }
 
-/// One view's share of a [`Scheduler`]: its own request queue, finished
-/// tiles and wake-up callback. Dropping it discards its queue and results.
+/// One view's share of a [`Scheduler`]: its own request queue, finished tiles and wake-up callback.
+/// Dropping it discards its queue and results.
 pub struct Client {
     shared: Arc<Shared>,
     id: ClientId,
@@ -172,8 +169,9 @@ pub struct Client {
 
 impl Client {
     /// Replaces this client's queue with `wanted`, highest priority first.
-    /// Tiles being rendered (for anyone), or finished but not yet taken by
-    /// this client, are skipped.
+    ///
+    /// Tiles being rendered (for anyone), or finished but not yet taken by this client, are
+    /// skipped.
     pub fn request(&self, wanted: impl IntoIterator<Item = TileKey>) {
         let mut s = self.shared.lock();
         let s = &mut *s;
@@ -214,8 +212,9 @@ impl Drop for Client {
 }
 
 impl Scheduler {
-    /// Starts `threads` workers with default [`Limits`]. `notify` is called
-    /// from a worker thread when finished tiles become available (once per
+    /// Starts `threads` workers with default [`Limits`].
+    ///
+    /// `notify` is called from a worker thread when finished tiles become available (once per
     /// batch, not per tile).
     pub fn new(threads: usize, notify: impl Fn() + Send + Sync + 'static) -> Self {
         Self::with_limits(threads, Limits::default(), notify)
@@ -248,8 +247,9 @@ impl Scheduler {
         Self { shared, default }
     }
 
-    /// A new client (e.g. for another window). `notify` is called from a
-    /// worker thread when tiles for this client are ready.
+    /// A new client, such as for another window.
+    ///
+    /// `notify` is called from a worker thread when tiles for this client are ready.
     pub fn client(&self, notify: impl Fn() + Send + Sync + 'static) -> Client {
         new_client(&self.shared, Arc::new(notify))
     }
@@ -286,8 +286,10 @@ impl Scheduler {
         Ok(OpenedDocument { id, pages })
     }
 
-    /// Forgets a document. Queued tiles for it are dropped; workers release
-    /// their copies the next time they look at it.
+    /// Forgets a document.
+    ///
+    /// Queued tiles for it are dropped, and workers release their copies the next time they look at
+    /// it.
     pub fn close(&self, doc: DocId) {
         let mut s = self.lock();
         s.docs.remove(&doc);
@@ -314,8 +316,8 @@ impl Scheduler {
         self.default.pending()
     }
 
-    /// Whether a page is rendered one tile at a time because it is slow or
-    /// has huge images. Frontends can show "rendering complex page…".
+    /// Whether a page is rendered one tile at a time because it is slow or has huge images.
+    /// Frontends can show that a complex page is rendering.
     pub fn is_expensive(&self, doc: DocId, page: u32) -> bool {
         self.lock().expensive.contains(&(doc, page))
     }
@@ -331,8 +333,8 @@ impl Scheduler {
 }
 
 impl Drop for Scheduler {
-    /// Signals workers to stop but does not join them: a worker stuck on a
-    /// pathological page must not block closing the app.
+    /// Signals workers to stop but does not join them: a worker stuck on a pathological page must
+    /// not block closing the app.
     fn drop(&mut self) {
         self.lock().shutdown = true;
         self.shared.wake.notify_all();
@@ -357,8 +359,8 @@ fn new_client(shared: &Arc<Shared>, notify: Notify) -> Client {
     }
 }
 
-/// Index of the first queued tile a worker may start: tiles of an expensive
-/// page wait while another tile of that page is being rendered.
+/// Index of the first queued tile a worker may start: tiles of an expensive page wait while another
+/// tile of that page is being rendered.
 fn first_eligible(
     queue: &VecDeque<TileKey>,
     in_flight: &HashMap<TileKey, InFlight>,
@@ -370,8 +372,8 @@ fn first_eligible(
     })
 }
 
-/// The next tile to start, as (client, index in its queue): clients are
-/// served round-robin, starting after the one served last.
+/// The next tile to start, as (client, index in its queue): clients are served round-robin,
+/// starting after the one served last.
 fn next_eligible(s: &State) -> Option<(ClientId, usize)> {
     let after = s.clients.range(s.cursor + 1..);
     let before = s.clients.range(..=s.cursor);
@@ -401,8 +403,8 @@ fn watchdog(shared: &Arc<Shared>) {
     let mut s = shared.lock();
     while !s.shutdown {
         let now = Instant::now();
-        // A render already running longer than `slow_after` makes its page
-        // expensive now, so its other tiles don't start in parallel.
+        // A render already running longer than `slow_after` makes its page expensive now, so its
+        // other tiles don't start in parallel.
         let slow: Vec<PageId> = s
             .in_flight
             .iter()
@@ -484,8 +486,7 @@ fn worker(shared: &Shared) {
             if elapsed >= shared.limits.slow_after {
                 s.expensive.insert(page_of(&key));
             }
-            // Deliver unless the document was closed or the client dropped
-            // while rendering.
+            // Deliver unless the document was closed or the client dropped while rendering.
             match client.and_then(|c| s.clients.get_mut(&c)) {
                 Some(c) if s.docs.contains_key(&key.doc) => {
                     let was_empty = c.finished.is_empty();
@@ -544,8 +545,8 @@ fn render_tile(
     request.content = key.content;
     request.region = Some(region);
 
-    // hayro forbids unsafe code, so a panic cannot leave memory in a broken
-    // state; but its caches might be inconsistent, so drop this copy.
+    // hayro forbids unsafe code, so a panic cannot leave memory in a broken state. Its caches might
+    // be inconsistent though, so drop this copy.
     match std::panic::catch_unwind(AssertUnwindSafe(|| local.doc.render(&request))) {
         Ok(result) => result,
         Err(_) => {

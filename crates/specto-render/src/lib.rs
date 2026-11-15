@@ -1,7 +1,7 @@
-//! Page rasterization for specto.
+//! Page rasterization for Specto.
 //!
-//! Everything engine-specific stays behind [`Document`] so that the rest of the
-//! code base never sees hayro types. See `docs/ARCHITECTURE.md` ("Rendering pipeline").
+//! Everything engine-specific stays behind [`Document`] so that the rest of the code base never
+//! sees hayro types. See `docs/ARCHITECTURE.md` ("Rendering pipeline").
 
 mod hayro_backend;
 pub mod scheduler;
@@ -14,9 +14,8 @@ pub use specto_geom::{DeviceIntRect, DeviceIntSize, PageGeometry, Rotation};
 
 /// Which parts of a page to draw.
 ///
-/// The viewer renders page content and annotations separately: page tiles are
-/// expensive and cached, while annotations come from the edit model and are
-/// drawn as an overlay (see ARCHITECTURE.md, "Data model").
+/// The viewer draws a file's annotations with the page. Annotations made or changed in the session
+/// are drawn by the apps as an overlay (see `docs/ARCHITECTURE.md`, "Annotations").
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub enum Content {
     /// Page content stream plus the annotations stored in the file.
@@ -31,15 +30,15 @@ pub enum Content {
 pub struct RenderRequest {
     /// Zero-based page index.
     pub page: usize,
-    /// Device pixels per PDF point (zoom × HiDPI scale factor).
+    /// Device pixels per PDF point (the zoom times the HiDPI scale factor).
     pub scale: f64,
     /// Clockwise rotation on top of the page's own `/Rotate`.
     pub rotation: Rotation,
     pub content: Content,
-    /// Background as straight (non-premultiplied) RGBA. `None` → transparent.
+    /// Background as straight (non-premultiplied) RGBA, or `None` for transparent.
     pub background: Option<[u8; 4]>,
-    /// Only render this region of the full page bitmap
-    /// (see [`PageGeometry::pixel_size`]). `None` → whole page.
+    /// Only render this region of the full page bitmap (see [`PageGeometry::pixel_size`]), or
+    /// `None` for the whole page.
     pub region: Option<DeviceIntRect>,
 }
 
@@ -81,8 +80,8 @@ pub enum RenderError {
 
 /// An opened, read-only PDF that can be rasterized.
 ///
-/// Implementations may keep caches internally and need not be `Send`; the
-/// [`scheduler`] opens one instance per worker thread.
+/// Implementations may keep caches internally and need not be `Send`. The [`scheduler`] opens one
+/// instance per worker thread.
 pub trait Document {
     fn page_count(&self) -> usize;
     /// Geometry of the page as stored in the file (its own `/Rotate` included).

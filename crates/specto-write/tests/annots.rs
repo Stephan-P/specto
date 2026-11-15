@@ -1,6 +1,6 @@
-//! Annotations through a save: written, read back with our own import,
-//! and rendered with hayro, which shows a file's annotations only through
-//! their appearance streams, as many other programs do.
+//! Annotations through a save: written, read back with our own import, and rendered with hayro,
+//! which shows a file's annotations only through their appearance streams, as many other programs
+//! do.
 
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -21,10 +21,11 @@ const MAIN: SourceId = SourceId(0);
 const YELLOW: Color = Color::new(1.0, 0.9, 0.0);
 const RED: Color = Color::new(0.9, 0.1, 0.1);
 
-/// Two pages of 600 × 800 with a black bar at x 100–300, y 700–730 (text,
-/// as far as a highlight is concerned). Page 1 has, in `/Annots`: a link,
-/// a square with an appearance (a green box at x 400–500, y 100–200), its
-/// popup, and a reply to it.
+/// Two pages of 600 by 800 with a black bar at x 100 to 300, y 700 to 730 (text, as far as a
+/// highlight is concerned).
+///
+/// Page 1 has, in `/Annots`: a link, a square with an appearance (a green box at x 400 to 500, y
+/// 100 to 200), its popup, and a reply to it.
 fn fixture() -> Vec<u8> {
     let mut doc = Document::with_version("1.7");
     let pages = doc.new_object_id();
@@ -119,7 +120,7 @@ fn encrypted(data: &[u8], password: &str) -> Vec<u8> {
     out
 }
 
-/// A quad over x `x0`–`x1` of the bar, bottom left first.
+/// A quad over x `x0` to `x1` of the bar, bottom left first.
 fn over_bar(x0: f64, x1: f64) -> PdfQuad {
     PdfQuad::new([
         PdfPoint::new(x0, 700.0),
@@ -158,8 +159,8 @@ fn write(data: &[u8], password: Option<&str>, edit: &EditDoc) -> Vec<u8> {
     out
 }
 
-/// The colour at PDF point (`x`, `y`) of `page`, rendered at one pixel a
-/// point, with or without the annotations.
+/// The color at PDF point (`x`, `y`) of `page`, rendered at one pixel a point, with or without the
+/// annotations.
 fn pixel(
     data: &[u8],
     password: Option<&str>,
@@ -246,7 +247,7 @@ fn new_markup_is_saved_and_shows() {
         h.modified.map(|d| d.to_string()).as_deref(),
         Some("2026-11-15T19:00:00+01:00")
     );
-    // Recognised as a look written here.
+    // Recognized as a look written here.
     assert_eq!(h.appearance, Appearance::Own);
     assert!(h.flags.is_visible());
     assert_eq!(
@@ -260,16 +261,16 @@ fn new_markup_is_saved_and_shows() {
     // Page 1 keeps what it had.
     assert_eq!(imported(&out, None, 0).len(), 2);
 
-    // Rendered: yellow beside the bar, and the bar still black under the
-    // highlight (it darkens, it doesn't cover). Nothing without annotations.
+    // Rendered: yellow beside the bar, and the bar still black under the highlight (it darkens, it
+    // doesn't cover). Nothing without annotations.
     let at = |x, y, annots| pixel(&out, None, 1, x, y, annots);
     let [r, g, b] = at(95, 715, true);
     assert!(r > 240 && g > 215 && b < 30, "beside the bar: {r} {g} {b}");
     assert_eq!(at(150, 715, true), [0, 0, 0]);
     assert_eq!(at(95, 715, false), [255, 255, 255]);
     assert_eq!(at(250, 715, true), [0, 0, 0]);
-    // The underline near the bottom of its quad, the strike-out further up,
-    // white between and above.
+    // The underline near the bottom of its quad, the strike-out further up, white between and
+    // above.
     let red = |[r, g, b]: [u8; 3]| r > 200 && g < 60 && b < 60;
     assert!(
         red(at(400, 702, true)),
@@ -297,7 +298,7 @@ fn deleting_one_of_the_files() {
     assert!(edit.remove_annotation(id, &square));
     let out = write(&original, None, &edit);
 
-    // Gone, with its popup and the reply; the link stays.
+    // Gone, with its popup and the reply. The link stays.
     assert!(imported(&out, None, 0).is_empty());
     assert_eq!(pixel(&out, None, 0, 450, 150, true), [255, 255, 255]);
     let doc = SourceDocument::open(out.clone(), None).unwrap();
@@ -328,9 +329,8 @@ fn changing_one_of_the_files() {
     assert_eq!(annots.len(), 2);
     assert_eq!(annots[0].contents.as_deref(), Some("Another box"));
     assert_eq!(annots[0].color, Some(RED));
-    // Only its values changed, so it looks as it did, and is the same
-    // object: its popup and the reply still belong to it, and what this
-    // program doesn't know about is kept.
+    // Only its values changed, so it looks as it did, and is the same object: its popup and the
+    // reply still belong to it, and what this program doesn't know about is kept.
     assert_eq!(annots[0].appearance, Appearance::Original);
     assert_eq!(pixel(&out, None, 0, 450, 150, true), [0, 255, 0]);
     let written = Document::load_mem(&out).unwrap();
@@ -408,9 +408,9 @@ fn an_annotation_that_isnt_where_it_was_read_is_not_touched() {
     };
     let origin = square.origin.unwrap();
     assert!(removing(origin).is_ok());
-    // Another object at that place, a place that holds something else (the
-    // link, entry 0, is another object too), a place beyond the end, and
-    // one said to be written into the array that is a reference.
+    // Another object at that place, a place that holds something else (the link, entry 0, is
+    // another object too), a place beyond the end, and one said to be written into the array that
+    // is a reference.
     let (number, generation) = origin.object.unwrap();
     for wrong in [
         specto_annot::Origin {
@@ -431,10 +431,10 @@ fn an_annotation_that_isnt_where_it_was_read_is_not_touched() {
     }
 }
 
-/// Every annotation of the corpus, deleted on its own: the page is
-/// written without it, as the apps do to show the page then, and read back
-/// it has one annotation less and the others as before. Prints what
-/// couldn't be done; fails only on a result that is wrong.
+/// Every annotation of the corpus, deleted on its own: the page is written without it, as the apps
+/// do to show the page then, and read back it has one annotation less and the others as before.
+///
+/// Prints what couldn't be done, and fails only on a result that is wrong.
 #[test]
 #[ignore = "needs corpus/files (run corpus/fetch.sh)"]
 fn corpus_annotations_can_be_deleted() {
@@ -498,9 +498,8 @@ fn corpus_annotations_can_be_deleted() {
                     wrong.push(format!("{what}: the result doesn't open"));
                     continue;
                 };
-                // What is left, by what it is and where: the one deleted is
-                // missing, and with it the replies to it at most.
-                // (Nearly where: a rewritten file has its numbers in
+                // What is left, by what it is and where: the one deleted is missing, and with it
+                // the replies to it at most. (Nearly where: a rewritten file has its numbers in
                 // single precision.)
                 let same = |a: &Annotation, b: &Annotation| {
                     let corners = |r: PdfBox| [r.min.x, r.min.y, r.max.x, r.max.y];
@@ -551,10 +550,9 @@ fn drawings_and_shapes_are_saved_and_show() {
         a.line_width = width;
         a
     };
-    // A stroke in a right angle, a rectangle with a green inside, an
-    // ellipse, a line, and a dot.
-    // (Points every few units, as a pointer leaves them: the curve through
-    // them then keeps to the legs.)
+    // A stroke in a right angle, a rectangle with a green inside, an ellipse, a line, and a dot.
+    // (Points every few units, as a pointer leaves them: the curve through them then keeps to the
+    // legs.)
     let up = (0..=10).map(|i| point(100.0, 100.0 + 10.0 * f64::from(i)));
     let right = (1..=10).map(|i| point(100.0 + 10.0 * f64::from(i), 200.0));
     let stroke: Vec<PdfPoint> = up.chain(right).collect();
@@ -652,8 +650,8 @@ fn drawings_and_shapes_are_saved_and_show() {
     );
     assert_eq!(at(350, 150), [0, 255, 0]);
     assert_eq!(at(296, 150), white);
-    // The ellipse: its line at the ends of its axes, nothing in the middle
-    // or in the corners of its area.
+    // The ellipse: its line at the ends of its axes, nothing in the middle or in the corners of its
+    // area.
     assert!(red(at(303, 350)) && red(at(400, 397)), "the ellipse's line");
     assert_eq!(at(400, 350), white);
     assert_eq!(at(305, 305), white);
@@ -715,7 +713,7 @@ fn notes_and_text_boxes_are_saved_and_show() {
     );
     assert!(annots[1].is_resizable() && !annots[0].is_resizable());
 
-    // The note's mark is there, in its colour.
+    // The note's mark is there, in its color.
     let [r, g, b] = pixel(&out, None, 1, 65, 593, true);
     assert!(r > 200 && g > 180 && b < 80, "the note: {r} {g} {b}");
     // The text box: blue ink on its lines, each within the box.
@@ -735,8 +733,8 @@ fn notes_and_text_boxes_are_saved_and_show() {
     assert_eq!(pixel(&out, None, 1, 175, top + 10, true), [255, 255, 255]);
 }
 
-/// The colour at a point of page 2 of an unencrypted file, as [`pixel`]
-/// gives it, rendering the page once however often it is asked.
+/// The color at a point of page 2 of an unencrypted file, as [`pixel`] gives it, rendering the page
+/// once however often it is asked.
 fn pixel_of(data: &[u8], x: u32, y: u32) -> [u8; 3] {
     use std::cell::RefCell;
     thread_local! {
@@ -759,7 +757,7 @@ fn pixel_of(data: &[u8], x: u32, y: u32) -> [u8; 3] {
 fn stamps_are_saved_show_and_move() {
     use specto_annot::{StampArt, StampImage};
 
-    // A picture of 4 × 2 pixels: red on the left, nothing on the right.
+    // A picture of 4 by 2 pixels: red on the left, nothing on the right.
     let mut rgba = Vec::new();
     for _ in 0..2 {
         rgba.extend([255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 0, 0, 0, 255, 0]);
@@ -810,8 +808,8 @@ fn stamps_are_saved_show_and_move() {
 
 #[test]
 fn a_drawing_placed_from_elsewhere() {
-    // Two strokes in a box of 100 × 50, y down: a line along the top and
-    // one down the left. Placed 200 wide around (300, 400).
+    // Two strokes in a box of 100 by 50, y down: a line along the top and one down the left. Placed
+    // 200 wide around (300, 400).
     let strokes = vec![
         vec![(0.0, 0.0), (100.0, 0.0)],
         vec![(0.0, 0.0), (0.0, 50.0)],

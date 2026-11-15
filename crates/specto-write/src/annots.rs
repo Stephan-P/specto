@@ -8,14 +8,12 @@ use specto_doc::PageAnnotChanges;
 
 use crate::{WriteError, text_string};
 
-/// Applies `changes` to the `/Annots` of the page `page_id`, in `doc` as
-/// loaded: object numbers are still the file's.
+/// Applies `changes` to the `/Annots` of the page `page_id`, in `doc` as loaded: object numbers are
+/// still the file's.
 ///
-/// What is deleted or changed is named by where the import found it: its
-/// index among the entries of the array, and its object number. If lopdf
-/// has something else there (the two parsers read a damaged file
-/// differently), nothing is written rather than the wrong annotation
-/// changed.
+/// What is deleted or changed is named by where the import found it: its index among the entries of
+/// the array, and its object number. If lopdf has something else there (the two parsers read a
+/// damaged file differently), nothing is written rather than the wrong annotation changed.
 pub(crate) fn apply(
     doc: &mut Document,
     page_id: ObjectId,
@@ -48,8 +46,7 @@ pub(crate) fn apply(
     }
     let removed: HashSet<u32> = changes.removed.iter().map(|o| o.index).collect();
 
-    // The objects that go, and with them what hangs on them: their popups
-    // and the replies to them.
+    // The objects that go, and with them what hangs on them: their popups and the replies to them.
     let mut gone: HashSet<ObjectId> = removed
         .iter()
         .filter_map(|&i| entries.get(i as usize)?.as_reference().ok())
@@ -89,8 +86,8 @@ pub(crate) fn apply(
             kept.push(entry);
             continue;
         };
-        // The same object with its new values, so that what refers to it
-        // (a popup, replies) still does, and what isn't known here stays.
+        // The same object with its new values, so that what refers to it (a popup, replies) still
+        // does, and what isn't known here stays.
         match entry {
             Object::Reference(id) => {
                 let old = doc.get_dictionary(id).cloned().unwrap_or_default();
@@ -119,8 +116,7 @@ pub(crate) fn apply(
     Ok(())
 }
 
-/// The annotation dictionary for `a`, on top of `base` (what the file had
-/// for it, or nothing).
+/// The annotation dictionary for `a`, on top of `base` (what the file had for it, or nothing).
 fn dictionary_of(
     doc: &mut Document,
     a: &Annotation,
@@ -152,8 +148,8 @@ fn dictionary_of(
 
     match &a.kind {
         AnnotKind::TextMarkup { quads, .. } => {
-            // In a Z (top left, top right, bottom left, bottom right), as
-            // every program writes them, whatever the standard says.
+            // In a Z (top left, top right, bottom left, bottom right), as every program writes
+            // them, whatever the standard says.
             let numbers = quads
                 .iter()
                 .flat_map(|q| [q.points[3], q.points[2], q.points[0], q.points[1]])
@@ -182,8 +178,8 @@ fn dictionary_of(
         }
         AnnotKind::Note => d.set("Name", "Note"),
         AnnotKind::FreeText { size, font } => {
-            // How its text is set, for programs that draw it themselves or
-            // let it be edited: the font, its size and the colour.
+            // How its text is set, for programs that draw it themselves or let it be edited: the
+            // font, its size and the color.
             let c = a.color.unwrap_or(Color::new(0.0, 0.0, 0.0));
             d.set(
                 "DA",
@@ -199,8 +195,8 @@ fn dictionary_of(
         }
         AnnotKind::Stamp(_) | AnnotKind::Other { .. } => {}
     }
-    // For a text box, `/C` would be the colour of its background, which it
-    // has none of: the colour of its text is in `/DA`.
+    // For a text box, `/C` would be the color of its background, which it has none of: the color of
+    // its text is in `/DA`.
     match a.color.filter(|_| !a.is_text_box()) {
         Some(c) => d.set("C", color(c)),
         None => {
@@ -234,16 +230,15 @@ fn dictionary_of(
         }
     }
 
-    // Its look for other programs: as it was where nothing changed, made
-    // anew where something did, and none where nothing here makes one
-    // (readers then draw it from the values above, if they do).
+    // Its look for other programs: as it was where nothing changed, made anew where something did,
+    // and none where nothing here makes one (readers then draw it from the values above, if they
+    // do).
     if a.appearance == Appearance::Generated {
         match appearance(a) {
             Some(ap) => {
-                // The area of both: what is drawn can reach past the
-                // annotation's own area (the width of a line) or fall short
-                // of it (the mark of a note), and the two must be the same
-                // rectangle or readers stretch the one onto the other.
+                // The area of both: what is drawn can reach past the annotation's own area (the
+                // width of a line) or fall short of it (the mark of a note), and the two must be
+                // the same rectangle or readers stretch the one onto the other.
                 rect = rect.union(&ap.bbox);
                 let states: Dictionary = ap
                     .states
@@ -261,9 +256,8 @@ fn dictionary_of(
                         (format!("GS{i}"), Object::Dictionary(gs))
                     })
                     .collect();
-                // An image fills the unit square, which readers stretch
-                // onto the annotation's area; everything else is drawn in
-                // page coordinates, in a box that is that area.
+                // An image fills the unit square, which readers stretch onto the annotation's area.
+                // Everything else is drawn in page coordinates, in a box that is that area.
                 let bbox = match ap.image {
                     Some(_) => vec![0.into(), 0.into(), 1.into(), 1.into()],
                     None => vec![
@@ -301,8 +295,8 @@ fn dictionary_of(
                     let id = image_object(doc, image);
                     resources.set("XObject", dictionary! { "Im0" => id });
                 }
-                // Marked as written here, so that it can be made anew
-                // another day without wondering what else it drew.
+                // Marked as written here, so that it can be made anew another day without wondering
+                // what else it drew.
                 d.set("SpectoLook", look_mark(&ap.content));
                 let id = doc.add_object(Stream::new(form, ap.content));
                 d.set("AP", dictionary! { "N" => id });
@@ -327,8 +321,8 @@ fn dictionary_of(
     d
 }
 
-/// `image` as an image object: its colours, with how opaque each pixel is
-/// as a mask beside them. Both compressed without loss.
+/// `image` as an image object: its colors, with how opaque each pixel is as a mask beside them.
+/// Both compressed without loss.
 fn image_object(doc: &mut Document, image: &specto_annot::StampImage) -> ObjectId {
     let pixels = image.rgba.as_chunks::<4>().0.iter();
     let colors: Vec<u8> = pixels.clone().flat_map(|p| [p[0], p[1], p[2]]).collect();
@@ -356,7 +350,7 @@ fn image_object(doc: &mut Document, image: &specto_annot::StampImage) -> ObjectI
 }
 
 fn real(v: f64) -> Object {
-    // Three decimals are a thousandth of a point; f32 is what lopdf holds.
+    // Three decimals are a thousandth of a point, and f32 is what lopdf holds.
     Object::Real(((v * 1000.0).round() / 1000.0) as f32)
 }
 

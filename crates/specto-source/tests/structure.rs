@@ -1,8 +1,10 @@
 use specto_geom::PdfPoint;
 use specto_source::{Destination, NamedAction, OpenError, SourceDocument, Target};
 
-/// Builds a PDF from numbered object bodies (object `i + 1` = `objects[i]`),
-/// with object 1 as the catalog. The xref is left out; hayro rebuilds it.
+/// Builds a PDF from numbered object bodies (`objects[i]` becomes object `i + 1`), with object 1 as
+/// the catalog.
+///
+/// The xref is left out, and hayro rebuilds it.
 fn pdf(objects: &[&str]) -> Vec<u8> {
     pdf_with_trailer(objects, "")
 }
@@ -21,7 +23,7 @@ fn pdf_with_trailer(objects: &[&str], extra: &str) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// Three pages (objects 3–5), an outline, named destinations and links.
+/// Three pages (objects 3 to 5), an outline, named destinations and links.
 fn sample() -> Vec<u8> {
     pdf(&[
         // 1: catalog
@@ -30,18 +32,18 @@ fn sample() -> Vec<u8> {
             /Names << /Dests 12 0 R >> >>",
         // 2: page tree
         "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 /MediaBox [0 0 600 800] >>",
-        // 3–5: pages; page 1 has links
+        // 3 to 5: pages. Page 1 has links
         "<< /Type /Page /Parent 2 0 R /Annots [10 0 R 11 0 R 14 0 R 15 0 R 16 0 R] >>",
         "<< /Type /Page /Parent 2 0 R >>",
         "<< /Type /Page /Parent 2 0 R >>",
         // 6: outline root
         "<< /Type /Outlines /First 7 0 R /Last 9 0 R >>",
-        // 7: "Intro" → page 1 at top 700; one child
+        // 7: "Intro", pointing at page 1 at top 700, with one child
         "<< /Title (Intro) /Parent 6 0 R /Next 9 0 R /First 8 0 R /Last 8 0 R
             /Dest [3 0 R /XYZ 50 700 null] >>",
         // 8: child with a UTF-16 title, named destination via the name tree
         "<< /Title <FEFF0043006800e9> /Parent 7 0 R /Dest (sec2) >>",
-        // 9: "Last", GoTo action; its /Next points back to 7 (a cycle)
+        // 9: "Last", GoTo action. Its /Next points back to 7, a cycle
         "<< /Title (Last) /Parent 6 0 R /Next 7 0 R
             /A << /S /GoTo /D [5 0 R /FitH 300] >> >>",
         // 10: link to a URI
@@ -51,7 +53,7 @@ fn sample() -> Vec<u8> {
         "<< /Type /Annot /Subtype /Link /Rect [200 40 100 20] /Dest /old >>",
         // 12: name tree root with two kids
         "<< /Kids [13 0 R 17 0 R] >>",
-        // 13: leaf: (a)…(m)
+        // 13: leaf: (a) to (m)
         "<< /Limits [(a) (m)] /Names [(alpha) [3 0 R /Fit] (beta) [4 0 R /Fit]] >>",
         // 14: Named action link
         "<< /Type /Annot /Subtype /Link /Rect [300 300 400 400]
@@ -61,7 +63,7 @@ fn sample() -> Vec<u8> {
             /A << /S /JavaScript /JS (app.alert(1)) >> >>",
         // 16: not a link
         "<< /Type /Annot /Subtype /Square /Rect [0 0 50 50] >>",
-        // 17: leaf: (n)…(z)
+        // 17: leaf: (n) to (z)
         "<< /Limits [(n) (z)] /Names [(sec2) << /D [4 0 R /XYZ null 500 0] >>] >>",
     ])
 }
@@ -75,15 +77,15 @@ fn outline_with_nesting_names_actions_and_a_cycle() {
     let doc = SourceDocument::open(sample(), None).unwrap();
     assert_eq!(doc.page_count(), 3);
     let outline = doc.outline();
-    // The cycle (Last → Next → Intro) stops after "Last".
+    // The cycle (from Last through /Next back to Intro) stops after "Last".
     let titles: Vec<&str> = outline.iter().map(|i| i.title.as_str()).collect();
     assert_eq!(titles, ["Intro", "Last"]);
     assert_eq!(outline[0].target, dest(0, Some(50.0), Some(700.0)));
     assert_eq!(outline[0].children.len(), 1);
     let child = &outline[0].children[0];
     assert_eq!(child.title, "Ché");
-    // Named destination found in the second leaf of the name tree, as a
-    // destination dictionary, with a null left coordinate.
+    // Named destination found in the second leaf of the name tree, as a destination dictionary,
+    // with a null left coordinate.
     assert_eq!(child.target, dest(1, None, Some(500.0)));
     assert_eq!(outline[1].target, dest(2, None, Some(300.0)));
 }
@@ -121,7 +123,7 @@ fn page_labels_from_a_number_tree() {
             "<< /Type /Page /Parent 2 0 R >>",
             "<< /Type /Page /Parent 2 0 R >>",
             "<< /Type /Page /Parent 2 0 R >>",
-            // Kids split the ranges; the second kid's dictionary is a reference.
+            // Kids split the ranges. The second kid's dictionary is a reference.
             "<< /Limits [0 0] /Nums [0 << /S /r >>] >>",
             "<< /Limits [2 3] /Nums [2 << /S /D /St 7 >> 3 9 0 R] >>",
             "<< /S /A /P <FEFF00410070> >>",
@@ -183,8 +185,9 @@ fn documents_without_structure() {
     ));
 }
 
-/// Walks outline and links of every corpus file: no panics, and reports
-/// how many files have each. `cargo test -p specto-source -- --ignored --nocapture`
+/// Walks outline and links of every corpus file: no panics, and reports how many files have each.
+///
+/// `cargo test -p specto-source -- --ignored --nocapture`
 #[test]
 #[ignore = "needs corpus/files (run corpus/fetch.sh)"]
 fn corpus_structure_does_not_panic() {

@@ -1,16 +1,14 @@
 //! Searching a page's text.
 //!
-//! [`SearchText`] is a compact form of a page for matching: the text folded
-//! for comparison (lowercase, accents removed, typographic quotes made
-//! plain), words separated by single spaces, lines too, and a word broken
-//! by a hyphen at the end of a line joined again. Each byte maps back to
-//! the character it came from, so matches become character ranges, which
-//! the text page turns into highlights. It takes about 5 bytes per
-//! character, so a whole document's worth can be kept, unlike the full
-//! [`TextPage`](crate::TextPage)s.
+//! [`SearchText`] is a compact form of a page for matching: the text folded for comparison
+//! (lowercase, accents removed, typographic quotes made plain), words separated by single spaces,
+//! lines too, and a word broken by a hyphen at the end of a line joined again. Each byte maps back
+//! to the character it came from, so matches become character ranges, which the text page turns
+//! into highlights. It takes about 5 bytes per character, so a whole document's worth can be kept,
+//! unlike the full [`TextPage`](crate::TextPage)s.
 //!
-//! Matching follows content order (like selection), so right-to-left text
-//! drawn in visual order isn't found yet.
+//! Matching follows content order (like selection), so right-to-left text drawn in visual order
+//! isn't found yet.
 
 use std::ops::Range;
 
@@ -33,7 +31,7 @@ pub struct SearchText {
 pub struct Query(String);
 
 impl Query {
-    /// Folds `text` for matching; `None` if nothing is left to search for.
+    /// Folds `text` for matching, or returns `None` if nothing is left to search for.
     pub fn new(text: &str) -> Option<Self> {
         let mut out = String::new();
         for word in text.split_whitespace() {
@@ -55,8 +53,8 @@ impl SearchText {
         let mut s = Self::default();
         for (n, line) in page.lines.iter().enumerate() {
             if n > 0 {
-                // A word broken over two lines with a hyphen is joined;
-                // otherwise lines are separated like words.
+                // A word broken over two lines with a hyphen is joined. Otherwise lines are
+                // separated like words.
                 if s.ends_with_hyphen() && starts_with_lowercase(page, line) {
                     s.pop_char();
                 } else {
@@ -122,9 +120,9 @@ fn starts_with_lowercase(page: &TextPage, line: &crate::Line) -> bool {
         .is_some_and(char::is_lowercase)
 }
 
-/// Folds one character for comparison: lowercase, compatibility forms
-/// decomposed (ligatures, full-width forms), accents dropped, typographic
-/// quotes made plain. Can produce several characters ("ﬁ" → "fi").
+/// Folds one character for comparison: lowercase, compatibility forms decomposed (ligatures,
+/// full-width forms), accents dropped, typographic quotes made plain. Can produce several
+/// characters ("ﬁ" becomes "fi").
 fn fold(c: char, mut out: impl FnMut(char)) {
     for lower in c.to_lowercase() {
         for d in lower.nfkd().filter(|&d| !is_combining_mark(d)) {

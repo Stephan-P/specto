@@ -1,15 +1,14 @@
 //! The bytes of a PDF file, shared between threads.
 //!
-//! hayro parses lazily but needs the whole file as one slice. Small files
-//! are read into memory. Large ones are memory-mapped instead: opening is
-//! quick, and the system reads in only the parts that are used and can drop
-//! them again under memory pressure, so a 300 MB scan doesn't cost 300 MB.
+//! hayro parses lazily but needs the whole file as one slice. Small files are read into memory.
+//! Large ones are memory-mapped instead: opening is quick, and the system reads in only the parts
+//! that are used and can drop them again under memory pressure, so a 300 MB scan doesn't cost 300
+//! MB.
 //!
-//! A mapping has one danger: if another program truncates the file while it
-//! is mapped (overwriting it in place rather than replacing it), reading the
-//! missing part kills the process with `SIGBUS`. Most programs save by
-//! writing a new file and renaming it over the old one, which is safe, and
-//! so does specto. Mapping only large files keeps the exposure small.
+//! A mapping has one danger: if another program truncates the file while it is mapped (overwriting
+//! it in place rather than replacing it), reading the missing part kills the process with `SIGBUS`.
+//! Most programs save by writing a new file and renaming it over the old one, which is safe, and so
+//! does Specto. Mapping only large files keeps the exposure small.
 
 use std::fmt;
 use std::fs::File;
@@ -21,7 +20,7 @@ use std::sync::Arc;
 /// Files at least this large are mapped rather than read.
 pub const MAP_THRESHOLD: u64 = 64 << 20;
 
-/// The bytes of a PDF, in memory or mapped; cheap to clone.
+/// The bytes of a PDF, in memory or mapped, and cheap to clone.
 #[derive(Clone)]
 pub struct PdfData(Inner);
 
@@ -37,8 +36,9 @@ impl PdfData {
         Self::from_file(File::open(path)?)
     }
 
-    /// Reads or maps an open file. Regular files of at least
-    /// [`MAP_THRESHOLD`] bytes are mapped; anything else (smaller files,
+    /// Reads or maps an open file.
+    ///
+    /// Regular files of at least [`MAP_THRESHOLD`] bytes are mapped. Anything else (smaller files,
     /// pipes, sockets) is read to the end.
     pub fn from_file(file: File) -> io::Result<Self> {
         let meta = file.metadata()?;
@@ -51,9 +51,9 @@ impl PdfData {
 
     /// Maps `file` regardless of its size (for tests).
     pub fn map(file: &File) -> io::Result<Self> {
-        // SAFETY: the mapping is read-only and never handed out mutably. The
-        // remaining risk, another process truncating the file while it's
-        // mapped, is described in the module documentation.
+        // SAFETY: the mapping is read-only and never handed out mutably. The remaining risk,
+        // another process truncating the file while it's mapped, is described in the module
+        // documentation.
         #[allow(unsafe_code)]
         let map = unsafe { memmap2::Mmap::map(file)? };
         #[cfg(unix)]
@@ -70,14 +70,14 @@ impl PdfData {
         Ok(buf.into())
     }
 
-    /// Whether the bytes are a mapping of the file rather than a copy.
-    /// Whether `self` and `other` are the same bytes in memory: clones of
-    /// one `PdfData`, not just equal contents.
+    /// Whether `self` and `other` are the same bytes in memory: clones of one `PdfData`, not just
+    /// equal contents.
     pub fn same(&self, other: &PdfData) -> bool {
         let (a, b): (&[u8], &[u8]) = (self, other);
         std::ptr::eq(a, b)
     }
 
+    /// Whether the bytes are a mapping of the file rather than a copy.
     pub fn is_mapped(&self) -> bool {
         matches!(self.0, Inner::Mapped(_))
     }

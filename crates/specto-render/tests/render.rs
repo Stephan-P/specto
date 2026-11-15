@@ -8,10 +8,11 @@ use specto_render::{
     check_geometry_matches_hayro,
 };
 
-/// One page, MediaBox 200×100 pt: a red triangle covering the lower-right half
-/// plus a blue 20 pt square annotation near the top-left. `extra` is spliced
-/// into the page dictionary (e.g. `/Rotate 90`). Offsets in the xref are
-/// deliberately wrong; hayro recovers by scanning.
+/// One page with a media box of 200 by 100 points: a red triangle covering the lower-right half
+/// plus a blue 20 pt square annotation near the top-left.
+///
+/// `extra` is spliced into the page dictionary (such as `/Rotate 90`). Offsets in the xref are
+/// deliberately wrong, and hayro recovers by scanning.
 fn sample_pdf(extra: &str) -> Vec<u8> {
     let content = "1 0 0 rg 0 0 m 200 0 l 200 100 l f";
     let ap = "0 0 1 rg 0 0 20 20 re f";
@@ -52,7 +53,7 @@ fn page_size_and_full_render() {
 
     let bmp = doc.render(&RenderRequest::page(0, 2.0)).unwrap();
     assert_eq!((bmp.width, bmp.height), (400, 200));
-    // The triangle covers the lower-right half: bottom-right is red, top-centre is white.
+    // The triangle covers the lower-right half: bottom-right is red, top-center is white.
     assert_eq!(pixel(&bmp, 390, 190), RED);
     assert_eq!(pixel(&bmp, 200, 10), WHITE);
 }
@@ -60,7 +61,8 @@ fn page_size_and_full_render() {
 #[test]
 fn annotations_can_be_excluded() {
     let doc = open("");
-    // Annotation covers x 10..30, y 70..90 pt → around pixel (40, 40) at scale 2.
+    // The annotation covers x 10..30, y 70..90 in points, which is around pixel (40, 40) at scale
+    // 2.
     let mut req = RenderRequest::page(0, 2.0);
     assert_eq!(pixel(&doc.render(&req).unwrap(), 40, 40), BLUE);
     req.content = Content::PageOnly;
@@ -118,14 +120,15 @@ fn rotate_and_crop_box_match_hayro() {
 
 #[test]
 fn rotated_page_puts_content_where_expected() {
-    // /Rotate 90 turns the page clockwise: 100 × 200 pt, and the annotation
-    // (top-left of the unrotated page) ends up top-right.
+    // /Rotate 90 turns the page clockwise: 100 by 200 points, and the annotation (top-left of the
+    // unrotated page) ends up top-right.
     let doc = open("/Rotate 90");
     let g = doc.page_geometry(0).unwrap();
     assert_eq!((g.size().width, g.size().height), (100.0, 200.0));
     let bmp = doc.render(&RenderRequest::page(0, 1.0)).unwrap();
     assert_eq!((bmp.width, bmp.height), (100, 200));
-    // Annotation centre (20, 80) in PDF space → page space (100 - (100-80), 20) = (80, 20).
+    // The annotation's center (20, 80) in PDF space is (100 - (100-80), 20) = (80, 20) in page
+    // space.
     assert_eq!(pixel(&bmp, 80, 20), BLUE);
 }
 
@@ -180,7 +183,7 @@ fn scheduler_renders_requested_tiles() {
     let opened = sched.open(sample_pdf(""), None).unwrap();
     let g = opened.pages[0];
 
-    let level = level_for_scale(3.0); // → 2^(4/2) = 4 px/pt → 800 × 400 → 2 × 1 tiles
+    let level = level_for_scale(3.0); // level 4: 4 pixels per point, 800 by 400 pixels, 2 by 1 tiles
     assert_eq!(level_scale(level), 4.0);
     let scale = TileScale::from_level(level);
     let keys: Vec<TileKey> = tiles_covering(&g, scale, DeviceIntRect::from_size(g.pixel_size(4.0)))
@@ -235,12 +238,12 @@ fn scheduler_does_not_rerender_uncollected_tiles() {
     assert_eq!(sched.pending(), 0);
     let done = sched.take_finished();
     assert_eq!(done.len(), 1);
-    // Once taken, it can be requested again (e.g. after cache eviction).
+    // Once taken, it can be requested again (after cache eviction, for example).
     sched.request([key]);
     assert!(sched.pending() <= 1);
 }
 
-/// A 200 × 400 pt page with `n` tiny filled squares: slow to render.
+/// A page of 200 by 400 points with `n` tiny filled squares: slow to render.
 fn slow_pdf(n: usize) -> Vec<u8> {
     let mut content = String::from("0 0 1 rg\n");
     for i in 0..n {
@@ -384,7 +387,8 @@ fn scheduler_drops_closed_documents() {
     ));
 }
 
-/// Our page transform vs hayro's on every page of the corpus.
+/// Compares our page transform with hayro's on every page of the corpus.
+///
 /// Run with `cargo test -p specto-render -- --ignored` after `corpus/fetch.sh`.
 #[test]
 #[ignore = "needs corpus/files (run corpus/fetch.sh)"]

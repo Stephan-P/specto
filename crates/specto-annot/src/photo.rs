@@ -1,9 +1,8 @@
 //! A signature from a photo: ink on paper becomes ink on nothing.
 //!
-//! A phone's photo of a sheet of paper is never evenly lit: one side is
-//! darker, there is a shadow of the hand. So "lighter than this is paper"
-//! doesn't work for the whole picture. The paper's brightness is estimated
-//! around each spot instead (the lightest of what is near it), and a pixel
+//! A phone's photo of a sheet of paper is never evenly lit: one side is darker, there is a shadow
+//! of the hand. So "lighter than this is paper" doesn't work for the whole picture. The paper's
+//! brightness is estimated around each spot instead (the lightest of what is near it), and a pixel
 //! is ink by how much darker it is than the paper there.
 
 use std::sync::Arc;
@@ -13,11 +12,11 @@ use crate::{Color, StampImage};
 /// How to make a signature of a photo.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InkSettings {
-    /// How much darker than the paper around it a pixel must be to count
-    /// as ink, from 0 to 1. Lower keeps faint strokes and more of the
-    /// paper's grain, higher keeps only what is dark.
+    /// How much darker than the paper around it a pixel must be to count as ink, from 0 to 1.
+    ///
+    /// Lower keeps faint strokes and more of the paper's grain, higher keeps only what is dark.
     pub threshold: f32,
-    /// The colour the ink gets; `None` keeps the photo's own.
+    /// The color the ink gets. `None` keeps the photo's own.
     pub color: Option<Color>,
 }
 
@@ -30,17 +29,18 @@ impl Default for InkSettings {
     }
 }
 
-/// Signatures are made no wider or higher than this many pixels: plenty
-/// for print, and a small file.
+/// Signatures are made no wider or higher than this many pixels: plenty for print, and a small
+/// file.
 const MAX_SIDE: u32 = 1200;
 
-/// The picture is divided into tiles of about this many pixels a side to
-/// estimate the paper's brightness.
+/// The picture is divided into tiles of about this many pixels a side to estimate the paper's
+/// brightness.
 const TILE: u32 = 48;
 
-/// The ink of `photo` (straight RGBA, 8 bits each, row by row) on a
-/// transparent background, cut down to where there is ink. `None` if there
-/// is none, or the picture's size and data don't go together.
+/// The ink of `photo` (straight RGBA, 8 bits each, row by row) on a transparent background, cut
+/// down to where there is ink.
+///
+/// `None` if there is none, or the picture's size and data don't go together.
 pub fn ink_from_photo(photo: &StampImage, settings: InkSettings) -> Option<StampImage> {
     let photo = scaled_down(photo)?;
     let (w, h) = (photo.width as usize, photo.height as usize);
@@ -106,8 +106,8 @@ pub fn ink_from_photo(photo: &StampImage, settings: InkSettings) -> Option<Stamp
     })
 }
 
-/// `photo`, made smaller if it is larger than a signature needs (by
-/// averaging blocks of pixels, which also takes out a photo's noise).
+/// `photo`, made smaller if it is larger than a signature needs (by averaging blocks of pixels,
+/// which also takes out a photo's noise).
 fn scaled_down(photo: &StampImage) -> Option<Arc<StampImage>> {
     let (w, h) = (photo.width, photo.height);
     if w == 0 || h == 0 || photo.rgba.len() != w as usize * h as usize * 4 {
@@ -152,7 +152,7 @@ struct Paper {
 impl Paper {
     /// At a pixel: between the tiles around it.
     fn at(&self, x: usize, y: usize) -> f32 {
-        // In units of tiles, from the centre of the first.
+        // In units of tiles, from the center of the first.
         let place = |v: usize, count: usize| {
             let t = (v as f32 + 0.5) / self.tile as f32 - 0.5;
             let t = t.clamp(0.0, (count - 1) as f32);
@@ -169,10 +169,9 @@ impl Paper {
     }
 }
 
-/// The paper's brightness in tiles: in each, the brightness nine tenths of
-/// its pixels are darker than (ink is the lesser part of any tile, and the
-/// very brightest pixels are glare). A tile that is mostly ink takes after
-/// its neighbours.
+/// The paper's brightness in tiles: in each, the brightness nine tenths of its pixels are darker
+/// than (ink is the lesser part of any tile, and the very brightest pixels are glare). A tile that
+/// is mostly ink takes after its neighbors.
 fn paper_brightness(light: &[f32], w: usize, h: usize) -> Paper {
     let tile = TILE as usize;
     let (across, down) = (w.div_ceil(tile).max(1), h.div_ceil(tile).max(1));
@@ -187,8 +186,8 @@ fn paper_brightness(light: &[f32], w: usize, h: usize) -> Paper {
             tiles.push(*value);
         }
     }
-    // The lightest of each tile and its neighbours: a tile under a thick
-    // stroke would otherwise call the ink paper.
+    // The lightest of each tile and its neighbors: a tile under a thick stroke would otherwise call
+    // the ink paper.
     let lightest: Vec<f32> = (0..down)
         .flat_map(|ty| (0..across).map(move |tx| (tx, ty)))
         .map(|(tx, ty)| {
@@ -214,9 +213,8 @@ mod tests {
     use super::{InkSettings, ink_from_photo};
     use crate::{Color, StampImage};
 
-    /// A sheet of 400 × 300 lit from the left (bright there, half as bright
-    /// on the right) with a dark bar across the middle and, on the bright
-    /// side, a faint one.
+    /// A sheet of 400 by 300 lit from the left (bright there, half as bright on the right) with a
+    /// dark bar across the middle and, on the bright side, a faint one.
     fn photo() -> StampImage {
         let (w, h) = (400u32, 300u32);
         let mut rgba = Vec::new();
@@ -248,8 +246,8 @@ mod tests {
         assert!((300..=312).contains(&ink.width), "{}", ink.width);
         assert!((20..=32).contains(&ink.height), "{}", ink.height);
         let alpha = |x: u32, y: u32| ink.rgba[((y * ink.width + x) * 4 + 3) as usize];
-        // Ink through and through, on the bright side and the dark one,
-        // though the paper on the dark side is darker than the faint bar.
+        // Ink through and through, on the bright side and the dark one, though the paper on the
+        // dark side is darker than the faint bar.
         assert_eq!(alpha(10, ink.height / 2), 255);
         assert_eq!(alpha(ink.width - 10, ink.height / 2), 255);
         // Nothing in the corners, which are paper.

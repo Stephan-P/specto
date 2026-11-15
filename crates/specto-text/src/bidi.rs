@@ -1,16 +1,16 @@
 //! Right-to-left text (Hebrew, Arabic) in logical order.
 //!
-//! PDFs place glyphs on the page; most generators draw right-to-left text
-//! in *visual* order (left to right on the page), some in *logical* order.
-//! Text output (copy, search) needs logical order, so RTL words drawn in
-//! visual order have their characters reversed, and RTL lines drawn in visual
-//! order have their word order reversed. Geometry and character indices are
+//! PDFs place glyphs on the page. Most generators draw right-to-left text in *visual* order (left
+//! to right on the page), some in *logical* order. Text output (copy, search) needs logical order,
+//! so right-to-left words drawn in visual order have their characters reversed, and right-to-left
+//! lines drawn in visual order have their word order reversed. Geometry and character indices are
 //! untouched: selection follows what's on screen.
 
-/// Strong right-to-left characters: Hebrew, Arabic, Syriac, Thaana, N'Ko
-/// and their presentation forms. Historic RTL scripts (U+10800 and up) are
-/// left out on purpose: they're rare, and mostly appear in code charts laid
-/// out left to right, which Poppler doesn't reorder either.
+/// Strong right-to-left characters: Hebrew, Arabic, Syriac, Thaana, N'Ko and their presentation
+/// forms.
+///
+/// Historic right-to-left scripts (U+10800 and up) are left out on purpose: they're rare, and
+/// mostly appear in code charts laid out left to right, which Poppler doesn't reorder either.
 pub(crate) fn is_rtl(c: char) -> bool {
     matches!(c,
         '\u{0590}'..='\u{08FF}'
@@ -41,8 +41,8 @@ pub(crate) fn has_ltr_letters(s: &str) -> bool {
     s.chars().any(is_ltr)
 }
 
-/// Combining marks (Hebrew points, Arabic harakat, generic diacritics) that
-/// belong to the preceding base character.
+/// Combining marks (Hebrew points, Arabic harakat, generic diacritics) that belong to the preceding
+/// base character.
 fn is_mark(c: char) -> bool {
     matches!(c,
         '\u{0300}'..='\u{036F}'
@@ -54,8 +54,7 @@ fn is_mark(c: char) -> bool {
         | '\u{FE20}'..='\u{FE2F}')
 }
 
-/// Reverses `s` by clusters (a base character plus its marks), so marks stay
-/// on their letter.
+/// Reverses `s` by clusters (a base character plus its marks), so marks stay on their letter.
 pub(crate) fn reverse_clusters(s: &str) -> String {
     let mut clusters: Vec<String> = Vec::new();
     for c in s.chars() {

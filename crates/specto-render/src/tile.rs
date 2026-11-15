@@ -14,47 +14,46 @@ pub const TILE_SIZE: u32 = 512;
 pub struct DocId(pub(crate) u32);
 
 impl DocId {
-    /// The raw id, e.g. to pass a [`TileKey`] across FFI as plain numbers.
+    /// The raw id, for passing a [`TileKey`] across FFI as plain numbers.
     pub fn raw(self) -> u32 {
         self.0
     }
 
-    /// Rebuilds an id from [`raw`](Self::raw). Ids not issued by a
-    /// `Scheduler` simply match no document.
+    /// Rebuilds an id from [`raw`](Self::raw).
+    ///
+    /// Ids not issued by a `Scheduler` simply match no document.
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 }
 
-/// Zoom levels are powers of √2: level `l` renders at `2^(l/2)` device px per point.
+/// Zoom levels are powers of √2: level `l` renders at `2^(l/2)` device pixels per point.
 pub fn level_scale(level: i32) -> f64 {
     2f64.powf(level as f64 / 2.0)
 }
 
 /// The smallest level whose scale is at least `scale`.
 ///
-/// Rounding *up* means level tiles are only ever downsampled when drawn,
-/// never upscaled. Levels are what the viewer uses while zooming; a settled
-/// view uses tiles at the exact device scale instead.
+/// Rounding *up* means level tiles are only ever downsampled when drawn, never upscaled. Levels are
+/// what the viewer uses while zooming. A settled view uses tiles at the exact device scale instead.
 pub fn level_for_scale(scale: f64) -> i32 {
-    // The tolerance keeps exact powers, including their fixed-point
-    // `TileScale` versions (scale 2.0 → level 2), from tipping over.
+    // The tolerance keeps exact powers, including their fixed-point `TileScale` versions (scale 2.0
+    // is level 2), from tipping over.
     (scale.log2() * 2.0 - 1e-3).ceil() as i32
 }
 
-/// Device pixels per PDF point, in fixed point (units of 2^-20), so that
-/// tile keys are plain integers: hashable, and cheap to pass across FFI.
+/// Device pixels per PDF point, in fixed point (units of 2^-20), so that tile keys are plain
+/// integers: hashable, and cheap to pass across FFI.
 ///
-/// The √2 zoom levels are particular values ([`from_level`](Self::from_level));
-/// a settled view uses [`exact`](Self::exact) tiles at its device scale. Page
-/// bitmap sizes are always computed from the quantized value
-/// ([`get`](Self::get)), so an exact tile maps 1:1 onto the page rectangle the
-/// viewer draws.
+/// The √2 zoom levels are particular values ([`from_level`](Self::from_level)). A settled view uses
+/// [`exact`](Self::exact) tiles at its device scale. Page bitmap sizes are always computed from the
+/// quantized value ([`get`](Self::get)), so an exact tile maps one to one onto the page rectangle
+/// the viewer draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TileScale(u32);
 
 impl TileScale {
-    /// 2^20: fine enough at small scales, and up to 4096 px/pt fits in a u32.
+    /// 2^20: fine enough at small scales, and up to 4096 pixels per point fits in a u32.
     const ONE: f64 = 1_048_576.0;
 
     /// The scale of zoom level `level`.
@@ -62,7 +61,7 @@ impl TileScale {
         Self::exact(level_scale(level))
     }
 
-    /// `scale` device px per point, quantized to 2^-20.
+    /// `scale` device pixels per point, quantized to 2^-20.
     pub fn exact(scale: f64) -> Self {
         Self((scale * Self::ONE).round().clamp(1.0, u32::MAX as f64) as u32)
     }
@@ -101,8 +100,8 @@ pub struct TileKey {
 }
 
 impl TileKey {
-    /// The tile's pixel rectangle within the full page bitmap at its scale, or
-    /// `None` if the tile lies outside the page.
+    /// The tile's pixel rectangle within the full page bitmap at its scale, or `None` if the tile
+    /// lies outside the page.
     pub fn region(&self, geometry: &PageGeometry) -> Option<DeviceIntRect> {
         let full = geometry.rotated(self.rotation).pixel_size(self.scale.get());
         let (x, y) = (self.tx * TILE_SIZE, self.ty * TILE_SIZE);
@@ -119,8 +118,8 @@ impl TileKey {
         ))
     }
 
-    /// The key as plain numbers, for FFI:
-    /// `[doc, page, rotation (quarter turns), content, scale, tx, ty]`.
+    /// The key as plain numbers, for FFI: `[doc, page, rotation (quarter turns), content, scale,
+    /// tx, ty]`.
     pub fn to_raw(&self) -> [u32; 7] {
         [
             self.doc.raw(),
@@ -154,8 +153,8 @@ impl TileKey {
     }
 }
 
-/// Tile indices `(tx, ty)` covering `area` (pixels of the full page bitmap at
-/// `scale`), clipped to the page. `geometry` is the page as displayed.
+/// Tile indices `(tx, ty)` covering `area` (pixels of the full page bitmap at `scale`), clipped to
+/// the page. `geometry` is the page as displayed.
 pub fn tiles_covering(
     geometry: &PageGeometry,
     scale: TileScale,
@@ -181,12 +180,12 @@ struct Entry<T> {
     last_used: u64,
 }
 
-/// LRU cache of rendered tiles in whatever form the frontend draws them
-/// (GDK textures, Android bitmaps, …), bounded by a byte budget.
+/// LRU cache of rendered tiles in whatever form the frontend draws them (GDK textures or Android
+/// bitmaps, for example), bounded by a byte budget.
 ///
-/// Call [`begin_frame`](Self::begin_frame) before drawing; tiles used in the
-/// current frame are never evicted. Everything else can be, so the budget
-/// always holds. `TileCache<T>` is `Send` when `T` is.
+/// Call [`begin_frame`](Self::begin_frame) before drawing. Tiles used in the current frame are
+/// never evicted. Everything else can be, so the budget always holds. `TileCache<T>` is `Send` when
+/// `T` is.
 pub struct TileCache<T> {
     map: HashMap<TileKey, Entry<T>>,
     bytes: usize,
@@ -206,10 +205,11 @@ impl<T> TileCache<T> {
         }
     }
 
-    /// Tiles matching `evict_last` (e.g. low-res placeholders) are evicted
-    /// only after all others, oldest first. They are not pinned: at 0.5 px/pt
-    /// an A4 placeholder is about 0.5 MB, so a 1,000-page document would
-    /// otherwise outgrow any budget.
+    /// Tiles matching `evict_last` (such as low-resolution placeholders) are evicted only after all
+    /// others, oldest first.
+    ///
+    /// They are not pinned: at 0.5 pixels per point an A4 placeholder is about 0.5 MB, so a
+    /// 1,000-page document would otherwise outgrow any budget.
     pub fn with_evict_last(
         mut self,
         evict_last: impl Fn(&TileKey) -> bool + Send + Sync + 'static,
@@ -273,9 +273,8 @@ impl<T> TileCache<T> {
         self.bytes
     }
 
-    /// Evicts least recently used tiles until at most `target` bytes remain:
-    /// ordinary tiles first, then `evict_last` ones, never those used in the
-    /// current frame.
+    /// Evicts least recently used tiles until at most `target` bytes remain: ordinary tiles first,
+    /// then `evict_last` ones, never those used in the current frame.
     fn evict(&mut self, target: usize) {
         let mut candidates: Vec<(bool, u64, TileKey)> = self
             .map
@@ -326,7 +325,7 @@ mod tests {
         assert_eq!(level_for_scale(1.0), 0);
         assert_eq!(level_for_scale(2.0), 2);
         assert_eq!(level_for_scale(2.01), 3);
-        assert_eq!(level_for_scale(1.5), 2); // 1.5 → 2.0, not 1.41
+        assert_eq!(level_for_scale(1.5), 2); // 1.5 rounds up to 2.0, not down to 1.41
         assert_eq!(level_for_scale(0.25), -4);
         for s in [0.3, 0.77, 1.0, 1.25, 1.5, 2.0, 2.625, 3.3] {
             let l = level_for_scale(s);
@@ -358,7 +357,7 @@ mod tests {
     #[test]
     fn tile_grid_covers_page() {
         let g = letter();
-        // Level 2 → scale 2 → 1224 × 1584 px → 3 × 4 tiles.
+        // Level 2 is scale 2, so the page is 1224 by 1584 pixels, or 3 by 4 tiles.
         let all: Vec<_> = tiles_covering(
             &g,
             TileScale::from_level(2),
@@ -403,8 +402,8 @@ mod tests {
         c.insert(key(0, -4), "thumb", 20); // evicted last
         c.insert(key(1, 0), "old", 40);
         c.begin_frame();
-        // 110 > 100 → evict down to 75: the ordinary tile goes, even though
-        // the placeholder is just as old.
+        // 110 is over the budget of 100, so it evicts down to 75: the ordinary tile goes, even
+        // though the placeholder is just as old.
         c.insert(key(2, 0), "new", 50);
         assert!(c.contains(&key(0, -4)));
         assert!(!c.contains(&key(1, 0)));
