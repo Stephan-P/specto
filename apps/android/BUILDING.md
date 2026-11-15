@@ -11,7 +11,7 @@
   ```
 
 - Android Studio, or the Android SDK on its own, with the NDK version named
-  in `app/build.gradle.kts` (`ndkVersion`). In Android Studio it is under
+  in `build.gradle.kts` (`ndkVersion`). In Android Studio it is under
   Settings → Languages & Frameworks → Android SDK → SDK Tools, with "Show
   Package Details" ticked.
 - A JDK. Android Studio brings one; to use it from a terminal on macOS:
@@ -30,15 +30,15 @@ part of the build, so there is no separate Rust step. The app runs on Android
 From `apps/android`, with a phone connected or an emulator running:
 
 ```sh
-./gradlew :app:installDebug       # build and install
-./gradlew :app:assembleDebug      # only build: app/build/outputs/apk/debug/
+./gradlew installDebug       # build and install
+./gradlew assembleDebug      # only build: build/outputs/apk/debug/
 ```
 
 With more than one device connected, say which one:
 
 ```sh
 adb devices
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:installDebug
+ANDROID_SERIAL=emulator-5554 ./gradlew installDebug
 ```
 
 The release build is the one to judge speed by, and the one users get: its
@@ -47,11 +47,11 @@ of its own (see below) it is signed with the debug key, which is fine for
 trying it:
 
 ```sh
-./gradlew :app:installRelease
+./gradlew installRelease
 ```
 
 The UI tests run against the debug build, which isn't shrunk. What R8 must
-not touch is listed in `app/proguard-rules.pro`; after changing that file, or
+not touch is listed in `proguard-rules.pro`; after changing that file, or
 how Kotlin reaches the Rust library, open a document in the release build
 and see that it draws.
 
@@ -77,17 +77,17 @@ keyAlias=specto
 keyPassword=…
 ```
 
-With that file in place, `./gradlew :app:assembleRelease` signs
-`app/build/outputs/apk/release/app-release.apk` with the key (and
-`:app:bundleRelease` an app bundle, for stores that want one); without it,
+With that file in place, `./gradlew assembleRelease` signs
+`build/outputs/apk/release/specto-release.apk` with the key (and
+`bundleRelease` an app bundle, for stores that want one); without it,
 the debug key is used as before. To see which key signed an APK:
 
 ```sh
-$ANDROID_HOME/build-tools/<version>/apksigner verify --print-certs app-release.apk
+$ANDROID_HOME/build-tools/<version>/apksigner verify --print-certs specto-release.apk
 ```
 
 Before a release, raise `versionCode` (and `versionName`) in
-`app/build.gradle.kts`: Android takes an update only with a higher code.
+`build.gradle.kts`: Android takes an update only with a higher code.
 
 ## Emulators on Intel and AMD machines
 
@@ -97,7 +97,7 @@ emulator on Apple Silicon. An emulator on an Intel or AMD machine needs
 
 ```sh
 rustup target add x86_64-linux-android
-./gradlew :app:installDebug -Pspecto.abis=x86_64
+./gradlew installDebug -Pspecto.abis=x86_64
 ```
 
 To build both, pass `-Pspecto.abis=arm64-v8a,x86_64`, or change `specto.abis`
@@ -106,15 +106,15 @@ in `gradle.properties`.
 ## Tests
 
 ```sh
-./gradlew :app:testDebugUnitTest                                       # unit tests
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest  # UI tests on an emulator
+./gradlew testDebugUnitTest                                       # unit tests
+ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest  # UI tests on an emulator
 ```
 
 The serial matters when a phone is plugged in as well: a UI test run installs
 and then removes the app on its target. To run only some test classes:
 
 ```sh
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest \
+ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest \
     -Pandroid.testInstrumentationRunnerArguments.class=net.xfbs.specto.EditTest,net.xfbs.specto.ShareTest
 ```
 

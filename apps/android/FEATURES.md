@@ -2,7 +2,7 @@
 
 What the app does today, written as things to check by hand. Update this file in the same commit as any change to a feature. What is planned but not built is in [docs/TASKS.md](../../docs/TASKS.md) (M6); the short list at the end only names what a tester might look for and not find.
 
-Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `app/src/androidTest`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, the print dialog beyond what it is handed, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, saving over a file from the system's file picker, how dragging pages looks, or how the selection, its handles and the copy menu look.
+Most rows are also checked automatically on a phone-sized and a tablet-sized emulator (the tests in `test-ui`), but automated tests can't judge how anything looks or feels, and they don't cover the file picker, opening from another app, the share sheet, the print dialog beyond what it is handed, pinch zoom, dark mode, the camera cutout, whether the screen really stays on, the system's dialog asking where to save, saving over a file from the system's file picker, how dragging pages looks, or how the selection, its handles and the copy menu look.
 
 Useful documents for a full round: a long book with an outline and links, a document mixing portrait and landscape pages, a scan or image-heavy file, a one-page file, a password-protected file, and something that is not a PDF.
 

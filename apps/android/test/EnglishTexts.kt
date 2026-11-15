@@ -10,9 +10,9 @@ import javax.xml.parsers.DocumentBuilderFactory
  * reader gets to see, placeholders included.
  */
 object EnglishTexts : Texts {
-    /** The texts by name. Gradle runs unit tests in the module's directory. */
+    /** The texts by name. Gradle runs unit tests in the project's directory. */
     private val byName: Map<String, String> = run {
-        val file = File("src/main/res/values/strings.xml")
+        val file = File("res/values/strings.xml")
         val strings = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).getElementsByTagName("string")
         (0 until strings.length).associate { i ->
             val string = strings.item(i)

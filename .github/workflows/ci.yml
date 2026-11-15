@@ -109,7 +109,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - name: Install the NDK
-        # Must match `ndkVersion` in apps/android/app/build.gradle.kts. The
+        # Must match `ndkVersion` in apps/android/build.gradle.kts. The
         # runner image ships the Android SDK; Gradle fetches the platform and
         # build tools itself once the licences are accepted.
         run: |
@@ -118,7 +118,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and unit tests
         working-directory: apps/android
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:assembleRelease
+        run: ./gradlew assembleDebug testDebugUnitTest assembleRelease
 
   android-ui:
     # The Android app's UI tests, on an emulator. Slow (the emulator renders
@@ -148,7 +148,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - name: Install the NDK
-        # Must match `ndkVersion` in apps/android/app/build.gradle.kts.
+        # Must match `ndkVersion` in apps/android/build.gradle.kts.
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
@@ -170,11 +170,11 @@ jobs:
           # The app's own animations are part of what is tested.
           disable-animations: false
           working-directory: apps/android
-          script: ./gradlew :app:connectedDebugAndroidTest -Pspecto.abis=x86_64
+          script: ./gradlew connectedDebugAndroidTest -Pspecto.abis=x86_64
       - name: Keep the test report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: android-ui-test-report-${{ matrix.profile }}
-          path: apps/android/app/build/reports/androidTests/connected/
+          path: apps/android/build/reports/androidTests/connected/
 

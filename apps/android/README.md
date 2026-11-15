@@ -45,7 +45,7 @@ They're compiled into `libspecto_ffi.so`. The crate `specto-ffi` exposes them to
 
 ```sh
 cd apps/android
-./gradlew :app:installDebug      # build and install on a connected device or emulator
+./gradlew installDebug      # build and install on a connected device or emulator
 ```
 
 What to install first, release builds and their signing key, and emulators on Intel machines are in [BUILDING.md](BUILDING.md). The app runs on Android 8.0 (API 26) and newer.
@@ -54,8 +54,8 @@ What to install first, release builds and their signing key, and emulators on In
 
 ```sh
 cd apps/android
-./gradlew :app:testDebugUnitTest                                       # unit tests
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest  # UI tests on an emulator
+./gradlew testDebugUnitTest                                       # unit tests
+ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest  # UI tests on an emulator
 ```
 
 The UI tests (`ReaderTest`, `DocumentTest`) cover most of [FEATURES.md](FEATURES.md) on phone-sized and tablet-sized screens: turning pages by swipe and key, the strip, the page grid, the table of contents, links, printed page numbers, full screen, the sidebar and two pages on wide windows, rotation, passwords, and what is remembered; further classes cover search, text selection, page edits and saving, sharing, printing and the settings. The serial matters when a phone is plugged in as well: a test run installs and then removes the app on its target.
@@ -64,7 +64,9 @@ CI builds the app (the release build too, so that code shrinking is known to go 
 
 ## Project structure
 
-In `app/src/main/kotlin/net/xfbs/specto/`:
+The layout is flatter than Android's usual one (`app/src/main/kotlin/net/xfbs/…`): the Gradle project is the app, and `build.gradle.kts` says where its parts are. The files are all in the package `net.xfbs.specto`, without directories repeating that.
+
+In `src/`:
 
 - `MainActivity.kt`: the activity, theme, top bar, menus and dialogs
 - `StartScreen.kt`: the start screen with recent documents
@@ -78,10 +80,11 @@ In `app/src/main/kotlin/net/xfbs/specto/`:
 
 Elsewhere:
 
-- `app/src/main/res/values/strings.xml`: everything the app says; a translation is a copy of it in `values-<language>`
-- `app/proguard-rules.pro`: what code shrinking must leave alone in a release build
-- `app/src/test/`: unit tests
-- `app/src/androidTest/`: UI tests, with their test PDFs in `assets/` (written by `make-fixtures.py`)
-- `app/build.gradle.kts`: the build, including cross-compiling the Rust library
+- `AndroidManifest.xml`, `res/`: the manifest and Android's resources (icons, themes)
+- `res/values/strings.xml`: everything the app says; a translation is a copy of it in `values-<language>`
+- `proguard-rules.pro`: what code shrinking must leave alone in a release build
+- `test/`: unit tests
+- `test-ui/`: UI tests, with their test PDFs in `assets/` (written by `make-fixtures.py`)
+- `build.gradle.kts`: the build, including cross-compiling the Rust library
 - `FEATURES.md`: the feature list, as things to check by hand
 - `screenshot-phone.png`, `screenshot-tablet.png`: the screenshots above, taken on the emulators with hwloc's manual (BSD licence), the document the desktop app's screenshot shows too

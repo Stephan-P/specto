@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
+// One project: the app itself (build.gradle.kts).
 rootProject.name = "specto"
-include(":app")
