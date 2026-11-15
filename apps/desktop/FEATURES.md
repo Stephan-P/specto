@@ -85,7 +85,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Edits made while a save is running stay "Edited"
 - When another program changes the open file: without edits, it's reloaded in place, at the same page and zoom; with edits, a banner says so and offers Reload (which discards the edits). Saving over a file changed that way asks first ("File Changed on Disk"). pdfrs's own saves don't count as changes
 - When the open file is moved or deleted, a banner says so; Save writes it again
-- A file pdfrs can't save correctly (a few damaged ones) isn't written: a message says so instead
+- A file Specto can't save correctly (a few damaged ones) isn't written: a message says so instead
 
 ## Printing
 

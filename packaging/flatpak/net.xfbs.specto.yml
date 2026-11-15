@@ -1,6 +1,6 @@
 # Flatpak manifest for the desktop app. Build and install it locally with
 # packaging/flatpak/build.sh (see packaging/README.md).
-id: net.xfbs.pdfrs
+id: net.xfbs.specto
 runtime: org.gnome.Platform
 runtime-version: "51"
 sdk: org.gnome.Sdk
@@ -25,9 +25,9 @@ modules:
     build-commands:
       - cargo build --release --locked -p pdfrs-desktop
       - install -Dm755 target/release/pdfrs-gtk -t /app/bin
-      - install -Dm644 apps/desktop/data/net.xfbs.pdfrs.desktop -t /app/share/applications
-      - install -Dm644 apps/desktop/data/net.xfbs.pdfrs.metainfo.xml -t /app/share/metainfo
-      - install -Dm644 apps/desktop/data/icons/net.xfbs.pdfrs.svg -t /app/share/icons/hicolor/scalable/apps
+      - install -Dm644 apps/desktop/data/net.xfbs.specto.desktop -t /app/share/applications
+      - install -Dm644 apps/desktop/data/net.xfbs.specto.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 apps/desktop/data/icons/net.xfbs.specto.svg -t /app/share/icons/hicolor/scalable/apps
     sources:
       - type: dir
         path: ../..

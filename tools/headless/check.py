@@ -99,8 +99,8 @@ import tempfile
 import time
 import traceback
 
-APP_ID = "net.xfbs.pdfrs"
-APP_PATH = "/net/xfbs/pdfrs"
+APP_ID = "net.xfbs.specto"
+APP_PATH = "/net/xfbs/specto"
 TIMEOUT = float(os.environ.get("PDFRS_CHECK_TIMEOUT", "20"))
 
 # One colour per page: the corners of the RGB cube at 0, 128 and 255,

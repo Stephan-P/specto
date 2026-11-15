@@ -19,10 +19,10 @@ use window::Window;
 /// The application ID: D-Bus name, `.desktop` file and icon name, Flatpak
 /// ID. The files in `data/` are named after it; renaming the app means
 /// changing this, those file names and their contents.
-pub const APP_ID: &str = "net.xfbs.pdfrs";
+pub const APP_ID: &str = "net.xfbs.specto";
 
 /// The name shown to people: window titles, the macOS menu.
-pub const APP_NAME: &str = "pdfrs";
+pub const APP_NAME: &str = "Specto";
 
 fn main() -> glib::ExitCode {
     let app = adw::Application::builder()

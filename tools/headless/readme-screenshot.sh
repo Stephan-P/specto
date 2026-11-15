@@ -10,7 +10,7 @@ set -eu
 pdf=${1:-/usr/share/doc/hwloc/hwloc-a4.pdf}
 out=$(realpath "${2:-apps/desktop/screenshot.png}")
 bin=${PDFRS_GTK:-target/release/pdfrs-gtk}
-app=net.xfbs.pdfrs obj=/net/xfbs/pdfrs/window/1
+app=net.xfbs.specto obj=/net/xfbs/specto/window/1
 win() { gdbus call --session --dest $app --object-path $obj \
           --method org.gtk.Actions.Activate "$1" "${2:-[]}" '{}' >/dev/null; }
 

@@ -1,6 +1,6 @@
 # pdfrs
 
-A PDF viewer and light editor written in Rust, with a shared core and two apps:
+A PDF viewer and light editor written in Rust, with a shared core and two apps, both called Specto:
 
 - [Desktop](apps/desktop/README.md): GTK 4 and libadwaita, for Linux (also runs on macOS)
 - [Android](apps/android/README.md): Kotlin and Jetpack Compose

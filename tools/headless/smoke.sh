@@ -7,7 +7,7 @@
 #   tools/headless/run.sh tools/headless/smoke.sh <file.pdf> <out-dir>
 set -u
 pdf=$1 out=$2
-app=net.xfbs.pdfrs obj=/net/xfbs/pdfrs/window/1
+app=net.xfbs.specto obj=/net/xfbs/specto/window/1
 bin=${PDFRS_GTK:-target/release/pdfrs-gtk}
 mkdir -p "$out"
 win() { gdbus call --session --dest $app --object-path $obj \

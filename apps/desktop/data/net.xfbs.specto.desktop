@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=pdfrs
+Name=Specto
 GenericName=Document Viewer
 Comment=View PDF documents and rearrange their pages
 Exec=pdfrs-gtk %U
-Icon=net.xfbs.pdfrs
+Icon=net.xfbs.specto
 Terminal=false
 Categories=Office;Viewer;GTK;
 MimeType=application/pdf;

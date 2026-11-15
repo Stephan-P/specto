@@ -21,4 +21,4 @@ else
 fi
 mkdir -p "$work"
 $builder --user --install --force-clean --install-deps-from=flathub \
-    --state-dir="$work/state" "$@" "$work/build" "$here/net.xfbs.pdfrs.yml"
+    --state-dir="$work/state" "$@" "$work/build" "$here/net.xfbs.specto.yml"

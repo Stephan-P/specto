@@ -2,9 +2,9 @@
 <!-- Before publishing: add <url type="homepage">, <url type="bugtracker">,
      <screenshots> (images at a public URL), <developer> and <releases>. -->
 <component type="desktop-application">
-  <id>net.xfbs.pdfrs</id>
-  <launchable type="desktop-id">net.xfbs.pdfrs.desktop</launchable>
-  <name>pdfrs</name>
+  <id>net.xfbs.specto</id>
+  <launchable type="desktop-id">net.xfbs.specto.desktop</launchable>
+  <name>Specto</name>
   <summary>View PDF documents and rearrange their pages</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT OR Apache-2.0</project_license>

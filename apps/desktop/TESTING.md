@@ -165,13 +165,13 @@ Use a copy of LONG, and another program that saves PDFs (`qpdf`, a PDF editor, o
 
 - LONG open on page 50, unedited: replace the file (`qpdf --rotate=+90:50 long.pdf --replace-input`). The window shows the new version at once, still on page 50 at the same zoom, page 50 now turned; no "Edited".
 - With an edit, the same: a banner "“long.pdf” was changed by another program…" with Reload; the edit stays. Save asks "File Changed on Disk": Cancel leaves the other program's version (check in another viewer), Save Anyway replaces it. Reload shows the other version and drops the edit.
-- Saving in pdfrs itself, then waiting a few seconds: no banner, no reload, Undo still there.
+- Saving in Specto itself, then waiting a few seconds: no banner, no reload, Undo still there.
 - Delete or move the file: a banner says so. Save writes it back where it was.
 - ENCRYPTED, replaced by another encrypted copy with the same password: reloaded without asking; with a different password, the password dialog comes up.
 
 ### Flatpak
 
-Build and install it with `packaging/flatpak/build.sh` (see packaging/README.md), then start it from the GNOME app grid or with `flatpak run net.xfbs.pdfrs`. The app sees only the files it's given, so these go through the document portal.
+Build and install it with `packaging/flatpak/build.sh` (see packaging/README.md), then start it from the GNOME app grid or with `flatpak run net.xfbs.specto`. The app sees only the files it's given, so these go through the document portal.
 
 - The app grid shows it with its icon; GNOME Files lists it under "Open With" for PDFs, and opening a PDF that way works.
 - Open a PDF with the Open dialog, from GNOME Files, and by dropping it on the window. The start page later lists it with its real folder (not `/run/user/…`); the Save As and Export dialogs start in that folder.
