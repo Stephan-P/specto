@@ -24,6 +24,11 @@ pub const APP_ID: &str = "net.xfbs.specto";
 /// The name shown to people: window titles, the macOS menu.
 pub const APP_NAME: &str = "Specto";
 
+/// The project's home page, and where problems are reported. Also in
+/// `data/net.xfbs.specto.metainfo.xml`.
+const WEBSITE: &str = "https://github.com/xfbs/specto";
+const ISSUES: &str = "https://github.com/xfbs/specto/issues";
+
 fn main() -> glib::ExitCode {
     let app = adw::Application::builder()
         .application_id(APP_ID)
@@ -82,7 +87,10 @@ fn main() -> glib::ExitCode {
                 }
             })
             .build();
-        app.add_action_entries([quit]);
+        let about = gio::ActionEntry::builder("about")
+            .activate(|app: &adw::Application, _, _| show_about(app))
+            .build();
+        app.add_action_entries([quit, about]);
     });
 
     app.connect_activate(|app| Window::new(app).present());
@@ -94,6 +102,37 @@ fn main() -> glib::ExitCode {
         }
     });
     app.run()
+}
+
+/// Shows the About dialog over the active window.
+fn show_about(app: &adw::Application) {
+    let dialog = adw::AboutDialog::builder()
+        .application_name(APP_NAME)
+        .application_icon(APP_ID)
+        .version(env!("CARGO_PKG_VERSION"))
+        .developer_name("The Specto contributors")
+        .copyright("© 2026 The Specto contributors")
+        .website(WEBSITE)
+        .issue_url(ISSUES)
+        .license_type(gtk::License::Custom)
+        .license(
+            "Specto is licensed under either of the \
+             <a href=\"https://www.apache.org/licenses/LICENSE-2.0\">Apache License, \
+             Version 2.0</a> or the \
+             <a href=\"https://opensource.org/license/mit\">MIT license</a>, \
+             at your option.\n\n\
+             It comes with no warranty of any kind.",
+        )
+        .build();
+    // The two libraries that do the heavy lifting.
+    dialog.add_acknowledgement_section(
+        Some("Built with"),
+        &[
+            "hayro (rendering) https://github.com/LaurenzV/hayro",
+            "lopdf (saving) https://github.com/J-F-Liu/lopdf",
+        ],
+    );
+    dialog.present(app.active_window().as_ref());
 }
 
 /// On macOS, registers each `<Primary>` shortcut with `<Meta>` (Cmd) first:
@@ -114,10 +153,11 @@ fn platform_accels(accels: &[&str]) -> Vec<String> {
     out
 }
 
-/// The application menu bar (macOS only): File, Edit, View, Go and Tools,
-/// like Preview.
+/// The application menu bar (macOS only): File, Edit, View, Go, Tools and
+/// Help, like Preview.
 fn menubar() -> gio::Menu {
     let quit = format!("Quit {APP_NAME}");
+    let about = format!("About {APP_NAME}");
     let section = |items: &[(&str, &str)]| {
         let m = gio::Menu::new();
         for (label, action) in items {
@@ -201,5 +241,6 @@ fn menubar() -> gio::Menu {
     bar.append_submenu(Some("View"), &view);
     bar.append_submenu(Some("Go"), &go);
     bar.append_submenu(Some("Tools"), &tools);
+    bar.append_submenu(Some("Help"), &submenu(&[section(&[(&about, "app.about")])]));
     bar
 }

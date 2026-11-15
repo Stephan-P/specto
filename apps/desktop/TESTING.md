@@ -195,7 +195,7 @@ Build and install it with `packaging/flatpak/build.sh` (see packaging/README.md)
 
 ## Platform notes
 
-- macOS: the app has a menu bar (File, Edit, View, Go, Tools) in the system menu bar, with the shortcuts shown; GTK draws its own window decorations. Shortcuts should work with Cmd (and also with Ctrl). Opening PDFs from Finder with "Open With" isn't expected to work yet, since there's no app bundle; use the command line, the dialog or drag-and-drop. Retina screens are scale 2.
+- macOS: the app has a menu bar (File, Edit, View, Go, Tools, Help) in the system menu bar, with the shortcuts shown; GTK draws its own window decorations. Shortcuts should work with Cmd (and also with Ctrl). Opening PDFs from Finder with "Open With" isn't expected to work yet, since there's no app bundle; use the command line, the dialog or drag-and-drop. Retina screens are scale 2.
 - Linux: fractional scaling needs to be enabled in GNOME (Settings → Displays). Recently opened PDFs should also appear in GNOME Files under Recent.
 
 ## Reporting

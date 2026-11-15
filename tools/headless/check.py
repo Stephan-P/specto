@@ -14,6 +14,7 @@ a screenshot shows which page is on screen and that it was rendered.
 Tests (run some by naming them, e.g. `zoom layouts`):
 
 - start_page: no file opens the start page
+- about: the About dialog, with the version
 - open_and_render: title, page labels in the entry, default layout, zoom and
   sidebar; the screenshot is at device resolution and shows page 1
 - navigation: next, previous, first and last page; a rotated page renders
@@ -628,6 +629,19 @@ def test_start_page(ctx):
     app = ctx.app()
     s = app.window().state()
     check(s["view"] == "empty", f"start page expected, got {s['view']}")
+    app.quit()
+
+
+def test_about(ctx):
+    app = ctx.app()
+    w = app.window()
+    gdbus_activate(APP_PATH, "about")
+    w.wait("the About dialog", lambda s: s["dialog"] == "About")
+    time.sleep(0.5)  # the dialog's animation
+    w.screenshot("about")
+    # Closing the window closes the dialog first, so quitting takes two.
+    gdbus_activate(APP_PATH, "quit")
+    w.wait("the About dialog to go", lambda s: s["dialog"] == "")
     app.quit()
 
 

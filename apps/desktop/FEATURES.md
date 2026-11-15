@@ -97,8 +97,12 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right), Help (About Specto)
 - Shortcuts with Cmd
+
+## About
+
+- About Specto (the main menu): the version, the licence, and links to the project page and to where problems are reported
 
 ## Remembering state
 

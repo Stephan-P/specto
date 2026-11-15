@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Before publishing: add <url type="homepage">, <url type="bugtracker">,
-     <screenshots> (images at a public URL), <developer> and <releases>. -->
+<!-- What software centres (and Flathub) show. The links are also in
+     src/main.rs, for the About dialog. packaging/README.md says what to
+     change for a release. -->
 <component type="desktop-application">
   <id>net.xfbs.specto</id>
   <launchable type="desktop-id">net.xfbs.specto.desktop</launchable>
@@ -8,6 +9,12 @@
   <summary>View PDF documents and rearrange their pages</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT OR Apache-2.0</project_license>
+  <developer id="net.xfbs">
+    <name>Patrick Elsen</name>
+  </developer>
+  <url type="homepage">https://github.com/xfbs/specto</url>
+  <url type="bugtracker">https://github.com/xfbs/specto/issues</url>
+  <url type="vcs-browser">https://github.com/xfbs/specto</url>
   <description>
     <p>
       A fast PDF viewer with light editing, in the spirit of Preview on macOS.
@@ -50,5 +57,22 @@
     <control>keyboard</control>
     <control>touch</control>
   </supports>
+  <branding>
+    <color type="primary" scheme_preference="light">#cfdcff</color>
+    <color type="primary" scheme_preference="dark">#2140b0</color>
+  </branding>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Two pages side by side, with the table of contents in the sidebar</caption>
+      <image type="source" width="2000" height="1600">https://raw.githubusercontent.com/xfbs/specto/main/apps/desktop/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.1.0" date="2026-11-15">
+      <description>
+        <p>The first release: viewing, search, text selection, page editing and printing.</p>
+      </description>
+    </release>
+  </releases>
   <content_rating type="oars-1.1"/>
 </component>

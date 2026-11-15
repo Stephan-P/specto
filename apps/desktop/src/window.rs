@@ -176,7 +176,8 @@ impl Window {
                 .build(),
         );
 
-        // The main menu: editing, for now.
+        // The main menu: saving, printing, editing and About. Also on the
+        // start page, where only About is enabled.
         let undo_section = gio::Menu::new();
         let main_menu = gio::Menu::new();
         main_menu.append_section(None, &{
@@ -201,6 +202,14 @@ impl Window {
         main_menu.append_section(None, &{
             let m = gio::Menu::new();
             m.append(Some("Insert Pages from File…"), Some("win.insert-file"));
+            m
+        });
+        main_menu.append_section(None, &{
+            let m = gio::Menu::new();
+            m.append(
+                Some(&format!("About {}", crate::APP_NAME)),
+                Some("app.about"),
+            );
             m
         });
         let main_button = gtk::MenuButton::builder()
@@ -345,7 +354,6 @@ impl Window {
             page_entry,
             page_total,
             document_widgets: vec![
-                main_button.upcast(),
                 sidebar_toggle.upcast(),
                 search_toggle.upcast(),
                 layout_button.upcast(),
@@ -1315,6 +1323,15 @@ impl Window {
         )
         .str("title", &inner.window.title().unwrap_or_default())
         .str("toast", &inner.last_toast.borrow())
+        // The title of the dialog over the window, "About" for instance.
+        .str(
+            "dialog",
+            &inner
+                .window
+                .visible_dialog()
+                .map(|d| d.title().to_string())
+                .unwrap_or_default(),
+        )
         .bool("sidebar", inner.split.shows_sidebar())
         .str(
             "sidebar_page",
