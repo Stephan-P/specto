@@ -484,6 +484,55 @@ impl Window {
             }
         });
         this.fill_signature_menu();
+        // A press on the page ends typing, before the page view makes anything of the press
+        // (picking, drawing, dragging): the text field doesn't always notice by itself that it
+        // lost the keyboard, as when the size field had it last.
+        let press = gtk::GestureClick::new();
+        press.set_button(0);
+        press.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(&this.0);
+        press.connect_pressed(move |_, _, _, _| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).finish_typing();
+            }
+        });
+        this.0.canvas.add_controller(press);
+        // From the size and font controls: Escape ends typing, as in the text field, and so
+        // does the keyboard going elsewhere than back to it.
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(&this.0);
+        keys.connect_key_pressed(move |_, key, _, _| {
+            let typing = weak
+                .upgrade()
+                .filter(|inner| key == gdk::Key::Escape && inner.typing.borrow().is_some());
+            match typing {
+                Some(inner) => {
+                    Window(inner).finish_typing();
+                    glib::Propagation::Stop
+                }
+                None => glib::Propagation::Proceed,
+            }
+        });
+        this.0.text_controls.add_controller(keys);
+        let focus = gtk::EventControllerFocus::new();
+        let weak = Rc::downgrade(&this.0);
+        focus.connect_leave(move |_| {
+            let weak = weak.clone();
+            glib::idle_add_local_once(move || {
+                let Some(inner) = weak.upgrade() else { return };
+                let Some(view) = inner.typing.borrow().as_ref().map(|t| t.view.clone()) else {
+                    return;
+                };
+                let still = gtk::prelude::GtkWindowExt::focus(&inner.window).is_some_and(|f| {
+                    f.is_ancestor(&inner.text_controls) || f.is_ancestor(&view) || f == view
+                });
+                if !still {
+                    Window(inner).finish_typing();
+                }
+            });
+        });
+        this.0.text_controls.add_controller(focus);
         let weak = Rc::downgrade(&this.0);
         let chosen = move || {
             if let Some(inner) = weak.upgrade() {
@@ -583,6 +632,8 @@ impl Window {
                 return glib::Propagation::Proceed;
             };
             let w = Window(inner);
+            // What is being typed counts as a change, and must not be lost.
+            w.finish_text_entry();
             if w.is_modified() && !w.0.close_confirmed.get() {
                 glib::spawn_future_local(async move { w.confirm_close().await });
                 return glib::Propagation::Stop;
@@ -832,6 +883,9 @@ impl Window {
     /// Applies an edit to the document, then updates the view, the sidebar and the menus if it
     /// changed anything. `f` returns `None` if nothing changed.
     fn edit(&self, f: impl FnOnce(&mut Document) -> Option<Edited>) {
+        // Text being typed is in the document before anything else is done to it: an edit to
+        // the pages would move the text's place from under it, and undo would run past it.
+        self.finish_text_entry();
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return;

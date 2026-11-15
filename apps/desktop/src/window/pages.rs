@@ -390,6 +390,7 @@ impl Window {
 
     /// Asks where to save the selected pages, and saves them there as a new PDF.
     pub(super) async fn export_pages(&self) {
+        self.finish_text_entry();
         let inner = &self.0;
         let Some(name) = inner
             .document

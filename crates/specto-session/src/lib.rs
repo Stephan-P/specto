@@ -138,6 +138,9 @@ pub struct Session {
     /// An annotation the renderer draws that is taken out of its page for the time being, because
     /// it is being moved, resized or typed into.
     held: Option<annots::Held>,
+    /// The text box that is being typed into, if any: the position of its page, and which it
+    /// is. What is typed goes to this one, whatever is picked by then.
+    typing_into: Option<(usize, AnnotId)>,
     /// The annotation that is picked (to delete it, later to change it), if any: the position of
     /// its page, and which it is (from [`annotation_at`](Self::annotation_at)).
     pub picked: Option<(usize, AnnotId)>,
@@ -175,6 +178,7 @@ impl Session {
             draft: None,
             adjust: None,
             held: None,
+            typing_into: None,
             picked: None,
             indexer: None,
             search: None,
@@ -625,6 +629,7 @@ impl Session {
         self.draft = None;
         self.adjust = None;
         self.held = None;
+        self.typing_into = None;
         self.search_again();
         true
     }

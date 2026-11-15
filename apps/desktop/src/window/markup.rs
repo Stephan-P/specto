@@ -682,15 +682,17 @@ impl Window {
             let text = buffer
                 .text(&buffer.start_iter(), &buffer.end_iter(), false)
                 .to_string();
-            // Later: the popover is still closing, and is taken off the page view once it has.
-            let (weak, popover) = (weak.clone(), popover.clone());
-            glib::idle_add_local_once(move || {
-                popover.unparent();
-                if let Some(inner) = weak.upgrade() {
-                    inner.text_editor.replace(None);
+            // The text at once: whatever closed the editor (a save, the window closing) must
+            // find it in the document.
+            if let Some(inner) = weak.upgrade() {
+                let open = inner.text_editor.take().is_some();
+                if open {
                     Window(inner).set_text(new_at, &text);
                 }
-            });
+            }
+            // Later: the popover is still closing, and is taken off the page view once it has.
+            let popover = popover.clone();
+            glib::idle_add_local_once(move || popover.unparent());
         });
         popover.popup();
         view.grab_focus();
@@ -819,6 +821,16 @@ impl Window {
 
     /// Ends typing on the page, if there is any: what was typed is the text box's text now (a new
     /// box, if there is text for one).
+    /// Ends whatever text is being entered, on the page or in the small editor, keeping it: before
+    /// anything that needs the document as the user sees it (saving, closing, another edit).
+    pub(super) fn finish_text_entry(&self) {
+        self.finish_typing();
+        let editor = self.0.text_editor.borrow().clone();
+        if let Some(editor) = editor {
+            editor.popdown();
+        }
+    }
+
     pub(super) fn finish_typing(&self) {
         let inner = &self.0;
         let Some(typing) = inner.typing.take() else {
@@ -1039,6 +1051,7 @@ impl Window {
     ///
     /// The pages stay as they are, so there is less to do than after [`edit`](Self::edit).
     pub(super) fn annotate(&self, f: impl FnOnce(&mut Document) -> bool) -> bool {
+        self.finish_typing();
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return false;

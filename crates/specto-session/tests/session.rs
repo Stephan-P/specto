@@ -1182,3 +1182,72 @@ fn where_a_text_box_is_typed_into() {
     saved.close(&scheduler);
     session.close(&scheduler);
 }
+
+#[test]
+fn typed_text_goes_to_the_box_it_was_typed_into() {
+    use specto_annot::{Color, TextFont};
+
+    let black = Color::new(0.0, 0.0, 0.0);
+    let style = (12.0, TextFont::default());
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, book(2, "alpha"));
+    let a = PdfPoint::new(20.0, 200.0);
+    let b = PdfPoint::new(20.0, 100.0);
+    assert!(session.add_text_box_on(&scheduler, 0, a, 150.0, "First", style, black));
+    assert!(session.add_text_box_on(&scheduler, 0, b, 150.0, "Second", style, black));
+    let texts = |s: &mut Session| -> Vec<String> {
+        s.annotations(0)
+            .iter()
+            .map(|(_, a)| a.contents.clone().unwrap_or_default())
+            .collect()
+    };
+    let on = |s: &Session, at: PdfPoint| {
+        s.viewer
+            .pdf_to_view(0, PdfPoint::new(at.x + 10.0, at.y - 5.0))
+            .unwrap()
+    };
+
+    // Typing into the first, the second gets picked meanwhile: what was
+    // typed is the first one's text all the same.
+    session.picked = session.annotation_at(on(&session, a));
+    assert!(session.begin_text_edit(&scheduler).is_some());
+    session.picked = session.annotation_at(on(&session, b));
+    assert!(
+        session
+            .end_text_edit(&scheduler, Some(("Changed", style)))
+            .unwrap()
+    );
+    assert_eq!(texts(&mut session), ["Changed", "Second"]);
+
+    // The same with nothing picked by the end, and with the box emptied:
+    // it is the one that goes.
+    session.picked = session.annotation_at(on(&session, a));
+    assert!(session.begin_text_edit(&scheduler).is_some());
+    session.picked = None;
+    assert!(
+        session
+            .end_text_edit(&scheduler, Some(("Again", style)))
+            .unwrap()
+    );
+    assert_eq!(texts(&mut session), ["Again", "Second"]);
+    session.picked = session.annotation_at(on(&session, a));
+    assert!(session.begin_text_edit(&scheduler).is_some());
+    session.picked = session.annotation_at(on(&session, b));
+    assert!(
+        session
+            .end_text_edit(&scheduler, Some(("", style)))
+            .unwrap()
+    );
+    assert_eq!(texts(&mut session), ["Second"]);
+    // The second stays picked: it wasn't the one deleted.
+    assert!(session.picked.is_some());
+
+    // Ended twice, or without having begun: nothing happens.
+    assert!(
+        !session
+            .end_text_edit(&scheduler, Some(("Stray", style)))
+            .unwrap()
+    );
+    assert_eq!(texts(&mut session), ["Second"]);
+    session.close(&scheduler);
+}

@@ -55,28 +55,28 @@ msgstr ""
 msgid "Quit {app}"
 msgstr ""
 
-#: src/main.rs:184 src/window/mod.rs:241
+#: src/main.rs:184 src/window.rs:241
 #, rust-format
 msgid "About {app}"
 msgstr ""
 
-#: src/main.rs:201 src/window/mod.rs:148
+#: src/main.rs:201 src/window.rs:148
 msgid "Open…"
 msgstr ""
 
-#: src/main.rs:203 src/window/mod.rs:209
+#: src/main.rs:203 src/window.rs:209
 msgid "Save"
 msgstr ""
 
-#: src/main.rs:204 src/window/mod.rs:210
+#: src/main.rs:204 src/window.rs:210
 msgid "Save As…"
 msgstr ""
 
-#: src/main.rs:205 src/window/mod.rs:212
+#: src/main.rs:205 src/window.rs:212
 msgid "Export Selected Pages…"
 msgstr ""
 
-#: src/main.rs:207 src/window/mod.rs:215
+#: src/main.rs:207 src/window.rs:215
 msgid "Print…"
 msgstr ""
 
@@ -100,11 +100,11 @@ msgstr ""
 msgid "Select All"
 msgstr ""
 
-#: src/main.rs:221 src/window/mod.rs:233
+#: src/main.rs:221 src/window.rs:233
 msgid "Insert Pages from File…"
 msgstr ""
 
-#: src/main.rs:222 src/window/mod.rs:224
+#: src/main.rs:222 src/window.rs:224
 msgid "Delete Pages"
 msgstr ""
 
@@ -120,43 +120,43 @@ msgstr ""
 msgid "Find Previous"
 msgstr ""
 
-#: src/main.rs:232 src/window/mod.rs:257
+#: src/main.rs:232 src/window.rs:257
 msgid "Single Page"
 msgstr ""
 
-#: src/main.rs:233 src/window/mod.rs:258
+#: src/main.rs:233 src/window.rs:258
 msgid "Continuous"
 msgstr ""
 
-#: src/main.rs:234 src/window/mod.rs:259
+#: src/main.rs:234 src/window.rs:259
 msgid "Two Pages"
 msgstr ""
 
-#: src/main.rs:236 src/window/mod.rs:260
+#: src/main.rs:236 src/window.rs:260
 msgid "Two Pages, Continuous"
 msgstr ""
 
-#: src/main.rs:240 src/window/mod.rs:268
+#: src/main.rs:240 src/window.rs:268
 msgid "Show Cover Page Alone"
 msgstr ""
 
-#: src/main.rs:242 src/window/mod.rs:285
+#: src/main.rs:242 src/window.rs:285
 msgid "Actual Size"
 msgstr ""
 
-#: src/main.rs:243 src/window/mod.rs:283
+#: src/main.rs:243 src/window.rs:283
 msgid "Fit Width"
 msgstr ""
 
-#: src/main.rs:244 src/window/mod.rs:284
+#: src/main.rs:244 src/window.rs:284
 msgid "Fit Page"
 msgstr ""
 
-#: src/main.rs:245 src/window/mod.rs:290
+#: src/main.rs:245 src/window.rs:290
 msgid "Zoom In"
 msgstr ""
 
-#: src/main.rs:246 src/window/mod.rs:291
+#: src/main.rs:246 src/window.rs:291
 msgid "Zoom Out"
 msgstr ""
 
@@ -164,15 +164,15 @@ msgstr ""
 msgid "Show Sidebar"
 msgstr ""
 
-#: src/main.rs:250 src/window/mod.rs:666
+#: src/main.rs:250 src/window.rs:717
 msgid "Thumbnails"
 msgstr ""
 
-#: src/main.rs:251 src/window/mod.rs:691
+#: src/main.rs:251 src/window.rs:742
 msgid "Contents"
 msgstr ""
 
-#: src/main.rs:252 src/window/markup.rs:200 src/window/mod.rs:706
+#: src/main.rs:252 src/window.rs:757 src/window/markup.rs:200
 msgid "Markup"
 msgstr ""
 
@@ -196,11 +196,11 @@ msgstr ""
 msgid "Go to Page…"
 msgstr ""
 
-#: src/main.rs:269 src/window/mod.rs:221
+#: src/main.rs:269 src/window.rs:221
 msgid "Rotate Left"
 msgstr ""
 
-#: src/main.rs:270 src/window/mod.rs:222
+#: src/main.rs:270 src/window.rs:222
 msgid "Rotate Right"
 msgstr ""
 
@@ -364,17 +364,89 @@ msgstr ""
 msgid "Choose a Picture of a Signature"
 msgstr ""
 
-#: src/signatures.rs:479 src/window/files.rs:419 src/window/files.rs:521
-#: src/window/files.rs:704
+#: src/signatures.rs:479 src/window/files.rs:420 src/window/files.rs:522
+#: src/window/files.rs:709
 msgid "_Cancel"
 msgstr ""
 
-#: src/signatures.rs:481 src/window/files.rs:706
+#: src/signatures.rs:481 src/window/files.rs:711
 msgid "_Save"
 msgstr ""
 
 #: src/signatures.rs:509
 msgid "New Signature"
+msgstr ""
+
+#: src/window.rs:144
+msgid "Open a PDF"
+msgstr ""
+
+#: src/window.rs:145
+msgid "Drop a file here or choose one"
+msgstr ""
+
+#: src/window.rs:158
+msgid "Recent"
+msgstr ""
+
+#: src/window.rs:184
+msgid "Thumbnails (F9)"
+msgstr ""
+
+#: src/window.rs:196
+#, rust-format
+msgid "Open ({shortcut})"
+msgstr ""
+
+#: src/window.rs:248
+msgid "Main Menu"
+msgstr ""
+
+#: src/window.rs:275
+msgid "Page Layout"
+msgstr ""
+
+#: src/window.rs:296
+msgid "Zoom"
+msgstr ""
+
+#: src/window.rs:307
+#, rust-format
+msgid "Go to Page ({shortcut})"
+msgstr ""
+
+#: src/window.rs:320
+msgid "Search"
+msgstr ""
+
+#: src/window.rs:332
+msgid "Previous Match (Shift+Enter)"
+msgstr ""
+
+#: src/window.rs:339
+msgid "Next Match (Enter)"
+msgstr ""
+
+#: src/window.rs:361
+#, rust-format
+msgid "Search ({shortcut})"
+msgstr ""
+
+#: src/window.rs:860
+#, rust-format
+msgid "Links of this kind aren't opened: {address}"
+msgstr ""
+
+#: src/window.rs:869
+#, rust-format
+msgid "Couldn't open link: {error}"
+msgstr ""
+
+#. Translators: a keyboard shortcut as tooltips show it, the
+#. Control key with another.
+#: src/window.rs:920
+#, rust-format
+msgid "Ctrl+{key}"
 msgstr ""
 
 #: src/window/actions.rs:99
@@ -454,62 +526,62 @@ msgstr ""
 msgid "_Reload"
 msgstr ""
 
-#: src/window/files.rs:412
+#: src/window/files.rs:413
 msgid "File Changed on Disk"
 msgstr ""
 
-#: src/window/files.rs:414
+#: src/window/files.rs:415
 #, rust-format
 msgid ""
 "“{name}” was changed by another program after it was opened. Saving replaces "
 "those changes with this document."
 msgstr ""
 
-#: src/window/files.rs:420
+#: src/window/files.rs:421
 msgid "_Save Anyway"
 msgstr ""
 
-#: src/window/files.rs:513
+#: src/window/files.rs:514
 #, rust-format
 msgid "The password was incorrect. Enter the password for “{name}”."
 msgstr ""
 
-#: src/window/files.rs:517
+#: src/window/files.rs:518
 #, rust-format
 msgid "“{name}” is protected with a password."
 msgstr ""
 
-#: src/window/files.rs:519
+#: src/window/files.rs:520
 msgid "Password Required"
 msgstr ""
 
-#: src/window/files.rs:522
+#: src/window/files.rs:523
 msgid "_Unlock"
 msgstr ""
 
-#: src/window/files.rs:567
+#: src/window/files.rs:569
 #, rust-format
 msgid "Couldn't print: {error}"
 msgstr ""
 
-#: src/window/files.rs:609
+#: src/window/files.rs:614
 msgid "Save As"
 msgstr ""
 
-#: src/window/files.rs:697
+#: src/window/files.rs:702
 msgid "Save Changes?"
 msgstr ""
 
-#: src/window/files.rs:699
+#: src/window/files.rs:704
 #, rust-format
 msgid "“{name}” has unsaved changes. Changes that aren't saved will be lost."
 msgstr ""
 
-#: src/window/files.rs:705
+#: src/window/files.rs:710
 msgid "_Discard"
 msgstr ""
 
-#: src/window/files.rs:727
+#: src/window/files.rs:732
 msgid "Open PDF"
 msgstr ""
 
@@ -628,82 +700,10 @@ msgstr ""
 msgid "Click where the signature goes"
 msgstr ""
 
-#: src/window/markup.rs:851 src/window/markup.rs:878 src/window/markup.rs:963
-#: src/window/markup.rs:1016
+#: src/window/markup.rs:863 src/window/markup.rs:890 src/window/markup.rs:975
+#: src/window/markup.rs:1028
 #, rust-format
 msgid "Couldn't change the annotation: {error}"
-msgstr ""
-
-#: src/window/mod.rs:144
-msgid "Open a PDF"
-msgstr ""
-
-#: src/window/mod.rs:145
-msgid "Drop a file here or choose one"
-msgstr ""
-
-#: src/window/mod.rs:158
-msgid "Recent"
-msgstr ""
-
-#: src/window/mod.rs:184
-msgid "Thumbnails (F9)"
-msgstr ""
-
-#: src/window/mod.rs:196
-#, rust-format
-msgid "Open ({shortcut})"
-msgstr ""
-
-#: src/window/mod.rs:248
-msgid "Main Menu"
-msgstr ""
-
-#: src/window/mod.rs:275
-msgid "Page Layout"
-msgstr ""
-
-#: src/window/mod.rs:296
-msgid "Zoom"
-msgstr ""
-
-#: src/window/mod.rs:307
-#, rust-format
-msgid "Go to Page ({shortcut})"
-msgstr ""
-
-#: src/window/mod.rs:320
-msgid "Search"
-msgstr ""
-
-#: src/window/mod.rs:332
-msgid "Previous Match (Shift+Enter)"
-msgstr ""
-
-#: src/window/mod.rs:339
-msgid "Next Match (Enter)"
-msgstr ""
-
-#: src/window/mod.rs:361
-#, rust-format
-msgid "Search ({shortcut})"
-msgstr ""
-
-#: src/window/mod.rs:809
-#, rust-format
-msgid "Links of this kind aren't opened: {address}"
-msgstr ""
-
-#: src/window/mod.rs:818
-#, rust-format
-msgid "Couldn't open link: {error}"
-msgstr ""
-
-#. Translators: a keyboard shortcut as tooltips show it, the
-#. Control key with another.
-#: src/window/mod.rs:866
-#, rust-format
-msgid "Ctrl+{key}"
 msgstr ""
 
 #: src/window/pages.rs:27
@@ -882,11 +882,11 @@ msgstr ""
 msgid "Insert Pages from File"
 msgstr ""
 
-#: src/window/pages.rs:404
+#: src/window/pages.rs:405
 msgid "Export Selected Pages"
 msgstr ""
 
-#: src/window/pages.rs:437
+#: src/window/pages.rs:438
 #, rust-format
 msgid "Exported {n} page to “{name}”"
 msgid_plural "Exported {n} pages to “{name}”"

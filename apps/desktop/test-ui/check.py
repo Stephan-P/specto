@@ -87,6 +87,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - text_style: the size and font controls show with the text tool and a
   picked text box; what is typed is set as they say; a picked box takes
   what is set then, and shows its own; saved, it is what it was
+- typed_text_is_kept: text being typed is in the document when it is saved
+  or the window closed, goes to the box it was typed into whatever is
+  clicked meanwhile, also from the size field, and before pages are inserted
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1119,8 +1122,13 @@ def test_draw_tools(ctx):
     check(s["annotation_picked"] and s["annotations"] == 5 and s["selection"] == "", s)
     check(blue(pixel(w, "moved", *at(210, 480))), "the rectangle isn't where it was moved to")
     check(not blue(pixel(w, "moved-from", *at(110, 480))), "the rectangle is still where it was")
+    # (The pointer's shape follows its movement: moved once more, in case
+    # the first move got there before the rectangle did.)
     inp.move(*at(210, 440))
-    check(w.pointer_at(*at(210, 440))["cursor"] == "move", "no move cursor on the picked rectangle")
+    w.pointer_at(*at(210, 440))
+    x, y = at(212, 440)
+    inp.move(x, y)
+    w.wait("the move cursor on the picked rectangle", lambda s: s["cursor"] == "move")
     # Its lower right corner dragged down: its top stays, its bottom goes.
     inp.drag(at(260, 400), at(260, 360))
     w.wait("the rectangle resized", lambda s: s["annotations"] == 5 and not s["saving"])
@@ -1510,6 +1518,94 @@ def test_text_style(ctx):
     inp.click(*w.screen(0, 110, 476))
     s = w.wait("the saved box picked", lambda s: s["annotation_picked"])
     check(s["text_style"] == "mono 10" and s["annotation_text"] == "big words", s)
+
+
+def test_typed_text_is_kept(ctx):
+    path = os.path.join(ctx.home, "typed.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)
+    at = lambda x, y: w.screen(0, x, y)
+    typing = lambda s: s["text_editor"]
+
+    def typed(text):
+        """Types, and waits until the text field has it all."""
+        inp.type(text)
+        w.wait(f"{text!r} typed", lambda s: s.get("typing_text", "").endswith(text))
+
+    w.action("markup-tool", gvariant_str("text"))
+    w.wait("the text tool", lambda s: s["markup_tool"] == "text")
+    # Saving while typing: what was typed is saved, in a document that had
+    # no other change.
+    inp.click(*at(100, 480))
+    w.wait("typing", typing)
+    time.sleep(0.4)
+    typed("first")
+    check(not w.state()["modified"], "modified before typing ended")
+    w.action("save")
+    s = w.wait("saved with the text", lambda s: s["annotations"] == 1 and not s["modified"] and not s["saving"])
+    check(not typing(s), s)
+    # Closing while typing: the text counts as a change to ask about.
+    inp.click(*at(100, 380))
+    w.wait("typing", typing)
+    time.sleep(0.4)
+    typed("second")
+    gdbus_activate(APP_PATH, "quit")
+    s = w.wait("the question", lambda s: s["alert"] == "Save Changes?")
+    check(s["annotations"] == 2 and not typing(s), s)
+    w.action("debug-alert-response", gvariant_str("cancel"))
+    w.wait("the question gone", lambda s: s["alert"] == "")
+    # With the keyboard in the size field, a click on another text box:
+    # what was typed stays with the box it was typed into.
+    w.action("markup-tool", gvariant_str("text"))
+    w.wait("no tool", lambda s: s["markup_tool"] == "none")
+    inp.click(*at(110, 476), times=2)
+    w.wait("typing into the first", typing)
+    time.sleep(0.4)
+    typed(" more")
+    w.action("debug-focus-text-size", gvariant_str(""))
+    time.sleep(0.3)
+    check(typing(w.state()), "the size field ended typing")
+    inp.click(*at(110, 376))
+    s = w.wait("typing ended", lambda s: not typing(s))
+    w.wait("the second picked", lambda s: s["annotation_text"] == "second")
+    inp.click(*at(110, 476))
+    s = w.wait("the first picked", lambda s: s["annotation_text"].startswith("first"))
+    check(sorted(s["annotation_text"].split()) == ["first", "more"], s)
+    # Escape from the size field ends typing too, and undo then takes the
+    # typed text back, not something before it.
+    inp.click(*at(110, 376), times=2)
+    w.wait("typing into the second", typing)
+    time.sleep(0.4)
+    typed(" again")
+    w.action("debug-focus-text-size", gvariant_str(""))
+    time.sleep(0.3)
+    inp.keys(Input.ESCAPE)
+    s = w.wait("typing ended", lambda s: not typing(s) and s["annotation_text"] != "second")
+    check(sorted(s["annotation_text"].split()) == ["again", "second"], s)
+    w.action("undo")
+    w.wait("back to what it was", lambda s: s["redo"] == "Change FreeText")
+    inp.click(*at(110, 376))
+    w.wait("the second as before", lambda s: s["annotation_text"] == "second")
+    # Pages inserted while typing: the text is in the document first.
+    inp.click(*at(110, 376), times=2)
+    w.wait("typing", typing)
+    time.sleep(0.4)
+    typed(" kept")
+    w.action("debug-insert", gvariant_str(ctx.pages))
+    s = w.wait("pages inserted", lambda s: s["page_count"] > len(TEXT))
+    check(not typing(s), s)
+    w.action("first-page")
+    w.settled("page 1", lambda s: s["page"] == 0)
+    inp.click(*w.screen(0, 110, 376))
+    s = w.wait("the second picked", lambda s: s["annotation_text"].startswith("second"))
+    check(sorted(s["annotation_text"].split()) == ["kept", "second"], s)
 
 
 def test_select_words_and_lines(ctx):

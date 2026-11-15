@@ -1142,6 +1142,7 @@ impl Session {
             color: a.color.unwrap_or(Color::new(0.0, 0.0, 0.0)),
         };
         self.hold(position, &a);
+        self.typing_into = self.picked;
         self.sync_variants(scheduler);
         Some((place, a.contents.clone().unwrap_or_default()))
     }
@@ -1157,9 +1158,14 @@ impl Session {
         text: Option<(&str, (f64, TextFont))>,
     ) -> Result<bool, WriteError> {
         self.held = None;
-        let changed = match text {
-            Some((text, style)) => self.change_picked_text_box(scheduler, Some(text), Some(style)),
-            None => Ok(false),
+        // The one that was typed into, not whatever is picked by now: the pick can have moved on
+        // while the text field was open.
+        let typed_into = self.typing_into.take();
+        let changed = match (text, typed_into) {
+            (Some((text, style)), Some(which)) => {
+                self.change_text_box(scheduler, which, Some(text), Some(style))
+            }
+            _ => Ok(false),
         };
         // Back into its page, if nothing else did that.
         if !matches!(changed, Ok(true)) {
@@ -1196,7 +1202,26 @@ impl Session {
         text: Option<&str>,
         style: Option<(f64, TextFont)>,
     ) -> Result<bool, WriteError> {
-        let Some((id, a)) = self.picked_one() else {
+        match self.picked {
+            Some(which) => self.change_text_box(scheduler, which, text, style),
+            None => Ok(false),
+        }
+    }
+
+    /// Like [`change_picked_text_box`](Self::change_picked_text_box), for the text box `id` on the
+    /// page at `position`, picked or not.
+    fn change_text_box(
+        &mut self,
+        scheduler: &Scheduler,
+        (position, id): (usize, AnnotId),
+        text: Option<&str>,
+        style: Option<(f64, TextFont)>,
+    ) -> Result<bool, WriteError> {
+        let found = self
+            .annotations(position)
+            .into_iter()
+            .find(|(i, _)| *i == id);
+        let Some((_, a)) = found else {
             return Ok(false);
         };
         let AnnotKind::FreeText { size, font } = a.kind else {
@@ -1211,8 +1236,17 @@ impl Session {
         if text == now_text && style == (size, font) {
             return Ok(false);
         }
+        let ready = self.page_without(id, &a)?;
+        // Left without text, it goes.
         if text.trim().is_empty() {
-            return self.remove_picked_annotation(scheduler);
+            if self.picked == Some((position, id)) {
+                self.picked = None;
+            }
+            let removed = self.edit.remove_annotation(id, &a);
+            if removed {
+                self.sync_variants_with(scheduler, ready);
+            }
+            return Ok(removed);
         }
         let mut changed = (*a).clone();
         changed.contents = Some(text.to_owned());
@@ -1223,7 +1257,6 @@ impl Session {
         changed.modified = Some(now());
         // As high as the text needs now, with a new look, and its page a new copy.
         changed.fit_text();
-        let ready = self.page_without(id, &a)?;
         let done = self.edit.change_annotation(id, changed);
         if done {
             self.sync_variants_with(scheduler, ready);

@@ -350,6 +350,7 @@ impl Window {
     /// Reads the file again and shows it in place of the document, edits discarded, at the same
     /// place.
     pub(super) async fn reload(&self) {
+        self.finish_text_entry();
         let inner = &self.0;
         let (Some(uri), Some(doc)) = (inner.uri.borrow().clone(), inner.document.borrow().clone())
         else {
@@ -536,6 +537,7 @@ impl Window {
     /// Shows the print dialog for the document as edited (or prints to a PDF file without it: see
     /// `print::print`).
     pub(super) fn print(&self, export: Option<(std::path::PathBuf, bool)>) {
+        self.finish_text_entry();
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return;
@@ -580,6 +582,8 @@ impl Window {
 
     /// Saves the document to its file, if it has changes. Returns whether it's saved now.
     pub(super) async fn save(&self) -> bool {
+        // With what is being typed, which isn't in the document until typing ends.
+        self.finish_text_entry();
         let Some(uri) = self.0.uri.borrow().clone() else {
             return false;
         };
@@ -596,6 +600,7 @@ impl Window {
 
     /// Asks where to save a copy, saves it there, and from then on shows that file.
     pub(super) async fn save_as(&self) {
+        self.finish_text_entry();
         let inner = &self.0;
         let Some(name) = inner
             .document

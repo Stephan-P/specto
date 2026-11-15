@@ -145,6 +145,10 @@ impl Window {
                     }
                 }
             }),
+            // Gives the keyboard to the size field of the markup bar, as a click into it does.
+            action("debug-focus-text-size", |w, _| {
+                w.0.text_size.grab_focus();
+            }),
             // Shows the dialog for a new signature.
             action("debug-new-signature", |w, _| w.new_signature()),
             // Activates a row of the markup list, by its number from 0.
@@ -405,6 +409,9 @@ impl Window {
                     "typing",
                     &format!("[{x}, {y}, {w}, {}, {}]", t.view.width(), t.view.height()),
                 );
+                let buffer = t.view.buffer();
+                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                json.str("typing_text", &text);
             }
             // The rows of the markup list: [page, kind, text] each.
             let rows: Vec<String> = inner
