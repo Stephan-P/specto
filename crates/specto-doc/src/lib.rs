@@ -10,10 +10,22 @@
 //! Undo keeps a copy of the page list from before each edit. A [`PageRef`]
 //! is 12 bytes, so even for 10,000 pages a step costs 120 KB, and undo can't
 //! drift out of step with redo the way hand-written inverse commands can.
+//!
+//! Annotations are edited the same way (see [`annots`](AnnotId)): the
+//! document keeps what was done to them, each undo step has that as it was
+//! (shared until it changes), and page and annotation edits are undone in
+//! the order they were made.
+
+mod annots;
 
 use std::ops::Range;
+use std::sync::Arc;
 
+pub use specto_annot::AnnotType;
 pub use specto_geom::Rotation;
+
+use annots::AnnotEdits;
+pub use annots::{AnnotId, PageAnnotChanges};
 
 /// How many edits can be undone.
 pub const UNDO_LIMIT: usize = 100;
@@ -43,24 +55,39 @@ impl PageRef {
 }
 
 /// What an edit did, for the frontends to name it in their Undo and Redo
-/// menu items ("Undo Rotate Page"). The count is of pages affected.
+/// menu items ("Undo Rotate Page", "Undo Highlight"). The count is of pages
+/// affected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Edit {
     Rotate { pages: usize },
     Delete { pages: usize },
     Move { pages: usize },
     Insert { pages: usize },
+    AddAnnotation(AnnotType),
+    RemoveAnnotation(AnnotType),
+    ChangeAnnotation(AnnotType),
 }
 
-/// One state of an [`EditDoc`]'s pages (see [`EditDoc::version`]).
+impl Edit {
+    /// Whether the edit was to annotations: the pages are as they were.
+    pub fn is_annotation(self) -> bool {
+        matches!(
+            self,
+            Self::AddAnnotation(_) | Self::RemoveAnnotation(_) | Self::ChangeAnnotation(_)
+        )
+    }
+}
+
+/// One state of an [`EditDoc`] (see [`EditDoc::version`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(u64);
 
-/// A page list as it was, for undo or redo.
+/// The pages and annotation edits as they were, for undo or redo.
 #[derive(Clone, Debug)]
 struct Step {
     edit: Edit,
     pages: Vec<PageRef>,
+    annots: Arc<AnnotEdits>,
     version: u64,
 }
 
@@ -68,7 +95,10 @@ struct Step {
 #[derive(Clone, Debug)]
 pub struct EditDoc {
     pages: Vec<PageRef>,
-    /// Identifies the current page list; each edit gets a new one, undo and
+    annots: Arc<AnnotEdits>,
+    /// The number the next new annotation gets.
+    next_annot: u64,
+    /// Identifies the current state; each edit gets a new one, undo and
     /// redo bring back old ones. Compared with `saved` for "modified".
     version: u64,
     next_version: u64,
@@ -82,6 +112,8 @@ impl EditDoc {
     pub fn new(pages: Vec<PageRef>) -> Self {
         Self {
             pages,
+            annots: Arc::default(),
+            next_annot: 0,
             version: 0,
             next_version: 1,
             saved: Some(0),
@@ -251,6 +283,7 @@ impl EditDoc {
         let old = Step {
             edit: step.edit,
             pages: std::mem::replace(&mut self.pages, step.pages),
+            annots: std::mem::replace(&mut self.annots, step.annots),
             version: self.version,
         };
         self.version = step.version;
@@ -263,6 +296,7 @@ impl EditDoc {
         self.undo.push(Step {
             edit,
             pages: self.pages.clone(),
+            annots: self.annots.clone(),
             version: self.version,
         });
         if self.undo.len() > UNDO_LIMIT {

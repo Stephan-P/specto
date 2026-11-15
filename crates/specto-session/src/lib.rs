@@ -14,6 +14,7 @@
 //! between its windows, the Android app has one per document. The calls
 //! that open or close files take it as an argument.
 
+mod annots;
 mod search;
 mod text;
 
@@ -21,7 +22,8 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
-use specto_doc::{Edit, EditDoc, PageRef, Rotation, SourceId, Version};
+use specto_annot::Annotation;
+use specto_doc::{AnnotId, Edit, EditDoc, PageRef, Rotation, SourceId, Version};
 use specto_geom::{PageGeometry, ViewPoint};
 use specto_render::OpenError;
 use specto_render::scheduler::Scheduler;
@@ -30,6 +32,7 @@ use specto_source::{Link, PageLabels, PdfData, SourceDocument, Target};
 use specto_text::SearchText;
 use specto_view::{Selection, Settings, ViewPage, Viewer};
 
+pub use annots::ViewShape;
 pub use search::{Indexed, SearchStatus};
 pub use text::TextLayer;
 
@@ -76,6 +79,8 @@ struct Source {
     geometries: Vec<PageGeometry>,
     /// Links per page of the file, parsed on first use.
     links: HashMap<u32, Vec<Link>>,
+    /// The annotations each page has in the file, read on first use.
+    annots: HashMap<u32, Arc<[Arc<Annotation>]>>,
     /// The file's page labels, if it has any that differ from 1, 2, 3, …
     labels: Option<PageLabels>,
     /// Every page's text prepared for searching, filled in the background.
@@ -105,6 +110,7 @@ impl Source {
             index: vec![None; opened.pages.len()],
             geometries: opened.pages,
             links: HashMap::new(),
+            annots: HashMap::new(),
         })
     }
 }
@@ -125,6 +131,10 @@ pub struct Session {
     texts: TextCache,
     /// The text selection, if any.
     pub selection: Option<Selection>,
+    /// The annotation that is picked (to delete it, later to change it),
+    /// if any: the position of its page, and which it is (from
+    /// [`annotation_at`](Self::annotation_at)).
+    pub picked: Option<(usize, AnnotId)>,
     /// The indexer thread, if one was started and not stopped.
     indexer: Option<Arc<Indexer>>,
     /// The current search, if any.
@@ -153,6 +163,7 @@ impl Session {
             viewer: Viewer::new(pages, options.settings),
             texts: TextCache::new(options.text_pages),
             selection: None,
+            picked: None,
             indexer: None,
             search: None,
         })
@@ -328,6 +339,8 @@ pub struct SaveJob {
     /// Each source's file and password, the main one first.
     files: Vec<(SourceId, PdfData, Option<String>)>,
     pages: Vec<PageRef>,
+    /// What was done to the annotations of those pages.
+    annots: specto_write::AnnotChanges,
     /// The state being saved, to mark as saved when done.
     pub version: Version,
 }
@@ -335,18 +348,18 @@ pub struct SaveJob {
 impl SaveJob {
     /// The new file's bytes.
     pub fn write(&self) -> Result<Vec<u8>, specto_write::WriteError> {
-        specto_write::write(&self.sources(), &self.pages)
+        specto_write::write_edited(&self.sources(), &self.pages, &self.annots, true)
     }
 
     /// The new file's bytes without the document's password protection:
     /// for a print service, which can't be given a password.
     pub fn write_unprotected(&self) -> Result<Vec<u8>, specto_write::WriteError> {
-        specto_write::write_unprotected(&self.sources(), &self.pages)
+        specto_write::write_edited(&self.sources(), &self.pages, &self.annots, false)
     }
 
     /// Writes the new file to `path`, replacing it safely if it exists.
     pub fn save(&self, path: &std::path::Path) -> Result<(), specto_write::WriteError> {
-        specto_write::save(path, &self.sources(), &self.pages)
+        specto_write::save_edited(path, &self.sources(), &self.pages, &self.annots)
     }
 
     fn sources(&self) -> Vec<specto_write::Source<'_>> {
@@ -381,9 +394,18 @@ impl Session {
             .filter(|(id, _)| *id == MAIN || used.contains(id))
             .map(|(id, s)| (id, s.data.clone(), s.password.clone()))
             .collect();
+        let annots = pages
+            .iter()
+            .map(|p| (p.source, p.page))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .map(|(source, page)| ((source, page), self.edit.annotation_changes(source, page)))
+            .filter(|(_, changes)| !changes.is_empty())
+            .collect();
         SaveJob {
             files,
             pages,
+            annots,
             version: self.edit.version(),
         }
     }
@@ -487,14 +509,23 @@ impl Session {
 
     pub fn undo(&mut self) -> Option<Edit> {
         let edit = self.edit.undo()?;
-        self.pages_changed();
+        self.undone_or_redone(edit);
         Some(edit)
     }
 
     pub fn redo(&mut self) -> Option<Edit> {
         let edit = self.edit.redo()?;
-        self.pages_changed();
+        self.undone_or_redone(edit);
         Some(edit)
+    }
+
+    /// After undo or redo of `edit`: the pages are as they were unless it
+    /// was one to them.
+    fn undone_or_redone(&mut self, edit: Edit) {
+        self.picked = None;
+        if !edit.is_annotation() {
+            self.pages_changed();
+        }
     }
 
     /// The position of page `page` of file `source` (e.g. a link's
@@ -520,6 +551,7 @@ impl Session {
         }));
         self.viewer.set_pages(pages);
         self.selection = None;
+        self.picked = None;
         self.search_again();
         true
     }

@@ -62,6 +62,9 @@ fn main() -> glib::ExitCode {
             ("win.find-previous", &["<Shift><Primary>g"]),
             ("win.undo", &["<Primary>z"]),
             ("win.redo", &["<Shift><Primary>z"]),
+            ("win.highlight", &["<Shift><Primary>h"]),
+            ("win.underline", &["<Shift><Primary>u"]),
+            ("win.strike-out", &["<Shift><Primary>x"]),
             ("win.rotate-left", &["<Primary>Left"]),
             ("win.rotate-right", &["<Primary>Right"]),
             ("win.layout::single", &["<Primary>1"]),
@@ -257,10 +260,17 @@ fn menubar() -> gio::Menu {
         section(&[(&gettext("Go to Page…"), "win.go-to-page")]),
     ]);
 
-    let tools = submenu(&[section(&[
-        (&gettext("Rotate Left"), "win.rotate-left"),
-        (&gettext("Rotate Right"), "win.rotate-right"),
-    ])]);
+    let tools = submenu(&[
+        section(&[
+            (&gettext("Rotate Left"), "win.rotate-left"),
+            (&gettext("Rotate Right"), "win.rotate-right"),
+        ]),
+        section(&[
+            (&gettext("Highlight"), "win.highlight"),
+            (&gettext("Underline"), "win.underline"),
+            (&gettext("Strikethrough"), "win.strike-out"),
+        ]),
+    ]);
 
     let bar = gio::Menu::new();
     bar.append_submenu(Some(&gettext("File")), &file);

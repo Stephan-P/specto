@@ -8,11 +8,13 @@ description = "Saving for specto: writes the pages of an edited document as a ne
 
 [dependencies]
 lopdf = "0.47"
+specto-annot.workspace = true
 specto-doc.workspace = true
 specto-source.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+specto-geom.workspace = true
 specto-render.workspace = true
 
 [lints]

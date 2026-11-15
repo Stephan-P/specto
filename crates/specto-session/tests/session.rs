@@ -482,3 +482,116 @@ fn the_indexer_stops_when_told() {
         Err(mpsc::RecvTimeoutError::Disconnected)
     );
 }
+
+#[test]
+fn marking_text_and_saving_it() {
+    use specto_annot::{AnnotKind, AnnotType, Color, MarkupStyle};
+    use specto_doc::{AnnotId, Edit};
+    use specto_session::ViewShape;
+    use specto_view::{Granularity, text_char};
+
+    let yellow = Color::new(1.0, 0.9, 0.0);
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, book(3, "alpha"));
+    // Nothing selected: nothing to mark.
+    assert!(!session.mark_selection(MarkupStyle::Highlight, yellow));
+    assert!(!session.has_overlay());
+
+    // Everything on pages 1 to 3: one annotation a page, as one edit.
+    session.selection = Some(Selection::all(3));
+    assert!(session.mark_selection(MarkupStyle::Highlight, yellow));
+    assert!(session.selection.is_none());
+    assert_eq!(
+        session.edit().undo_edit(),
+        Some(Edit::AddAnnotation(AnnotType::Highlight))
+    );
+    assert!(session.edit().is_modified());
+    for position in 0..3 {
+        let annots = session.annotations(position);
+        assert_eq!(annots.len(), 1, "page {position}");
+        let a = &annots[0].1;
+        let AnnotKind::TextMarkup { quads, .. } = &a.kind else {
+            panic!("not text markup");
+        };
+        assert_eq!(quads.len(), 2, "one quad a line");
+        assert_eq!(
+            a.contents.as_deref(),
+            Some(format!("alpha page {}\ncommon text", position + 1).as_str())
+        );
+        assert!(a.modified.is_some_and(|d| d.year >= 2026));
+    }
+    // Drawn where the text is: the first line of page 1 starts at x 20,
+    // baseline y 250 of a page 300 high.
+    let shapes = session.overlay(0);
+    assert_eq!(shapes.len(), 2);
+    let ViewShape::Fill { quad, multiply, .. } = shapes[0] else {
+        panic!("a highlight is filled");
+    };
+    assert!(multiply);
+    let origin = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(20.0, 250.0))
+        .unwrap();
+    let left = quad.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+    let bottom = quad.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+    assert!((left - origin.x).abs() < 2.0, "{left} vs {}", origin.x);
+    assert!(bottom > origin.y && bottom - origin.y < 8.0);
+
+    // Undone and redone as one.
+    assert_eq!(
+        session.undo(),
+        Some(Edit::AddAnnotation(AnnotType::Highlight))
+    );
+    assert!((0..3).all(|p| session.annotations(p).is_empty()));
+    assert!(session.redo().is_some());
+
+    // Underlining a word on page 2, then picking and deleting it. The page
+    // is scrolled to first, as only pages near the view can be pointed at.
+    session.viewer.go_to_page(1);
+    let word = session
+        .viewer
+        .pdf_to_view(1, PdfPoint::new(25.0, 255.0))
+        .unwrap();
+    {
+        let (viewer, mut texts, selection) = session.text();
+        let at = text_char(viewer, &mut texts, word).expect("text under the point");
+        *selection = Some(Selection::new(&mut texts, at, Granularity::Word));
+    }
+    assert_eq!(session.selected_text().as_deref(), Some("alpha"));
+    assert!(session.mark_selection(MarkupStyle::Underline, Color::new(1.0, 0.0, 0.0)));
+    let picked = session
+        .annotation_at(word)
+        .expect("an annotation under the point");
+    // The underline lies on top of the highlight.
+    assert_eq!(picked, (1, session.annotations(1)[1].0));
+    session.picked = Some(picked);
+    let (position, corners) = session.picked_outline().unwrap();
+    assert_eq!(position, 1);
+    assert!(corners.iter().any(|c| (c.x - word.x).abs() < 30.0));
+    assert!(session.remove_picked_annotation());
+    assert_eq!(
+        session.edit().undo_edit(),
+        Some(Edit::RemoveAnnotation(AnnotType::Underline))
+    );
+    assert!(session.picked.is_none() && !session.remove_picked_annotation());
+    assert_eq!(session.annotations(1).len(), 1);
+
+    // Saved: the highlights are in the file, with the page they are on
+    // moved to the front and a page deleted.
+    assert_eq!(session.move_pages(&[2], 0), Some(0..1));
+    assert!(session.delete(&[1]));
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    assert_eq!(saved.viewer.page_count(), 2);
+    for (position, text) in [(0, "alpha page 3"), (1, "alpha page 2")] {
+        let annots = saved.annotations(position);
+        assert_eq!(annots.len(), 1);
+        assert!(matches!(annots[0].0, AnnotId::File { .. }));
+        assert_eq!(annots[0].1.annot_type(), AnnotType::Highlight);
+        assert!(annots[0].1.contents.as_deref().unwrap().starts_with(text));
+    }
+    // They are part of the page there, not drawn on top.
+    assert!(!saved.has_overlay() && saved.overlay(0).is_empty());
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}

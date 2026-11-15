@@ -25,7 +25,7 @@ target/release/specto-gtk                 # start page
 target/release/specto-gtk a.pdf b.pdf     # one window per file
 ```
 
-macOS needs GTK 4, libadwaita 1.6 or newer and the Adwaita icons from Homebrew: `brew install gtk4 libadwaita adwaita-icon-theme`. Without the icon theme, header bar and sidebar icons are missing.
+macOS needs GTK 4, libadwaita 1.6 or newer, the Adwaita icons and gettext from Homebrew: `brew install gtk4 libadwaita adwaita-icon-theme gettext`, and `GETTEXT_DIR="$(brew --prefix gettext)"` set when building (see [BUILDING.md](BUILDING.md)). Without the icon theme, header bar and sidebar icons are missing.
 
 *Primary* means Ctrl on Linux and Cmd on macOS.
 
@@ -133,6 +133,23 @@ Resetting saved state:
 - Typing in the page entry, *Primary*+Left moves the cursor by a word and *Primary*+Z undoes the typing; no page is rotated or edit undone.
 - macOS: Edit → Undo and Redo, and Tools → Rotate Left and Rotate Right, with Cmd+Z, Shift+Cmd+Z, Cmd+Left and Cmd+Right.
 - A PDF over 64 MB (a scanned book, say) opens at once, and the app's memory use stays well below the file's size.
+
+### Markup
+
+Work on copies of the test files.
+
+- LONG: select a few words, Shift+*Primary*+H. They turn yellow, the text under the yellow stays black and sharp (not greyed or washed out), and the selection is gone. Zoom in and out and scroll: the highlight stays exactly on its words, also while zooming.
+- Select from the middle of one line to the middle of the next and highlight: each line is covered just as far as it was selected.
+- Underline (Shift+*Primary*+U) and Strikethrough (Shift+*Primary*+X): a red line under and through the words, at a sensible height for the text size.
+- Select text over a page break and highlight: both pages are marked, and one *Primary*+Z takes both away.
+- Without a selection, Highlight shows "Select the text to mark first".
+- Click a highlight: a frame appears around it. Delete removes it and no page; Escape lets go of it instead. A click on a link under markup still follows the link.
+- ROTATED: highlights lie on the text there too. Rotate a page with a highlight (*Primary*+Right): the highlight turns with it.
+- Move a page with a highlight in the sidebar, and delete one and undo: the highlight stays with its page.
+- Save, close, open again: the markup is there and looks the same as before saving (compare closely: colour, position, the height of the lines). It can no longer be picked; that is expected for now.
+- The saved file in other programs (Papers or Evince, Firefox, Preview on macOS): the markup shows, in the same place and colour, and can be selected and deleted there. In a list of annotations it shows the marked text.
+- ENCRYPTED: highlight, save, reopen with the password: the highlight is there.
+- Expected for now: thumbnails and printed pages show new markup only after saving.
 
 ### Saving
 

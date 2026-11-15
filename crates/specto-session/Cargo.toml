@@ -7,6 +7,7 @@ license.workspace = true
 description = "An open document as the specto apps hold it: its files, pages as edited, viewer, text, selection and search"
 
 [dependencies]
+specto-annot.workspace = true
 specto-doc.workspace = true
 specto-geom.workspace = true
 specto-render.workspace = true

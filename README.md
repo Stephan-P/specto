@@ -65,7 +65,8 @@ layouts, thumbnails, the table of contents, links and printed page numbers,
 open encrypted files, and remember where you were in each document. In both you
 can select, copy and search text, and edit pages: rotate, delete and reorder
 them, and save the result. The desktop app can also insert pages from other
-PDFs, export a selection of pages, and print. 
+PDFs, export a selection of pages, and print, and has the first markup:
+highlighting, underlining and striking through text.
 
 The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 

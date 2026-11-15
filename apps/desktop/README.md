@@ -36,7 +36,8 @@ The core is implemented in Rust and shared with the Android app. The GTK app is 
 - `specto-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
 - `specto-source`: reading the table of contents, links and page labels
 - `specto-text`: the text on each page, for selection and search
-- `specto-doc`: the pages of a document being edited, with undo and redo
+- `specto-doc`: the pages of a document being edited and what was done to its annotations, with undo and redo
+- `specto-annot`: annotations (highlights and other markup): the model, reading the ones a file has, and how they look
 - `specto-write`: saving, by writing the edited pages as a new PDF
 
 The app itself draws the rendered tiles, handles input, and provides the windows, menus and sidebar with GTK 4 and libadwaita. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).

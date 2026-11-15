@@ -16,8 +16,8 @@ specto/
 │   ├── specto-source    # opening/decryption (PdfData: read or mapped), metadata, outline, links (hayro-syntax)
 │   ├── specto-render    # Document trait, hayro backend, TileCache<T>, render scheduler
 │   ├── specto-text      # text layer via hayro's Device: char quads (PDF space), words, lines
-│   ├── specto-doc       # edit model: page list and undo/redo (later annotations, form values)
-│   ├── specto-annot     # (M4) annotation types + appearance-stream generation
+│   ├── specto-doc       # edit model: page list, annotation edits, undo/redo (later form values)
+│   ├── specto-annot     # annotation types, reading a file's annotations, shapes and appearance streams
 │   ├── specto-forms     # (M5) AcroForm model, field values, appearance regeneration
 │   ├── specto-write     # saving: full rewrite (lopdf), checked against hayro; incremental update later
 │   ├── specto-view      # UI-agnostic viewer: layout modes, viewport, zoom, hit-test, tools
@@ -31,7 +31,7 @@ specto/
     └── headless/       # the desktop app in a headless compositor: end-to-end checks (CI)
 ```
 
-Crates marked (M3)–(M5) don't exist yet. Planned dependency direction: `apps (desktop, specto-ffi) → specto-session → specto-view / specto-doc → {specto-annot, specto-forms, specto-text, specto-render} → specto-source → specto-geom`. `specto-write` depends on `specto-doc` + `specto-source`. For now `specto-doc` only holds the page list and depends on `specto-geom` alone; `specto-session` turns its pages into the viewer's `ViewPage`s.
+Crates marked (M5) don't exist yet. Planned dependency direction: `apps (desktop, specto-ffi) → specto-session → specto-view / specto-doc → {specto-annot, specto-forms, specto-text, specto-render} → specto-source → specto-geom`. `specto-write` depends on `specto-doc` + `specto-source`. `specto-doc` holds the page list and the annotation edits, and depends on `specto-annot` and `specto-geom`; `specto-session` turns its pages into the viewer's `ViewPage`s.
 
 ### File data
 
@@ -48,7 +48,7 @@ Session (specto-session; the desktop's Document and the Android ViewSession each
       ├── pages: Vec<PageRef>         # ordered; this is what the user sees
       │     PageRef { source: SourceId, page: u32, rotation: Rotation }
       ├── undo, redo: Vec<Step>       # earlier page lists, each with the Edit that changed it
-      ├── annotations                 # (M4) existing (imported) + new
+      ├── annots: AnnotEdits          # what was done to annotations: deleted, changed, added
       └── form                        # (M5) field values keyed by fully-qualified field name
 ```
 
@@ -63,15 +63,22 @@ Why this shape:
 ### Annotations
 
 ```
-Annotation { page: PageId, kind: AnnotKind, rect, color, opacity, author, modified,
-             contents, appearance: Appearance }
-AnnotKind = Highlight{quads} | Underline{quads} | StrikeOut{quads} | Ink{paths}
-          | Square | Circle | Line | FreeText{text, font, size} | Text(note)
-          | Stamp{image | paths} | Other(raw)
-Appearance = Original(ObjRef) | Generated(Cached<Stream>) | Dirty
+Annotation { kind: AnnotKind, rect, color, opacity, line_width, author, contents, modified,
+             name, flags, origin: Option<Origin>, appearance: Appearance }
+AnnotKind  = TextMarkup{style, quads} | Ink{strokes} | Square{fill} | Circle{fill}
+           | Line{from, to} | Stamp(strokes | image) | Other{subtype}
+Origin     = { index in the page's /Annots, object number }      # None for a new one
+Appearance = Original | Missing | Generated
+AnnotId    = File{source, page, index} | New(n)
 ```
 
-`specto-annot` generates appearance streams (`/AP /N`) for anything we create or modify, because many viewers (including Preview and pdf.js in some modes) rely on `/AP` and ignore the raw parameters. `Other(raw)` keeps annotation types we don't support intact across save.
+Annotations are plain data in the coordinates of their page of the file (`specto-annot`), so rotating or moving the page doesn't touch them. `specto_annot::import` reads the markup a page has when it is first asked for; links, form fields, popups and media aren't markup and are left out (saving leaves them alone). Kinds without parameters here (text boxes, notes, stamps of other programs, polygons) are `Other`: shown as the file draws them, deletable, not changeable.
+
+An `EditDoc` doesn't hold the annotations, only what was done to them relative to the files: which are deleted or changed (by source, page and index) and the new ones. That is small whatever the files contain, costs nothing for pages nobody looked at, is what saving needs, and can be kept per undo step (shared until it changes), so page and annotation edits are undone in the order they were made. Annotations belong to a page of a file, not to a position: they follow the page, come back with it when its deletion is undone, and copies of one page share them.
+
+**Drawing.** `specto_annot::shapes` turns an annotation into a few shapes (filled quads, lines). The apps draw those over the page for annotations made in the session (`Session::overlay`; a highlight darkens what is beneath through the toolkit's multiply blend), and `specto_annot::appearance` writes the same shapes as the appearance stream (`/AP /N`) saved with the annotation, because many viewers (hayro, Preview, pdf.js in some modes) show only that. A test saves a file and renders it with hayro to check the two agree.
+
+The annotations a file already has are still drawn with the page, by hayro, which draws all of a page's annotations or none: its public interface has no way to draw just one. Until that changes (a page re-rendered from a rewritten copy without the annotation, or a filter upstream; see TASKS.md), they can't be picked, deleted or changed.
 
 ### Forms
 
@@ -102,7 +109,7 @@ Frontend turns the tile into a GdkTexture (GTK) / Bitmap (Android)
 - **Toolkit pitfalls (GTK):** draw tiles with `append_texture`, not `append_scaled_texture` (GSK renders the latter at logical resolution on HiDPI surfaces), and translate the canvas so its own origin lands on a whole device pixel of the surface (CSD shadows put it at e.g. 31.25 px at scale 1.25).
 - **Tiling:** 512×512 physical-pixel tiles, so a 400% zoom on a poster PDF doesn't allocate a 100 MP bitmap.
 - **Thumbnails** draw the viewer's placeholder tiles (one small tile per page) from the shared cache, so each page is rendered once for both the sidebar and the canvas. On the desktop the sidebar is also the page organizer: a multi-selection, thumbnails dragged within it (the move is made once the drag has ended), and PDFs dropped on it to insert.
-- **Annotations and form widgets** are rendered as a separate overlay pass per page. That pass is cheap to redo when the user edits, so we never re-render page content for annotation changes.
+- **Annotations** made in the session are drawn as an overlay over the page tiles, from a few shapes per annotation, so editing them never re-renders page content. The file's own annotations are part of the tiles for now (see "Annotations" above). Form widgets (M5) are still to come.
 
 ## Text layer
 
@@ -176,7 +183,7 @@ Still to come: a `ViewHost`-style callback for redraws and native text inputs (f
 
 | Change type | Strategy |
 |---|---|
-| Only annotations / form values changed | **Incremental update** (append to original file). Fast, and preserves existing digital signatures' byte ranges. |
+| Only annotations / form values changed | **Incremental update** (append to original file). Fast, and preserves existing digital signatures' byte ranges. Not implemented yet: annotations go through the full rewrite too. |
 | Pages rotated / deleted / reordered / merged | **Full rewrite**: copy reachable objects from each source, write a fresh xref and object streams, and drop unreferenced objects. (Implemented; deduplicating resources shared between sources isn't yet.) |
 
 Annotations are always saved as standard PDF annotations, never flattened into page content, as Preview does (D8).

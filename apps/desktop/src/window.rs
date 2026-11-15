@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
+use specto_annot::{AnnotType, Color, MarkupStyle};
 use specto_doc::{Edit, Rotation, SourceId};
 use specto_geom::ViewPoint;
 use specto_render::{OpenError, PdfData};
@@ -40,6 +41,9 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "find-previous",
     "rotate-left",
     "rotate-right",
+    "highlight",
+    "underline",
+    "strike-out",
     "save",
     "save-as",
     "insert-file",
@@ -213,6 +217,13 @@ impl Window {
                 Some(&gettext("Insert Pages from File…")),
                 Some("win.insert-file"),
             );
+            m
+        });
+        main_menu.append_section(None, &{
+            let m = gio::Menu::new();
+            m.append(Some(&gettext("Highlight")), Some("win.highlight"));
+            m.append(Some(&gettext("Underline")), Some("win.underline"));
+            m.append(Some(&gettext("Strikethrough")), Some("win.strike-out"));
             m
         });
         main_menu.append_section(None, &{
@@ -1534,6 +1545,15 @@ impl Window {
                     &d.edit().redo_edit().map(edit_name).unwrap_or_default(),
                 );
         }
+        // The annotations of the current page (the file's and new ones),
+        // and whether one is picked.
+        if let Some(doc) = inner.document.borrow().clone() {
+            let mut d = doc.borrow_mut();
+            let page = d.viewer.current_page();
+            let count = d.annotations(page).len();
+            json.num("annotations", count as f64)
+                .bool("annotation_picked", d.picked.is_some());
+        }
         inner.canvas.with_viewer(|v| {
             json.num("page", v.current_page() as f64)
                 .num("page_count", v.page_count() as f64)
@@ -1566,7 +1586,39 @@ impl Window {
 
     /// Deletes the pages selected in the sidebar if there are several,
     /// else the current page. The last page can't be deleted.
+    /// Marks the selected text: a highlight, or a line under or through
+    /// it.
+    fn mark(&self, style: MarkupStyle) {
+        let color = match style {
+            MarkupStyle::Highlight => HIGHLIGHT,
+            _ => MARKUP_LINE,
+        };
+        if !self.annotate(|d| d.mark_selection(style, color)) {
+            self.toast(&gettext("Select the text to mark first"));
+        }
+    }
+
+    /// Applies an edit to the annotations, then redraws and updates the
+    /// menus if it changed anything, which it returns. The pages stay as
+    /// they are, so there is less to do than after [`edit`](Self::edit).
+    fn annotate(&self, f: impl FnOnce(&mut Document) -> bool) -> bool {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return false;
+        };
+        let changed = f(&mut doc.borrow_mut());
+        if changed {
+            inner.canvas.queue_draw();
+            self.update_edit_state();
+        }
+        changed
+    }
+
+    /// Delete and Backspace: the annotation that is picked, else pages.
     fn delete_pages(&self) {
+        if self.annotate(|d| d.remove_picked_annotation()) {
+            return;
+        }
         let selected = self
             .0
             .sidebar
@@ -2247,6 +2299,15 @@ impl Window {
             gio::ActionEntry::builder("delete-pages")
                 .activate(with(|w| w.delete_pages()))
                 .build(),
+            gio::ActionEntry::builder("highlight")
+                .activate(with(|w| w.mark(MarkupStyle::Highlight)))
+                .build(),
+            gio::ActionEntry::builder("underline")
+                .activate(with(|w| w.mark(MarkupStyle::Underline)))
+                .build(),
+            gio::ActionEntry::builder("strike-out")
+                .activate(with(|w| w.mark(MarkupStyle::StrikeOut)))
+                .build(),
             gio::ActionEntry::builder("rotate-left")
                 .activate(with(|w| w.rotate(Rotation::Cw270)))
                 .build(),
@@ -2464,6 +2525,11 @@ thread_local! {
     static DEBUG_WINDOWS: RefCell<Vec<std::rc::Weak<Inner>>> = const { RefCell::new(Vec::new()) };
 }
 
+/// The colours of new markup: a highlighter's yellow, and red for lines
+/// under and through text, as Preview has them.
+const HIGHLIGHT: Color = Color::new(1.0, 0.92, 0.23);
+const MARKUP_LINE: Color = Color::new(0.88, 0.11, 0.14);
+
 /// What an edit changed, for [`Window::edit`].
 #[derive(Default)]
 struct Edited {
@@ -2563,6 +2629,12 @@ fn undo_label(edit: Edit) -> String {
         Edit::Insert { pages } => {
             ngettext_f("Undo Insert Page", "Undo Insert {n} Pages", pages, &[])
         }
+        Edit::AddAnnotation(AnnotType::Highlight) => gettext("Undo Highlight"),
+        Edit::AddAnnotation(AnnotType::Underline) => gettext("Undo Underline"),
+        Edit::AddAnnotation(AnnotType::StrikeOut) => gettext("Undo Strikethrough"),
+        Edit::AddAnnotation(_) => gettext("Undo Add Annotation"),
+        Edit::RemoveAnnotation(_) => gettext("Undo Delete Annotation"),
+        Edit::ChangeAnnotation(_) => gettext("Undo Change Annotation"),
     }
 }
 
@@ -2579,6 +2651,12 @@ fn redo_label(edit: Edit) -> String {
         Edit::Insert { pages } => {
             ngettext_f("Redo Insert Page", "Redo Insert {n} Pages", pages, &[])
         }
+        Edit::AddAnnotation(AnnotType::Highlight) => gettext("Redo Highlight"),
+        Edit::AddAnnotation(AnnotType::Underline) => gettext("Redo Underline"),
+        Edit::AddAnnotation(AnnotType::StrikeOut) => gettext("Redo Strikethrough"),
+        Edit::AddAnnotation(_) => gettext("Redo Add Annotation"),
+        Edit::RemoveAnnotation(_) => gettext("Redo Delete Annotation"),
+        Edit::ChangeAnnotation(_) => gettext("Redo Change Annotation"),
     }
 }
 
@@ -2590,6 +2668,9 @@ fn edit_name(edit: Edit) -> String {
         Edit::Delete { pages } => ("Delete", pages),
         Edit::Move { pages } => ("Move", pages),
         Edit::Insert { pages } => ("Insert", pages),
+        Edit::AddAnnotation(t) => return format!("Add {t:?}"),
+        Edit::RemoveAnnotation(t) => return format!("Remove {t:?}"),
+        Edit::ChangeAnnotation(t) => return format!("Change {t:?}"),
     };
     if n == 1 {
         format!("{verb} Page")

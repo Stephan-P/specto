@@ -74,6 +74,15 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - Thumbnails dragged into another window's sidebar are copied there (with their rotation), as one edit; the first window keeps them
 - In the page entry or the search field, the shortcuts act on the text instead (Undo, moving by words)
 
+## Markup
+
+- Highlight, Underline and Strikethrough (the main menu, or Shift+*Primary*+H, U and X) mark the selected text; a selection over several pages is marked on each, as one edit
+- A highlight darkens the page beneath it like a highlighter pen, so the text stays black
+- A click on markup made since the document was opened picks it (a frame shows around it); Delete or Backspace deletes it, Escape lets go of it
+- Undo and Redo cover markup like page edits, in the order things were done
+- Saved with the document as standard PDF annotations, which other programs show and can edit
+- Not yet: picking or deleting markup the file already had when it was opened; new markup in thumbnails and in print before the document is saved
+
 ## Saving
 
 - Save (*Primary*+S) and Save As (Shift+*Primary*+S), in the main menu
@@ -97,7 +106,7 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 
 ## macOS
 
-- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right), Help (About Specto)
+- Menu bar in the system menu bar: File (Open, Save, Save As, Export Selected Pages, Print, Close Window, Quit), Edit (Undo, Redo, Copy, Select All, Insert Pages from File, Delete Pages, Find, Find Next, Find Previous), View (layouts, cover page, zoom, sidebar), Go (previous, next, first, last page, go to page), Tools (Rotate Left, Rotate Right, Highlight, Underline, Strikethrough), Help (About Specto)
 - Shortcuts with Cmd
 
 ## About

@@ -123,6 +123,10 @@ pub enum EditKind {
     Delete,
     Move,
     Insert,
+    /// An annotation was added, deleted or changed; `pages` is then 1.
+    AddAnnotation,
+    RemoveAnnotation,
+    ChangeAnnotation,
 }
 
 /// An edit that can be undone or redone.
@@ -141,6 +145,9 @@ impl From<specto_doc::Edit> for EditStep {
             Edit::Delete { pages } => (EditKind::Delete, pages),
             Edit::Move { pages } => (EditKind::Move, pages),
             Edit::Insert { pages } => (EditKind::Insert, pages),
+            Edit::AddAnnotation(_) => (EditKind::AddAnnotation, 1),
+            Edit::RemoveAnnotation(_) => (EditKind::RemoveAnnotation, 1),
+            Edit::ChangeAnnotation(_) => (EditKind::ChangeAnnotation, 1),
         };
         Self {
             kind,

@@ -15,6 +15,7 @@ use specto_view::{
 
 use crate::document::SharedDocument;
 use specto_doc::SourceId;
+use specto_session::ViewShape;
 
 /// Dragging a selection this close to the top or bottom edge (logical px)
 /// scrolls the view.
@@ -174,6 +175,16 @@ mod imp {
                     0.0,
                     3.0,
                 );
+                // Annotations made here lie over the page (see
+                // `Session::overlay`). A highlight darkens what is beneath
+                // it, so the page is the bottom of a blend with those.
+                let overlay = d.session.overlay(page.page);
+                let (darkening, covering): (Vec<ViewShape>, Vec<ViewShape>) = overlay
+                    .into_iter()
+                    .partition(|s| matches!(s, ViewShape::Fill { multiply: true, .. }));
+                if !darkening.is_empty() {
+                    snapshot.push_blend(gsk::BlendMode::Multiply);
+                }
                 snapshot.append_color(&gdk::RGBA::WHITE, &rect);
                 snapshot.push_clip(&rect);
                 for layer in &page.layers {
@@ -187,7 +198,20 @@ mod imp {
                     }
                 }
                 snapshot.pop();
+                if !darkening.is_empty() {
+                    snapshot.pop();
+                    snapshot.push_clip(&rect);
+                    draw_shapes(snapshot, &darkening);
+                    snapshot.pop();
+                    snapshot.pop();
+                }
+                if !covering.is_empty() {
+                    snapshot.push_clip(&rect);
+                    draw_shapes(snapshot, &covering);
+                    snapshot.pop();
+                }
             }
+            obj.draw_picked(snapshot, d, &frame.pages, scale);
             obj.draw_matches(snapshot, d, &frame.pages, scale);
             obj.draw_selection(snapshot, d, &frame.pages, scale);
             // A spinner over expensive pages (huge images, or renders that
@@ -371,6 +395,70 @@ impl Canvas {
             fill_quads(snapshot, &quads, &colour);
             snapshot.pop();
         }
+    }
+
+    /// A frame around the annotation that is picked.
+    fn draw_picked(
+        &self,
+        snapshot: &gtk::Snapshot,
+        d: &mut crate::document::Document,
+        pages: &[specto_view::PageDraw],
+        scale: f64,
+    ) {
+        let Some((position, corners)) = d.picked_outline() else {
+            return;
+        };
+        let Some(page) = pages.iter().find(|p| p.page == position) else {
+            return;
+        };
+        // A little outside the annotation, so it doesn't cover its edge.
+        let (xs, ys) = (corners.map(|c| c.x as f32), corners.map(|c| c.y as f32));
+        let min = |v: [f32; 4]| v.into_iter().fold(f32::INFINITY, f32::min);
+        let max = |v: [f32; 4]| v.into_iter().fold(f32::NEG_INFINITY, f32::max);
+        let frame = graphene::Rect::new(
+            min(xs) - 3.0,
+            min(ys) - 3.0,
+            max(xs) - min(xs) + 6.0,
+            max(ys) - min(ys) + 6.0,
+        );
+        let builder = gsk::PathBuilder::new();
+        builder.add_rounded_rect(&gsk::RoundedRect::from_rect(frame, 3.0));
+        snapshot.push_clip(&logical(page.rect, scale));
+        snapshot.append_stroke(
+            &builder.to_path(),
+            &gsk::Stroke::new(1.5),
+            &adw::StyleManager::default().accent_color_rgba(),
+        );
+        snapshot.pop();
+    }
+
+    /// Picks the annotation under the pointer, or none. Returns whether
+    /// one is picked now.
+    fn pick_annotation(&self, x: f64, y: f64) -> bool {
+        let Some(doc) = self.imp().document.borrow().clone() else {
+            return false;
+        };
+        let mut d = doc.borrow_mut();
+        let picked = d.annotation_at(ViewPoint::new(x, y));
+        let changed = d.picked != picked;
+        d.picked = picked;
+        drop(d);
+        if changed {
+            self.queue_draw();
+        }
+        picked.is_some()
+    }
+
+    /// Lets go of the picked annotation. Returns whether there was one.
+    pub fn unpick_annotation(&self) -> bool {
+        let Some(doc) = self.imp().document.borrow().clone() else {
+            return false;
+        };
+        let had = doc.borrow_mut().picked.take().is_some();
+        if had {
+            self.queue_draw();
+        }
+        had
     }
 
     /// Applies `f` to the selection (with the viewer and text layer), then
@@ -686,7 +774,10 @@ impl Canvas {
             if let Some((source, target)) = c.link_at(x, y) {
                 g.set_state(gtk::EventSequenceState::Claimed);
                 c.follow(source, &target);
+                return;
             }
+            // A click on an annotation picks it; one elsewhere lets go.
+            c.pick_annotation(x, y);
         });
         self.add_controller(click);
 
@@ -818,7 +909,7 @@ impl Canvas {
             ) {
                 return glib::Propagation::Proceed;
             }
-            if key == gdk::Key::Escape && c.clear_selection() {
+            if key == gdk::Key::Escape && (c.unpick_annotation() || c.clear_selection()) {
                 return glib::Propagation::Stop;
             }
             let Some((continuous, height)) =
@@ -851,6 +942,37 @@ impl Canvas {
             glib::Propagation::Stop
         });
         self.add_controller(keys);
+    }
+}
+
+/// Draws the shapes of annotations, in order.
+fn draw_shapes(snapshot: &gtk::Snapshot, shapes: &[ViewShape]) {
+    let rgba = |c: specto_annot::Color, opacity: f32| gdk::RGBA::new(c.r, c.g, c.b, opacity);
+    for shape in shapes {
+        match *shape {
+            ViewShape::Fill {
+                quad,
+                color,
+                opacity,
+                ..
+            } => fill_quads(snapshot, &[quad], &rgba(color, opacity)),
+            ViewShape::Stroke {
+                from,
+                to,
+                width,
+                color,
+                opacity,
+            } => {
+                let builder = gsk::PathBuilder::new();
+                builder.move_to(from.x as f32, from.y as f32);
+                builder.line_to(to.x as f32, to.y as f32);
+                snapshot.append_stroke(
+                    &builder.to_path(),
+                    &gsk::Stroke::new(width as f32),
+                    &rgba(color, opacity),
+                );
+            }
+        }
     }
 }
 

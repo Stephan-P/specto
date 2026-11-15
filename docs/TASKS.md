@@ -9,6 +9,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 ## M0: Spikes & foundations
 
 - [x] **S** Create Cargo workspace skeleton (`crates/`, `tools/`, `spikes/`)
+- [ ] **S** Remove `spikes/lopdf-spike` once `specto-write` has the incremental save and can encrypt from scratch (the two things only the spike shows how to do), with a note of the last commit that has it
 - [x] **S** CI: GitHub Actions in `fedora:44` containers, with deps in `ci/install-deps-fedora.sh` for reuse in GitLab CI. Job `check` for the Rust code (fmt, clippy for the host and Android, tests), job `desktop` for the headless checks of the running app, side by side
 - [ ] **S** GitLab CI equivalent, if the repo moves there
 - [x] **S** License decision (D6): MIT OR Apache-2.0
@@ -100,9 +101,15 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 
 ## M4: Markup
 
-- [ ] **M** `specto-annot`: annotation model, import existing annotations from source, preserve unknown kinds
-- [ ] **L** Appearance-stream generation: Highlight/Underline/StrikeOut, Ink, Square/Circle/Line, FreeText, Text (note icon)
-- [ ] **M** Overlay rendering of annotations (separate from page tiles)
+- [x] **M** `specto-annot`: the annotation model (text markup, ink, square, circle, line, stamp; anything else kept as "other" by its subtype) and `import`, which reads the markup a page has (links, form fields, popups and media are left out). Corpus: 401 annotations in 1,095 files, no panics. `specto info --annotations` lists them. In `specto-doc`, an `EditDoc` keeps what was done to annotations relative to the files (deleted, changed, added), on the same undo history as page edits; annotations belong to a page of a file, so they follow it when it is moved, and copies of one page share them
+- [x] **M** First slice, desktop: Highlight, Underline and Strikethrough mark the selected text (main menu, Shift+*Primary*+H, U and X), one annotation per page as one edit; a click picks an annotation made in this session, Delete deletes it; undo and redo by name; Save and Export write them (`specto-write`, through the full rewrite). Headless check `mark_text`
+- [ ] **M** Annotations a file already has: pick, delete and change them. They are drawn with the page today (hayro draws all of a page's annotations or none, and nothing public draws just one), so one can't be hidden. Plan: when one is deleted or changed, render that page from a one-page copy written by `specto-write` without it (a "page variant" with its own scheduler document), and draw the changed one in the overlay. Alternative: a filter for annotations upstream in hayro
+- [ ] **S** New annotations where the page is shown other than on the canvas: thumbnails and printing (both render the file's pages, so they miss them until saved), and pages dragged to another window
+- [ ] **S** Saving a changed or deleted annotation of a file goes by its position in the page's `/Annots`, as hayro counted it; lopdf reads the array again when saving. Check that the entry there is the same object (the import records its number) and refuse to save otherwise, so that a file the two read differently can't lose the wrong annotation. Needed before the app can delete a file's annotations
+- [ ] **S** By hand, after the first slice (apps/desktop/TESTING.md, "Markup"): how highlights look on a real screen and on the Mac, and that Preview, Papers and a browser show and can delete what was saved
+- [ ] **S** Android: build the app with the three new `EditKind`s (`Editing.kt`, `strings.xml`); they were added without a Kotlin build
+- [ ] **L** Appearance-stream generation: done for Highlight, Underline and StrikeOut (`specto_annot::shapes` gives the shapes both the screen and `appearance` use; a highlight darkens with the Multiply blend mode, checked by rendering saved files with hayro). Still to do: Squiggly as a wavy line (a straight one stands in), Ink, Square/Circle/Line, FreeText, Text (note icon)
+- [ ] **M** Overlay rendering of annotations (separate from page tiles): done on the desktop for annotations made in the session (`Session::overlay`, drawn by the canvas, highlights through a blend node). Not yet: Android, and the file's own annotations (see above)
 - [ ] **M** Tools in `specto-view`: text-markup (snaps to text quads), ink (pressure, smoothing), shapes, text box, note
 - [ ] **M** Select / move / resize / recolor / delete annotations, properties popover
 - [ ] **M** `specto-write`: incremental-update save path (used when only annotations/forms changed)
@@ -198,6 +205,7 @@ Sizes: **S** ≤ 1 day, **M** 2–4 days, **L** 1–2 weeks.
 - [x] **S** A real icon: a page under a magnifying glass. Desktop: `apps/desktop/data/icons` (full colour and symbolic). Android: an adaptive icon with a themed (monochrome) layer in `res/drawable/ic_launcher_*.xml`, and the 512 px image for store listings in `apps/android/store`
 - [ ] **S** deb and rpm packages (`cargo-deb`, `cargo-generate-rpm`), with the files from `apps/desktop/data`; they need libadwaita 1.6 or newer from the distribution
 - [x] **S** Desktop: an About dialog (`app.about`, `AdwAboutDialog`): version, licence, links to the project and its issues, hayro and lopdf acknowledged. In the main menu, and under Help in the macOS menu bar. Headless check `about`
+- [ ] **S** macOS: check where About Specto shows up. It is under Help in our menu bar; GTK may also put one into the application menu, and then one of the two should go
 - [ ] **S–M** macOS app bundle: file association, Dock icon, bundled GTK
 - [x] **S** `cargo-deny` in CI (`deny.toml`, the `deny` job): security advisories, licence compatibility with MIT OR Apache-2.0, and crates only from crates.io
 - [ ] **M** Performance regression checks in CI: tile render times, frame times and peak memory on a few fixed documents (the gtk-canvas spike had a benchmark mode to start from: `spikes/gtk-canvas` at commit f32a26a, the last one with it), compared against stored numbers with a tolerance
@@ -217,7 +225,8 @@ Each app uses its platform's own mechanism, and the core crates carry no user-fa
 - [x] **S** Android: the UI's texts are in `strings.xml` (`stringResource`, `plurals` for counts, whole sentences with placeholders); code outside composables that unit tests call takes a `Texts`, which the tests fill from the same file. Still English and not translatable: the reasons in "Couldn't save: …" and "Couldn't open this file", which come from the Rust crates and the system
 - [ ] **S** Core: no user-facing text from the crates. Frontends map error variants (`OpenError`, the `specto-ffi` errors) to their own translated messages instead of showing the `thiserror` text
 - [ ] **S** Numbers through the locale: page counts, the zoom percentage
-- [ ] **S** Desktop: build and install the `.mo` files (also in the Flatpak), `bindtextdomain` at startup, a `.pot` target; check that it works on macOS with Homebrew's gettext
+- [ ] **S** Desktop: build and install the `.mo` files (also in the Flatpak, which hasn't been rebuilt since gettext came in); check the build on macOS with Homebrew's gettext (`GETTEXT_DIR`, see apps/desktop/BUILDING.md), which nobody has tried yet
+- [ ] **S** CI: fail when `apps/desktop/po/specto.pot` isn't what `update-pot.sh` writes (needs gettext 0.24 or newer in the container)
 - [ ] **S** A first translation (German?) in both apps, to prove the pipeline; a headless check that starts the desktop app under another locale
 - [ ] **S** Right-to-left UI languages: check the chrome of both apps under an RTL locale (GTK and Compose mirror on their own; the sidebar side, the thumbnail strip and icons with a direction need a look). The page canvas does not mirror
 - [ ] **M** Binding direction in `specto-view`: one property for both the order of pages in a two-page spread and the swipe direction. Defaults to the document's `/ViewerPreferences /Direction` (read in `specto-source`), independent of the UI language; a "Right to left" toggle per document, saved with the view state, since many right-to-left PDFs don't set it. Through `specto-ffi` for Android

@@ -2159,6 +2159,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
 
 [[package]]
+name = "specto-annot"
+version = "0.1.0"
+dependencies = [
+ "specto-geom",
+ "specto-source",
+]
+
+[[package]]
 name = "specto-cli"
 version = "0.1.0"
 dependencies = [
@@ -2166,6 +2174,7 @@ dependencies = [
  "clap",
  "image",
  "libc",
+ "specto-annot",
  "specto-doc",
  "specto-render",
  "specto-source",
@@ -2182,6 +2191,7 @@ dependencies = [
  "gettext-rs",
  "gtk4",
  "libadwaita",
+ "specto-annot",
  "specto-doc",
  "specto-geom",
  "specto-render",
@@ -2196,6 +2206,7 @@ dependencies = [
 name = "specto-doc"
 version = "0.1.0"
 dependencies = [
+ "specto-annot",
  "specto-geom",
 ]
 
@@ -2237,6 +2248,7 @@ dependencies = [
 name = "specto-session"
 version = "0.1.0"
 dependencies = [
+ "specto-annot",
  "specto-doc",
  "specto-geom",
  "specto-render",
@@ -2280,7 +2292,9 @@ name = "specto-write"
 version = "0.1.0"
 dependencies = [
  "lopdf",
+ "specto-annot",
  "specto-doc",
+ "specto-geom",
  "specto-render",
  "specto-source",
  "thiserror 2.0.21",

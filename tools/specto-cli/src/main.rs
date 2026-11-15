@@ -27,6 +27,9 @@ enum Command {
         /// Also print the outline (table of contents) and links.
         #[arg(long)]
         outline: bool,
+        /// Also print the annotations (markup) of every page.
+        #[arg(long)]
+        annotations: bool,
     },
     /// Render pages to PNG.
     Render(RenderArgs),
@@ -91,7 +94,8 @@ fn main() -> Result<()> {
             file,
             password,
             outline,
-        } => info(&file, password.as_deref(), outline),
+            annotations,
+        } => info(&file, password.as_deref(), outline, annotations),
         Command::Render(args) => render(&args),
         Command::Text {
             file,
@@ -129,7 +133,7 @@ pub(crate) fn open(file: &Path, password: Option<&str>) -> Result<HayroDocument>
     }
 }
 
-fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
+fn info(file: &Path, password: Option<&str>, outline: bool, annotations: bool) -> Result<()> {
     let doc = open(file, password)?;
     let pdf = doc.pdf();
     println!("version:  {:?}", pdf.version());
@@ -163,6 +167,32 @@ fn info(file: &Path, password: Option<&str>, outline: bool) -> Result<()> {
         for page in 0..source.page_count() {
             for link in source.links(page) {
                 println!("link p{} {:?} → {:?}", page + 1, link.rect, link.target);
+            }
+        }
+    }
+    if annotations {
+        let data = specto_source::PdfData::open(file)?;
+        let source = specto_source::SourceDocument::open(data, password)?;
+        for page in 0..source.page_count() {
+            for a in specto_annot::import(&source, page) {
+                let b = a.rect;
+                let kind = match &a.kind {
+                    specto_annot::AnnotKind::Other { subtype } => subtype.clone(),
+                    k => format!("{:?}", k.annot_type()),
+                };
+                println!(
+                    "annot p{} {kind} [{:.0} {:.0} {:.0} {:.0}] {:?}{}{}",
+                    page + 1,
+                    b.min.x,
+                    b.min.y,
+                    b.max.x,
+                    b.max.y,
+                    a.appearance,
+                    if a.flags.is_visible() { "" } else { " hidden" },
+                    a.contents
+                        .map(|c| format!(" {:?}", c.chars().take(40).collect::<String>()))
+                        .unwrap_or_default(),
+                );
             }
         }
     }

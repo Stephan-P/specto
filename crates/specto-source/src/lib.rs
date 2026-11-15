@@ -102,6 +102,83 @@ impl std::fmt::Display for Date {
     }
 }
 
+impl Date {
+    /// The date and time `seconds` after the start of 1970, in UTC.
+    pub fn from_unix(seconds: u64) -> Self {
+        let (days, rest) = (seconds / 86_400, seconds % 86_400);
+        // Days to a date in the Gregorian calendar (Howard Hinnant's
+        // `civil_from_days`), counting years from March so that the leap
+        // day comes last.
+        let z = days + 719_468;
+        let (era, day_of_era) = (z / 146_097, z % 146_097);
+        let year_of_era =
+            (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+        let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+        let m = (5 * day_of_year + 2) / 153;
+        let day = day_of_year - (153 * m + 2) / 5 + 1;
+        let month = if m < 10 { m + 3 } else { m - 9 };
+        let year = year_of_era + era * 400 + u64::from(month <= 2);
+        Self {
+            year: year.min(9999) as u16,
+            month: month as u8,
+            day: day as u8,
+            hour: (rest / 3600) as u8,
+            minute: (rest % 3600 / 60) as u8,
+            second: (rest % 60) as u8,
+            utc_offset_minutes: 0,
+        }
+    }
+
+    /// Reads a PDF date string: `D:YYYYMMDDHHmmSSOHH'mm'`, where everything
+    /// after the year may be missing and `O` is `+`, `-` or `Z`.
+    pub fn parse(bytes: &[u8]) -> Option<Self> {
+        let text = std::str::from_utf8(bytes).ok()?.trim();
+        let text = text.strip_prefix("D:").unwrap_or(text);
+        let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+        let (date, zone) = text.split_at(digits);
+        // Two digits at `at`, or `default` where the string has ended.
+        let two = |at: usize, default: u8| match date.get(at..at + 2) {
+            Some(d) => d.parse::<u8>().ok(),
+            None if date.len() <= at => Some(default),
+            None => None,
+        };
+        let year = date.get(..4)?.parse().ok()?;
+        let (month, day) = (two(4, 1)?, two(6, 1)?);
+        let (hour, minute, second) = (two(8, 0)?, two(10, 0)?, two(12, 0)?);
+        if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+            return None;
+        }
+        if hour > 23 || minute > 59 || second > 59 {
+            return None;
+        }
+        let utc_offset_minutes = match zone.as_bytes().first() {
+            Some(sign @ (b'+' | b'-')) => {
+                let mut parts = zone[1..].split('\'');
+                let hours: i16 = parts.next()?.parse().ok()?;
+                let minutes: i16 = match parts.next() {
+                    Some("") | None => 0,
+                    Some(m) => m.parse().ok()?,
+                };
+                if hours > 23 || minutes > 59 {
+                    return None;
+                }
+                let offset = hours * 60 + minutes;
+                if *sign == b'-' { -offset } else { offset }
+            }
+            _ => 0,
+        };
+        Some(Self {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            utc_offset_minutes,
+        })
+    }
+}
+
 impl From<DateTime> for Date {
     fn from(d: DateTime) -> Self {
         let hours = i16::from(d.utc_offset_hour);

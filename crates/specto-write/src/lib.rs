@@ -20,6 +20,12 @@
 //!   it is; otherwise new ones are written (`PageLabels::of_pages`: pages
 //!   of files without labels are numbered by position), or none if no page
 //!   has a label of its own.
+//! - Annotations added, changed or deleted are written into their pages'
+//!   `/Annots` ([`AnnotChanges`]): new and changed ones as standard
+//!   annotation objects with an appearance stream, so other programs show
+//!   them as the app did. A deleted one takes its popup and the replies to
+//!   it along. Everything else in `/Annots` (links, form fields, markup not
+//!   touched) stays as it is.
 //! - A page used twice gets a copy of its page dictionary (and of its
 //!   annotations, except form fields), sharing contents and resources.
 //!
@@ -37,6 +43,8 @@
 //! renames it into place, so the old file stays intact until the new one is
 //! complete, and a reader that mapped the old file keeps its copy.
 
+mod annots;
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -44,7 +52,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use lopdf::{Dictionary, Document, LoadOptions, Object, ObjectId, SaveOptions};
-use specto_doc::{PageRef, Rotation, SourceId};
+use specto_doc::{PageAnnotChanges, PageRef, Rotation, SourceId};
 use specto_source::hayro_syntax::object::{ObjectIdentifier, Stream as HayroStream};
 use specto_source::{LabelStyle, PageLabels, PdfData};
 
@@ -80,10 +88,26 @@ pub enum WriteError {
     Io(#[from] io::Error),
 }
 
+/// What to do to the annotations of pages of the files, by source and
+/// page of it. Pages not named keep theirs.
+pub type AnnotChanges = HashMap<(SourceId, u32), PageAnnotChanges>;
+
 /// Writes `pages`, taken from `sources`, as a new PDF. The first source is
 /// the main document (see the crate documentation).
 pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
-    write_as(sources, pages, true)
+    write_as(sources, pages, &AnnotChanges::new(), true)
+}
+
+/// Like [`write`], with the annotations changed as `annots` says;
+/// `protected` is whether the main source's encryption is kept (see
+/// [`write_unprotected`]).
+pub fn write_edited(
+    sources: &[Source],
+    pages: &[PageRef],
+    annots: &AnnotChanges,
+    protected: bool,
+) -> Result<Vec<u8>, WriteError> {
+    write_as(sources, pages, annots, protected)
 }
 
 /// Like [`write`], but the result isn't encrypted, whether the main source
@@ -91,10 +115,15 @@ pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteErro
 /// password, such as a print service; not for saving, which would quietly
 /// take a document's protection away.
 pub fn write_unprotected(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
-    write_as(sources, pages, false)
+    write_as(sources, pages, &AnnotChanges::new(), false)
 }
 
-fn write_as(sources: &[Source], pages: &[PageRef], protected: bool) -> Result<Vec<u8>, WriteError> {
+fn write_as(
+    sources: &[Source],
+    pages: &[PageRef],
+    annots: &AnnotChanges,
+    protected: bool,
+) -> Result<Vec<u8>, WriteError> {
     let (main, others) = sources.split_first().ok_or(WriteError::NoPages)?;
     if pages.is_empty() {
         return Err(WriteError::NoPages);
@@ -132,6 +161,7 @@ fn write_as(sources: &[Source], pages: &[PageRef], protected: bool) -> Result<Ve
     // The new page list.
     let mut kids = Vec::with_capacity(pages.len());
     let mut used = HashSet::new();
+    let mut annotated = HashSet::new();
     for p in pages {
         if p.source != main.id && !others.iter().any(|s| s.id == p.source) {
             return Err(WriteError::UnknownSource);
@@ -139,6 +169,14 @@ fn write_as(sources: &[Source], pages: &[PageRef], protected: bool) -> Result<Ve
         let id = *page_ids
             .get(&(p.source, p.page))
             .ok_or(WriteError::MissingPage(p.page))?;
+        // Before a second use of the page copies it, so that the copy has
+        // the same annotations.
+        if annotated.insert((p.source, p.page))
+            && let Some(changes) = annots.get(&(p.source, p.page))
+            && !changes.is_empty()
+        {
+            annots::apply(&mut doc, id, changes)?;
+        }
         let id = if used.insert(id) {
             id
         } else {
@@ -350,7 +388,17 @@ fn doc_page_count_before(page_ids: &HashMap<(SourceId, u32), ObjectId>, main: So
 /// The data goes to a temporary file in the same directory first, which
 /// then takes the old file's place, keeping its permissions.
 pub fn save(path: &Path, sources: &[Source], pages: &[PageRef]) -> Result<(), WriteError> {
-    let data = write(sources, pages)?;
+    save_edited(path, sources, pages, &AnnotChanges::new())
+}
+
+/// Like [`save`], with the annotations changed as `annots` says.
+pub fn save_edited(
+    path: &Path,
+    sources: &[Source],
+    pages: &[PageRef],
+    annots: &AnnotChanges,
+) -> Result<(), WriteError> {
+    let data = write_edited(sources, pages, annots, true)?;
     replace_file(path, &data)?;
     Ok(())
 }

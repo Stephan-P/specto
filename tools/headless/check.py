@@ -65,6 +65,9 @@ Tests (run some by naming them, e.g. `zoom layouts`):
 With the virtual pointer and keyboard, on a Courier text PDF:
 
 - link_click: clicking a link follows it
+- mark_text: Highlight and Underline mark the selected text (and say so
+  when there is none); a click picks an annotation, Delete deletes it and
+  not the page, Escape lets go; undo; saved, they're in the file and shown
 - select_by_dragging: the I-beam cursor over text; dragging selects,
   forwards and backwards over lines; Escape and a click clear it
 - select_words_and_lines: double-click selects a word, triple-click a line,
@@ -840,6 +843,75 @@ def test_select_by_dragging(ctx):
     selected(w, "The")
     inp.click(*w.screen(0, 300, 300))
     selected(w, "")
+
+
+def pixel(w, name, x, y):
+    """The colour of the window at (x, y), from a screenshot."""
+    width, height, pixels = read_ppm(w.screenshot(name))
+    scale = w.app.ctx.scale
+    at = (min(round(y * scale), height - 1) * width + min(round(x * scale), width - 1)) * 3
+    return tuple(pixels[at:at + 3])
+
+
+def yellow(c):
+    return c[0] > 200 and c[1] > 180 and c[2] < 120
+
+
+def test_mark_text(ctx):
+    path = os.path.join(ctx.home, "marked.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    # Nothing selected: nothing happens, and a message says why.
+    w.action("highlight")
+    s = w.wait("the message", lambda s: s["toast"] != "")
+    check(s["annotations"] == 0 and not s["modified"], s)
+    # "quick brown" highlighted: the gap between the words turns yellow,
+    # the selection is given up, and it can be undone by name.
+    inp.drag(w.char(0, 0, 4), w.char(0, 0, 14, before=False))
+    selected(w, "quick brown")
+    w.action("highlight")
+    s = w.wait("the highlight", lambda s: s["annotations"] == 1)
+    check(s["selection"] == "" and s["modified"] and s["undo"] == "Add Highlight", s)
+    gap = w.char(0, 0, 9)
+    check(yellow(pixel(w, "highlight", *gap)), f"no highlight at the gap: {pixel(w, 'gap', *gap)}")
+    beside = w.char(0, 0, 15)
+    check(not yellow(pixel(w, "beside", *beside)), "the highlight is too long")
+    # A line under "fox" as well.
+    inp.drag(w.char(0, 0, 16), w.char(0, 0, 18, before=False))
+    selected(w, "fox")
+    w.action("underline")
+    w.wait("the underline", lambda s: s["annotations"] == 2 and s["undo"] == "Add Underline")
+    # A click picks the highlight; Delete deletes it, not the page.
+    inp.click(*gap)
+    w.wait("the highlight picked", lambda s: s["annotation_picked"])
+    w.screenshot("picked")
+    inp.keys(Input.DELETE)
+    s = w.wait("the highlight gone", lambda s: s["annotations"] == 1)
+    check(s["undo"] == "Remove Highlight" and not s["annotation_picked"], s)
+    check(s["page_count"] == len(TEXT), "Delete deleted a page")
+    check(not yellow(pixel(w, "deleted", *gap)), "the highlight is still drawn")
+    w.action("undo")
+    w.wait("the highlight back", lambda s: s["annotations"] == 2)
+    check(yellow(pixel(w, "undone", *gap)), "the highlight didn't come back")
+    # Escape lets go of a picked one.
+    inp.click(*gap)
+    w.wait("the highlight picked", lambda s: s["annotation_picked"])
+    inp.keys(Input.ESCAPE)
+    w.wait("nothing picked", lambda s: not s["annotation_picked"])
+    # Saved and opened again: both are in the file, and shown.
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    w = ctx.app([path]).window()
+    s = w.settled()
+    w.maximize()
+    check(s["annotations"] == 2 and not s["modified"], s)
+    gap = w.char(0, 0, 9)
+    check(yellow(pixel(w, "reopened", *gap)), "the saved highlight isn't shown")
 
 
 def test_select_words_and_lines(ctx):

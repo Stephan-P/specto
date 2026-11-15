@@ -43,10 +43,16 @@
     <string name="undo_delete">Undo delete</string>
     <string name="undo_move">Undo move</string>
     <string name="undo_insert">Undo insert</string>
+    <string name="undo_add_annotation">Undo add annotation</string>
+    <string name="undo_remove_annotation">Undo delete annotation</string>
+    <string name="undo_change_annotation">Undo change annotation</string>
     <string name="redo_rotate">Redo rotate</string>
     <string name="redo_delete">Redo delete</string>
     <string name="redo_move">Redo move</string>
     <string name="redo_insert">Redo insert</string>
+    <string name="redo_add_annotation">Redo add annotation</string>
+    <string name="redo_remove_annotation">Redo delete annotation</string>
+    <string name="redo_change_annotation">Redo change annotation</string>
 
     <!-- The start screen. -->
     <string name="open_pdf">Open PDF</string>
