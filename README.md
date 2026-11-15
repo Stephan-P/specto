@@ -63,10 +63,12 @@ Both apps are usable as PDF viewers. They render pages sharply at any zoom and
 on HiDPI screens, and stay responsive on huge documents. They have the usual
 layouts, thumbnails, the table of contents, links and printed page numbers,
 open encrypted files, and remember where you were in each document. In both you
-can select, copy and search text, and edit pages: rotate, delete and reorder
-them, and save the result. The desktop app can also insert pages from other
-PDFs, export a selection of pages, and print, and has the first markup:
-highlighting, underlining and striking through text.
+can select, copy and search text, print, and edit pages by rotating, deleting
+and reordering them.
+
+The desktop app can also insert pages from other PDFs and export a selection of
+pages. It has markup too: highlighting, underlining and striking through text,
+freehand drawing and shapes. Text boxes, notes and forms are still to come.
 
 The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
@@ -85,28 +87,32 @@ cargo build --release
 cargo test --workspace
 ```
 
-The tests check saved files with `qpdf` where it is installed. The `specto`
-development tool is described in [tools/README.md](tools/README.md).
+The tests check saved files with qpdf where it is installed. The specto
+command-line tool, for development, is described in
+[tools/README.md](tools/README.md).
 
 ## Layout
 
-- `crates/`: the shared Rust core: rendering, page layout, text, editing and
-  saving
-- `apps/desktop`: the desktop app, in Rust with GTK 4 and libadwaita
-- `apps/android`: the Android app, in Kotlin with Jetpack Compose
-- [`tools/`](tools/README.md): development tools: the `specto` command-line
-  tool and the desktop app's automated checks
-- `packaging/`: installable packages of the desktop app (Flatpak)
-- `corpus/`: fetches the test corpus
+- [`crates/`](crates/README.md): the shared Rust core, which does the
+  rendering, page layout, text, editing and saving
+- [`apps/desktop`](apps/desktop/README.md): the desktop app, in Rust with GTK 4
+  and libadwaita
+- [`apps/android`](apps/android/README.md): the Android app, in Kotlin with
+  Jetpack Compose
+- [`tools/`](tools/README.md): development tools, such as the specto
+  command-line tool
+- [`packaging/`](packaging/README.md): installable packages of the desktop app
+  (Flatpak)
+- [`corpus/`](corpus/README.md): fetches the test corpus
 - `spikes/`: early prototypes
 - `docs/`: see below
 
-What each crate does is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate layout, data model,
-  rendering pipeline, how the apps plug in
+- [crates/README.md](crates/README.md): what each crate does, and how they
+  depend on each other
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): data model, rendering
+  pipeline, how the apps plug in
 - [docs/DECISIONS.md](docs/DECISIONS.md): technology choices, the alternatives
   considered, and open questions
 - [docs/TASKS.md](docs/TASKS.md): the task list, by milestone

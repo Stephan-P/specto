@@ -1,30 +1,44 @@
 # Tools
 
-For working on Specto; none of this is installed with the apps.
+For working on Specto. None of this is installed with the apps.
 
-## `specto`, the command-line tool
+## The specto command-line tool
 
-Looks into PDF files with the same crates the apps use, and runs the
-rendering regression. In `specto-cli`.
+Looks into PDF files with the same crates the apps use, and runs the rendering
+regression. It is in `specto-cli`.
 
 ```sh
 cargo build --release -p specto-cli
-target/release/specto info file.pdf                        # pages, sizes, metadata
-target/release/specto render file.pdf -o out -s 2          # pages → PNG
-target/release/specto text file.pdf -p 1                   # the text layer
-target/release/specto save file.pdf -o out.pdf -p 3,1-2    # pick, reorder, rotate (-r 90) pages
-target/release/specto corpus corpus/files/... --reference  # regression run
+
+# pages, sizes, metadata
+target/release/specto info file.pdf
+
+# pages as PNG images, at twice the size
+target/release/specto render file.pdf -o out -s 2
+
+# the text layer of page 1
+target/release/specto text file.pdf -p 1
+
+# a copy with pages picked and reordered (and rotated, with -r 90)
+target/release/specto save file.pdf -o out.pdf -p 3,1-2
+
+# the regression run
+target/release/specto corpus corpus/files/pdfjs/test/pdfs --reference
+
+# a command's options
+target/release/specto help render
 ```
 
-`target/release/specto help <command>` shows a command's options. The
-regression run and the test corpus are described in [corpus/README.md](../corpus/README.md).
+The regression run and the test corpus are described in
+[corpus/README.md](../corpus/README.md).
 
-## `test-files.sh`
+## test-files.sh
 
-Puts copies of the test files for testing by hand in `target/test-files/`.
-Needs the corpus (`corpus/fetch.sh`) and `qpdf`.
+Puts copies of the test files for testing by hand in `target/test-files/`. It
+needs the corpus and qpdf. See
+[apps/desktop/TESTING.md](../apps/desktop/TESTING.md).
 
-## `uniffi-bindgen`
+## uniffi-bindgen
 
 Generates the Kotlin bindings for the Android app. Gradle runs it as part of
 the Android build.
