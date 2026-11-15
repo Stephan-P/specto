@@ -105,7 +105,6 @@ command-line tool, for development, is described in
 - [`packaging/`](packaging/README.md): installable packages of the desktop app
   (Flatpak)
 - [`corpus/`](corpus/README.md): fetches the test corpus
-- `spikes/`: early prototypes
 - `docs/`: see below
 
 ## Documentation

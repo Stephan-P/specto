@@ -28,9 +28,8 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Canvas evaluation checked on real hardware
 - [x] Android evaluation: a Compose app in which Rust renders a page into a
   bitmap, through cargo-ndk and UniFFI (D4, D5)
-- [ ] Remove `spikes/lopdf-spike` once the write crate has the incremental save
-  and can encrypt from scratch. Those are the two things only the evaluation
-  shows how to do. Leave a note of the last commit that has it.
+- [x] The lopdf evaluation code removed. It was in `spikes/lopdf-spike`, last
+  changed in commit 7273d64
 - [ ] GitLab CI, if the repository moves there.
 - [ ] More of a test corpus: the PDFium test files, and fixtures of our own for
   forms, rotated pages, crop boxes that differ from the media box, huge pages,
@@ -217,7 +216,9 @@ point to [DECISIONS.md](DECISIONS.md).
   its text in the overlay during the drag.
 - [ ] Adjusting follow-ups: handles on the sides, Shift to keep proportions,
   arrow keys to nudge, snapping, and moving several at once.
-- [ ] Incremental save, used when only annotations or form values changed.
+- [ ] Incremental save, used when only annotations or form values changed. The
+  lopdf evaluation shows how, also for encrypted files (`spikes/lopdf-spike` at
+  commit 7273d64).
 - [ ] Markup list follow-ups: filling it in the background for very long
   documents, the author and date, filtering by kind, and replies.
 - [ ] Signatures from a photo: the paper isn't taken away cleanly enough yet.
@@ -349,7 +350,8 @@ point to [DECISIONS.md](DECISIONS.md).
   A setting in both apps turns this off (D9). What a restriction blocks should
   say so and point to the setting.
 - [ ] Document security dialog, like Preview's: add, change or remove the two
-  passwords, saved with the document.
+  passwords, saved with the document. The lopdf evaluation shows how to encrypt
+  a file from scratch (`spikes/lopdf-spike` at commit 7273d64).
 - [ ] Fuzzing of the parser and the save path.
 - [ ] Performance pass: profile big and complex documents, startup time and
   memory.
