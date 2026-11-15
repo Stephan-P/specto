@@ -717,3 +717,102 @@ fn annotations_go_with_pages_to_another_session() {
     from.close(&scheduler);
     to.close(&scheduler);
 }
+
+#[test]
+fn drawing_with_the_pointer() {
+    use specto_annot::{AnnotKind, AnnotType, Color};
+    use specto_doc::Edit;
+    use specto_geom::{ViewPoint, ViewVector};
+    use specto_session::{DraftKind, ViewShape};
+
+    let red = Color::new(1.0, 0.0, 0.0);
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, book(2, "alpha"));
+    let at = |s: &Session, x, y| s.viewer.pdf_to_view(0, PdfPoint::new(x, y)).unwrap();
+
+    // Not beside the pages.
+    assert!(!session.begin_draft(DraftKind::Ink, red, 2.0, ViewPoint::new(-50.0, -50.0)));
+    assert!(!session.is_drafting() && !session.finish_draft());
+
+    // A stroke: shown while it is drawn, an annotation once it is done.
+    let start = at(&session, 50.0, 100.0);
+    assert!(session.begin_draft(DraftKind::Ink, red, 2.0, start));
+    for i in 1..=200 {
+        // A wave, a tenth of a pixel at a time: far more points than needed.
+        let x = f64::from(i) * 0.5;
+        session.extend_draft(start + ViewVector::new(x, (x / 10.0).sin() * 10.0));
+    }
+    assert!(session.is_drafting() && session.annotations(0).is_empty());
+    assert!(matches!(session.overlay(0)[..], [ViewShape::Path { .. }]));
+    assert!(session.overlay(1).is_empty());
+    assert!(session.finish_draft());
+    assert!(!session.is_drafting());
+    assert_eq!(
+        session.edit().undo_edit(),
+        Some(Edit::AddAnnotation(AnnotType::Ink))
+    );
+    let stroke = session.annotations(0)[0].1.clone();
+    let AnnotKind::Ink { strokes } = &stroke.kind else {
+        panic!("not ink");
+    };
+    // Thinned out, but still the wave: it starts and ends where the
+    // pointer did, and goes up and down in between.
+    let points = &strokes[0];
+    assert!((8..80).contains(&points.len()), "{} points", points.len());
+    assert!((points[0] - PdfPoint::new(50.0, 100.0)).length() < 0.01);
+    let ys: Vec<f64> = points.iter().map(|p| p.y).collect();
+    let (low, high) = (
+        ys.iter().copied().fold(f64::INFINITY, f64::min),
+        ys.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+    );
+    assert!(high - low > 10.0, "flattened: {low} to {high}");
+    assert_eq!(stroke.color, Some(red));
+    assert!(stroke.modified.is_some());
+    // The area it takes up holds the whole line.
+    assert!(points.iter().all(|p| stroke.rect.contains_inclusive(*p)));
+    // Picked on the line, not in the area around it.
+    let on_it = session
+        .viewer
+        .pdf_to_view(0, points[points.len() / 2])
+        .unwrap();
+    assert!(session.annotation_at(on_it).is_some());
+    let corner = session.viewer.pdf_to_view(0, stroke.rect.min).unwrap();
+    assert!(session.annotation_at(corner).is_none());
+
+    // A rectangle from corner to corner; it stays on its page when the
+    // pointer leaves it.
+    assert!(session.begin_draft(DraftKind::Square, red, 2.0, at(&session, 20.0, 280.0)));
+    session.extend_draft(at(&session, 100.0, 200.0));
+    session.extend_draft(ViewPoint::new(-500.0, -500.0));
+    assert!(session.finish_draft());
+    let square = session.annotations(0)[1].1.clone();
+    assert_eq!(square.annot_type(), AnnotType::Square);
+    // Up to the page's left and top edge, and its line around that.
+    assert!(square.rect.min.x <= 0.0 && square.rect.max.y >= 300.0);
+    assert!((square.rect.max.x - 21.0).abs() < 0.01);
+
+    // A click with a shape tool draws nothing; Escape gives a drawing up.
+    assert!(session.begin_draft(DraftKind::Circle, red, 2.0, at(&session, 50.0, 50.0)));
+    assert!(!session.finish_draft());
+    assert!(session.begin_draft(DraftKind::Line, red, 2.0, at(&session, 50.0, 50.0)));
+    session.extend_draft(at(&session, 150.0, 50.0));
+    session.cancel_draft();
+    assert!(!session.finish_draft());
+    assert_eq!(session.annotations(0).len(), 2);
+    // A click with the pen is a dot.
+    assert!(session.begin_draft(DraftKind::Ink, red, 2.0, at(&session, 150.0, 150.0)));
+    assert!(session.finish_draft());
+    assert_eq!(session.annotations(0).len(), 3);
+
+    // Saved, they are in the file.
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    let types: Vec<AnnotType> = saved
+        .annotations(0)
+        .iter()
+        .map(|(_, a)| a.annot_type())
+        .collect();
+    assert_eq!(types, [AnnotType::Ink, AnnotType::Square, AnnotType::Ink]);
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}

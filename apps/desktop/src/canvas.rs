@@ -14,8 +14,9 @@ use specto_view::{
 };
 
 use crate::document::SharedDocument;
+use specto_annot::Segment;
 use specto_doc::SourceId;
-use specto_session::ViewShape;
+use specto_session::{DraftKind, ViewShape};
 
 /// Dragging a selection this close to the top or bottom edge (logical px)
 /// scrolls the view.
@@ -46,6 +47,10 @@ mod imp {
         pub on_view_changed: RefCell<Option<Box<dyn Fn()>>>,
         pub on_selected: RefCell<Option<Box<dyn Fn()>>>,
         pub on_picked: RefCell<Option<Box<dyn Fn()>>>,
+        pub on_drawn: RefCell<Option<Box<dyn Fn()>>>,
+        /// What a drag draws instead of selecting text, if a drawing tool
+        /// is in use: what, its colour and the width of its line in points.
+        pub draw_tool: Cell<Option<(DraftKind, specto_annot::Color, f64)>>,
         /// Called with a link's URI; the window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links,
@@ -82,6 +87,8 @@ mod imp {
                 on_view_changed: RefCell::default(),
                 on_selected: RefCell::default(),
                 on_picked: RefCell::default(),
+                on_drawn: RefCell::default(),
+                draw_tool: Cell::default(),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -299,6 +306,39 @@ impl Canvas {
     /// pointer (the button is up again) and something is selected.
     pub fn connect_selected(&self, f: impl Fn() + 'static) {
         self.imp().on_selected.replace(Some(Box::new(f)));
+    }
+
+    /// `f` is called when an annotation was drawn with the pointer.
+    pub fn connect_drawn(&self, f: impl Fn() + 'static) {
+        self.imp().on_drawn.replace(Some(Box::new(f)));
+    }
+
+    /// Makes drags draw (what, in which colour, how wide a line in points)
+    /// instead of selecting text; `None` for selecting again.
+    pub fn set_draw_tool(&self, tool: Option<(DraftKind, specto_annot::Color, f64)>) {
+        self.imp().draw_tool.set(tool);
+        let (x, y) = self.pointer();
+        self.update_cursor(x, y);
+    }
+
+    /// Whether the pointer is drawing: a drag with a drawing tool that
+    /// hasn't ended.
+    fn is_drafting(&self) -> bool {
+        self.imp()
+            .document
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| d.borrow().is_drafting())
+    }
+
+    /// Applies `f` to the document, then redraws.
+    fn draft<R: Default>(&self, f: impl FnOnce(&mut crate::document::Document) -> R) -> R {
+        let Some(doc) = self.imp().document.borrow().clone() else {
+            return R::default();
+        };
+        let r = f(&mut doc.borrow_mut());
+        self.queue_draw();
+        r
     }
 
     /// `f` is called when another annotation is picked, or none any more.
@@ -602,7 +642,9 @@ impl Canvas {
     /// over text.
     fn update_cursor(&self, x: f64, y: f64) {
         let p = ViewPoint::new(x, y);
-        let name = if self.link_at(x, y).is_some() {
+        let name = if self.imp().draw_tool.get().is_some() {
+            Some("crosshair")
+        } else if self.link_at(x, y).is_some() {
             Some("pointer")
         } else {
             let mut over = false;
@@ -762,6 +804,10 @@ impl Canvas {
             let Some(c) = this.upgrade() else { return };
             c.grab_focus();
             c.imp().presses.set(n_press);
+            // With a drawing tool, the drag gesture has the pointer.
+            if c.imp().draw_tool.get().is_some() {
+                return;
+            }
             let shift = g
                 .current_event_state()
                 .contains(gdk::ModifierType::SHIFT_MASK);
@@ -770,7 +816,7 @@ impl Canvas {
         let this = self.downgrade();
         click.connect_released(move |g, n_press, x, y| {
             let Some(c) = this.upgrade() else { return };
-            if n_press != 1 || c.imp().selecting.get() {
+            if n_press != 1 || c.imp().selecting.get() || c.imp().draw_tool.get().is_some() {
                 return;
             }
             if let Some((source, target)) = c.link_at(x, y) {
@@ -789,10 +835,17 @@ impl Canvas {
         let drag = gtk::GestureDrag::new();
         drag.set_button(gdk::BUTTON_PRIMARY);
         let this = self.downgrade();
-        drag.connect_drag_begin(move |_, x, y| {
-            if let Some(c) = this.upgrade() {
-                c.imp().drag_start.set(Some((x, y)));
-                c.imp().selecting.set(false);
+        drag.connect_drag_begin(move |g, x, y| {
+            let Some(c) = this.upgrade() else { return };
+            c.imp().drag_start.set(Some((x, y)));
+            c.imp().selecting.set(false);
+            // A drawing tool draws from the press on, on a page.
+            if let Some((kind, color, width)) = c.imp().draw_tool.get() {
+                c.grab_focus();
+                let p = ViewPoint::new(x, y);
+                if c.draft(|d| d.begin_draft(kind, color, width, p)) {
+                    g.set_state(gtk::EventSequenceState::Claimed);
+                }
             }
         });
         let this = self.downgrade();
@@ -804,6 +857,10 @@ impl Canvas {
             };
             let (x, y) = (x0 + dx, y0 + dy);
             imp.pointer.set((x, y));
+            if imp.draw_tool.get().is_some() {
+                c.draft(|d| d.extend_draft(ViewPoint::new(x, y)));
+                return;
+            }
             if !imp.selecting.get() {
                 let threshold =
                     gtk::Settings::default().map_or(8, |s| s.gtk_dnd_drag_threshold()) as f64;
@@ -828,6 +885,14 @@ impl Canvas {
             let Some(c) = this.upgrade() else { return };
             let imp = c.imp();
             imp.drag_start.set(None);
+            if c.is_drafting() {
+                if c.draft(|d| d.finish_draft())
+                    && let Some(cb) = imp.on_drawn.borrow().as_ref()
+                {
+                    cb();
+                }
+                return;
+            }
             if imp.selecting.replace(false) {
                 c.offer_primary();
             }
@@ -918,6 +983,10 @@ impl Canvas {
             ) {
                 return glib::Propagation::Proceed;
             }
+            if key == gdk::Key::Escape && c.is_drafting() {
+                c.draft(|d| d.cancel_draft());
+                return glib::Propagation::Stop;
+            }
             if key == gdk::Key::Escape && (c.unpick_annotation() || c.clear_selection()) {
                 return glib::Propagation::Stop;
             }
@@ -992,13 +1061,13 @@ pub fn draw_page(
 fn draw_shapes(snapshot: &gtk::Snapshot, shapes: &[ViewShape]) {
     let rgba = |c: specto_annot::Color, opacity: f32| gdk::RGBA::new(c.r, c.g, c.b, opacity);
     for shape in shapes {
-        match *shape {
+        match shape {
             ViewShape::Fill {
                 quad,
                 color,
                 opacity,
                 ..
-            } => fill_quads(snapshot, &[quad], &rgba(color, opacity)),
+            } => fill_quads(snapshot, &[*quad], &rgba(*color, *opacity)),
             ViewShape::Stroke {
                 from,
                 to,
@@ -1011,9 +1080,40 @@ fn draw_shapes(snapshot: &gtk::Snapshot, shapes: &[ViewShape]) {
                 builder.line_to(to.x as f32, to.y as f32);
                 snapshot.append_stroke(
                     &builder.to_path(),
-                    &gsk::Stroke::new(width as f32),
-                    &rgba(color, opacity),
+                    &gsk::Stroke::new(*width as f32),
+                    &rgba(*color, *opacity),
                 );
+            }
+            ViewShape::Path {
+                path,
+                fill,
+                stroke,
+                opacity,
+            } => {
+                let builder = gsk::PathBuilder::new();
+                builder.move_to(path.start.x as f32, path.start.y as f32);
+                for segment in &path.segments {
+                    match *segment {
+                        Segment::Line(p) => builder.line_to(p.x as f32, p.y as f32),
+                        Segment::Curve(a, b, p) => builder.cubic_to(
+                            a.x as f32, a.y as f32, b.x as f32, b.y as f32, p.x as f32, p.y as f32,
+                        ),
+                    }
+                }
+                if path.closed {
+                    builder.close();
+                }
+                let outline = builder.to_path();
+                if let Some(fill) = fill {
+                    snapshot.append_fill(&outline, gsk::FillRule::Winding, &rgba(*fill, *opacity));
+                }
+                if let Some((color, width)) = stroke {
+                    // Round ends and corners, as the saved look has them.
+                    let pen = gsk::Stroke::new(*width as f32);
+                    pen.set_line_cap(gsk::LineCap::Round);
+                    pen.set_line_join(gsk::LineJoin::Round);
+                    snapshot.append_stroke(&outline, &pen, &rgba(*color, *opacity));
+                }
             }
         }
     }

@@ -157,6 +157,12 @@ Work on copies of the test files.
 - Pick a highlight: the bar shows its colour. Choose another: it changes at once, and *Primary*+Z changes it back. The same for a highlight the file already had: nothing else on the page changes.
 - The swatches are easy to tell apart and to hit, in the light and the dark style; the one in use is visibly marked.
 - Thumbnails show new markup at once, and lose it on undo.
+- Freehand: draw a signature-like scribble with the mouse and with a touchpad. The line follows the pointer without lag, looks smooth rather than angular, and stays the same after the button is let go (no visible jump when it is thinned out).
+- Draw across the edge of a page: the stroke stops at the edge. Draw with the page zoomed far in and far out: the line keeps its thickness relative to the page.
+- Rectangle, ellipse and line: the shape follows the pointer while dragging, in any direction. Escape during a drag gives it up.
+- With a drawing tool pressed in, scrolling with the wheel or touchpad still works, and text is not selected.
+- Pick a drawn line by clicking on it. A click inside the area it spans, away from the line, picks nothing.
+- Save and reopen: drawings and shapes look the same as before saving. Open the file in other programs too: they show, and can be moved and deleted there.
 - Print (to a file is enough) with unsaved markup: it is on the printed page, in the same place and colour.
 - Two windows: drag the thumbnail of a marked page into the other window's sidebar: the markup is there too, and one undo there removes page and markup.
 

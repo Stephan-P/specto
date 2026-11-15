@@ -79,17 +79,21 @@ Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 - The pencil button in the header bar (or Shift+*Primary*+A) shows the markup bar: Highlight, Underline and Strikethrough, and six colours
 - A tool that is pressed in marks text as it is selected, by dragging or by double and triple clicks, until it is let go of (press it again, or close the bar). Pressing one in with text selected marks that text
 - Each tool has its own colour: yellow for the highlighter and red for the lines to begin with, changed by choosing another while the tool is pressed in
+- Drawing tools on the bar: freehand, rectangle, ellipse and line. With one pressed in, a drag draws instead of selecting text, and the pointer is a crosshair. A drawing stays on the page it started on, and Escape gives it up
+- Freehand strokes are smoothed. A click with the pen makes a dot, and a click with a shape tool draws nothing
+- Seven colors, black among them. The drawing tools start in red
 - Without the bar: Shift+*Primary*+H, U and X mark the selected text once
 - A selection over several pages is marked on each, as one edit
 - A highlight darkens the page beneath it like a highlighter pen, so the text stays black
 - A click on markup picks it (a frame shows around it); Delete or Backspace deletes it, Escape lets go of it. That goes for what the file already had too, of any kind (notes, text boxes, drawings, stamps), except what the file marks as locked or read-only
-- With markup picked, the bar shows its colour, and choosing another recolours it (text markup only, for now)
+- With markup picked, the bar shows its color, and choosing another recolors it. For markup the file already had this works for text markup only, because other kinds can have details (arrowheads, dashed borders) that redrawing would lose
+- Drawings and lines are picked by clicking on the line itself, shapes anywhere in their area
 - Undo and Redo cover markup like page edits, in the order things were done
 - Thumbnails and printed pages show markup as the page view does, saved or not
 - Thumbnails dragged to another window take their pages' markup along
 - Saved with the document as standard PDF annotations, which other programs show and can edit
 - Markup a file has without a ready-made look (some programs leave that out) is shown where it is text markup
-- Not yet: moving markup, and kinds other than text markup
+- Not yet: moving and resizing markup, line width, text boxes and notes
 
 ## Saving
 

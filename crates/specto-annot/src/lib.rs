@@ -22,7 +22,7 @@ use specto_geom::{PdfBox, PdfPoint, PdfQuad};
 pub use specto_source::Date;
 
 pub use import::import;
-pub use shapes::{AppearanceStream, GraphicsState, Shape, appearance, shapes};
+pub use shapes::{AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, shapes};
 
 /// A colour as PDF annotations have it: red, green and blue, each 0 to 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -245,12 +245,39 @@ impl Annotation {
         self.kind.annot_type()
     }
 
+    /// How near a line a point must be to count as on it: half the line's
+    /// width, and enough to hit a thin one.
+    fn reach(&self) -> f64 {
+        (self.line_width / 2.0).max(4.0)
+    }
+
     /// Whether `p` is on the annotation: on its marked text for text
-    /// markup, else within its area.
+    /// markup, near the line for drawings and lines, else within its area.
     pub fn contains(&self, p: PdfPoint) -> bool {
         match &self.kind {
             AnnotKind::TextMarkup { quads, .. } => quads.iter().any(|q| q.contains(p)),
+            // Near the line, not anywhere in the rectangle around it, which
+            // for a long stroke is most of the page.
+            AnnotKind::Ink { strokes } => strokes.iter().any(|s| match s[..] {
+                [only] => (p - only).length() <= self.reach(),
+                _ => s
+                    .windows(2)
+                    .any(|w| distance(p, w[0], w[1]) <= self.reach()),
+            }),
+            AnnotKind::Line { from, to } => distance(p, *from, *to) <= self.reach(),
             _ => self.rect.contains_inclusive(p),
         }
     }
+}
+
+/// How far `p` is from the line between `a` and `b`.
+fn distance(p: PdfPoint, a: PdfPoint, b: PdfPoint) -> f64 {
+    let (ab, ap) = (b - a, p - a);
+    let length = ab.square_length();
+    let t = if length > 0.0 {
+        (ap.dot(ab) / length).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (p - (a + ab * t)).length()
 }

@@ -68,6 +68,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - markup_bar: with a tool of the markup bar pressed in, text is marked as
   it is selected, in the tool's colour; a colour chosen while an annotation
   is picked recolours it; closing the bar lets go of the tool
+- draw_tools: the pen, rectangle, ellipse and line tools draw where the
+  pointer is dragged, also over text, each in its colour; a click draws no
+  shape; a line is picked near it only; saved, they're in the file and shown
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1027,6 +1030,80 @@ def test_markup_bar(ctx):
     inp.drag(w.char(0, 1, 6), w.char(0, 1, 9, before=False))
     time.sleep(0.5)
     check(w.state()["annotations"] == 3, "text was marked without a tool")
+
+
+def test_draw_tools(ctx):
+    path = os.path.join(ctx.home, "drawn.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)  # the bar slides in and moves the page down
+    at = lambda x, y: w.screen(0, x, y)
+    # The pen: a drag below the text draws instead of selecting, in red.
+    w.action("markup-tool", gvariant_str("draw"))
+    s = w.wait("the pen", lambda s: s["markup_tool"] == "draw")
+    check(s["markup_color"] == "red", s)
+    inp.move(*at(100, 520))
+    check(w.pointer_at(*at(100, 520))["cursor"] == "crosshair", "no crosshair with the pen")
+    inp.drag(at(100, 520), at(260, 520))
+    s = w.wait("a stroke", lambda s: s["annotations"] == 1)
+    check(s["undo"] == "Add Ink" and s["selection"] == "" and s["modified"], s)
+    check(red(pixel(w, "stroke", *at(180, 520))), "no stroke where the pen went")
+    # Over text too: nothing is selected.
+    inp.drag(w.char(0, 2, 2), w.char(0, 2, 12))
+    s = w.wait("a stroke over text", lambda s: s["annotations"] == 2)
+    check(s["selection"] == "", s)
+    # A rectangle in blue, an ellipse and a line: from corner to corner.
+    w.action("markup-tool", gvariant_str("rectangle"))
+    w.action("markup-color", gvariant_str("blue"))
+    w.wait("blue rectangles", lambda s: s["markup_tool"] == "rectangle" and s["markup_color"] == "blue")
+    inp.drag(at(100, 480), at(200, 400))
+    s = w.wait("a rectangle", lambda s: s["annotations"] == 3 and s["undo"] == "Add Square")
+    blue = lambda c: c[2] > c[0] + 30
+    check(blue(pixel(w, "rectangle", *at(150, 480))), "no line at the rectangle's top")
+    check(not blue(pixel(w, "inside", *at(150, 440))), "the rectangle is filled")
+    w.action("markup-tool", gvariant_str("ellipse"))
+    w.wait("ellipses", lambda s: s["markup_tool"] == "ellipse" and s["markup_color"] == "red")
+    inp.drag(at(250, 480), at(350, 400))
+    w.wait("an ellipse", lambda s: s["annotations"] == 4 and s["undo"] == "Add Circle")
+    check(red(pixel(w, "ellipse", *at(300, 480))), "no line at the ellipse's top")
+    w.action("markup-tool", gvariant_str("line"))
+    inp.drag(at(400, 480), at(500, 400))
+    w.wait("a line", lambda s: s["annotations"] == 5 and s["undo"] == "Add Line")
+    check(red(pixel(w, "line", *at(450, 440))), "no line between its ends")
+    # A click with a shape tool draws nothing.
+    inp.click(*at(300, 300))
+    time.sleep(0.4)
+    check(w.state()["annotations"] == 5, "a click drew a shape")
+    w.screenshot("drawn")
+    # Without a tool, a click picks the line (near it, not in the area
+    # around it), and Delete deletes it.
+    w.action("markup-tool", gvariant_str("line"))
+    w.wait("no tool", lambda s: s["markup_tool"] == "none")
+    inp.click(*at(410, 410))
+    time.sleep(0.4)
+    check(not w.state()["annotation_picked"], "picked far from the line")
+    inp.click(*at(450, 440))
+    w.wait("the line picked", lambda s: s["annotation_picked"])
+    inp.keys(Input.DELETE)
+    w.wait("the line gone", lambda s: s["annotations"] == 4)
+    w.action("undo")
+    w.wait("the line back", lambda s: s["annotations"] == 5)
+    # Saved and opened again: all there, drawn with the page now.
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    w = ctx.app([path]).window()
+    s = w.settled()
+    w.maximize()
+    check(s["annotations"] == 5 and not s["modified"], s)
+    check(red(pixel(w, "reopened", *w.screen(0, 180, 520))), "the saved stroke isn't shown")
+    check(blue(pixel(w, "reopened-rectangle", *w.screen(0, 150, 480))), "the saved rectangle isn't shown")
 
 
 def test_select_words_and_lines(ctx):

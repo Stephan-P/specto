@@ -32,7 +32,7 @@ use specto_source::{Link, PageLabels, PdfData, SourceDocument, Target};
 use specto_text::SearchText;
 use specto_view::{Selection, Settings, ViewPage, Viewer};
 
-pub use annots::ViewShape;
+pub use annots::{DraftKind, ViewShape};
 pub use search::{Indexed, SearchStatus};
 pub use text::TextLayer;
 
@@ -134,6 +134,8 @@ pub struct Session {
     /// Pages rendered from a copy of theirs instead of from their file
     /// (see [`annots`]), by page of the file.
     variants: HashMap<FilePage, annots::Variant>,
+    /// The annotation being drawn with the pointer, if any.
+    draft: Option<annots::Draft>,
     /// The annotation that is picked (to delete it, later to change it),
     /// if any: the position of its page, and which it is (from
     /// [`annotation_at`](Self::annotation_at)).
@@ -168,6 +170,7 @@ impl Session {
             texts: TextCache::new(options.text_pages),
             selection: None,
             variants,
+            draft: None,
             picked: None,
             indexer: None,
             search: None,
@@ -623,6 +626,7 @@ impl Session {
         self.viewer.set_pages(pages);
         self.selection = None;
         self.picked = None;
+        self.draft = None;
         self.search_again();
         true
     }

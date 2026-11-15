@@ -17,9 +17,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use specto_annot::{Annotation, Appearance, Color, Date, MarkupStyle, Origin, Shape, shapes};
+use specto_annot::{
+    AnnotKind, Annotation, Appearance, Color, Date, MarkupStyle, Origin, Path, Shape, shapes,
+};
 use specto_doc::{AnnotId, PageAnnotChanges, PageRef, SourceId};
-use specto_geom::ViewPoint;
+use specto_geom::{PdfBox, PdfPoint, ViewPoint, ViewSpace};
 use specto_render::scheduler::Scheduler;
 use specto_render::tile::DocId;
 use specto_view::TextPages;
@@ -47,7 +49,7 @@ fn floats(annotation: &Annotation) -> bool {
 
 /// A piece of an annotation's look where it is on screen, in viewport
 /// coordinates (see [`Shape`]).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ViewShape {
     Fill {
         quad: [ViewPoint; 4],
@@ -62,6 +64,76 @@ pub enum ViewShape {
         color: Color,
         opacity: f32,
     },
+    /// An outline, filled, drawn with a round pen of a width, or both.
+    Path {
+        path: Path<ViewSpace>,
+        fill: Option<Color>,
+        stroke: Option<(Color, f64)>,
+        opacity: f32,
+    },
+}
+
+/// What a drag of the pointer draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DraftKind {
+    /// A freehand stroke along the pointer's way.
+    Ink,
+    /// A rectangle, an ellipse in it, or a line, from where the drag
+    /// started to where the pointer is.
+    Square,
+    Circle,
+    Line,
+}
+
+/// An annotation being drawn: not in the document until the drag ends.
+#[derive(Clone, Debug)]
+pub(crate) struct Draft {
+    kind: DraftKind,
+    /// The position of the page it is on.
+    position: usize,
+    color: Color,
+    line_width: f64,
+    /// Where the pointer has been, on that page; for all but ink only the
+    /// first and the last count.
+    points: Vec<PdfPoint>,
+    /// How far apart points of a stroke are kept, in points: about a pixel.
+    step: f64,
+}
+
+impl Draft {
+    /// The annotation as it would be if the drag ended now.
+    fn annotation(&self) -> Option<Annotation> {
+        let (&from, &to) = (self.points.first()?, self.points.last()?);
+        let half = self.line_width / 2.0;
+        let around = |points: &[PdfPoint]| PdfBox::from_points(points).inflate(half, half);
+        let (kind, rect) = match self.kind {
+            DraftKind::Ink => (
+                AnnotKind::Ink {
+                    strokes: vec![self.points.clone()],
+                },
+                around(&self.points),
+            ),
+            DraftKind::Square => (AnnotKind::Square { fill: None }, around(&[from, to])),
+            DraftKind::Circle => (AnnotKind::Circle { fill: None }, around(&[from, to])),
+            DraftKind::Line => (AnnotKind::Line { from, to }, around(&[from, to])),
+        };
+        let mut a = Annotation::new(kind, rect);
+        a.color = Some(self.color);
+        a.line_width = self.line_width;
+        Some(a)
+    }
+
+    /// Whether the drag went anywhere: a click with a shape tool draws
+    /// nothing, a click with the pen a dot.
+    fn is_worth_keeping(&self) -> bool {
+        match self.kind {
+            DraftKind::Ink => !self.points.is_empty(),
+            _ => match (self.points.first(), self.points.last()) {
+                (Some(a), Some(b)) => (*b - *a).length() >= 2.0 * self.step,
+                _ => false,
+            },
+        }
+    }
 }
 
 impl Session {
@@ -186,13 +258,128 @@ impl Session {
         }
     }
 
-    /// The annotations of the page at `position` that the frontend draws.
+    /// The annotations of the page at `position` that the frontend draws,
+    /// the one being drawn there included.
     fn floating(&mut self, position: usize) -> Vec<Arc<Annotation>> {
+        let draft = self
+            .draft
+            .as_ref()
+            .filter(|d| d.position == position)
+            .and_then(Draft::annotation)
+            .map(Arc::new);
         self.annotations(position)
             .into_iter()
             .map(|(_, a)| a)
             .filter(|a| a.flags.is_visible() && floats(a))
+            .chain(draft)
             .collect()
+    }
+
+    /// Starts drawing at `p` (viewport coordinates) with a pen of
+    /// `line_width` points in `color`. Returns whether it did: `p` must be
+    /// on a page. Follow with [`extend_draft`](Self::extend_draft) as the
+    /// pointer moves and [`finish_draft`](Self::finish_draft) when the
+    /// button is let go; meanwhile [`overlay`](Self::overlay) shows what is
+    /// drawn so far.
+    pub fn begin_draft(
+        &mut self,
+        kind: DraftKind,
+        color: Color,
+        line_width: f64,
+        p: ViewPoint,
+    ) -> bool {
+        let Some((position, _)) = self.viewer.hit_test(p) else {
+            return false;
+        };
+        let (Some(at), Some(next)) = (
+            self.viewer.view_to_pdf(position, p),
+            self.viewer
+                .view_to_pdf(position, p + specto_geom::ViewVector::new(1.0, 0.0)),
+        ) else {
+            return false;
+        };
+        self.picked = None;
+        self.selection = None;
+        self.draft = Some(Draft {
+            kind,
+            position,
+            color,
+            line_width,
+            points: vec![at],
+            step: (next - at).length().max(0.01),
+        });
+        true
+    }
+
+    /// The pointer of a drag that draws is at `p` now. The drawing stays on
+    /// the page it started on.
+    pub fn extend_draft(&mut self, p: ViewPoint) {
+        let Some(draft) = self.draft.as_mut() else {
+            return;
+        };
+        let Some(page) = self.viewer.pages().get(draft.position) else {
+            return;
+        };
+        let Some(at) = self.viewer.view_to_pdf(draft.position, p) else {
+            return;
+        };
+        let bounds = page.displayed().visible_box();
+        let at = PdfPoint::new(
+            at.x.clamp(bounds.min.x, bounds.max.x),
+            at.y.clamp(bounds.min.y, bounds.max.y),
+        );
+        match draft.kind {
+            // Not every twitch of the pointer: a point about every pixel.
+            DraftKind::Ink => {
+                if draft
+                    .points
+                    .last()
+                    .is_none_or(|l| (at - *l).length() >= draft.step)
+                {
+                    draft.points.push(at);
+                }
+            }
+            _ => {
+                draft.points.truncate(1);
+                draft.points.push(at);
+            }
+        }
+    }
+
+    /// Whether something is being drawn.
+    pub fn is_drafting(&self) -> bool {
+        self.draft.is_some()
+    }
+
+    /// Gives up what is being drawn.
+    pub fn cancel_draft(&mut self) {
+        self.draft = None;
+    }
+
+    /// The drag has ended: what was drawn becomes an annotation. Returns
+    /// whether there is one (not for a shape of no size).
+    pub fn finish_draft(&mut self) -> bool {
+        let Some(mut draft) = self.draft.take() else {
+            return false;
+        };
+        if !draft.is_worth_keeping() {
+            return false;
+        }
+        if draft.kind == DraftKind::Ink {
+            // The points a pointer leaves are far more than the stroke
+            // needs: those within a third of a pixel of the line between
+            // their neighbours go.
+            draft.points = simplify(&draft.points, draft.step / 3.0);
+        }
+        let Some(mut a) = draft.annotation() else {
+            return false;
+        };
+        let Some(&p) = self.edit.pages().get(draft.position) else {
+            return false;
+        };
+        a.modified = Some(now());
+        self.edit.add_annotation(p.source, p.page, a);
+        true
     }
 
     /// What to draw over the page at `position`, bottom to top: the
@@ -360,6 +547,14 @@ impl Session {
         if a.color == Some(color) || shapes(&a).is_none() {
             return Ok(false);
         }
+        // One of a file that has its own look is only redrawn from its
+        // values where those say all there is to it: text markup. A line
+        // can have arrowheads and a rectangle a dashed border, which
+        // drawing them anew here would lose.
+        let own_look = matches!(id, AnnotId::File { .. }) && a.appearance == Appearance::Original;
+        if own_look && !matches!(a.kind, AnnotKind::TextMarkup { .. }) {
+            return Ok(false);
+        }
         let ready = self.page_without(id, &a)?;
         let mut changed = (*a).clone();
         changed.color = Some(color);
@@ -425,11 +620,70 @@ fn on_screen(
                         opacity,
                     })
                 })(),
+                Shape::Path {
+                    path,
+                    fill,
+                    stroke,
+                    opacity,
+                } => (|| {
+                    // How long a point is on screen, from two points one
+                    // apart.
+                    let one = path.start + specto_geom::PdfVector::new(1.0, 0.0);
+                    let zoom = (at(one)? - at(path.start)?).length();
+                    Some(ViewShape::Path {
+                        path: path.map(&at)?,
+                        fill,
+                        stroke: stroke.map(|(color, width)| (color, width * zoom)),
+                        opacity,
+                    })
+                })(),
             };
             out.extend(placed);
         }
     }
     out
+}
+
+/// `points` without those nearer than `tolerance` to the line between the
+/// ones kept around them (Ramer, Douglas and Peucker's way); the first and
+/// last stay.
+fn simplify(points: &[PdfPoint], tolerance: f64) -> Vec<PdfPoint> {
+    if points.len() < 3 {
+        return points.to_vec();
+    }
+    let mut keep = vec![false; points.len()];
+    keep[0] = true;
+    keep[points.len() - 1] = true;
+    let mut spans = vec![(0, points.len() - 1)];
+    while let Some((first, last)) = spans.pop() {
+        let (a, b) = (points[first], points[last]);
+        let ab = b - a;
+        let length = ab.length();
+        let far = (first + 1..last)
+            .map(|i| {
+                let ap = points[i] - a;
+                let d = if length > 0.0 {
+                    ab.cross(ap).abs() / length
+                } else {
+                    ap.length()
+                };
+                (i, d)
+            })
+            .max_by(|x, y| x.1.total_cmp(&y.1));
+        if let Some((i, d)) = far
+            && d > tolerance
+        {
+            keep[i] = true;
+            spans.push((first, i));
+            spans.push((i, last));
+        }
+    }
+    points
+        .iter()
+        .zip(keep)
+        .filter(|(_, k)| *k)
+        .map(|(p, _)| *p)
+        .collect()
 }
 
 /// The time now, in UTC.

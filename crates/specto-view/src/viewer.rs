@@ -420,6 +420,22 @@ impl Viewer {
         self.page_to_view(i, page)
     }
 
+    /// The point in page `i`'s PDF user space that is at `p` on screen,
+    /// whether `p` is on the page or beside it: the inverse of
+    /// [`pdf_to_view`](Self::pdf_to_view).
+    pub fn view_to_pdf(&self, i: usize, p: ViewPoint) -> Option<PdfPoint> {
+        let r = self.page_rect(i)?;
+        let zoom = self.zoom_of(self.page_spread[i]);
+        let page = PagePoint::new((p.x - r.origin.x) / zoom, (p.y - r.origin.y) / zoom);
+        Some(
+            self.pages
+                .get(i)?
+                .displayed()
+                .page_to_pdf()
+                .transform_point(page),
+        )
+    }
+
     /// Scrolls so that `area` (PDF points of page `i`) is on screen, unless
     /// it already is: for search results. It ends up a third of the way
     /// down the view, and horizontally only moves if it has to.

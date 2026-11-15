@@ -5,13 +5,71 @@
 //! show. Both are made from the [`Shape`]s here, so that what is saved is
 //! what was on screen.
 
-use specto_geom::{PdfBox, PdfPoint, PdfQuad};
+use specto_geom::euclid::Point2D;
+use specto_geom::{PdfBox, PdfPoint, PdfQuad, PdfSpace};
 
 use crate::{AnnotKind, Annotation, Color, MarkupStyle};
 
+/// An outline of straight lines and curves, in the coordinates `U`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Path<U> {
+    pub start: Point2D<f64, U>,
+    pub segments: Vec<Segment<U>>,
+    /// Whether it ends where it starts, with a line back if need be.
+    pub closed: bool,
+}
+
+/// A piece of a [`Path`], from where the one before ended.
+#[derive(Debug, PartialEq)]
+pub enum Segment<U> {
+    Line(Point2D<f64, U>),
+    /// A cubic Bézier curve: two control points and the end.
+    Curve(Point2D<f64, U>, Point2D<f64, U>, Point2D<f64, U>),
+}
+
+impl<U> Clone for Segment<U> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<U> Copy for Segment<U> {}
+
+impl<U> Path<U> {
+    /// The path with every point put through `f`; `None` if `f` gives none
+    /// for one of them.
+    pub fn map<V>(
+        &self,
+        f: impl Fn(Point2D<f64, U>) -> Option<Point2D<f64, V>>,
+    ) -> Option<Path<V>> {
+        Some(Path {
+            start: f(self.start)?,
+            segments: self
+                .segments
+                .iter()
+                .map(|s| {
+                    Some(match *s {
+                        Segment::Line(p) => Segment::Line(f(p)?),
+                        Segment::Curve(a, b, p) => Segment::Curve(f(a)?, f(b)?, f(p)?),
+                    })
+                })
+                .collect::<Option<_>>()?,
+            closed: self.closed,
+        })
+    }
+
+    /// Every point of the path, control points included: they bound it.
+    pub fn points(&self) -> impl Iterator<Item = Point2D<f64, U>> + '_ {
+        std::iter::once(self.start).chain(self.segments.iter().flat_map(|s| match *s {
+            Segment::Line(p) => vec![p],
+            Segment::Curve(a, b, p) => vec![a, b, p],
+        }))
+    }
+}
+
 /// One piece of an annotation's look, in the coordinates of its page of the
 /// file.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     /// A filled quadrilateral.
     Fill {
@@ -28,6 +86,14 @@ pub enum Shape {
         to: PdfPoint,
         width: f64,
         color: Color,
+        opacity: f32,
+    },
+    /// An outline, filled, drawn with a pen of a width with round ends and
+    /// corners, or both.
+    Path {
+        path: Path<PdfSpace>,
+        fill: Option<Color>,
+        stroke: Option<(Color, f64)>,
         opacity: f32,
     },
 }
@@ -60,8 +126,117 @@ pub fn shapes(annotation: &Annotation) -> Option<Vec<Shape>> {
                 })
                 .collect(),
         ),
-        _ => None,
+        AnnotKind::Ink { strokes } => Some(
+            strokes
+                .iter()
+                .filter_map(|points| smooth(points))
+                .map(|path| Shape::Path {
+                    path,
+                    fill: None,
+                    stroke: Some((color, annotation.line_width)),
+                    opacity,
+                })
+                .collect(),
+        ),
+        AnnotKind::Square { fill } => {
+            let r = outline(annotation);
+            let corner = |x, y| PdfPoint::new(x, y);
+            Some(vec![Shape::Path {
+                path: Path {
+                    start: r.min,
+                    segments: vec![
+                        Segment::Line(corner(r.max.x, r.min.y)),
+                        Segment::Line(r.max),
+                        Segment::Line(corner(r.min.x, r.max.y)),
+                    ],
+                    closed: true,
+                },
+                fill: *fill,
+                stroke: stroke_of(annotation),
+                opacity,
+            }])
+        }
+        AnnotKind::Circle { fill } => Some(vec![Shape::Path {
+            path: ellipse(outline(annotation)),
+            fill: *fill,
+            stroke: stroke_of(annotation),
+            opacity,
+        }]),
+        AnnotKind::Line { from, to } => Some(vec![Shape::Path {
+            path: Path {
+                start: *from,
+                segments: vec![Segment::Line(*to)],
+                closed: false,
+            },
+            fill: None,
+            stroke: Some((color, annotation.line_width.max(0.1))),
+            opacity,
+        }]),
+        AnnotKind::Stamp(_) | AnnotKind::Other { .. } => None,
     }
+}
+
+/// The pen of a rectangle or ellipse: none if its width is 0 (it is then
+/// only filled) or it has no colour of its own.
+fn stroke_of(annotation: &Annotation) -> Option<(Color, f64)> {
+    let color = annotation.color?;
+    (annotation.line_width > 0.0).then_some((color, annotation.line_width))
+}
+
+/// Where the pen of a rectangle or ellipse runs: inside the annotation's
+/// rectangle by half its width, so that the line is within it.
+fn outline(annotation: &Annotation) -> PdfBox {
+    let r = annotation.rect;
+    let inset = (annotation.line_width / 2.0)
+        .min(r.width() / 2.0)
+        .min(r.height() / 2.0)
+        .max(0.0);
+    r.inflate(-inset, -inset)
+}
+
+/// An ellipse touching the sides of `r`, as four curves.
+fn ellipse(r: PdfBox) -> Path<PdfSpace> {
+    // How far the control points of a quarter circle are from its ends, for
+    // a radius of 1.
+    const K: f64 = 0.552_284_749_8;
+    let c = r.center();
+    let (rx, ry) = (r.width() / 2.0, r.height() / 2.0);
+    let p = |x: f64, y: f64| PdfPoint::new(c.x + x * rx, c.y + y * ry);
+    Path {
+        start: p(1.0, 0.0),
+        segments: vec![
+            Segment::Curve(p(1.0, K), p(K, 1.0), p(0.0, 1.0)),
+            Segment::Curve(p(-K, 1.0), p(-1.0, K), p(-1.0, 0.0)),
+            Segment::Curve(p(-1.0, -K), p(-K, -1.0), p(0.0, -1.0)),
+            Segment::Curve(p(K, -1.0), p(1.0, -K), p(1.0, 0.0)),
+        ],
+        closed: true,
+    }
+}
+
+/// A smooth curve through the points of a freehand stroke (a Catmull-Rom
+/// spline, as Bézier curves); a single point becomes a dot. `None` without
+/// points.
+fn smooth(points: &[PdfPoint]) -> Option<Path<PdfSpace>> {
+    let (&start, rest) = points.split_first()?;
+    let segments = match rest {
+        // A line of no length: with round ends, a dot.
+        [] => vec![Segment::Line(start)],
+        [end] => vec![Segment::Line(*end)],
+        _ => (0..points.len() - 1)
+            .map(|i| {
+                let before = points[i.saturating_sub(1)];
+                let (from, to) = (points[i], points[i + 1]);
+                let after = points[(i + 2).min(points.len() - 1)];
+                Segment::Curve(from + (to - before) / 6.0, to - (after - from) / 6.0, to)
+            })
+            .collect(),
+    };
+    Some(Path {
+        start,
+        segments,
+        closed: false,
+    })
 }
 
 /// A line along the text of `quad` (bottom left, bottom right, top right,
@@ -112,12 +287,14 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
     let mut grow = |b: PdfBox| bbox = Some(bbox.map_or(b, |a| a.union(&b)));
     let mut states: Vec<GraphicsState> = Vec::new();
     let mut content = String::new();
+    let rgb = |c: Color| format!("{} {} {}", n(c.r.into()), n(c.g.into()), n(c.b.into()));
+    let xy = |p: PdfPoint| format!("{} {}", n(p.x), n(p.y));
     for shape in &shapes {
         let (opacity, multiply) = match *shape {
             Shape::Fill {
                 opacity, multiply, ..
             } => (opacity, multiply),
-            Shape::Stroke { opacity, .. } => (opacity, false),
+            Shape::Stroke { opacity, .. } | Shape::Path { opacity, .. } => (opacity, false),
         };
         let state = GraphicsState { opacity, multiply };
         let index = states.iter().position(|s| *s == state).unwrap_or_else(|| {
@@ -125,23 +302,17 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
             states.len() - 1
         });
         content.push_str(&format!("/GS{index} gs\n"));
-        match *shape {
+        match shape {
             Shape::Fill { quad, color, .. } => {
                 grow(quad.bounds());
                 let [a, b, c, d] = quad.points;
                 content.push_str(&format!(
-                    "{} {} {} rg\n{} {} m\n{} {} l\n{} {} l\n{} {} l\nh f\n",
-                    n(color.r.into()),
-                    n(color.g.into()),
-                    n(color.b.into()),
-                    n(a.x),
-                    n(a.y),
-                    n(b.x),
-                    n(b.y),
-                    n(c.x),
-                    n(c.y),
-                    n(d.x),
-                    n(d.y),
+                    "{} rg\n{} m\n{} l\n{} l\n{} l\nh f\n",
+                    rgb(*color),
+                    xy(a),
+                    xy(b),
+                    xy(c),
+                    xy(d),
                 ));
             }
             Shape::Stroke {
@@ -151,18 +322,45 @@ pub fn appearance(annotation: &Annotation) -> Option<AppearanceStream> {
                 color,
                 ..
             } => {
-                grow(PdfBox::from_points([from, to]).inflate(width, width));
+                grow(PdfBox::from_points([*from, *to]).inflate(*width, *width));
                 content.push_str(&format!(
-                    "{} {} {} RG\n{} w\n{} {} m\n{} {} l\nS\n",
-                    n(color.r.into()),
-                    n(color.g.into()),
-                    n(color.b.into()),
-                    n(width),
-                    n(from.x),
-                    n(from.y),
-                    n(to.x),
-                    n(to.y),
+                    "{} RG\n{} w\n{} m\n{} l\nS\n",
+                    rgb(*color),
+                    n(*width),
+                    xy(*from),
+                    xy(*to),
                 ));
+            }
+            Shape::Path {
+                path, fill, stroke, ..
+            } => {
+                let margin = stroke.map_or(0.0, |(_, width)| width);
+                grow(PdfBox::from_points(path.points()).inflate(margin, margin));
+                if let Some(fill) = fill {
+                    content.push_str(&format!("{} rg\n", rgb(*fill)));
+                }
+                if let Some((color, width)) = stroke {
+                    // Round ends and corners.
+                    content.push_str(&format!("{} RG\n{} w\n1 J\n1 j\n", rgb(*color), n(*width)));
+                }
+                content.push_str(&format!("{} m\n", xy(path.start)));
+                for segment in &path.segments {
+                    match *segment {
+                        Segment::Line(p) => content.push_str(&format!("{} l\n", xy(p))),
+                        Segment::Curve(a, b, p) => {
+                            content.push_str(&format!("{} {} {} c\n", xy(a), xy(b), xy(p)));
+                        }
+                    }
+                }
+                if path.closed {
+                    content.push_str("h\n");
+                }
+                content.push_str(match (fill.is_some(), stroke.is_some()) {
+                    (true, true) => "B\n",
+                    (true, false) => "f\n",
+                    (false, true) => "S\n",
+                    (false, false) => "n\n",
+                });
             }
         }
     }

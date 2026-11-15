@@ -537,3 +537,125 @@ fn corpus_annotations_can_be_deleted() {
     }
     assert!(wrong.is_empty() && panics.is_empty());
 }
+
+#[test]
+fn drawings_and_shapes_are_saved_and_show() {
+    let original = fixture();
+    let mut edit = EditDoc::from_source(MAIN, 2);
+    let point = PdfPoint::new;
+    let area = |x0, y0, x1, y1| PdfBox::new(point(x0, y0), point(x1, y1));
+    let with = |kind: AnnotKind, rect: PdfBox, width: f64| {
+        let mut a = Annotation::new(kind, rect);
+        a.color = Some(RED);
+        a.line_width = width;
+        a
+    };
+    // A stroke in a right angle, a rectangle with a green inside, an
+    // ellipse, a line, and a dot.
+    // (Points every few units, as a pointer leaves them: the curve through
+    // them then keeps to the legs.)
+    let up = (0..=10).map(|i| point(100.0, 100.0 + 10.0 * f64::from(i)));
+    let right = (1..=10).map(|i| point(100.0 + 10.0 * f64::from(i), 200.0));
+    let stroke: Vec<PdfPoint> = up.chain(right).collect();
+    edit.add_annotation(
+        MAIN,
+        1,
+        with(
+            AnnotKind::Ink {
+                strokes: vec![stroke.clone()],
+            },
+            area(98.0, 98.0, 202.0, 202.0),
+            4.0,
+        ),
+    );
+    let green = Color::new(0.0, 1.0, 0.0);
+    edit.add_annotation(
+        MAIN,
+        1,
+        with(
+            AnnotKind::Square { fill: Some(green) },
+            area(300.0, 100.0, 400.0, 200.0),
+            6.0,
+        ),
+    );
+    edit.add_annotation(
+        MAIN,
+        1,
+        with(
+            AnnotKind::Circle { fill: None },
+            area(300.0, 300.0, 500.0, 400.0),
+            6.0,
+        ),
+    );
+    let (from, to) = (point(100.0, 500.0), point(300.0, 500.0));
+    edit.add_annotation(
+        MAIN,
+        1,
+        with(
+            AnnotKind::Line { from, to },
+            area(98.0, 498.0, 302.0, 502.0),
+            4.0,
+        ),
+    );
+    edit.add_annotation(
+        MAIN,
+        1,
+        with(
+            AnnotKind::Ink {
+                strokes: vec![vec![point(500.0, 600.0)]],
+            },
+            area(495.0, 595.0, 505.0, 605.0),
+            10.0,
+        ),
+    );
+    let out = write(&original, None, &edit);
+
+    let annots = imported(&out, None, 1);
+    let types: Vec<AnnotType> = annots.iter().map(Annotation::annot_type).collect();
+    assert_eq!(
+        types,
+        [
+            AnnotType::Ink,
+            AnnotType::Square,
+            AnnotType::Circle,
+            AnnotType::Line,
+            AnnotType::Ink
+        ]
+    );
+    assert_eq!(
+        annots[0].kind,
+        AnnotKind::Ink {
+            strokes: vec![stroke]
+        }
+    );
+    assert_eq!(annots[0].line_width, 4.0);
+    assert_eq!(annots[0].color, Some(RED));
+    assert_eq!(annots[1].kind, AnnotKind::Square { fill: Some(green) });
+    assert_eq!(annots[3].kind, AnnotKind::Line { from, to });
+    assert!(annots.iter().all(|a| a.appearance == Appearance::Original));
+
+    let at = |x, y| pixel(&out, None, 1, x, y, true);
+    let red = |[r, g, b]: [u8; 3]| r > 180 && g < 80 && b < 80;
+    let white = [255, 255, 255];
+    // The stroke: on its two legs, round at the corner, nothing inside.
+    assert!(red(at(100, 150)) && red(at(150, 200)), "the stroke");
+    assert_eq!(at(150, 150), white);
+    // The rectangle: its line just inside its area, green within.
+    assert!(
+        red(at(303, 150)) && red(at(350, 197)),
+        "the rectangle's line"
+    );
+    assert_eq!(at(350, 150), [0, 255, 0]);
+    assert_eq!(at(296, 150), white);
+    // The ellipse: its line at the ends of its axes, nothing in the middle
+    // or in the corners of its area.
+    assert!(red(at(303, 350)) && red(at(400, 397)), "the ellipse's line");
+    assert_eq!(at(400, 350), white);
+    assert_eq!(at(305, 305), white);
+    // The line, with round ends reaching half its width beyond.
+    assert!(red(at(200, 500)) && red(at(99, 500)), "the line");
+    assert_eq!(at(200, 505), white);
+    // The dot.
+    assert!(red(at(500, 600)) && red(at(503, 600)), "the dot");
+    assert_eq!(at(508, 600), white);
+}

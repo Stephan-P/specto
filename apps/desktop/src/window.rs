@@ -9,6 +9,7 @@ use specto_annot::{AnnotType, Color, MarkupStyle};
 use specto_doc::{Edit, Rotation, SourceId};
 use specto_geom::ViewPoint;
 use specto_render::{OpenError, PdfData};
+use specto_session::DraftKind;
 use specto_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
@@ -85,9 +86,9 @@ pub struct Inner {
     search_bar: gtk::SearchBar,
     /// The bar with the markup tools and colours.
     markup_bar: gtk::Revealer,
-    /// The colour each tool marks in (highlight, underline, strikethrough),
-    /// by name (see `markup_colors`).
-    tool_colors: Cell<[&'static str; 3]>,
+    /// The colour of each tool of the markup bar (in the order of
+    /// `TOOLS`), by name (see `markup_colors`).
+    tool_colors: Cell<[&'static str; TOOLS.len()]>,
     search_entry: gtk::SearchEntry,
     /// "3 of 17", "No matches", …
     search_status: gtk::Label,
@@ -383,6 +384,24 @@ impl Window {
                     .build(),
             );
         }
+        // The drawing tools, as pictures of what they draw: words would
+        // make the bar too wide.
+        let draw_tools = gtk::Box::builder().css_classes(["linked"]).build();
+        for (kind, tool, tip) in [
+            (DraftKind::Ink, "draw", gettext("Draw freehand")),
+            (DraftKind::Square, "rectangle", gettext("Draw rectangles")),
+            (DraftKind::Circle, "ellipse", gettext("Draw ellipses")),
+            (DraftKind::Line, "line", gettext("Draw lines")),
+        ] {
+            draw_tools.append(
+                &gtk::ToggleButton::builder()
+                    .child(&tool_icon(kind))
+                    .tooltip_text(tip)
+                    .action_name("win.markup-tool")
+                    .action_target(&tool.to_variant())
+                    .build(),
+            );
+        }
         let colors = gtk::Box::new(gtk::Orientation::Horizontal, 2);
         for (name, label, color) in markup_colors() {
             let swatch = gtk::Box::builder()
@@ -408,6 +427,7 @@ impl Window {
             .css_classes(["toolbar"])
             .build();
         markup_row.append(&tools);
+        markup_row.append(&draw_tools);
         markup_row.append(&colors);
         let markup_bar = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::SlideDown)
@@ -469,7 +489,7 @@ impl Window {
             last_toast: RefCell::default(),
             search_bar,
             markup_bar,
-            tool_colors: Cell::new(["yellow", "red", "red"]),
+            tool_colors: Cell::new(["yellow", "red", "red", "red", "red", "red", "red"]),
             search_entry,
             search_status,
             undo_section,
@@ -501,6 +521,12 @@ impl Window {
         this.0.canvas.connect_picked(move || {
             if let Some(inner) = weak.upgrade() {
                 Window(inner).show_markup_color();
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_drawn(move || {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).annotate(|_| true);
             }
         });
         let weak = Rc::downgrade(&this.0);
@@ -1697,7 +1723,7 @@ impl Window {
     /// Marks the selected text: a highlight, or a line under or through
     /// it, in that tool's colour. Returns whether there was text to mark.
     fn mark(&self, style: MarkupStyle) -> bool {
-        let color = color_named(self.0.tool_colors.get()[tool_index(style)]);
+        let color = color_named(self.0.tool_colors.get()[tool_index(Tool::Mark(style))]);
         self.annotate(|d| d.mark_selection(style, color))
     }
 
@@ -1709,18 +1735,33 @@ impl Window {
     }
 
     /// The tool that is pressed in on the markup bar, if any.
-    fn markup_tool(&self) -> Option<MarkupStyle> {
+    fn markup_tool(&self) -> Option<Tool> {
         let state = self.0.window.action_state("markup-tool")?;
         tool_named(state.str()?)
     }
 
     /// Presses a tool of the markup bar in (or none), and shows its colour.
-    fn set_markup_tool(&self, tool: Option<MarkupStyle>) {
+    fn set_markup_tool(&self, tool: Option<Tool>) {
         let name = tool.map_or("none", tool_name);
         self.0
             .window
             .change_action_state("markup-tool", &name.to_variant());
         self.show_markup_color();
+        self.set_draw_tool();
+    }
+
+    /// Tells the page view what drags do: draw, with a drawing tool pressed
+    /// in (in its colour), else select text.
+    fn set_draw_tool(&self) {
+        let draw = match self.markup_tool() {
+            Some(tool @ Tool::Draw(kind)) => {
+                let color = color_named(self.0.tool_colors.get()[tool_index(tool)]);
+                let width = if kind == DraftKind::Ink { 2.0 } else { 1.5 };
+                Some((kind, color, width))
+            }
+            _ => None,
+        };
+        self.0.canvas.set_draw_tool(draw);
     }
 
     /// Shows, on the markup bar, the colour of the picked annotation if it
@@ -1739,7 +1780,7 @@ impl Window {
                     .find(|(_, _, known)| *known == c)
                     .map_or("other", |(name, _, _)| name)
             });
-        let tool = self.markup_tool().unwrap_or(MarkupStyle::Highlight);
+        let tool = self.markup_tool().unwrap_or(HIGHLIGHTER);
         let name = picked.unwrap_or(inner.tool_colors.get()[tool_index(tool)]);
         inner
             .window
@@ -1772,10 +1813,11 @@ impl Window {
                 ));
             }
         } else {
-            let tool = self.markup_tool().unwrap_or(MarkupStyle::Highlight);
+            let tool = self.markup_tool().unwrap_or(HIGHLIGHTER);
             let mut colors = inner.tool_colors.get();
             colors[tool_index(tool)] = name;
             inner.tool_colors.set(colors);
+            self.set_draw_tool();
         }
         self.show_markup_color();
     }
@@ -1783,8 +1825,8 @@ impl Window {
     /// Text was selected with the pointer: a tool that is pressed in marks
     /// it.
     fn selected(&self) {
-        if let Some(tool) = self.markup_tool() {
-            self.mark(tool);
+        if let Some(Tool::Mark(style)) = self.markup_tool() {
+            self.mark(style);
         }
     }
 
@@ -2589,8 +2631,8 @@ impl Window {
                 let tool = tool_named(&name).filter(|_| current.as_deref() != Some(&name));
                 w.set_markup_tool(tool);
                 // What is selected already is marked at once.
-                if let Some(tool) = tool {
-                    w.mark(tool);
+                if let Some(Tool::Mark(style)) = tool {
+                    w.mark(style);
                 }
             })
             .change_state(|_, action, state| {
@@ -2792,7 +2834,7 @@ thread_local! {
 /// style class of the swatch), what a tooltip calls it, and the colour.
 /// Light ones for highlighting first, then a strong red, which is what
 /// lines under and through text start with, as in Preview.
-fn markup_colors() -> [(&'static str, String, Color); 6] {
+fn markup_colors() -> [(&'static str, String, Color); 7] {
     [
         ("yellow", gettext("Yellow"), Color::new(1.0, 0.92, 0.23)),
         ("green", gettext("Green"), Color::new(0.56, 0.94, 0.64)),
@@ -2800,6 +2842,7 @@ fn markup_colors() -> [(&'static str, String, Color); 6] {
         ("pink", gettext("Pink"), Color::new(0.97, 0.66, 0.82)),
         ("purple", gettext("Purple"), Color::new(0.86, 0.54, 0.87)),
         ("red", gettext("Red"), Color::new(0.88, 0.11, 0.14)),
+        ("black", gettext("Black"), Color::new(0.14, 0.14, 0.14)),
     ]
 }
 
@@ -2812,31 +2855,88 @@ fn color_named(name: &str) -> Color {
         .map_or(colors[0].2, |(_, _, c)| *c)
 }
 
+/// A picture of what a drawing tool draws, for its button: there are no
+/// stock icons for these. Drawn in the button's text colour, so it follows
+/// the light and the dark style.
+fn tool_icon(kind: DraftKind) -> gtk::DrawingArea {
+    let icon = gtk::DrawingArea::builder()
+        .content_width(16)
+        .content_height(16)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::Center)
+        .build();
+    icon.set_draw_func(move |area, cr, width, height| {
+        let color = area.color();
+        cr.set_source_rgba(
+            color.red().into(),
+            color.green().into(),
+            color.blue().into(),
+            color.alpha().into(),
+        );
+        cr.set_line_width(1.5);
+        cr.set_line_cap(gtk::cairo::LineCap::Round);
+        cr.set_line_join(gtk::cairo::LineJoin::Round);
+        // In a square of 16, whatever size the button gives.
+        cr.scale(f64::from(width) / 16.0, f64::from(height) / 16.0);
+        match kind {
+            // A stroke as of a pen: a wave.
+            DraftKind::Ink => {
+                cr.move_to(1.5, 11.0);
+                cr.curve_to(4.0, 1.0, 7.0, 1.0, 8.0, 8.0);
+                cr.curve_to(9.0, 15.0, 12.0, 15.0, 14.5, 5.0);
+            }
+            DraftKind::Square => cr.rectangle(1.75, 3.25, 12.5, 9.5),
+            DraftKind::Circle => {
+                let _ = cr.save();
+                cr.translate(8.0, 8.0);
+                cr.scale(6.25, 4.75);
+                cr.arc(0.0, 0.0, 1.0, 0.0, std::f64::consts::TAU);
+                let _ = cr.restore();
+            }
+            DraftKind::Line => {
+                cr.move_to(2.5, 13.5);
+                cr.line_to(13.5, 2.5);
+            }
+        }
+        let _ = cr.stroke();
+    });
+    icon
+}
+
+/// A tool of the markup bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tool {
+    /// Marks text as it is selected.
+    Mark(MarkupStyle),
+    /// Draws where the pointer is dragged.
+    Draw(DraftKind),
+}
+
+/// The tool whose colour the bar shows while none is pressed in.
+const HIGHLIGHTER: Tool = Tool::Mark(MarkupStyle::Highlight);
+
 /// The markup bar's tools, as the `markup-tool` action names them.
-fn tool_name(tool: MarkupStyle) -> &'static str {
-    match tool {
-        MarkupStyle::Highlight => "highlight",
-        MarkupStyle::Underline | MarkupStyle::Squiggly => "underline",
-        MarkupStyle::StrikeOut => "strike-out",
-    }
+const TOOLS: [(&str, Tool); 7] = [
+    ("highlight", Tool::Mark(MarkupStyle::Highlight)),
+    ("underline", Tool::Mark(MarkupStyle::Underline)),
+    ("strike-out", Tool::Mark(MarkupStyle::StrikeOut)),
+    ("draw", Tool::Draw(DraftKind::Ink)),
+    ("rectangle", Tool::Draw(DraftKind::Square)),
+    ("ellipse", Tool::Draw(DraftKind::Circle)),
+    ("line", Tool::Draw(DraftKind::Line)),
+];
+
+/// Where a tool is in `TOOLS` (and its colour in `Inner::tool_colors`).
+fn tool_index(tool: Tool) -> usize {
+    TOOLS.iter().position(|(_, t)| *t == tool).unwrap_or(0)
 }
 
-fn tool_named(name: &str) -> Option<MarkupStyle> {
-    match name {
-        "highlight" => Some(MarkupStyle::Highlight),
-        "underline" => Some(MarkupStyle::Underline),
-        "strike-out" => Some(MarkupStyle::StrikeOut),
-        _ => None,
-    }
+fn tool_name(tool: Tool) -> &'static str {
+    TOOLS[tool_index(tool)].0
 }
 
-/// Where a tool's colour is in `Inner::tool_colors`.
-fn tool_index(tool: MarkupStyle) -> usize {
-    match tool {
-        MarkupStyle::Highlight => 0,
-        MarkupStyle::Underline | MarkupStyle::Squiggly => 1,
-        MarkupStyle::StrikeOut => 2,
-    }
+fn tool_named(name: &str) -> Option<Tool> {
+    TOOLS.iter().find(|(n, _)| *n == name).map(|(_, t)| *t)
 }
 
 /// The app's own styles: the colour swatches of the markup bar. Loaded
@@ -2972,6 +3072,10 @@ fn undo_label(edit: Edit) -> String {
         Edit::AddAnnotation(AnnotType::Highlight) => gettext("Undo Highlight"),
         Edit::AddAnnotation(AnnotType::Underline) => gettext("Undo Underline"),
         Edit::AddAnnotation(AnnotType::StrikeOut) => gettext("Undo Strikethrough"),
+        Edit::AddAnnotation(AnnotType::Ink) => gettext("Undo Drawing"),
+        Edit::AddAnnotation(AnnotType::Square) => gettext("Undo Rectangle"),
+        Edit::AddAnnotation(AnnotType::Circle) => gettext("Undo Ellipse"),
+        Edit::AddAnnotation(AnnotType::Line) => gettext("Undo Line"),
         Edit::AddAnnotation(_) => gettext("Undo Add Annotation"),
         Edit::RemoveAnnotation(_) => gettext("Undo Delete Annotation"),
         Edit::ChangeAnnotation(_) => gettext("Undo Change Annotation"),
@@ -2994,6 +3098,10 @@ fn redo_label(edit: Edit) -> String {
         Edit::AddAnnotation(AnnotType::Highlight) => gettext("Redo Highlight"),
         Edit::AddAnnotation(AnnotType::Underline) => gettext("Redo Underline"),
         Edit::AddAnnotation(AnnotType::StrikeOut) => gettext("Redo Strikethrough"),
+        Edit::AddAnnotation(AnnotType::Ink) => gettext("Redo Drawing"),
+        Edit::AddAnnotation(AnnotType::Square) => gettext("Redo Rectangle"),
+        Edit::AddAnnotation(AnnotType::Circle) => gettext("Redo Ellipse"),
+        Edit::AddAnnotation(AnnotType::Line) => gettext("Redo Line"),
         Edit::AddAnnotation(_) => gettext("Redo Add Annotation"),
         Edit::RemoveAnnotation(_) => gettext("Redo Delete Annotation"),
         Edit::ChangeAnnotation(_) => gettext("Redo Change Annotation"),
