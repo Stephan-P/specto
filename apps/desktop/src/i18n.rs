@@ -16,15 +16,15 @@ use std::path::PathBuf;
 
 pub use gettextrs::gettext;
 
-/// The name of the message catalogues: `specto.mo`.
+/// The name of the message catalogs: `specto.mo`.
 const DOMAIN: &str = "specto";
 
-/// Tells gettext where the catalogues are. Without one for the user's
-/// language, every string stays as it is in the source.
+/// Tells gettext where the catalogs are.
 ///
-/// The locale itself is set by GTK when the application starts (gettext-rs
-/// has `setlocale` only as an unsafe function), so nothing is translated
-/// before that; nothing is shown before that either.
+/// Without one for the user's language, every string stays as it is in the source.
+///
+/// The locale itself is set by GTK when the application starts (gettext-rs has `setlocale` only as
+/// an unsafe function), so nothing is translated before that. Nothing is shown before that either.
 pub fn init() {
     let result = (|| {
         if let Some(dir) = locale_dir() {
@@ -39,10 +39,10 @@ pub fn init() {
     }
 }
 
-/// Where the catalogues are: `share/locale` next to the `bin` the program
-/// is in, which fits `/usr`, a Flatpak's `/app` and Homebrew alike. `None`
-/// (gettext's own default) when there is no such directory, as in a build
-/// tree.
+/// Where the catalogs are: `share/locale` next to the `bin` the program is in, which fits `/usr`, a
+/// Flatpak's `/app` and Homebrew alike.
+///
+/// `None` (gettext's own default) when there is no such directory, as in a build tree.
 fn locale_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?.parent()?.join("share/locale");
@@ -54,11 +54,10 @@ pub fn gettext_f(msgid: &str, args: &[(&str, &dyn Display)]) -> String {
     fill(gettext(msgid), args)
 }
 
-/// Translates a text that depends on a number, choosing the form for `n`,
-/// and fills in `{n}` and the other placeholders.
+/// Translates a text that depends on a number, choosing the form for `n`, and fills in `{n}` and
+/// the other placeholders.
 pub fn ngettext_f(one: &str, many: &str, n: usize, args: &[(&str, &dyn Display)]) -> String {
-    // Plural forms depend on the last digits at most, which this keeps for
-    // numbers beyond u32.
+    // Plural forms depend on the last digits at most, which this keeps for numbers beyond u32.
     let count = u32::try_from(n).unwrap_or(1_000_000 + (n % 1_000_000) as u32);
     let text = fill(gettextrs::ngettext(one, many, count), args);
     text.replace("{n}", &n.to_string())

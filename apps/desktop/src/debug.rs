@@ -1,7 +1,7 @@
 //! Test hooks, only registered with `SPECTO_DEBUG=1`.
 //!
-//! Window actions for driving the app from outside (see
-//! `apps/desktop/test-ui/check.py`), called over D-Bus:
+//! Window actions for driving the app from outside (see `apps/desktop/test-ui/check.py`), called
+//! over D-Bus:
 //!
 //! - `win.debug-state(path)`: writes the window's state as JSON
 //! - `win.debug-screenshot(path)`: saves the window at device resolution,
@@ -23,12 +23,12 @@ pub fn enabled() -> bool {
     std::env::var_os("SPECTO_DEBUG").is_some()
 }
 
-/// Saves `window` at device resolution, so HiDPI sharpness shows: as PPM if
-/// `path` ends in `.ppm`, otherwise as PNG.
+/// Saves `window` at device resolution, so HiDPI sharpness shows: as PPM if `path` ends in `.ppm`,
+/// otherwise as PNG.
 ///
-/// `WidgetPaintable` doesn't draw the widget; it reuses the render node of
-/// the last frame, which any `queue_draw` in the window (a tile arriving)
-/// discards. So this requests a frame and saves right after it's painted.
+/// `WidgetPaintable` doesn't draw the widget. It reuses the render node of the last frame, which
+/// any `queue_draw` in the window (a tile arriving) discards. So this requests a frame and saves
+/// right after it's painted.
 pub fn screenshot(window: &gtk::Widget, path: &str) {
     let Some(clock) = window.frame_clock() else {
         return eprintln!("debug-screenshot: window not shown");
@@ -52,7 +52,7 @@ pub fn screenshot(window: &gtk::Widget, path: &str) {
     window.queue_draw();
 }
 
-/// Saves the screenshot; false if the window drew nothing.
+/// Saves the screenshot, or returns false if the window drew nothing.
 fn save_screenshot(window: &gtk::Widget, path: &str) -> bool {
     let scale = window
         .native()
@@ -67,8 +67,8 @@ fn save_screenshot(window: &gtk::Widget, path: &str) -> bool {
         return false;
     };
     let texture = renderer.render_texture(&node, None);
-    // Written under another name and renamed, so a test waiting for the
-    // file never reads it half-written.
+    // Written under another name and renamed, so a test waiting for the file never reads it
+    // half-written.
     let part = format!("{path}.part");
     let result = if path.ends_with(".ppm") {
         std::fs::write(&part, ppm(&texture)).map_err(|e| e.to_string())

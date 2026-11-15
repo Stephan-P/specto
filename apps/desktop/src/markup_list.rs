@@ -1,5 +1,5 @@
-//! The list of a document's markup in the sidebar: every annotation with
-//! what it is, its text and its page. Picking a row shows the annotation.
+//! The list of a document's markup in the sidebar: every annotation with what it is, its text and
+//! its page. Picking a row shows the annotation.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -71,8 +71,7 @@ pub struct MarkupList {
 }
 
 impl MarkupList {
-    /// `on_activate` is called with the annotation of the row the user
-    /// picks.
+    /// `on_activate` is called with the annotation of the row the user picks.
     pub fn new(on_activate: impl Fn((usize, AnnotId)) + 'static) -> Self {
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::Single)
@@ -138,8 +137,8 @@ impl MarkupList {
     }
 }
 
-/// A row: a dot in the annotation's colour, its text (or what it is, if it
-/// has none) over what it is, and its page.
+/// A row: a dot in the annotation's color, its text (or what it is, if it has none) over what it
+/// is, and its page.
 fn row(entry: &Entry) -> gtk::ListBoxRow {
     let dot = gtk::DrawingArea::builder()
         .content_width(10)
@@ -149,7 +148,7 @@ fn row(entry: &Entry) -> gtk::ListBoxRow {
         .build();
     let color = entry.color;
     dot.set_draw_func(move |area, cr, width, height| {
-        // Without a colour of its own, a ring in the text colour.
+        // Without a color of its own, a ring in the text color.
         let (w, h) = (f64::from(width), f64::from(height));
         cr.arc(
             w / 2.0,

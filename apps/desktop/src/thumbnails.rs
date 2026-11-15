@@ -1,12 +1,11 @@
 //! The thumbnail sidebar: a `GtkListView` of pages, so only visible rows exist.
 //!
-//! Several thumbnails can be selected (click, Shift+click, *Primary*+click),
-//! for editing them together. Selecting a single one goes to its page, and
-//! a single selection follows the current page; a selection of several
-//! stays until the user changes it.
+//! Several thumbnails can be selected (click, Shift+click, *Primary*+click), for editing them
+//! together. Selecting a single one goes to its page, and a single selection follows the current
+//! page. A selection of several stays until the user changes it.
 //!
-//! Thumbnails draw the viewer's placeholder tiles from the shared cache, so
-//! each page is rendered once for both the sidebar and the canvas.
+//! Thumbnails draw the viewer's placeholder tiles from the shared cache, so each page is rendered
+//! once for both the sidebar and the canvas.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -76,8 +75,8 @@ mod imp {
             let texture = key.and_then(|key| d.cache.get(&key));
             crate::canvas::draw_page(snapshot, &rect, overlay, |snapshot| {
                 if let Some(texture) = texture {
-                    // Not `append_scaled_texture`: GSK renders that at logical
-                    // resolution on HiDPI surfaces (see canvas.rs).
+                    // Not `append_scaled_texture`: GSK renders that at logical resolution on HiDPI
+                    // surfaces (see canvas.rs).
                     snapshot.append_texture(texture, &rect);
                 }
             });
@@ -117,17 +116,16 @@ impl Thumbnail {
     }
 }
 
-/// What a thumbnail drag carries: the document it's from (as an address,
-/// only compared), the positions of the pages dragged (to move them within
-/// it) and the pages themselves (to copy them into another document).
+/// What a thumbnail drag carries: the document it's from (as an address, only compared), the
+/// positions of the pages dragged (to move them within it) and the pages themselves (to copy them
+/// into another document).
 struct DraggedPages {
     document: usize,
     pages: Vec<usize>,
     bundle: PageBundle,
 }
 
-/// Distance from the top or bottom edge, in pixels, within which a drag
-/// scrolls the sidebar.
+/// Distance from the top or bottom edge, in pixels, within which a drag scrolls the sidebar.
 const AUTOSCROLL_EDGE: f64 = 40.0;
 
 /// The sidebar for one document.
@@ -135,7 +133,7 @@ pub struct Sidebar {
     pub widget: gtk::Overlay,
     scrolled: gtk::ScrolledWindow,
     list: gtk::ListView,
-    /// One item per page; the items only stand for positions.
+    /// One item per page. The items only stand for positions.
     model: gtk::StringList,
     document: SharedDocument,
     selection: gtk::MultiSelection,
@@ -145,11 +143,10 @@ pub struct Sidebar {
 }
 
 impl Sidebar {
-    /// `on_activate` is called with a page index when the user picks a
-    /// thumbnail; `on_move` with the pages dragged and the position they
-    /// were dropped before (counted before the move); `on_files` and
-    /// `on_pages` with files, or pages of another document, dropped and the
-    /// position they were dropped before.
+    /// `on_activate` is called with a page index when the user picks a thumbnail, `on_move` with
+    /// the pages dragged and the position they were dropped before (counted before the move), and
+    /// `on_files` and `on_pages` with files, or pages of another document, dropped and the position
+    /// they were dropped before.
     pub fn new(
         document: SharedDocument,
         on_activate: impl Fn(usize) + 'static,
@@ -259,8 +256,8 @@ impl Sidebar {
         }
     }
 
-    /// Does what dropping `pages` at window height `y` does, for tests:
-    /// the virtual pointer of the headless checks can't drag reliably.
+    /// Does what dropping `pages` at window height `y` does, for tests: the virtual pointer of the
+    /// headless checks can't drag reliably.
     pub fn drop_at(&self, pages: Vec<usize>, window: &impl IsA<gtk::Widget>, y: f64) {
         let Some(y) = window
             .compute_point(&self.list, &graphene::Point::new(0.0, y as f32))
@@ -274,8 +271,7 @@ impl Sidebar {
         }
     }
 
-    /// Does what dropping pages of another document at window height `y`
-    /// does, for tests.
+    /// Does what dropping pages of another document at window height `y` does, for tests.
     pub fn drop_bundle_at(&self, bundle: PageBundle, window: &impl IsA<gtk::Widget>, y: f64) {
         let y = window
             .compute_point(&self.list, &graphene::Point::new(0.0, y as f32))
@@ -296,9 +292,10 @@ impl Sidebar {
         }
     }
 
-    /// Shows the document's pages again after an edit: every row is bound
-    /// anew, so thumbnails get their new size, rotation and label. Then
-    /// `selected` are selected (none: the current page will be, through
+    /// Shows the document's pages again after an edit: every row is bound anew, so thumbnails get
+    /// their new size, rotation and label.
+    ///
+    /// Then `selected` are selected (none: the current page will be, through
     /// [`follow`](Self::follow)).
     pub fn pages_changed(&self, selected: &[usize]) {
         let count = self.document.borrow().viewer.page_count();
@@ -346,8 +343,8 @@ impl Sidebar {
         widget.is_ancestor(&self.widget)
     }
 
-    /// Selects `page` and scrolls it into view, without reporting it back,
-    /// unless several pages are selected: that selection stays.
+    /// Selects `page` and scrolls it into view, without reporting it back, unless several pages are
+    /// selected: that selection stays.
     pub fn follow(&self, page: usize) {
         let selected = self.selected();
         if selected.len() > 1 || selected == [page] {
@@ -402,10 +399,9 @@ type Move = (Vec<usize>, usize);
 
 /// A drop of thumbnails waiting to be carried out, and what does it.
 ///
-/// The drop target only records the move; the drag source makes it once
-/// the drag has ended. Moving rebuilds the list, and doing that while the
-/// compositor was still finishing the drag made the next drag fail to
-/// start (seen with Mutter).
+/// The drop target only records the move. The drag source makes it once the drag has ended. Moving
+/// rebuilds the list, and doing that while the compositor was still finishing the drag made the
+/// next drag fail to start (seen with Mutter).
 #[derive(Clone)]
 struct Drops {
     pending: Rc<Cell<Option<Move>>>,
@@ -416,8 +412,8 @@ struct Drops {
     on_pages: Rc<dyn Fn(PageBundle, usize)>,
 }
 
-/// Dragging a thumbnail drags the selected pages if it's one of them,
-/// else just its page (which becomes the selection).
+/// Dragging a thumbnail drags the selected pages if it's one of them, else just its page (which
+/// becomes the selection).
 fn drag_source(
     item: &gtk::ListItem,
     thumbnail: &Thumbnail,
@@ -490,8 +486,7 @@ impl DropIndicator {
             .can_target(false)
             .visible(false)
             .build();
-        // Drawn in the accent colour (the "accent" class sets it as the
-        // widget's colour).
+        // Drawn in the accent color (the "accent" class sets it as the widget's color).
         line.add_css_class("accent");
         line.set_draw_func(|area, cr, w, h| {
             let c = area.color();
@@ -572,8 +567,8 @@ fn rows(list: &gtk::ListView) -> Vec<(usize, graphene::Rect)> {
     out
 }
 
-/// Where a drop at `y` (in the list) would put pages: before which
-/// position, and the boundary between rows to show it at.
+/// Where a drop at `y` (in the list) would put pages: before which position, and the boundary
+/// between rows to show it at.
 fn drop_place(list: &gtk::ListView, y: f64) -> Option<(usize, f64)> {
     let rows = rows(list);
     let y = y as f32;
@@ -590,8 +585,7 @@ fn has_files(drop: &gdk::Drop) -> bool {
     drop.formats().contains_type(gdk::FileList::static_type())
 }
 
-/// The thumbnails `drop` brings, if any: what the drag in this process
-/// carries.
+/// The thumbnails `drop` brings, if any: what the drag in this process carries.
 fn dragged(drop: &gdk::Drop) -> Option<glib::BoxedAnyObject> {
     drop.drag()?
         .content()
@@ -608,9 +602,8 @@ fn from_document(object: &glib::BoxedAnyObject, document: usize) -> bool {
         .is_ok_and(|d| d.document == document)
 }
 
-/// Takes thumbnails or files dropped on the list: shows where they'd go
-/// while dragging, scrolls near the edges, and reports the move or the
-/// files.
+/// Takes thumbnails or files dropped on the list: shows where they'd go while dragging, scrolls
+/// near the edges, and reports the move or the files.
 fn drop_target(
     list: &gtk::ListView,
     scrolled: &gtk::ScrolledWindow,
@@ -701,8 +694,8 @@ fn drop_target(
     target
 }
 
-/// How fast to scroll (pixels per frame, negative up) with the pointer at
-/// `y` in a view `height` high.
+/// How fast to scroll (pixels per frame, negative up) with the pointer at `y` in a view `height`
+/// high.
 fn edge_speed(y: f64, height: f64) -> f64 {
     let from_bottom = height - y;
     if y < AUTOSCROLL_EDGE {

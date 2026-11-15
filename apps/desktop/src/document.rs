@@ -1,11 +1,9 @@
-//! An open document: the session shared with the Android app, plus the
-//! tile cache of textures, used by the canvas and the thumbnail sidebar of
-//! one window.
+//! An open document: the session shared with the Android app, plus the tile cache of textures, used
+//! by the canvas and the thumbnail sidebar of one window.
 //!
-//! What a document is (its files, the pages as edited, the viewer, text,
-//! selection and search) is `specto_session::Session`, which a [`Document`]
-//! dereferences to. Here is what belongs to GTK: the textures, which tiles
-//! are requested for the canvas and the sidebar, and how the search
+//! What a document is (its files, the pages as edited, the viewer, text, selection and search) is
+//! `specto_session::Session`, which a [`Document`] dereferences to. Here is what belongs to GTK:
+//! the textures, which tiles are requested for the canvas and the sidebar, and how the search
 //! indexer's results get to the main loop.
 
 use std::cell::RefCell;
@@ -30,8 +28,9 @@ const CACHE_BUDGET: usize = 384 << 20;
 
 pub type SharedDocument = Rc<RefCell<Document>>;
 
-/// One scheduler (and worker pool) for the whole app; each document gets a
-/// client of it, so windows don't each start a pool or cancel each other's
+/// One scheduler (and worker pool) for the whole app.
+///
+/// Each document gets a client of it, so windows don't each start a pool or cancel each other's
 /// requests.
 fn scheduler() -> &'static Scheduler {
     static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
@@ -43,20 +42,21 @@ fn scheduler() -> &'static Scheduler {
 
 pub struct Document {
     pub name: String,
-    /// The document itself. Fields and methods of it are reached through
-    /// the document (`d.viewer`, `d.search(…)`); name it where the borrow
-    /// checker has to see that it is apart from the cache.
+    /// The document itself.
+    ///
+    /// Fields and methods of it are reached through the document (`d.viewer`, `d.search(...)`).
+    /// Name it where the borrow checker has to see that it is apart from the cache.
     pub session: Session,
     pub cache: TileCache<gdk::Texture>,
-    /// Placeholder levels in use: those tiles double as thumbnails, so the
-    /// cache evicts them only after everything else.
+    /// Placeholder levels in use: those tiles double as thumbnails, so the cache evicts them only
+    /// after everything else.
     placeholder_levels: Arc<RwLock<BTreeSet<i32>>>,
     client: Client,
     /// Requests from the canvas's last frame, highest priority first.
     canvas_requests: Vec<TileKey>,
     /// Pages whose thumbnails are currently on screen in the sidebar.
     pub thumbnails_shown: BTreeSet<usize>,
-    /// Tiles that failed to render; never requested again.
+    /// Tiles that failed to render, never requested again.
     failed: HashSet<TileKey>,
 }
 
@@ -75,9 +75,10 @@ impl DerefMut for Document {
 }
 
 impl Document {
-    /// Parses `data` and starts render workers. `wake` is called from a worker
-    /// thread when tiles are ready; it should get the main loop to call
-    /// [`receive_tiles`](Self::receive_tiles).
+    /// Parses `data` and starts render workers.
+    ///
+    /// `wake` is called from a worker thread when tiles are ready. It should get the main loop to
+    /// call [`receive_tiles`](Self::receive_tiles).
     pub fn open(
         name: String,
         data: PdfData,
@@ -106,8 +107,9 @@ impl Document {
         Ok(doc)
     }
 
-    /// Opens another file to insert pages from. Returns its id and page
-    /// count; its pages are in the document once inserted.
+    /// Opens another file to insert pages from.
+    ///
+    /// Returns its id and page count. Its pages are in the document once inserted.
     pub fn add_source(
         &mut self,
         data: PdfData,
@@ -116,8 +118,8 @@ impl Document {
         self.session.add_source(scheduler(), data, password)
     }
 
-    /// Whether page `i` is slow to render (huge images, or a render that
-    /// took longer than the scheduler's `slow_after`).
+    /// Whether page `i` is slow to render (huge images, or a render that took longer than the
+    /// scheduler's `slow_after`).
     pub fn is_expensive(&self, i: usize) -> bool {
         self.viewer
             .pages()
@@ -133,6 +135,7 @@ impl Document {
     }
 
     /// Sends the combined request list: canvas first, then sidebar thumbnails.
+    ///
     /// (`Scheduler::request` replaces the whole queue, so it must see both.)
     pub fn flush_requests(&self) {
         let thumbnails = self
@@ -171,10 +174,10 @@ impl Document {
         any
     }
 
-    /// Starts indexing the document's pages not indexed yet in a background
-    /// thread, from position `from` onwards and then from the start, unless
-    /// that is already running or done. The receiver gets each page's
-    /// search text; pass them to `indexed`.
+    /// Starts indexing the document's pages not indexed yet in a background thread, from position
+    /// `from` onwards and then from the start, unless that is already running or done.
+    ///
+    /// The receiver gets each page's search text, to pass to `indexed`.
     pub fn start_indexing(&mut self, from: usize) -> Option<async_channel::Receiver<Indexed>> {
         let (tx, rx) = async_channel::unbounded();
         self.session
@@ -186,38 +189,34 @@ impl Document {
     //
     // The session's edits, each followed by what the tiles need.
 
-    /// Turns the pages at `which` clockwise by `by`. Returns whether
-    /// anything changed.
+    /// Turns the pages at `which` clockwise by `by`. Returns whether anything changed.
     pub fn rotate(&mut self, which: &[usize], by: Rotation) -> bool {
         self.session.rotate(which, by) && self.pages_changed()
     }
 
-    /// Removes the pages at `which` (not all of them). Returns whether
-    /// anything changed.
+    /// Removes the pages at `which` (not all of them). Returns whether anything changed.
     pub fn delete(&mut self, which: &[usize]) -> bool {
         self.session.delete(which) && self.pages_changed()
     }
 
-    /// Moves the pages at `which` before position `to`. Returns where they
-    /// ended up.
+    /// Moves the pages at `which` before position `to`. Returns where they ended up.
     pub fn move_pages(&mut self, which: &[usize], to: usize) -> Option<Range<usize>> {
         let range = self.session.move_pages(which, to)?;
         self.pages_changed();
         Some(range)
     }
 
-    /// Inserts all pages of each of `sources` (from
-    /// [`add_source`](Self::add_source)), in order, before position `at`,
-    /// as one edit. Returns where they ended up.
+    /// Inserts all pages of each of `sources` (from [`add_source`](Self::add_source)), in order,
+    /// before position `at`, as one edit. Returns where they ended up.
     pub fn insert(&mut self, at: usize, sources: &[SourceId]) -> Option<Range<usize>> {
         let range = self.session.insert(at, sources)?;
         self.pages_changed();
         Some(range)
     }
 
-    /// Inserts the pages of `bundle` (from another document) before
-    /// position `at`, as one edit. Returns where they ended up, or the
-    /// error opening one of their files.
+    /// Inserts the pages of `bundle` (from another document) before position `at`, as one edit.
+    ///
+    /// Returns where they ended up, or the error opening one of their files.
     pub fn insert_bundle(
         &mut self,
         at: usize,
@@ -230,9 +229,9 @@ impl Document {
         Ok(range)
     }
 
-    /// Deletes the annotation that is picked (see the session's function
-    /// of this name). Deleting one of the file's changes what its page is
-    /// rendered from.
+    /// Deletes the annotation that is picked (see the session's function of this name).
+    ///
+    /// Deleting one of the file's changes what its page is rendered from.
     pub fn remove_picked_annotation(&mut self) -> Result<bool, specto_write::WriteError> {
         let removed = self.session.remove_picked_annotation(scheduler())?;
         if removed {
@@ -241,8 +240,7 @@ impl Document {
         Ok(removed)
     }
 
-    /// Gives the picked annotation another colour (see the session's
-    /// function of this name).
+    /// Gives the picked annotation another color (see the session's function of this name).
     pub fn recolor_picked_annotation(
         &mut self,
         color: specto_annot::Color,
@@ -254,9 +252,8 @@ impl Document {
         Ok(changed)
     }
 
-    /// Starts moving or resizing the annotation at `p` (see the session's
-    /// function of this name). `false` also if its page can't be shown
-    /// without it.
+    /// Starts moving or resizing the annotation at `p` (see the session's function of this name).
+    /// `false` also if its page can't be shown without it.
     pub fn begin_adjust(&mut self, p: specto_geom::ViewPoint) -> bool {
         let began = self.session.begin_adjust(scheduler(), p).unwrap_or(false);
         if began {
@@ -265,7 +262,7 @@ impl Document {
         began
     }
 
-    /// Ends moving or resizing; returns whether the annotation changed.
+    /// Ends moving or resizing and returns whether the annotation changed.
     pub fn finish_adjust(&mut self) -> bool {
         let changed = self.session.finish_adjust(scheduler());
         self.pages_changed();
@@ -295,8 +292,7 @@ impl Document {
         added
     }
 
-    /// Puts a picture on the page at `p` (see the session's function of
-    /// this name).
+    /// Puts a picture on the page at `p` (see the session's function of this name).
     pub fn add_stamp(
         &mut self,
         p: specto_geom::ViewPoint,
@@ -310,8 +306,7 @@ impl Document {
         added
     }
 
-    /// Starts typing into the picked text box (see the session's function
-    /// of this name).
+    /// Starts typing into the picked text box (see the session's function of this name).
     pub fn begin_text_edit(&mut self) -> Option<(specto_session::TextBoxPlace, String)> {
         let editing = self.session.begin_text_edit(scheduler());
         if editing.is_some() {
@@ -320,8 +315,7 @@ impl Document {
         editing
     }
 
-    /// Ends typing into the picked text box, with its new text or without
-    /// a change.
+    /// Ends typing into the picked text box, with its new text or without a change.
     pub fn end_text_edit(
         &mut self,
         text: Option<(&str, (f64, specto_annot::TextFont))>,
@@ -331,8 +325,7 @@ impl Document {
         changed
     }
 
-    /// Sets the picked text box in another size and font (see the
-    /// session's function of this name).
+    /// Sets the picked text box in another size and font (see the session's function of this name).
     pub fn restyle_picked_text_box(
         &mut self,
         style: (f64, specto_annot::TextFont),
@@ -361,8 +354,7 @@ impl Document {
         added
     }
 
-    /// Gives the picked annotation another text (see the session's
-    /// function of this name).
+    /// Gives the picked annotation another text (see the session's function of this name).
     pub fn set_picked_text(&mut self, text: &str) -> Result<bool, specto_write::WriteError> {
         let changed = self.session.set_picked_text(scheduler(), text)?;
         if changed {

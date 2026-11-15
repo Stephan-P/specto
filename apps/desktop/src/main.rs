@@ -1,6 +1,6 @@
-//! Specto, the desktop app (GTK4 + libadwaita).
+//! Specto, the desktop app (GTK 4 and libadwaita).
 //!
-//! `specto-gtk [FILE…]` opens each file in its own window.
+//! `specto-gtk [FILE]...` opens each file in its own window.
 
 mod canvas;
 mod debug;
@@ -20,9 +20,10 @@ use gtk::{gio, glib};
 use i18n::{gettext, gettext_f};
 use window::Window;
 
-/// The application ID: D-Bus name, `.desktop` file and icon name, Flatpak
-/// ID. The files in `data/` are named after it; renaming the app means
-/// changing this, those file names and their contents.
+/// The application ID: D-Bus name, `.desktop` file and icon name, Flatpak ID.
+///
+/// The files in `data/` are named after it. Renaming the app means changing this, those file names
+/// and their contents.
 pub const APP_ID: &str = "net.xfbs.specto";
 
 /// The name shown to people: window titles, the macOS menu.
@@ -82,9 +83,8 @@ fn main() -> glib::ExitCode {
             let accels: Vec<&str> = accels.iter().map(String::as_str).collect();
             app.set_accels_for_action(action, &accels);
         }
-        // macOS shows this in the system menu bar. Elsewhere the in-window
-        // header bar menus are enough (and libadwaita windows don't show
-        // a menu bar anyway).
+        // macOS shows this in the system menu bar. Elsewhere the in-window header bar menus are
+        // enough (and libadwaita windows don't show a menu bar anyway).
         if cfg!(target_os = "macos") {
             app.set_menubar(Some(&menubar()));
         }
@@ -116,7 +116,7 @@ fn main() -> glib::ExitCode {
 /// Shows the About dialog over the active window.
 fn show_about(app: &adw::Application) {
     let licence = gettext_f(
-        // Translators: {apache} and {mit} are the names of the two licences,
+        // Translators: {apache} and {mit} are the names of the two licenses,
         // which stay in English and become links.
         "Specto is licensed under either of the {apache} or the {mit}, at your option.\n\n\
          It comes with no warranty of any kind.",
@@ -159,10 +159,11 @@ fn show_about(app: &adw::Application) {
     dialog.present(app.active_window().as_ref());
 }
 
-/// On macOS, registers each `<Primary>` shortcut with `<Meta>` (Cmd) first:
-/// GTK's macOS backend maps `<Primary>` to Ctrl, and menus display the first
-/// shortcut of an action, so Cmd must come first to show as "⌘O". The Ctrl
-/// version stays as a second, undisplayed shortcut.
+/// On macOS, registers each `<Primary>` shortcut with `<Meta>` (Cmd) first: GTK's macOS backend
+/// maps `<Primary>` to Ctrl, and menus display the first shortcut of an action, so Cmd must come
+/// first to show as "⌘O".
+///
+/// The Ctrl version stays as a second, undisplayed shortcut.
 fn platform_accels(accels: &[&str]) -> Vec<String> {
     let primary: Vec<String> = accels.iter().map(|a| a.to_string()).collect();
     if !cfg!(target_os = "macos") {
@@ -177,8 +178,7 @@ fn platform_accels(accels: &[&str]) -> Vec<String> {
     out
 }
 
-/// The application menu bar (macOS only): File, Edit, View, Go, Tools and
-/// Help, like Preview.
+/// The application menu bar (macOS only): File, Edit, View, Go, Tools and Help, like Preview.
 fn menubar() -> gio::Menu {
     let quit = gettext_f("Quit {app}", &[("app", &APP_NAME)]);
     let about = gettext_f("About {app}", &[("app", &APP_NAME)]);

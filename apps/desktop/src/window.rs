@@ -80,8 +80,7 @@ pub struct Inner {
     recent_title: gtk::Label,
     recent_list: gtk::ListBox,
     sidebar: RefCell<Option<Sidebar>>,
-    /// The sidebar's pages: Thumbnails, Contents if the document has an
-    /// outline, and Markup.
+    /// The sidebar's pages: Thumbnails, Contents if the document has an outline, and Markup.
     sidebar_stack: RefCell<Option<adw::ViewStack>>,
     /// The list of the document's markup in the sidebar.
     markup_list: RefCell<Option<MarkupList>>,
@@ -89,10 +88,9 @@ pub struct Inner {
     /// The last message shown as a toast, for tests.
     last_toast: RefCell<String>,
     search_bar: gtk::SearchBar,
-    /// The bar with the markup tools and colours.
+    /// The bar with the markup tools and colors.
     markup_bar: gtk::Revealer,
-    /// The controls for how text boxes are set, on the markup bar: all of
-    /// them, and each.
+    /// The controls for how text boxes are set, on the markup bar: all of them, and each.
     text_controls: gtk::Box,
     text_font: gtk::DropDown,
     text_bold: gtk::ToggleButton,
@@ -102,24 +100,23 @@ pub struct Inner {
     text_style: Cell<(f64, TextFont)>,
     /// The controls are being set to show a style, not by the user.
     showing_text_style: Cell<bool>,
-    /// The dot on the colour button of the markup bar: the colour in use.
+    /// The dot on the color button of the markup bar: the color in use.
     color_swatch: gtk::Box,
     /// Lies over the page view, for typing text onto the page.
     page_overlay: gtk::Overlay,
     /// The list of saved signatures, under its button on the markup bar.
     signature_menu: gtk::Popover,
-    /// The signature that the next click on a page places, if one was
-    /// chosen.
+    /// The signature that the next click on a page places, if one was chosen.
     placing: RefCell<Option<Signature>>,
     /// The text field over the page, while a text box is typed into.
     typing: RefCell<Option<Typing>>,
     /// The editor for an annotation's text, while it is open.
     text_editor: RefCell<Option<gtk::Popover>>,
-    /// The colour of each tool of the markup bar (in the order of
-    /// `TOOLS`), by name (see `markup_colors`).
+    /// The color of each tool of the markup bar (in the order of `TOOLS`), by name (see
+    /// `markup_colors`).
     tool_colors: Cell<[&'static str; TOOLS.len()]>,
     search_entry: gtk::SearchEntry,
-    /// "3 of 17", "No matches", …
+    /// "3 of 17", "No matches" and the like.
     search_status: gtk::Label,
     /// Undo and Redo in the main menu, named after the edit.
     undo_section: gio::Menu,
@@ -129,8 +126,7 @@ pub struct Inner {
     close_confirmed: Cell<bool>,
     /// The "Save changes?" dialog while it's open (for tests).
     alert: RefCell<Option<adw::AlertDialog>>,
-    /// The file as it was when read or last saved, to tell changes by other
-    /// programs from our own.
+    /// The file as it was when read or last saved, to tell changes by other programs from our own.
     known: RefCell<Option<Fingerprint>>,
     /// Watches the file for changes by other programs.
     monitor: RefCell<Option<gio::FileMonitor>>,
@@ -154,8 +150,8 @@ impl Window {
             .vexpand(true)
             .build();
 
-        // Over the page view: where text is typed onto the page (see
-        // `edit_text_box`). Above it, the markup bar, added below.
+        // Over the page view: where text is typed onto the page (see `edit_text_box`). Above it,
+        // the markup bar, added below.
         let page_overlay = gtk::Overlay::new();
         page_overlay.set_child(Some(&scrolled));
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -228,8 +224,8 @@ impl Window {
                 .build(),
         );
 
-        // The main menu: saving, printing, editing and About. Also on the
-        // start page, where only About is enabled.
+        // The main menu: saving, printing, editing and About. Also on the start page, where only
+        // About is enabled.
         let undo_section = gio::Menu::new();
         let main_menu = gio::Menu::new();
         main_menu.append_section(None, &{
@@ -380,9 +376,9 @@ impl Window {
                     .build(),
             )
             .build();
-        // Not `connect_entry`: then the bar focuses the entry again once
-        // it has slid in, which selects what was typed meanwhile, and the
-        // next key replaces it. The find action focuses it right away.
+        // Not `connect_entry`: then the bar focuses the entry again once it has slid in, which
+        // selects what was typed meanwhile, and the next key replaces it. The find action focuses
+        // it right away.
         let search_toggle = gtk::ToggleButton::builder()
             .icon_name("system-search-symbolic")
             .tooltip_text(gettext_f(
@@ -397,10 +393,9 @@ impl Window {
             .build();
         header.pack_end(&search_toggle);
 
-        // The markup bar, under the header while the pencil is pressed in:
-        // what to mark text with, and in which colour. A tool that is
-        // pressed in marks every selection as it is made; the colours also
-        // recolour the annotation that is picked.
+        // The markup bar, under the header while the pencil is pressed in: what to mark text with,
+        // and in which color. A tool that is pressed in marks every selection as it is made. The
+        // colors also recolor the annotation that is picked.
         let tools = gtk::Box::builder().css_classes(["linked"]).build();
         for (label, tool, shortcut) in [
             (gettext("Highlight"), "highlight", "H"),
@@ -423,8 +418,7 @@ impl Window {
                     .build(),
             );
         }
-        // The drawing tools, as pictures of what they draw: words would
-        // make the bar too wide.
+        // The drawing tools, as pictures of what they draw: words would make the bar too wide.
         let draw_tools = gtk::Box::builder().css_classes(["linked"]).build();
         for (tool, tip) in [
             ("draw", gettext("Draw freehand")),
@@ -444,7 +438,7 @@ impl Window {
                     .build(),
             );
         }
-        // The colours, under a button that shows the one in use.
+        // The colors, under a button that shows the one in use.
         let colors = gtk::Box::new(gtk::Orientation::Horizontal, 2);
         let color_menu = gtk::Popover::builder().child(&colors).build();
         for (name, label, _) in markup_colors() {
@@ -495,8 +489,8 @@ impl Window {
             .build();
         markup_row.append(&signature_button);
         markup_row.append(&color_button);
-        // How text boxes are set: shown with the text tool, and while a
-        // text box is picked or typed into.
+        // How text boxes are set: shown with the text tool, and while a text box is picked or typed
+        // into.
         let font_names = gtk::StringList::new(&[
             &gettext("Sans-serif"),
             &gettext("Serif"),
@@ -556,10 +550,9 @@ impl Window {
             .orientation(gtk::Orientation::Vertical)
             .css_classes(["markup-bar"])
             .build();
-        // Never wider than the page view: with everything on it, the bar
-        // is wider than a small window has room for, and it mustn't push
-        // the sidebar or the page about as its controls come and go. What
-        // doesn't fit is scrolled to.
+        // Never wider than the page view: with everything on it, the bar is wider than a small
+        // window has room for, and it mustn't push the sidebar or the page about as its controls
+        // come and go. What doesn't fit is scrolled to.
         let markup_scroller = gtk::ScrolledWindow::builder()
             .child(&markup_row)
             .hscrollbar_policy(gtk::PolicyType::Automatic)
@@ -699,9 +692,9 @@ impl Window {
         let f = chosen.clone();
         this.0.text_italic.connect_toggled(move |_| f());
         this.0.text_size.connect_value_changed(move |_| chosen());
-        // The text field for typing on the page goes where its text box
-        // is, as wide as the box and as high as its text needs. (Left to
-        // itself, the overlay gives a text view no height at all.)
+        // The text field for typing on the page goes where its text box is, as wide as the box and
+        // as high as its text needs. (Left to itself, the overlay gives a text view no height at
+        // all.)
         let weak = Rc::downgrade(&this.0);
         this.0
             .page_overlay
@@ -713,8 +706,8 @@ impl Window {
                     .filter(|t| t.view.upcast_ref::<gtk::Widget>() == widget)?;
                 let (x, y, width) = typing.area.get();
                 let (_, measured, _, _) = widget.measure(gtk::Orientation::Vertical, width);
-                // At least as high as the box will be for this text: the field
-                // is slow to say so itself after its font has changed.
+                // At least as high as the box will be for this text: the field is slow to say so
+                // itself after its font has changed.
                 let buffer = typing.view.buffer();
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
                 let (size, font) = typing.style.get();
@@ -749,8 +742,7 @@ impl Window {
                 Window(inner).selected();
             }
         });
-        // Closing the bar lets go of its tool: nothing gets marked by a bar
-        // that isn't there.
+        // Closing the bar lets go of its tool: nothing gets marked by a bar that isn't there.
         let weak = Rc::downgrade(&this.0);
         this.0.markup_bar.connect_reveal_child_notify(move |bar| {
             if !bar.reveals_child()
@@ -767,9 +759,9 @@ impl Window {
         });
         this.set_document_actions_enabled(false);
 
-        // Look at the file again when coming back to the window: file
-        // monitors miss changes on some file systems, and in the Flatpak
-        // sandbox (the document portal) they miss changes made outside it.
+        // Look at the file again when coming back to the window: file monitors miss changes on some
+        // file systems, and in the Flatpak sandbox (the document portal) they miss changes made
+        // outside it.
         let weak = Rc::downgrade(&this.0);
         this.0.window.connect_is_active_notify(move |window| {
             if let Some(inner) = weak.upgrade()
@@ -779,7 +771,7 @@ impl Window {
             }
         });
 
-        // Ask about unsaved changes; remember where the user was in this file.
+        // Ask about unsaved changes, and remember where the user was in this file.
         let weak = Rc::downgrade(&this.0);
         this.0.window.connect_close_request(move |_| {
             let Some(inner) = weak.upgrade() else {
@@ -808,8 +800,8 @@ impl Window {
             }
         });
 
-        // Callbacks only hold weak references, so the GTK window owns the
-        // state and keeps it alive until it is destroyed.
+        // Callbacks only hold weak references, so the GTK window owns the state and keeps it alive
+        // until it is destroyed.
         let keep_alive = RefCell::new(Some(this.clone()));
         this.0.window.connect_destroy(move |_| {
             keep_alive.take();
@@ -864,10 +856,11 @@ impl Window {
         self.watch(&file, known);
     }
 
-    /// Opens `data` as a document, asking for a password if it needs one
-    /// (`password` is tried first). Returns the document, its tile
-    /// notifications and the password that worked; `None` if it couldn't
-    /// be opened (with a message) or the password was cancelled.
+    /// Opens `data` as a document, asking for a password if it needs one (`password` is tried
+    /// first).
+    ///
+    /// Returns the document, its tile notifications and the password that worked, or `None` if it
+    /// couldn't be opened (with a message) or the password was canceled.
     async fn open_document(
         &self,
         name: &str,
@@ -900,8 +893,7 @@ impl Window {
 
     // --- the file on disk ---------------------------------------------------
 
-    /// Starts watching `file`, as it was when read (`known`), for changes
-    /// by other programs.
+    /// Starts watching `file`, as it was when read (`known`), for changes by other programs.
     fn watch(&self, file: &gio::File, known: Option<Fingerprint>) {
         let inner = &self.0;
         inner.known.replace(known);
@@ -922,8 +914,7 @@ impl Window {
         }
     }
 
-    /// Looks at the file shortly: a save by another program comes as
-    /// several events.
+    /// Looks at the file shortly: a save by another program comes as several events.
     fn schedule_check(&self) {
         if self.0.check_pending.replace(true) {
             return;
@@ -937,9 +928,10 @@ impl Window {
         });
     }
 
-    /// Compares the file with what was read or saved: unchanged, nothing
-    /// happens; changed, it's reloaded, or with edits a banner offers to;
-    /// gone, a banner says so.
+    /// Compares the file with what was read or saved.
+    ///
+    /// Unchanged, nothing happens. Changed, it's reloaded, or with edits a banner offers to. Gone,
+    /// a banner says so.
     async fn check_disk(&self) {
         let inner = &self.0;
         inner.check_pending.set(false);
@@ -984,8 +976,7 @@ impl Window {
         }
     }
 
-    /// Whether the file changed on disk since it was read or saved (and is
-    /// still there).
+    /// Whether the file changed on disk since it was read or saved (and is still there).
     async fn changed_on_disk(&self) -> bool {
         let Some(uri) = self.0.uri.borrow().clone() else {
             return false;
@@ -994,8 +985,8 @@ impl Window {
         now.is_some() && now != *self.0.known.borrow()
     }
 
-    /// Reads the file again and shows it in place of the document, edits
-    /// discarded, at the same place.
+    /// Reads the file again and shows it in place of the document, edits discarded, at the same
+    /// place.
     async fn reload(&self) {
         let inner = &self.0;
         let (Some(uri), Some(doc)) = (inner.uri.borrow().clone(), inner.document.borrow().clone())
@@ -1052,8 +1043,7 @@ impl Window {
         }
     }
 
-    /// Asks whether to save over a file another program changed. Returns
-    /// whether to go ahead.
+    /// Asks whether to save over a file another program changed. Returns whether to go ahead.
     async fn confirm_overwrite(&self, name: &str) -> bool {
         let inner = &self.0;
         let alert = adw::AlertDialog::new(
@@ -1249,8 +1239,8 @@ impl Window {
                 "view-list-symbolic",
             );
         }
-        // Every annotation of the document. Filled when it is looked at:
-        // it reads the annotations of every page.
+        // Every annotation of the document. Filled when it is looked at: it reads the annotations
+        // of every page.
         let weak = Rc::downgrade(&self.0);
         let markup = MarkupList::new(move |(position, id)| {
             if let Some(inner) = weak.upgrade() {
@@ -1292,8 +1282,8 @@ impl Window {
         inner.canvas.grab_focus();
         self.view_changed();
 
-        // Finished tiles → cache → redraw. Not holding on to the document:
-        // once it's replaced (reloaded) and dropped, its channel closes.
+        // Finished tiles go into the cache, then a redraw. Not holding on to the document: once
+        // it's replaced (reloaded) and dropped, its channel closes.
         let weak = Rc::downgrade(&self.0);
         let weak_doc = Rc::downgrade(&document);
         drop(document);
@@ -1355,8 +1345,10 @@ impl Window {
         set_state("cover-alone", cover.to_variant());
     }
 
-    /// Opens a link from the document. Only web and mail links: a PDF
-    /// shouldn't be able to launch local files or other URI handlers.
+    /// Opens a link from the document.
+    ///
+    /// Only web and mail links: a PDF shouldn't be able to launch local files or other URI
+    /// handlers.
     fn open_uri(&self, uri: &str) {
         let scheme = uri.split(':').next().unwrap_or("").to_ascii_lowercase();
         if !matches!(scheme.as_str(), "http" | "https" | "mailto") {
@@ -1432,8 +1424,8 @@ impl Window {
             glib::Propagation::Proceed
         });
         inner.search_entry.add_controller(keys);
-        // Closing the bar (Escape, the button) ends the search; opening it
-        // again searches for what's still in the entry.
+        // Closing the bar (Escape, the button) ends the search. Opening it again searches for
+        // what's still in the entry.
         let weak = Rc::downgrade(&self.0);
         inner
             .search_bar
@@ -1453,8 +1445,8 @@ impl Window {
             });
     }
 
-    /// Searches for the entry's text, goes to the first match from the
-    /// current page on, and indexes the rest of the document if needed.
+    /// Searches for the entry's text, goes to the first match from the current page on, and indexes
+    /// the rest of the document if needed.
     fn run_search(&self) {
         let Some(doc) = self.0.document.borrow().clone() else {
             return;
@@ -1479,8 +1471,7 @@ impl Window {
         self.0.canvas.queue_draw();
     }
 
-    /// Indexes pages the current search hasn't seen yet (inserted ones),
-    /// if there is a search.
+    /// Indexes pages the current search hasn't seen yet (inserted ones), if there is a search.
     fn index_for_search(&self) {
         let Some(doc) = self.0.document.borrow().clone() else {
             return;
@@ -1499,8 +1490,9 @@ impl Window {
     }
 
     /// Takes in the indexer's pages as they come, updating the search.
-    /// The pages are for the document shown now: if it's replaced (reloaded)
-    /// meanwhile, the rest are dropped.
+    ///
+    /// The pages are for the document shown now: if it's replaced (reloaded) meanwhile, the rest
+    /// are dropped.
     fn receive_index(&self, rx: async_channel::Receiver<Indexed>) {
         let weak = Rc::downgrade(&self.0);
         let Some(for_doc) = self.0.document.borrow().as_ref().map(Rc::downgrade) else {
@@ -1596,8 +1588,7 @@ impl Window {
         let Some(focus) = gtk::prelude::GtkWindowExt::focus(&self.0.window) else {
             return false;
         };
-        // The text field for typing on the page: its own keys do these,
-        // if they get to it.
+        // The text field for typing on the page: its own keys do these, if they get to it.
         if let Some(view) = focus.downcast_ref::<gtk::TextView>() {
             let buffer = view.buffer();
             match action {
@@ -1650,8 +1641,8 @@ impl Window {
                     w.save_as_file(file).await;
                 });
             }),
-            // Drops thumbnails without dragging: "0,1@450" drops pages 0
-            // and 1 at window height 450.
+            // Drops thumbnails without dragging: "0,1@450" drops pages 0 and 1 at window height
+            // 450.
             action("debug-drop-thumbnails", |w, arg| {
                 let Some((pages, y)) = arg.split_once('@') else {
                     return;
@@ -1661,8 +1652,8 @@ impl Window {
                     s.drop_at(pages, &w.0.window, y);
                 }
             }),
-            // Drops files on the sidebar without dragging: "a.pdf|b.pdf@450"
-            // drops two files at window height 450.
+            // Drops files on the sidebar without dragging: "a.pdf|b.pdf@450" drops two files at
+            // window height 450.
             action("debug-drop-files", |w, arg| {
                 let Some((paths, y)) = arg.rsplit_once('@') else {
                     return;
@@ -1672,8 +1663,8 @@ impl Window {
                     s.drop_files_at(files, &w.0.window, y);
                 }
             }),
-            // Drops pages of another window without dragging: "1:0,2@450"
-            // drops pages 0 and 2 of window 1 at window height 450.
+            // Drops pages of another window without dragging: "1:0,2@450" drops pages 0 and 2 of
+            // window 1 at window height 450.
             action("debug-drop-pages-from", |w, arg| {
                 let parse = || {
                     let (window, rest) = arg.split_once(':')?;
@@ -1698,8 +1689,8 @@ impl Window {
                     s.drop_bundle_at(bundle, &w.0.window, y);
                 }
             }),
-            // Prints to a PDF file without the dialog: "out.pdf", or
-            // "out.pdf|selection" for the pages selected in the sidebar.
+            // Prints to a PDF file without the dialog: "out.pdf", or "out.pdf|selection" for the
+            // pages selected in the sidebar.
             action("debug-print-to-file", |w, arg| {
                 let (path, selection) = match arg.strip_suffix("|selection") {
                     Some(p) => (p, true),
@@ -1722,8 +1713,8 @@ impl Window {
                     w.insert_file(file).await;
                 });
             }),
-            // Chooses the saved signature of that number, from 0, to be
-            // placed, as its row under the signature button does.
+            // Chooses the saved signature of that number, from 0, to be placed, as its row under
+            // the signature button does.
             action("debug-place-signature", |w, number| {
                 let saved = signatures::saved();
                 if let Some((_, signature)) =
@@ -1732,8 +1723,8 @@ impl Window {
                     w.place_signature(signature.clone());
                 }
             }),
-            // Sets the text controls of the markup bar, as by hand: words
-            // like "serif bold italic 18".
+            // Sets the text controls of the markup bar, as by hand: words like "serif bold italic
+            // 18".
             action("debug-text-style", |w, words| {
                 for word in words.split_ascii_whitespace() {
                     match word {
@@ -1845,8 +1836,7 @@ impl Window {
         )
         .bool("markup_bar", inner.markup_bar.reveals_child())
         .num("signatures", signatures::saved().len() as f64)
-        // The text controls: whether they show, and what they are set to,
-        // e.g. "serif bold 18".
+        // The text controls: whether they show, and what they are set to, such as "serif bold 18".
         .bool("text_controls", inner.text_controls.is_visible())
         .str("text_style", &{
             let (size, font) = self.text_controls_style();
@@ -1885,8 +1875,8 @@ impl Window {
                 .unwrap_or_default(),
         )
         .bool("search_bar", inner.search_bar.is_search_mode())
-        // Mapped once the bar has started sliding in; keys before that are
-        // dropped (GTK doesn't deliver them to unmapped widgets).
+        // Mapped once the bar has started sliding in. Keys before that are dropped (GTK doesn't
+        // deliver them to unmapped widgets).
         .bool("search_ready", inner.search_entry.is_mapped())
         .str("search_query", &inner.search_entry.text())
         .str("search_status", &inner.search_status.label());
@@ -1908,9 +1898,9 @@ impl Window {
         {
             json.num("match_page", m.page as f64);
         }
-        // Where the canvas is in the window, and for the pages around the
-        // current one, the affine map from PDF points to window coordinates:
-        // [page, a, b, c, d, e, f] with x' = a x + c y + e, y' = b x + d y + f.
+        // Where the canvas is in the window, and for the pages around the current one, the affine
+        // map from PDF points to window coordinates: [page, a, b, c, d, e, f] with x' = a x + c y +
+        // e, y' = b x + d y + f.
         let origin = inner
             .canvas
             .compute_point(&inner.window, &gtk::graphene::Point::new(0.0, 0.0))
@@ -1918,8 +1908,8 @@ impl Window {
         let (px, py) = inner.canvas.pointer();
         json.raw("canvas", &format!("[{}, {}]", origin.0, origin.1))
             .raw("pointer", &format!("[{px}, {py}]"));
-        // Thumbnails on screen, [page, x, y, width, height] in the window,
-        // and the pages selected in the sidebar.
+        // Thumbnails on screen, [page, x, y, width, height] in the window, and the pages selected
+        // in the sidebar.
         if let Some(s) = inner.sidebar.borrow().as_ref() {
             let shown: Vec<String> = s
                 .visible(&inner.window)
@@ -1995,8 +1985,7 @@ impl Window {
                     &d.edit().redo_edit().map(edit_name).unwrap_or_default(),
                 );
         }
-        // The annotations of the current page (the file's and new ones),
-        // and whether one is picked.
+        // The annotations of the current page (the file's and new ones), and whether one is picked.
         if let Some(doc) = inner.document.borrow().clone() {
             let mut d = doc.borrow_mut();
             let page = d.viewer.current_page();
@@ -2008,8 +1997,8 @@ impl Window {
                     "text_editor",
                     inner.text_editor.borrow().is_some() || inner.typing.borrow().is_some(),
                 );
-            // The text field for typing on the page: where the overlay is
-            // asked to put it (left, top, width) and the size it has.
+            // The text field for typing on the page: where the overlay is asked to put it (left,
+            // top, width) and the size it has.
             if let Some(t) = inner.typing.borrow().as_ref() {
                 let (x, y, w) = t.area.get();
                 json.raw(
@@ -2047,8 +2036,8 @@ impl Window {
         json.finish()
     }
 
-    /// The pages an edit applies to: those selected in the sidebar if there
-    /// are several, else the current page (both pages of a spread).
+    /// The pages an edit applies to: those selected in the sidebar if there are several, else the
+    /// current page (both pages of a spread).
     fn pages_to_edit(&self) -> Vec<usize> {
         let selected = self
             .0
@@ -2066,10 +2055,10 @@ impl Window {
             .unwrap_or_default()
     }
 
-    /// Deletes the pages selected in the sidebar if there are several,
-    /// else the current page. The last page can't be deleted.
-    /// Marks the selected text: a highlight, or a line under or through
-    /// it, in that tool's colour. Returns whether there was text to mark.
+    /// Deletes the pages selected in the sidebar if there are several, else the current page.
+    ///
+    /// The last page can't be deleted. Marks the selected text: a highlight, or a line under or
+    /// through it, in that tool's color. Returns whether there was text to mark.
     fn mark(&self, style: MarkupStyle) -> bool {
         let color = color_named(self.0.tool_colors.get()[tool_index(Tool::Mark(style))]);
         self.annotate(|d| d.mark_selection(style, color))
@@ -2088,7 +2077,7 @@ impl Window {
         tool_named(state.str()?)
     }
 
-    /// Presses a tool of the markup bar in (or none), and shows its colour.
+    /// Presses a tool of the markup bar in (or none), and shows its color.
     fn set_markup_tool(&self, tool: Option<Tool>) {
         let name = tool.map_or("none", tool_name);
         self.0
@@ -2098,8 +2087,8 @@ impl Window {
         self.set_draw_tool();
     }
 
-    /// Tells the page view what drags do: draw, with a drawing tool pressed
-    /// in (in its colour), else select text.
+    /// Tells the page view what drags do: draw, with a drawing tool pressed in (in its color), else
+    /// select text.
     fn set_draw_tool(&self) {
         let draw = match self.markup_tool() {
             Some(tool @ Tool::Draw(kind)) => {
@@ -2116,8 +2105,8 @@ impl Window {
             .set_place_tool(placing || matches!(self.markup_tool(), Some(Tool::Text | Tool::Note)));
     }
 
-    /// Fills the list of saved signatures under its button: each to be
-    /// chosen or deleted, and a button to make a new one.
+    /// Fills the list of saved signatures under its button: each to be chosen or deleted, and a
+    /// button to make a new one.
     fn fill_signature_menu(&self) {
         let inner = &self.0;
         let rows = gtk::Box::new(gtk::Orientation::Vertical, 6);
@@ -2164,8 +2153,7 @@ impl Window {
         inner.signature_menu.set_child(Some(&rows));
     }
 
-    /// Shows the dialog for making a signature. Once it is saved, it is
-    /// the one being placed.
+    /// Shows the dialog for making a signature. Once it is saved, it is the one being placed.
     fn new_signature(&self) {
         let weak = Rc::downgrade(&self.0);
         signatures::new_signature(&self.0.window, move |_, signature| {
@@ -2177,8 +2165,7 @@ impl Window {
         });
     }
 
-    /// The next click on a page places `signature`. Lets go of the markup
-    /// bar's tool.
+    /// The next click on a page places `signature`. Lets go of the markup bar's tool.
     fn place_signature(&self, signature: Signature) {
         self.0.canvas.unpick_annotation();
         self.0.placing.replace(Some(signature));
@@ -2186,9 +2173,8 @@ impl Window {
         self.toast(&gettext("Click where the signature goes"));
     }
 
-    /// The page was clicked at (`x`, `y`) with a placing tool: a note goes
-    /// there and asks for its text, or text is asked for and becomes a
-    /// text box there.
+    /// The page was clicked at (`x`, `y`) with a placing tool: a note goes there and asks for its
+    /// text, or text is asked for and becomes a text box there.
     fn place(&self, x: f64, y: f64) {
         let p = ViewPoint::new(x, y);
         // A signature chosen to be placed: once, here.
@@ -2225,18 +2211,17 @@ impl Window {
         }
     }
 
-    /// Shows a small editor for text: that of the picked annotation (what
-    /// a text box shows, the text of a note, a comment on anything else),
-    /// or, with `new_at`, of a text box to be made there. Closing it (a
-    /// click elsewhere, Escape) keeps the text.
+    /// Shows a small editor for text: that of the picked annotation (what a text box shows, the
+    /// text of a note, a comment on anything else), or, with `new_at`, of a text box to be made
+    /// there. Closing it (a click elsewhere, Escape) keeps the text.
     fn edit_text(&self, new_at: Option<ViewPoint>) {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return;
         };
-        // A text box is typed into where it is on the page. (Not on pages
-        // shown turned, where the text would have to be typed sideways:
-        // those get the small editor below, like notes and comments.)
+        // A text box is typed into where it is on the page. (Not on pages shown turned, where the
+        // text would have to be typed sideways: those get the small editor below, like notes and
+        // comments.)
         let on_page = match new_at {
             Some(p) => {
                 let color = color_named(inner.tool_colors.get()[tool_index(Tool::Text)]);
@@ -2291,8 +2276,7 @@ impl Window {
             let text = buffer
                 .text(&buffer.start_iter(), &buffer.end_iter(), false)
                 .to_string();
-            // Later: the popover is still closing, and is taken off the
-            // page view once it has.
+            // Later: the popover is still closing, and is taken off the page view once it has.
             let (weak, popover) = (weak.clone(), popover.clone());
             glib::idle_add_local_once(move || {
                 popover.unparent();
@@ -2306,17 +2290,17 @@ impl Window {
         view.grab_focus();
     }
 
-    /// Puts a text field over the page where a text box is (or is to be),
-    /// in the box's font, size and colour, so that what is typed appears
-    /// where it will stand. Escape, or a click elsewhere, keeps the text.
+    /// Puts a text field over the page where a text box is (or is to be), in the box's font, size
+    /// and color, so that what is typed appears where it will stand. Escape, or a click elsewhere,
+    /// keeps the text.
     fn type_on_page(&self, place: TextBoxPlace, text: &str, new: bool) {
         let inner = &self.0;
         self.finish_typing();
         let view = gtk::TextView::builder()
             .wrap_mode(gtk::WrapMode::WordChar)
             .accepts_tab(false)
-            // Filling what the overlay gives it, which is the text box's
-            // place: aligned to a side, it would be as narrow as a letter.
+            // Filling what the overlay gives it, which is the text box's place: aligned to a side,
+            // it would be as narrow as a letter.
             .halign(gtk::Align::Fill)
             .valign(gtk::Align::Fill)
             .css_classes(["page-text"])
@@ -2335,16 +2319,16 @@ impl Window {
             glib::Propagation::Stop
         });
         view.add_controller(keys);
-        // A click elsewhere takes the keyboard away: the text is kept.
-        // (Later: the focus is still on its way.)
+        // A click elsewhere takes the keyboard away: the text is kept. (Later: the focus is still
+        // on its way.)
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(inner);
         focus.connect_leave(move |_| {
             let weak = weak.clone();
             glib::idle_add_local_once(move || {
                 let Some(inner) = weak.upgrade() else { return };
-                // Not for the controls that set the text's size and font:
-                // those act on what is being typed.
+                // Not for the controls that set the text's size and font: those act on what is
+                // being typed.
                 let on_controls = gtk::prelude::GtkWindowExt::focus(&inner.window)
                     .is_some_and(|f| f.is_ancestor(&inner.text_controls));
                 if !on_controls {
@@ -2369,8 +2353,8 @@ impl Window {
         view.buffer().place_cursor(&end);
     }
 
-    /// Puts the text field where its text box is on screen now, at the
-    /// size the text has there: when it is shown, and when the view moves.
+    /// Puts the text field where its text box is on screen now, at the size the text has there:
+    /// when it is shown, and when the view moves.
     fn place_typing(&self) {
         let inner = &self.0;
         let typing = inner.typing.borrow();
@@ -2384,8 +2368,8 @@ impl Window {
         let (size, font) = typing.style.get();
         let view = &typing.view;
         view.set_visible(true);
-        // Where the overlay puts it (see `Window::new`): its corner, and
-        // its width. Its height is what its text needs at that width.
+        // Where the overlay puts it (see `Window::new`): its corner, and its width. Its height is
+        // what its text needs at that width.
         typing.area.set((
             corner.x.round() as i32,
             corner.y.round() as i32,
@@ -2395,17 +2379,16 @@ impl Window {
         let margin = (specto_annot::TEXT_MARGIN * zoom).round() as i32;
         view.set_left_margin(margin);
         view.set_right_margin(margin);
-        // A line of the field is higher than the letters, half of the rest
-        // above them: less of a margin on top makes up for it, so that the
-        // text stands where the box will have it.
+        // A line of the field is higher than the letters, half of the rest above them: less of a
+        // margin on top makes up for it, so that the text stands where the box will have it.
         let above = (specto_annot::TEXT_MARGIN - 0.12 * size) * zoom;
         view.set_top_margin(above.max(0.0).round() as i32);
         view.set_bottom_margin(margin);
         let c = place.color;
         let byte = |v: f32| (v * 255.0).round() as u8;
         let rgb = format!("rgb({}, {}, {})", byte(c.r), byte(c.g), byte(c.b));
-        // The box's font, or what stands in for it with the same widths, so
-        // that lines break where they will in the box.
+        // The box's font, or what stands in for it with the same widths, so that lines break where
+        // they will in the box.
         let css = format!(
             ".page-text, .page-text text {{ background: none; color: {rgb}; caret-color: {rgb}; \
              font-family: {}; font-weight: {}; font-style: {}; \
@@ -2428,8 +2411,8 @@ impl Window {
         });
     }
 
-    /// Ends typing on the page, if there is any: what was typed is the
-    /// text box's text now (a new box, if there is text for one).
+    /// Ends typing on the page, if there is any: what was typed is the text box's text now (a new
+    /// box, if there is text for one).
     fn finish_typing(&self) {
         let inner = &self.0;
         let Some(typing) = inner.typing.take() else {
@@ -2440,8 +2423,7 @@ impl Window {
             .text(&buffer.start_iter(), &buffer.end_iter(), false)
             .to_string();
         inner.page_overlay.remove_overlay(&typing.view);
-        // In the size and font it has now, which may have been changed
-        // while typing.
+        // In the size and font it has now, which may have been changed while typing.
         let style = typing.style.get();
         let place = TextBoxPlace {
             size: style.0,
@@ -2468,8 +2450,8 @@ impl Window {
         inner.canvas.grab_focus();
     }
 
-    /// The text editor was closed with `text` in it: for the picked
-    /// annotation, or for a new text box at `new_at`.
+    /// The text editor was closed with `text` in it: for the picked annotation, or for a new text
+    /// box at `new_at`.
     fn set_text(&self, new_at: Option<ViewPoint>, text: &str) {
         let mut failed = None;
         let tool = Tool::Text;
@@ -2512,9 +2494,8 @@ impl Window {
         )
     }
 
-    /// Shows the text controls while they have something to act on (the
-    /// text tool, a text box picked or typed into), set to that thing's
-    /// size and font.
+    /// Shows the text controls while they have something to act on (the text tool, a text box
+    /// picked or typed into), set to that thing's size and font.
     fn show_text_style(&self) {
         let inner = &self.0;
         let typing = inner.typing.borrow().as_ref().map(|t| t.style.get());
@@ -2540,8 +2521,8 @@ impl Window {
         inner.showing_text_style.set(false);
     }
 
-    /// A text control of the markup bar was changed: what is typed, or the
-    /// picked text box, is set that way, and so are text boxes from now on.
+    /// A text control of the markup bar was changed: what is typed, or the picked text box, is set
+    /// that way, and so are text boxes from now on.
     fn text_style_chosen(&self) {
         let inner = &self.0;
         if inner.showing_text_style.get() {
@@ -2579,9 +2560,8 @@ impl Window {
         }
     }
 
-    /// Shows, on the markup bar, the colour of the picked annotation if it
-    /// is one of the bar's, else that of the tool pressed in (of the
-    /// highlighter if none is).
+    /// Shows, on the markup bar, the color of the picked annotation if it is one of the bar's, else
+    /// that of the tool pressed in (of the highlighter if none is).
     fn show_markup_color(&self) {
         let inner = &self.0;
         let picked = inner
@@ -2606,9 +2586,9 @@ impl Window {
         self.show_text_style();
     }
 
-    /// A colour of the markup bar was chosen: the picked annotation gets
-    /// it, if one is picked; else it is what the tool pressed in (the
-    /// highlighter if none is) marks in from now on.
+    /// A color of the markup bar was chosen: the picked annotation gets it, if one is picked.
+    ///
+    /// Otherwise it is what the tool pressed in (the highlighter if none is) marks in from now on.
     fn choose_markup_color(&self, name: &'static str) {
         let inner = &self.0;
         let picked = inner
@@ -2641,17 +2621,17 @@ impl Window {
         self.show_markup_color();
     }
 
-    /// Text was selected with the pointer: a tool that is pressed in marks
-    /// it.
+    /// Text was selected with the pointer: a tool that is pressed in marks it.
     fn selected(&self) {
         if let Some(Tool::Mark(style)) = self.markup_tool() {
             self.mark(style);
         }
     }
 
-    /// Applies an edit to the annotations, then redraws and updates the
-    /// menus if it changed anything, which it returns. The pages stay as
-    /// they are, so there is less to do than after [`edit`](Self::edit).
+    /// Applies an edit to the annotations, then redraws and updates the menus if it changed
+    /// anything, which it returns.
+    ///
+    /// The pages stay as they are, so there is less to do than after [`edit`](Self::edit).
     fn annotate(&self, f: impl FnOnce(&mut Document) -> bool) -> bool {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
@@ -2714,8 +2694,9 @@ impl Window {
         }
     }
 
-    /// Inserts pages of another document before position `to`; they're
-    /// selected, and the view goes to the first of them.
+    /// Inserts pages of another document before position `to`.
+    ///
+    /// They're selected, and the view goes to the first of them.
     fn insert_bundle(&self, bundle: &PageBundle, to: usize) {
         let mut error = None;
         self.edit(|d| match d.insert_bundle(to, bundle) {
@@ -2740,8 +2721,9 @@ impl Window {
         }
     }
 
-    /// Moves the pages at `pages` before position `to`; they stay
-    /// selected, and the view stays on the page it showed.
+    /// Moves the pages at `pages` before position `to`.
+    ///
+    /// They stay selected, and the view stays on the page it showed.
     fn move_pages(&self, pages: &[usize], to: usize) {
         let Some(current) = self.0.canvas.with_viewer(|v| v.current_page()) else {
             return;
@@ -2762,9 +2744,8 @@ impl Window {
         matches!((focus, sidebar.as_ref()), (Some(f), Some(s)) if s.contains(&f))
     }
 
-    /// Turns the pages to edit (see [`pages_to_edit`]) by `by`, unless a
-    /// text field has the focus: there the shortcut (Ctrl+Left/Right) moves
-    /// by a word, as it would without this action.
+    /// Turns the pages to edit (see [`pages_to_edit`]) by `by`, unless a text field has the focus:
+    /// there the shortcut (Ctrl+Left/Right) moves by a word, as it would without this action.
     ///
     /// [`pages_to_edit`]: Self::pages_to_edit
     fn rotate(&self, by: Rotation) {
@@ -2785,8 +2766,8 @@ impl Window {
         });
     }
 
-    /// Shows the print dialog for the document as edited (or prints to a
-    /// PDF file without it: see `print::print`).
+    /// Shows the print dialog for the document as edited (or prints to a PDF file without it: see
+    /// `print::print`).
     fn print(&self, export: Option<(std::path::PathBuf, bool)>) {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
@@ -2839,16 +2820,16 @@ impl Window {
         }
     }
 
-    /// Inserts all pages of `file` after the current page (or spread) and
-    /// goes to the first of them.
+    /// Inserts all pages of `file` after the current page (or spread) and goes to the first of
+    /// them.
     async fn insert_file(&self, file: gio::File) {
         self.insert_files(vec![file], None).await;
     }
 
-    /// Inserts all pages of `files`, in order and as one edit, before
-    /// position `at` (by default after the current page or spread), and
-    /// goes to the first of them. A file that can't be opened is left out,
-    /// with a message.
+    /// Inserts all pages of `files`, in order and as one edit, before position `at` (by default
+    /// after the current page or spread), and goes to the first of them.
+    ///
+    /// A file that can't be opened is left out, with a message.
     async fn insert_files(&self, files: Vec<gio::File>, at: Option<usize>) {
         let Some(doc) = self.0.document.borrow().clone() else {
             return;
@@ -2887,9 +2868,9 @@ impl Window {
         self.index_for_search();
     }
 
-    /// Reads and opens `file` as a source of `doc`, asking for its password
-    /// if it has one. `None` if it couldn't be opened (with a message) or
-    /// the password was cancelled.
+    /// Reads and opens `file` as a source of `doc`, asking for its password if it has one.
+    ///
+    /// `None` if it couldn't be opened (with a message) or the password was canceled.
     async fn open_source(&self, doc: &SharedDocument, file: &gio::File) -> Option<SourceId> {
         let name = display_name(file).await;
         let data = match read_pdf(file).await {
@@ -2920,8 +2901,8 @@ impl Window {
         }
     }
 
-    /// The pages "Export Selected Pages" writes: those selected in the
-    /// sidebar, else the current page.
+    /// The pages "Export Selected Pages" writes: those selected in the sidebar, else the current
+    /// page.
     fn pages_to_export(&self) -> Vec<usize> {
         let selected = self
             .0
@@ -2939,8 +2920,7 @@ impl Window {
             .unwrap_or_default()
     }
 
-    /// Asks where to save the selected pages, and saves them there as a
-    /// new PDF.
+    /// Asks where to save the selected pages, and saves them there as a new PDF.
     async fn export_pages(&self) {
         let inner = &self.0;
         let Some(name) = inner
@@ -2969,8 +2949,8 @@ impl Window {
         }
     }
 
-    /// Saves the pages at `pages` as a new PDF in `file`. The document and
-    /// its file stay as they are.
+    /// Saves the pages at `pages` as a new PDF in `file`. The document and its file stay as they
+    /// are.
     async fn export_to(&self, pages: &[usize], file: gio::File) {
         let Some(doc) = self.0.document.borrow().clone() else {
             return;
@@ -3003,8 +2983,7 @@ impl Window {
             .is_some_and(|d| d.borrow().edit().is_modified())
     }
 
-    /// Saves the document to its file, if it has changes. Returns whether
-    /// it's saved now.
+    /// Saves the document to its file, if it has changes. Returns whether it's saved now.
     async fn save(&self) -> bool {
         let Some(uri) = self.0.uri.borrow().clone() else {
             return false;
@@ -3020,8 +2999,7 @@ impl Window {
         self.save_to(file).await
     }
 
-    /// Asks where to save a copy, saves it there, and from then on shows
-    /// that file.
+    /// Asks where to save a copy, saves it there, and from then on shows that file.
     async fn save_as(&self) {
         let inner = &self.0;
         let Some(name) = inner
@@ -3073,9 +3051,11 @@ impl Window {
         true
     }
 
-    /// Writes the document to `file`. Local files are written next to the
-    /// old one and renamed into place (see `specto_write::replace_file`);
-    /// others through GIO. Returns whether it worked; if not, says why.
+    /// Writes the document to `file`.
+    ///
+    /// Local files are written next to the old one and renamed into place (see
+    /// `specto_write::replace_file`), others through GIO. Returns whether it worked, and says why
+    /// if not.
     async fn save_to(&self, file: gio::File) -> bool {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
@@ -3148,9 +3128,8 @@ impl Window {
         }
     }
 
-    /// Applies an edit to the document, then updates the view, the sidebar
-    /// and the menus if it changed anything. `f` returns `None` if nothing
-    /// changed.
+    /// Applies an edit to the document, then updates the view, the sidebar and the menus if it
+    /// changed anything. `f` returns `None` if nothing changed.
     fn edit(&self, f: impl FnOnce(&mut Document) -> Option<Edited>) {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
@@ -3163,8 +3142,8 @@ impl Window {
             s.pages_changed(&edited.select);
         }
         inner.last_page.set(usize::MAX);
-        // Scrollbars, redraw, page number; in one update with going to a
-        // page, so the sidebar doesn't follow a page in between.
+        // Scrollbars, redraw, page number. In one update with going to a page, so the sidebar
+        // doesn't follow a page in between.
         inner.canvas.update_viewer(|v| {
             if let Some(page) = edited.go_to {
                 v.go_to_page(page);
@@ -3174,8 +3153,8 @@ impl Window {
         self.update_search_status();
     }
 
-    /// Fills the list of markup in the sidebar from the document, if it is
-    /// what the sidebar shows: after an edit, and when it is turned to.
+    /// Fills the list of markup in the sidebar from the document, if it is what the sidebar shows:
+    /// after an edit, and when it is turned to.
     fn refresh_markup_list(&self) {
         let inner = &self.0;
         let shown = inner
@@ -3200,8 +3179,7 @@ impl Window {
         }
     }
 
-    /// Updates what depends on the edits: Undo and Redo, the title, the
-    /// page count.
+    /// Updates what depends on the edits: Undo and Redo, the title, the page count.
     fn update_edit_state(&self) {
         self.refresh_markup_list();
         let inner = &self.0;
@@ -3323,9 +3301,8 @@ impl Window {
                     w.0.page_entry.grab_focus();
                 }))
                 .build(),
-            // Copy and Select All act on the page entry when it has the
-            // focus (application shortcuts would otherwise take its Ctrl+C),
-            // and on the document's text otherwise.
+            // Copy and Select All act on the page entry when it has the focus (application
+            // shortcuts would otherwise take its Ctrl+C), and on the document's text otherwise.
             gio::ActionEntry::builder("copy")
                 .activate(with(|w| {
                     if !w.forward_to_entry("clipboard.copy") {
@@ -3459,9 +3436,9 @@ impl Window {
                 inner.canvas.update_viewer(|v| v.set_layout_mode(mode));
             })
             .build()]);
-        // The markup bar: the tool pressed in ("none" for none; activating
-        // the one that is in lets go of it) and the colour shown ("other"
-        // for a picked annotation in a colour the bar doesn't have).
+        // The markup bar: the tool pressed in ("none" for none, and activating the one that is in
+        // lets go of it) and the color shown ("other" for a picked annotation in a color the bar
+        // doesn't have).
         let weak = Rc::downgrade(&self.0);
         window.add_action_entries([gio::ActionEntry::builder("markup-tool")
             .parameter_type(Some(&String::static_variant_type()))
@@ -3475,8 +3452,8 @@ impl Window {
                 let w = Window(inner);
                 let current = action.state().and_then(|s| s.get::<String>());
                 let tool = tool_named(&name).filter(|_| current.as_deref() != Some(&name));
-                // Taking up a tool is to make something new: what was
-                // picked is let go of, and the bar shows the tool's colour.
+                // Taking up a tool is to make something new: what was picked is let go of, and the
+                // bar shows the tool's color.
                 if tool.is_some() {
                     w.0.canvas.unpick_annotation();
                     w.0.placing.replace(None);
@@ -3561,8 +3538,8 @@ impl Window {
         ));
     }
 
-    /// Puts page `page`'s label (or number) into the page entry, plus
-    /// "(3 of 120)" when the document has labels.
+    /// Puts page `page`'s label (or number) into the page entry, plus "(3 of 120)" when the
+    /// document has labels.
     fn show_page_number(&self, page: usize) {
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
@@ -3645,9 +3622,8 @@ impl Window {
     }
 }
 
-/// How a shortcut with the primary modifier is written in tooltips: "⌘O" on
-/// macOS, "Ctrl+O" elsewhere (shortcuts use GTK's `<Primary>`, which maps
-/// the same way).
+/// How a shortcut with the primary modifier is written in tooltips: "⌘O" on macOS, "Ctrl+O"
+/// elsewhere (shortcuts use GTK's `<Primary>`, which maps the same way).
 fn primary(key: &str) -> String {
     if cfg!(target_os = "macos") {
         format!("⌘{key}")
@@ -3677,15 +3653,15 @@ fn centre(v: &Viewer) -> ViewPoint {
 }
 
 thread_local! {
-    /// The windows, with the test hooks only: for those that reach into
-    /// another window.
+    /// The windows, with the test hooks only: for those that reach into another window.
     static DEBUG_WINDOWS: RefCell<Vec<std::rc::Weak<Inner>>> = const { RefCell::new(Vec::new()) };
 }
 
-/// The colours of the markup bar: a name (for the action's state and the
-/// style class of the swatch), what a tooltip calls it, and the colour.
-/// Light ones for highlighting first, then a strong red, which is what
-/// lines under and through text start with, as in Preview.
+/// The colors of the markup bar: a name (for the action's state and the style class of the swatch),
+/// what a tooltip calls it, and the color.
+///
+/// Light ones for highlighting first, then a strong red, which is what lines under and through text
+/// start with, as in Preview.
 fn markup_colors() -> [(&'static str, String, Color); 7] {
     [
         ("yellow", gettext("Yellow"), Color::new(1.0, 0.92, 0.23)),
@@ -3698,7 +3674,7 @@ fn markup_colors() -> [(&'static str, String, Color); 7] {
     ]
 }
 
-/// The colour of the markup bar called `name` (yellow if there is none).
+/// The color of the markup bar called `name` (yellow if there is none).
 fn color_named(name: &str) -> Color {
     let colors = markup_colors();
     colors
@@ -3707,9 +3683,9 @@ fn color_named(name: &str) -> Color {
         .map_or(colors[0].2, |(_, _, c)| *c)
 }
 
-/// A picture of what a drawing tool draws, for its button: there are no
-/// stock icons for these. Drawn in the button's text colour, so it follows
-/// the light and the dark style.
+/// A picture of what a drawing tool draws, for its button: there are no stock icons for these.
+///
+/// Drawn in the button's text color, so it follows the light and the dark style.
 fn tool_icon(kind: Tool) -> gtk::DrawingArea {
     let icon = gtk::DrawingArea::builder()
         .content_width(16)
@@ -3859,27 +3835,25 @@ struct Typing {
     view: gtk::TextView,
     /// Where the text box is.
     place: TextBoxPlace,
-    /// The size and font of what is typed, which the markup bar can change
-    /// meanwhile.
+    /// The size and font of what is typed, which the markup bar can change meanwhile.
     style: Cell<(f64, TextFont)>,
     /// Whether the box is yet to be made, of what is typed.
     new: bool,
-    /// Where the field is over the page view: its left and top edge, and
-    /// its width.
+    /// Where the field is over the page view: its left and top edge, and its width.
     area: Cell<(i32, i32, i32)>,
 }
 
 thread_local! {
-    /// The style of the text field for typing on the page, which follows
-    /// the box's text and the zoom.
+    /// The style of the text field for typing on the page, which follows the box's text and the
+    /// zoom.
     static TYPING_CSS: gtk::CssProvider = gtk::CssProvider::new();
 }
 
 /// How wide a signature is when it is placed, in points.
 const SIGNATURE_WIDTH: f64 = 150.0;
 
-/// The fonts to ask the system for, for a family: the font PDF programs
-/// set it in, then others with the same widths, then anything of the kind.
+/// The fonts to ask the system for, for a family: the font PDF programs set it in, then others with
+/// the same widths, then anything of the kind.
 fn font_stack(family: FontFamily) -> &'static str {
     match family {
         FontFamily::Sans => {
@@ -3894,7 +3868,7 @@ fn font_stack(family: FontFamily) -> &'static str {
     }
 }
 
-/// The tool whose colour the bar shows while none is pressed in.
+/// The tool whose color the bar shows while none is pressed in.
 const HIGHLIGHTER: Tool = Tool::Mark(MarkupStyle::Highlight);
 
 /// The markup bar's tools, as the `markup-tool` action names them.
@@ -3910,7 +3884,7 @@ const TOOLS: [(&str, Tool); 9] = [
     ("note", Tool::Note),
 ];
 
-/// Where a tool is in `TOOLS` (and its colour in `Inner::tool_colors`).
+/// Where a tool is in `TOOLS` (and its color in `Inner::tool_colors`).
 fn tool_index(tool: Tool) -> usize {
     TOOLS.iter().position(|(_, t)| *t == tool).unwrap_or(0)
 }
@@ -3923,8 +3897,8 @@ fn tool_named(name: &str) -> Option<Tool> {
     TOOLS.iter().find(|(n, _)| *n == name).map(|(_, t)| *t)
 }
 
-/// The app's own styles: the colour swatches of the markup bar. Loaded
-/// once, however many windows there are.
+/// The app's own styles: the color swatches of the markup bar. Loaded once, however many windows
+/// there are.
 fn load_css() {
     static LOADED: std::sync::Once = std::sync::Once::new();
     LOADED.call_once(|| {
@@ -3976,8 +3950,7 @@ struct Edited {
     go_to: Option<usize>,
 }
 
-/// Where the page at `page` is after moving those at `moved` so that they
-/// start at `start`.
+/// Where the page at `page` is after moving those at `moved` so that they start at `start`.
 fn position_after_move(moved: &[usize], start: usize, page: usize) -> usize {
     let mut moved = moved.to_vec();
     moved.sort_unstable();
@@ -3994,8 +3967,8 @@ fn position_after_move(moved: &[usize], start: usize, page: usize) -> usize {
 }
 
 /// Delete and Backspace delete pages, on the canvas and in the sidebar.
-/// Not shortcuts for the whole window, which would take the keys from text
-/// fields.
+///
+/// Not shortcuts for the whole window, which would take the keys from text fields.
 fn delete_keys() -> gtk::ShortcutController {
     let keys = gtk::ShortcutController::new();
     keys.add_shortcut(gtk::Shortcut::new(
@@ -4033,6 +4006,7 @@ async fn display_name(file: &gio::File) -> String {
 }
 
 /// Reads `file`, mapping it if it's large and local (see [`PdfData`]).
+///
 /// Files without a local path (remote locations) are read through GIO.
 async fn read_pdf(file: &gio::File) -> Result<PdfData, String> {
     if let Some(path) = file.path() {
@@ -4040,7 +4014,7 @@ async fn read_pdf(file: &gio::File) -> Result<PdfData, String> {
             .await
             .map_err(|_| gettext("reading failed"))?
             .map_err(|e| {
-                // "No such file or directory (os error 2)" → without the code.
+                // "No such file or directory (os error 2)", without the code.
                 let text = e.to_string();
                 text.split(" (os error").next().unwrap_or(&text).to_owned()
             });
@@ -4052,8 +4026,9 @@ async fn read_pdf(file: &gio::File) -> Result<PdfData, String> {
     Ok(bytes.to_vec().into())
 }
 
-/// The Undo menu item for an edit: "Undo Rotate Page", "Undo Delete 3
-/// Pages", … Whole sentences per edit, so each can be translated as one.
+/// The Undo menu item for an edit, such as "Undo Rotate Page" or "Undo Delete 3 Pages".
+///
+/// Whole sentences per edit, so each can be translated as one.
 fn undo_label(edit: Edit) -> String {
     match edit {
         Edit::Rotate { pages } => {
@@ -4109,8 +4084,8 @@ fn redo_label(edit: Edit) -> String {
     }
 }
 
-/// An edit's name in the tests' `debug-state` ("Rotate Page", "Delete 3
-/// Pages", …): always English, and not shown to anyone.
+/// An edit's name in the tests' `debug-state` (such as "Rotate Page" or "Delete 3 Pages"): always
+/// English, and not shown to anyone.
 fn edit_name(edit: Edit) -> String {
     let (verb, n) = match edit {
         Edit::Rotate { pages } => ("Rotate", pages),
@@ -4128,8 +4103,8 @@ fn edit_name(edit: Edit) -> String {
     }
 }
 
-/// What tells whether a file changed: its entity tag (for local files,
-/// the modification time to the microsecond) and size.
+/// What tells whether a file changed: its entity tag (for local files, the modification time to the
+/// microsecond) and size.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Fingerprint {
     etag: String,
@@ -4152,8 +4127,8 @@ async fn fingerprint(file: &gio::File) -> Option<Fingerprint> {
     })
 }
 
-/// Writes `job` to `file` in the background: through a temporary file
-/// renamed into place if it's local, else through GIO.
+/// Writes `job` to `file` in the background: through a temporary file renamed into place if it's
+/// local, else through GIO.
 async fn write_job(job: SaveJob, file: &gio::File) -> Result<(), String> {
     match file.path() {
         Some(path) => gio::spawn_blocking(move || job.save(&path).map_err(save_error))
@@ -4171,8 +4146,9 @@ async fn write_job(job: SaveJob, file: &gio::File) -> Result<(), String> {
     }
 }
 
-/// The folder `file` is in, as people know it. In the Flatpak sandbox,
-/// files come through the document portal, at `/run/user/…/doc/…`; the
+/// The folder `file` is in, as people know it.
+///
+/// In the Flatpak sandbox, files come through the document portal, at a path under `/run/user`. The
 /// portal says where they really are.
 fn folder(file: &gio::File) -> Option<gio::File> {
     const HOST_PATH: &str = "xattr::document-portal.host-path";
@@ -4192,8 +4168,8 @@ fn folder(file: &gio::File) -> Option<gio::File> {
     host.unwrap_or_else(|| file.clone()).parent()
 }
 
-/// Undoes GIO's escaping of extended attributes, which writes bytes that
-/// aren't printable ASCII, and backslashes, as `\xNN`.
+/// Undoes GIO's escaping of extended attributes, which writes bytes that aren't printable ASCII,
+/// and backslashes, as `\xNN`.
 fn unescape_xattr(text: &str) -> std::path::PathBuf {
     use std::os::unix::ffi::OsStringExt;
     let bytes = text.as_bytes();
@@ -4225,8 +4201,8 @@ fn file_name(file: &gio::File) -> String {
         .map_or_else(String::new, |b| b.to_string_lossy().into_owned())
 }
 
-/// The name Export Selected Pages suggests: "Report (pages 2-4, 7).pdf"
-/// for positions 1, 2, 3 and 6 of "Report.pdf".
+/// The name Export Selected Pages suggests: "Report (pages 2-4, 7).pdf" for positions 1, 2, 3 and 6
+/// of "Report.pdf".
 fn export_name(name: &str, pages: &[usize]) -> String {
     let stem = name
         .strip_suffix(".pdf")
@@ -4264,7 +4240,7 @@ fn save_error(e: specto_write::WriteError) -> String {
     use specto_write::WriteError as E;
     match e {
         E::Io(e) => {
-            // "Permission denied (os error 13)" → without the code.
+            // "Permission denied (os error 13)", without the code.
             let text = e.to_string();
             text.split(" (os error").next().unwrap_or(&text).to_owned()
         }

@@ -1,5 +1,5 @@
-//! Per-file view state (page, position, zoom, layout, sidebar), remembered
-//! across sessions in `$XDG_STATE_HOME/specto/view-state.ini`.
+//! Per-file view state (page, position, zoom, layout, sidebar), remembered across sessions in
+//! `$XDG_STATE_HOME/specto/view-state.ini`.
 
 use std::path::PathBuf;
 

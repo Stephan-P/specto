@@ -1,11 +1,10 @@
-//! Signatures: made once (drawn, or taken from a photo), kept with the
-//! app's data, and placed on pages as often as wanted.
+//! Signatures: made once (drawn, or taken from a photo), kept with the app's data, and placed on
+//! pages as often as wanted.
 //!
-//! One file a signature in `signatures` in the app's data directory: the
-//! strokes of a drawn one as text, a signature from a photo as a PNG with
-//! a transparent background. They are pictures of a signature. Placing one
-//! doesn't sign a document in the cryptographic sense, and nothing here
-//! says it does.
+//! One file a signature in `signatures` in the app's data directory: the strokes of a drawn one as
+//! text, a signature from a photo as a PNG with a transparent background. They are pictures of a
+//! signature. Placing one doesn't sign a document in the cryptographic sense, and nothing here says
+//! it does.
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -21,8 +20,9 @@ use crate::i18n::gettext;
 /// A signature, as it is kept.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Signature {
-    /// Strokes in a box of `size`, y pointing down. They stay sharp at any
-    /// size, and are placed as a drawing.
+    /// Strokes in a box of `size`, y pointing down.
+    ///
+    /// They stay sharp at any size, and are placed as a drawing.
     Drawn {
         strokes: Vec<Vec<(f64, f64)>>,
         size: (f64, f64),
@@ -44,8 +44,8 @@ impl Signature {
 /// Strokes as they are drawn: each a run of points, y pointing down.
 type Strokes = Vec<Vec<(f64, f64)>>;
 
-/// The width of the pen a signature is drawn with, in the units of its
-/// strokes (pixels of the box it was drawn in).
+/// The width of the pen a signature is drawn with, in the units of its strokes (pixels of the box
+/// it was drawn in).
 pub const PEN: f64 = 2.5;
 
 /// Where signatures are kept.
@@ -53,8 +53,7 @@ fn dir() -> PathBuf {
     glib::user_data_dir().join("specto").join("signatures")
 }
 
-/// The saved signatures by name, oldest first. Files that can't be read
-/// are left out.
+/// The saved signatures by name, oldest first. Files that can't be read are left out.
 pub fn saved() -> Vec<(String, Signature)> {
     let Ok(entries) = std::fs::read_dir(dir()) else {
         return Vec::new();
@@ -175,8 +174,8 @@ fn texture_of(image: &StampImage) -> gdk::Texture {
     .upcast()
 }
 
-/// Strokes as a signature of their own size: moved so that they start at
-/// the top left of the box around them.
+/// Strokes as a signature of their own size: moved so that they start at the top left of the box
+/// around them.
 fn trimmed(strokes: &[Vec<(f64, f64)>]) -> Option<Signature> {
     let points = || strokes.iter().flatten();
     let min = |f: fn(&(f64, f64)) -> f64| points().map(f).fold(f64::INFINITY, f64::min);
@@ -224,8 +223,9 @@ fn draw_strokes(
     }
 }
 
-/// A small picture of `signature`, for a list to choose from. Drawn dark
-/// on a white slip, as on paper, whatever the style.
+/// A small picture of `signature`, for a list to choose from.
+///
+/// Drawn dark on a white slip, as on paper, whatever the style.
 pub fn preview(signature: &Signature) -> gtk::Widget {
     const WIDTH: i32 = 180;
     const HEIGHT: i32 = 64;
@@ -251,15 +251,15 @@ pub fn preview(signature: &Signature) -> gtk::Widget {
                 draw_strokes(cr, strokes, scale, offset);
             }
             Signature::Photo(image) => {
-                // Through a snapshot would be the GTK 4 way; a cairo
-                // surface of the pixels does for a preview.
+                // Through a snapshot would be the GTK 4 way, but a cairo surface of the pixels does
+                // for a preview.
                 let _ = picture.as_ref();
                 let mut data = Vec::with_capacity(image.rgba.len());
                 for p in image.rgba.as_chunks::<4>().0.iter() {
                     let a = u32::from(p[3]);
                     let pre = |c: u8| (u32::from(c) * a / 255) as u8;
-                    // Cairo's ARGB32: blue, green, red, alpha in memory on
-                    // little-endian machines, colours multiplied by alpha.
+                    // Cairo's ARGB32: blue, green, red, alpha in memory on little-endian machines,
+                    // colors multiplied by alpha.
                     data.extend(if cfg!(target_endian = "little") {
                         [pre(p[2]), pre(p[1]), pre(p[0]), p[3]]
                     } else {
@@ -287,9 +287,10 @@ pub fn preview(signature: &Signature) -> gtk::Widget {
     area.upcast()
 }
 
-/// Shows the dialog for making a signature: drawn with the pointer, or
-/// taken from a picture of one on paper. `done` gets the signature once it
-/// is saved, with its name.
+/// Shows the dialog for making a signature: drawn with the pointer, or taken from a picture of one
+/// on paper.
+///
+/// `done` gets the signature once it is saved, with its name.
 pub fn new_signature(parent: &impl IsA<gtk::Widget>, done: impl Fn(String, Signature) + 'static) {
     let stack = adw::ViewStack::new();
 
@@ -364,8 +365,8 @@ pub fn new_signature(parent: &impl IsA<gtk::Widget>, done: impl Fn(String, Signa
         "document-edit-symbolic",
     );
 
-    // --- from a picture ---------------------------------------------------
-    // The picture chosen, and the signature made of it with the settings.
+    // --- from a picture --------------------------------------------------- The picture chosen,
+    // and the signature made of it with the settings.
     let photo: Rc<RefCell<Option<StampImage>>> = Rc::default();
     let result: Rc<RefCell<Option<Arc<StampImage>>>> = Rc::default();
     let result_view = gtk::Picture::builder()

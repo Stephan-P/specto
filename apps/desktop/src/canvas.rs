@@ -1,5 +1,5 @@
-//! The page view: draws `specto_view::Frame`s and implements `GtkScrollable`,
-//! so a `GtkScrolledWindow` around it provides scrollbars and kinetic scrolling.
+//! The page view: draws `specto_view::Frame`s and implements `GtkScrollable`, so a
+//! `GtkScrolledWindow` around it provides scrollbars and kinetic scrolling.
 
 use std::cell::{Cell, RefCell};
 use std::time::Instant;
@@ -18,12 +18,11 @@ use specto_annot::Segment;
 use specto_doc::SourceId;
 use specto_session::{DraftKind, Grip, ViewShape};
 
-/// Dragging a selection this close to the top or bottom edge (logical px)
-/// scrolls the view.
+/// Dragging a selection this close to the top or bottom edge (logical pixels) scrolls the view.
 const AUTOSCROLL_EDGE: f64 = 24.0;
 
-/// Handles a clicked link's URI (the window decides whether to open it).
-/// Called with where the page was clicked.
+/// Handles a clicked link's URI (the window decides whether to open it). Called with where the page
+/// was clicked.
 type PlaceHandler = Box<dyn Fn(f64, f64)>;
 type UriHandler = Box<dyn Fn(&str)>;
 
@@ -43,33 +42,31 @@ mod imp {
         vscroll_policy: Cell<gtk::ScrollablePolicy>,
 
         pub document: RefCell<Option<SharedDocument>>,
-        /// Set while we push viewer state into the adjustments, so their
-        /// value-changed handlers don't feed it back.
+        /// Set while we push viewer state into the adjustments, so their value-changed handlers
+        /// don't feed it back.
         pub syncing: Cell<bool>,
         pub on_view_changed: RefCell<Option<Box<dyn Fn()>>>,
         pub on_selected: RefCell<Option<Box<dyn Fn()>>>,
         pub on_picked: RefCell<Option<Box<dyn Fn()>>>,
         pub on_drawn: RefCell<Option<Box<dyn Fn()>>>,
-        /// What a drag draws instead of selecting text, if a drawing tool
-        /// is in use: what, its colour and the width of its line in points.
+        /// What a drag draws instead of selecting text, if a drawing tool is in use: what, its
+        /// color and the width of its line in points.
         pub draw_tool: Cell<Option<(DraftKind, specto_annot::Color, f64)>>,
-        /// A press was on an annotation that can be moved or resized: once
-        /// the pointer has moved far enough, the drag does that.
+        /// A press was on an annotation that can be moved or resized: once the pointer has moved
+        /// far enough, the drag does that.
         pub may_adjust: Cell<bool>,
-        /// A tool that puts something where the page is clicked (a note, a
-        /// text box) is in use.
+        /// A tool that puts something where the page is clicked (a note, a text box) is in use.
         pub place_tool: Cell<bool>,
         pub on_place: RefCell<Option<PlaceHandler>>,
         pub on_edit_text: RefCell<Option<Box<dyn Fn()>>>,
-        /// Called with a link's URI; the window decides whether to open it.
+        /// Called with a link's URI. The window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
-        /// The cursor currently set: `None` (default), "pointer" over links,
-        /// "text" over text.
+        /// The cursor currently set: `None` (default), "pointer" over links, "text" over text.
         pub cursor: Cell<Option<&'static str>>,
         /// Clicks in the current click sequence (1, 2, 3), from the last press.
         pub presses: Cell<i32>,
-        /// Where the current drag started, and whether it is selecting yet
-        /// (it starts once past the drag threshold, so clicks stay clicks).
+        /// Where the current drag started, and whether it is selecting yet (it starts once past the
+        /// drag threshold, so clicks stay clicks).
         pub drag_start: Cell<Option<(f64, f64)>>,
         pub selecting: Cell<bool>,
         /// Scrolls while a selection drag is outside the view.
@@ -77,11 +74,12 @@ mod imp {
         pub pointer: Cell<(f64, f64)>,
         /// Pending redraw for when the view settles (switches to exact tiles).
         pub settle_timer: RefCell<Option<glib::SourceId>>,
-        /// Spinner for pages that take long to render. Only exists while one
-        /// is shown: it asks for a redraw every frame while it animates.
+        /// Spinner for pages that take long to render.
+        ///
+        /// Only exists while one is shown: it asks for a redraw every frame while it animates.
         pub spinner: RefCell<Option<(adw::SpinnerPaintable, glib::SignalHandlerId)>>,
-        /// Whether the last frame was final: every visible page sharp and
-        /// nothing left to settle. Reset when the view changes.
+        /// Whether the last frame was final: every visible page sharp and nothing left to settle.
+        /// Reset when the view changes.
         pub complete: Cell<bool>,
     }
 
@@ -178,8 +176,8 @@ mod imp {
             let scale = obj.device_scale();
             let mut guard = doc.borrow_mut();
             let d = &mut *guard;
-            // The surface scale can change without a new allocation (moving
-            // the window to another monitor).
+            // The surface scale can change without a new allocation (moving the window to another
+            // monitor).
             if d.viewer.scale_factor() != scale {
                 let size = d.viewer.viewport();
                 d.viewer.set_viewport(size, scale);
@@ -205,12 +203,10 @@ mod imp {
                 draw_page(snapshot, &rect, overlay, |snapshot| {
                     for layer in &page.layers {
                         if let Some(texture) = cache.get(&layer.key) {
-                            // Not `append_scaled_texture`: on a HiDPI surface
-                            // GSK renders that node at logical resolution and
-                            // scales the result up, blurring every tile
-                            // (measured on macOS). A plain
-                            // texture node is sampled at device resolution,
-                            // 1:1 when `layer.exact`.
+                            // Not `append_scaled_texture`: on a HiDPI surface GSK renders that node
+                            // at logical resolution and scales the result up, blurring every tile
+                            // (measured on macOS). A plain texture node is sampled at device
+                            // resolution, one to one when `layer.exact`.
                             snapshot.append_texture(texture, &logical(layer.dest, scale));
                         }
                     }
@@ -219,9 +215,8 @@ mod imp {
             obj.draw_picked(snapshot, d, &frame.pages, scale);
             obj.draw_matches(snapshot, d, &frame.pages, scale);
             obj.draw_selection(snapshot, d, &frame.pages, scale);
-            // A spinner over expensive pages (huge images, or renders that
-            // already took > 500 ms) that aren't sharp yet. Cheap pages
-            // render in milliseconds and never flash one.
+            // A spinner over expensive pages (huge images, or renders that already took > 500 ms)
+            // that aren't sharp yet. Cheap pages render in milliseconds and never flash one.
             let viewport = DeviceRect::new(
                 specto_geom::DevicePoint::origin(),
                 (obj.width() as f64 * scale, obj.height() as f64 * scale).into(),
@@ -276,8 +271,8 @@ impl Canvas {
         self.queue_draw();
     }
 
-    /// Called after anything changes the view (scroll, zoom, page, mode).
-    /// Called when a link to a URI is clicked.
+    /// Called after anything changes the view (scroll, zoom, page, mode). Called when a link to a
+    /// URI is clicked.
     pub fn connect_open_uri(&self, f: impl Fn(&str) + 'static) {
         self.imp().on_open_uri.replace(Some(Box::new(f)));
     }
@@ -286,8 +281,8 @@ impl Canvas {
     pub fn follow(&self, source: SourceId, target: &Target) {
         match target {
             Target::Destination(d) => {
-                // Destinations name pages of the file; pages may have moved
-                // or been deleted since.
+                // Destinations name pages of the file, and pages may have moved or been deleted
+                // since.
                 let Some(doc) = self.imp().document.borrow().clone() else {
                     return;
                 };
@@ -316,34 +311,33 @@ impl Canvas {
         d.link_at(ViewPoint::new(x, y))
     }
 
-    /// `f` is called when the user has finished selecting text with the
-    /// pointer (the button is up again) and something is selected.
+    /// `f` is called when the user has finished selecting text with the pointer (the button is up
+    /// again) and something is selected.
     pub fn connect_selected(&self, f: impl Fn() + 'static) {
         self.imp().on_selected.replace(Some(Box::new(f)));
     }
 
-    /// `f` is called with where the page was clicked while a placing tool
-    /// is in use (see [`set_place_tool`](Self::set_place_tool)).
+    /// `f` is called with where the page was clicked while a placing tool is in use (see
+    /// [`set_place_tool`](Self::set_place_tool)).
     pub fn connect_place(&self, f: impl Fn(f64, f64) + 'static) {
         self.imp().on_place.replace(Some(Box::new(f)));
     }
 
-    /// `f` is called when the text of the picked annotation is asked for:
-    /// by a double click on it, or Enter.
+    /// `f` is called when the text of the picked annotation is asked for: by a double click on it,
+    /// or Enter.
     pub fn connect_edit_text(&self, f: impl Fn() + 'static) {
         self.imp().on_edit_text.replace(Some(Box::new(f)));
     }
 
-    /// Makes clicks on a page put something there (see
-    /// [`connect_place`](Self::connect_place)) instead of picking.
+    /// Makes clicks on a page put something there (see [`connect_place`](Self::connect_place))
+    /// instead of picking.
     pub fn set_place_tool(&self, on: bool) {
         self.imp().place_tool.set(on);
         let (x, y) = self.pointer();
         self.update_cursor(x, y);
     }
 
-    /// Where the picked annotation is in the widget, for a popover to
-    /// point at.
+    /// Where the picked annotation is in the widget, for a popover to point at.
     pub fn picked_area(&self) -> Option<gdk::Rectangle> {
         let doc = self.imp().document.borrow().clone()?;
         let (_, corners) = doc.borrow_mut().picked_outline()?;
@@ -363,16 +357,15 @@ impl Canvas {
         self.imp().on_drawn.replace(Some(Box::new(f)));
     }
 
-    /// Makes drags draw (what, in which colour, how wide a line in points)
-    /// instead of selecting text; `None` for selecting again.
+    /// Makes drags draw (what, in which color, how wide a line in points) instead of selecting
+    /// text, or `None` for selecting again.
     pub fn set_draw_tool(&self, tool: Option<(DraftKind, specto_annot::Color, f64)>) {
         self.imp().draw_tool.set(tool);
         let (x, y) = self.pointer();
         self.update_cursor(x, y);
     }
 
-    /// Whether the pointer is drawing: a drag with a drawing tool that
-    /// hasn't ended.
+    /// Whether the pointer is drawing: a drag with a drawing tool that hasn't ended.
     fn is_drafting(&self) -> bool {
         self.imp()
             .document
@@ -403,8 +396,8 @@ impl Canvas {
             return R::default();
         };
         let r = f(&mut doc.borrow_mut());
-        // What the page is drawn from may have changed with it: not
-        // complete until a frame has found all its tiles again.
+        // What the page is drawn from may have changed with it: not complete until a frame has
+        // found all its tiles again.
         self.imp().complete.set(false);
         self.queue_draw();
         r
@@ -454,8 +447,8 @@ impl Canvas {
 
     // --- text selection ---------------------------------------------------
 
-    /// Highlights search matches on the visible pages: all in yellow, the
-    /// current one in orange (Adwaita's palette).
+    /// Highlights search matches on the visible pages: all in yellow, the current one in orange
+    /// (Adwaita's palette).
     fn draw_matches(
         &self,
         snapshot: &gtk::Snapshot,
@@ -483,7 +476,7 @@ impl Canvas {
         }
     }
 
-    /// Fills the selected text of the visible pages with the accent colour.
+    /// Fills the selected text of the visible pages with the accent color.
     fn draw_selection(
         &self,
         snapshot: &gtk::Snapshot,
@@ -538,8 +531,8 @@ impl Canvas {
         snapshot.push_clip(&logical(page.rect, scale));
         snapshot.append_stroke(&builder.to_path(), &gsk::Stroke::new(1.5), &accent);
         snapshot.pop();
-        // Handles to resize it by, where it can be: over the page's edge
-        // too, so one at the edge can be taken.
+        // Handles to resize it by, where it can be: over the page's edge too, so one at the edge
+        // can be taken.
         for handle in d.picked_handles() {
             let dot = gsk::PathBuilder::new();
             dot.add_circle(&graphene::Point::new(handle.x as f32, handle.y as f32), 4.5);
@@ -549,8 +542,7 @@ impl Canvas {
         }
     }
 
-    /// Picks the annotation under the pointer, or none. Returns whether
-    /// one is picked now.
+    /// Picks the annotation under the pointer, or none. Returns whether one is picked now.
     fn pick_annotation(&self, x: f64, y: f64) -> bool {
         let Some(doc) = self.imp().document.borrow().clone() else {
             return false;
@@ -566,9 +558,8 @@ impl Canvas {
         picked.is_some()
     }
 
-    /// For a double click that picked an annotation: whether that is
-    /// marked text, where the click's word stays selected and the
-    /// annotation isn't picked after all.
+    /// For a double click that picked an annotation: whether that is marked text, where the click's
+    /// word stays selected and the annotation isn't picked after all.
     fn clear_selection_on_markup(&self) -> bool {
         let Some(doc) = self.imp().document.borrow().clone() else {
             return false;
@@ -592,8 +583,8 @@ impl Canvas {
         markup
     }
 
-    /// Picks the annotation `id` on the page at `position` and scrolls to
-    /// it (see `Session::pick_and_show`).
+    /// Picks the annotation `id` on the page at `position` and scrolls to it (see
+    /// `Session::pick_and_show`).
     pub fn pick_and_show(&self, position: usize, id: specto_doc::AnnotId) {
         let Some(doc) = self.imp().document.borrow().clone() else {
             return;
@@ -618,8 +609,7 @@ impl Canvas {
         had
     }
 
-    /// Applies `f` to the selection (with the viewer and text layer), then
-    /// redraws.
+    /// Applies `f` to the selection (with the viewer and text layer), then redraws.
     fn edit_selection(
         &self,
         f: impl FnOnce(&Viewer, &mut crate::document::TextLayer<'_>, &mut Option<Selection>),
@@ -635,8 +625,7 @@ impl Canvas {
         self.queue_draw();
     }
 
-    /// A press: one click starts afresh (or extends with Shift), two select
-    /// a word, three a line.
+    /// A press: one click starts afresh (or extends with Shift), two select a word, three a line.
     fn press(&self, presses: i32, x: f64, y: f64, extend: bool) {
         let p = ViewPoint::new(x, y);
         self.edit_selection(|viewer, texts, selection| match presses {
@@ -704,18 +693,18 @@ impl Canvas {
         true
     }
 
-    /// Also offers the selection as the primary selection (middle-click
-    /// paste on Linux), as other apps do.
+    /// Also offers the selection as the primary selection (middle-click paste on Linux), as other
+    /// apps do.
     fn offer_primary(&self) {
         if let Some(text) = self.selected_text() {
             self.primary_clipboard().set_text(&text);
         }
     }
 
-    /// How far the pointer is into the autoscroll zone at the top (negative)
-    /// or bottom (positive) of the view: the last `AUTOSCROLL_EDGE` pixels
-    /// and beyond. A maximized window's edge is the screen's, and the
-    /// pointer can't go past that.
+    /// How far the pointer is into the autoscroll zone at the top (negative) or bottom (positive)
+    /// of the view: the last `AUTOSCROLL_EDGE` pixels and beyond.
+    ///
+    /// A maximized window's edge is the screen's, and the pointer can't go past that.
     fn autoscroll_overshoot(&self, y: f64) -> f64 {
         let height = self.height() as f64;
         if y < AUTOSCROLL_EDGE {
@@ -727,8 +716,8 @@ impl Canvas {
         }
     }
 
-    /// While a selection drag is near or beyond the top or bottom of the
-    /// view, scrolls towards the pointer, faster the further out it is.
+    /// While a selection drag is near or beyond the top or bottom of the view, scrolls towards the
+    /// pointer, faster the further out it is.
     fn autoscroll(&self) {
         let imp = self.imp();
         if imp.autoscroll.borrow().is_some() {
@@ -753,8 +742,7 @@ impl Canvas {
         imp.autoscroll.replace(Some(id));
     }
 
-    /// The cursor for the pointer at `(x, y)`: a hand over links, an I-beam
-    /// over text.
+    /// The cursor for the pointer at `(x, y)`: a hand over links, an I-beam over text.
     fn update_cursor(&self, x: f64, y: f64) {
         let p = ViewPoint::new(x, y);
         let name = if self.imp().draw_tool.get().is_some() || self.imp().place_tool.get() {
@@ -790,8 +778,8 @@ impl Canvas {
         self.imp().cursor.get()
     }
 
-    /// Draws a spinner in the middle of each rectangle (device pixels), and
-    /// creates or drops the animating paintable as needed.
+    /// Draws a spinner in the middle of each rectangle (device pixels), and creates or drops the
+    /// animating paintable as needed.
     fn draw_spinners(&self, snapshot: &gtk::Snapshot, at: &[DeviceRect], scale: f64) {
         const SIZE: f32 = 32.0;
         const BACKING: f32 = 56.0;
@@ -851,8 +839,8 @@ impl Canvas {
         }
     }
 
-    /// Schedules one redraw at `at` (when the view settles), unless one is
-    /// already pending; a redraw then reschedules if the deadline moved.
+    /// Schedules one redraw at `at` (when the view settles), unless one is already pending. A
+    /// redraw then reschedules if the deadline moved.
     fn redraw_at(&self, now: Instant, at: Instant) {
         let imp = self.imp();
         if imp.settle_timer.borrow().is_some() {
@@ -885,7 +873,7 @@ impl Canvas {
         imp.syncing.set(true);
         let configure = |adj: Option<gtk::Adjustment>, value: f64, upper: f64, page: f64| {
             if let Some(adj) = adj {
-                // Centred short content has a negative offset; scrollbars start at 0.
+                // Centered short content has a negative offset, while scrollbars start at 0.
                 adj.configure(
                     value.max(0.0),
                     0.0,
@@ -914,9 +902,8 @@ impl Canvas {
         });
         self.add_controller(motion);
 
-        // Presses: one click clears the selection (Shift extends it), two
-        // select a word, three a line. A click without movement on a link
-        // follows it.
+        // Presses: one click clears the selection (Shift extends it), two select a word, three a
+        // line. A click without movement on a link follows it.
         let click = gtk::GestureClick::new();
         click.set_button(gdk::BUTTON_PRIMARY);
         let this = self.downgrade();
@@ -939,8 +926,8 @@ impl Canvas {
             if c.imp().selecting.get() || c.imp().draw_tool.get().is_some() || c.is_adjusting() {
                 return;
             }
-            // A second click on an annotation other than marked text (where
-            // it selects the word) asks for its text.
+            // A second click on an annotation other than marked text (where it selects the word)
+            // asks for its text.
             if n_press == 2 {
                 let on_one = c.pick_annotation(x, y) && !c.clear_selection_on_markup();
                 if on_one && let Some(cb) = c.imp().on_edit_text.borrow().as_ref() {
@@ -963,14 +950,13 @@ impl Canvas {
                 c.follow(source, &target);
                 return;
             }
-            // A click on an annotation picks it; one elsewhere lets go.
+            // A click on an annotation picks it, and one elsewhere lets go.
             c.pick_annotation(x, y);
         });
         self.add_controller(click);
 
-        // Dragging selects text: by characters after a single press (once
-        // past the drag threshold, so clicks and links still work), by words
-        // or lines after a double or triple one.
+        // Dragging selects text: by characters after a single press (once past the drag threshold,
+        // so clicks and links still work), by words or lines after a double or triple one.
         let drag = gtk::GestureDrag::new();
         drag.set_button(gdk::BUTTON_PRIMARY);
         let this = self.downgrade();
@@ -987,8 +973,8 @@ impl Canvas {
                 }
                 return;
             }
-            // On a drawing or a shape, or a handle of the picked one: a
-            // drag from here moves or resizes it.
+            // On a drawing or a shape, or a handle of the picked one: a drag from here moves or
+            // resizes it.
             let on_one = c.grip_at(x, y).is_some();
             c.imp().may_adjust.set(on_one);
         });
@@ -1059,8 +1045,7 @@ impl Canvas {
             }
             if c.is_adjusting() {
                 c.draft(|d| d.finish_adjust());
-                // Also when nothing changed: what the page is drawn from
-                // went there and back.
+                // Also when nothing changed: what the page is drawn from went there and back.
                 if let Some(cb) = imp.on_drawn.borrow().as_ref() {
                     cb();
                 }
@@ -1072,8 +1057,7 @@ impl Canvas {
             if let Some(id) = imp.autoscroll.take() {
                 id.remove();
             }
-            // Also after a double or triple click, which selects without
-            // dragging.
+            // Also after a double or triple click, which selects without dragging.
             if c.selected_text().is_some()
                 && let Some(cb) = imp.on_selected.borrow().as_ref()
             {
@@ -1089,7 +1073,7 @@ impl Canvas {
             let Some(c) = this.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            // Ctrl+scroll zooms; on macOS Cmd+scroll too.
+            // Ctrl+scroll zooms, and on macOS Cmd+scroll too.
             if !ctl
                 .current_event_state()
                 .intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::META_MASK)
@@ -1107,9 +1091,8 @@ impl Canvas {
         });
         self.add_controller(scroll);
 
-        // Touchpad / touchscreen pinch.
-        // While it lasts the view isn't "settled", so pauses mid-pinch don't
-        // render exact-scale tiles for intermediate zooms.
+        // Touchpad / touchscreen pinch. While it lasts the view isn't "settled", so pauses
+        // mid-pinch don't render exact-scale tiles for intermediate zooms.
         let pinch = gtk::GestureZoom::new();
         let last = std::rc::Rc::new(Cell::new(1.0));
         let l = last.clone();
@@ -1141,8 +1124,8 @@ impl Canvas {
         });
         self.add_controller(pinch);
 
-        // Paging keys. Arrow keys and space are handled here too, so they
-        // work in paged modes where there's nothing to scroll.
+        // Paging keys. Arrow keys and space are handled here too, so they work in paged modes where
+        // there's nothing to scroll.
         let keys = gtk::EventControllerKey::new();
         let this = self.downgrade();
         keys.connect_key_pressed(move |_, key, _, state| {
@@ -1210,10 +1193,10 @@ impl Canvas {
     }
 }
 
-/// Draws a page in `rect`: white, what `content` draws (its tiles),
-/// clipped to the page, and over that the annotations the app draws itself
-/// (`overlay`, see `Session::overlay`). A highlight darkens what is beneath
-/// it, so the page is the bottom of a blend with those.
+/// Draws a page in `rect`: white, what `content` draws (its tiles), clipped to the page, and over
+/// that the annotations the app draws itself (`overlay`, see `Session::overlay`).
+///
+/// A highlight darkens what is beneath it, so the page is the bottom of a blend with those.
 pub fn draw_page(
     snapshot: &gtk::Snapshot,
     rect: &graphene::Rect,
@@ -1306,7 +1289,7 @@ fn draw_shapes(snapshot: &gtk::Snapshot, shapes: &[ViewShape]) {
     }
 }
 
-/// Fills quadrilaterals (view coordinates) with `colour`.
+/// Fills quadrilaterals (view coordinates) with `color`.
 fn fill_quads(snapshot: &gtk::Snapshot, quads: &[[ViewPoint; 4]], colour: &gdk::RGBA) {
     if quads.is_empty() {
         return;
@@ -1322,7 +1305,7 @@ fn fill_quads(snapshot: &gtk::Snapshot, quads: &[[ViewPoint; 4]], colour: &gdk::
     snapshot.append_fill(&builder.to_path(), gsk::FillRule::Winding, colour);
 }
 
-/// Device-pixel rectangle → the logical coordinates GTK snapshots use.
+/// Converts a rectangle in device pixels to the logical coordinates GTK snapshots use.
 fn logical(r: DeviceRect, scale: f64) -> graphene::Rect {
     graphene::Rect::new(
         (r.origin.x / scale) as f32,
@@ -1332,11 +1315,11 @@ fn logical(r: DeviceRect, scale: f64) -> graphene::Rect {
     )
 }
 
-/// Logical offset that moves this widget's origin onto a whole device pixel
-/// of its surface. At fractional scales the widget can sit at e.g. 31.25
-/// device px (a 25 px CSD shadow × 1.25), and then every tile is resampled
-/// between pixels. Measured at scale 1.25: edge contrast 80.7 without this,
-/// identical to an exact render with it.
+/// Logical offset that moves this widget's origin onto a whole device pixel of its surface.
+///
+/// At fractional scales the widget can sit at 31.25 device pixels, say (a window shadow of 25
+/// pixels times 1.25), and then every tile is resampled between pixels. Measured at scale 1.25:
+/// edge contrast 80.7 without this, identical to an exact render with it.
 fn device_pixel_snap(widget: &impl IsA<gtk::Widget>, scale: f64) -> (f32, f32) {
     let Some(native) = widget.native() else {
         return (0.0, 0.0);

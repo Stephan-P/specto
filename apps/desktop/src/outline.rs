@@ -1,5 +1,5 @@
-//! The outline (table of contents) sidebar: a `GtkListView` over a
-//! `GtkTreeListModel`, so large outlines only create widgets for visible rows.
+//! The outline (table of contents) sidebar: a `GtkListView` over a `GtkTreeListModel`, so large
+//! outlines only create widgets for visible rows.
 
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -23,7 +23,8 @@ pub struct OutlineView {
 }
 
 impl OutlineView {
-    /// `page_label` turns a page index into what to show ("12", "iv");
+    /// `page_label` turns a page index into what to show ("12", "iv").
+    ///
     /// `on_activate` is called with the target of the item the user picks.
     pub fn new(
         items: &[OutlineItem],
@@ -40,7 +41,7 @@ impl OutlineView {
         selection.set_selected(gtk::INVALID_LIST_POSITION);
 
         let factory = gtk::SignalListItemFactory::new();
-        // Row: [title, up to three lines] [page label, grey, right-aligned].
+        // Row: [title, up to three lines] [page label, gray, right-aligned].
         factory.connect_setup(|_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().expect("ListItem");
             let title = gtk::Label::builder()
@@ -51,17 +52,15 @@ impl OutlineView {
                 .lines(3)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
-            // Both top-aligned: same font, so the page number lines up with
-            // the title's first line.
+            // Both top-aligned: same font, so the page number lines up with the title's first line.
             let page = gtk::Label::builder()
                 .xalign(1.0)
                 .valign(gtk::Align::Start)
                 .css_classes(["dim-label", "numeric"])
                 .build();
-            // The sidebar has a minimum row height. Centring the box keeps
-            // single-line titles centred in it; the margins give multi-line
-            // titles room (one line plus margins still fits the minimum, so
-            // single-line rows don't get taller).
+            // The sidebar has a minimum row height. Centering the box keeps single-line titles
+            // centered in it. The margins give multi-line titles room (one line plus margins still
+            // fits the minimum, so single-line rows don't get taller).
             let row = gtk::Box::builder()
                 .orientation(gtk::Orientation::Horizontal)
                 .spacing(6)

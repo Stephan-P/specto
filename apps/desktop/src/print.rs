@@ -1,11 +1,9 @@
 //! Printing, with GTK's print dialog (`GtkPrintOperation`).
 //!
-//! The document is printed as edited: its pages in their order, with the
-//! user's rotation. Each page is scaled to fit the printable area of the
-//! paper and centred; the paper is turned to landscape for pages wider
-//! than tall. Pages are rendered as images at [`DPI`] on a thread of their
-//! own, using GTK's deferred drawing, so the window stays responsive while
-//! a large page renders.
+//! The document is printed as edited: its pages in their order, with the user's rotation. Each page
+//! is scaled to fit the printable area of the paper and centered. The paper is turned to landscape
+//! for pages wider than tall. Pages are rendered as images at [`DPI`] on a thread of their own,
+//! using GTK's deferred drawing, so the window stays responsive while a large page renders.
 
 use crate::i18n::gettext;
 use std::cell::{Cell, RefCell};
@@ -18,13 +16,11 @@ use specto_render::{Bitmap, Document as _, HayroDocument, RenderRequest};
 
 use crate::document::PageBundle;
 
-/// Rendering resolution: plenty for text on paper, and a letter page is
-/// then 2550 × 3300 pixels.
+/// Rendering resolution: plenty for text on paper, and a letter page is then 2550 by 3300 pixels.
 const DPI: f64 = 300.0;
 
 thread_local! {
-    /// The settings from the last print (printer, copies, …), offered again
-    /// the next time.
+    /// The settings from the last print (printer, copies and so on), offered again the next time.
     static SETTINGS: RefCell<Option<gtk::PrintSettings>> = const { RefCell::new(None) };
 }
 
@@ -47,9 +43,8 @@ pub enum Outcome {
     Failed(String),
 }
 
-/// Shows the print dialog for `job` (or, with `export` set, writes the
-/// result to that PDF file without a dialog, for tests) and prints.
-/// `done` gets the outcome.
+/// Shows the print dialog for `job` (or, with `export` set, writes the result to that PDF file
+/// without a dialog, for tests) and prints. `done` gets the outcome.
 pub fn print(
     job: Job,
     parent: &impl IsA<gtk::Window>,
@@ -72,8 +67,7 @@ pub fn print(
     let renderer = Renderer::start(&job.pages);
     // Sizes of the pages as displayed, in points.
     let sizes: Vec<(f64, f64)> = renderer.sizes.clone();
-    // Positions printed, by the print operation's page number: all of
-    // them, or the selection.
+    // Positions printed, by the print operation's page number: all of them, or the selection.
     let printed: Rc<RefCell<Vec<usize>>> = Rc::new(RefCell::new((0..sizes.len()).collect()));
 
     let (p, selected) = (printed.clone(), job.selected.clone());
@@ -101,7 +95,7 @@ pub fn print(
             return;
         };
         let (w, h) = sizes[position];
-        // Fitted to the printable area, centred.
+        // Fitted to the printable area, centered.
         let (area_w, area_h) = (context.width(), context.height());
         let fit = (area_w / w).min(area_h / h);
         let (out_w, out_h) = (w * fit, h * fit);
@@ -161,8 +155,8 @@ pub fn print(
     }
 }
 
-/// Paints `bitmap` (premultiplied RGBA) into the rectangle at `x`, `y` of
-/// size `w` × `h`, in the context's units.
+/// Paints `bitmap` (premultiplied RGBA) into the rectangle at `x`, `y` of size `w` by `h`, in the
+/// context's units.
 fn draw(
     cr: &cairo::Context,
     bitmap: &Bitmap,
@@ -173,8 +167,7 @@ fn draw(
 ) -> Result<(), cairo::Error> {
     let (bw, bh) = (bitmap.width as i32, bitmap.height as i32);
     let stride = cairo::Format::ARgb32.stride_for_width(bitmap.width)?;
-    // Cairo's ARGB32 is native-endian 32-bit words: B, G, R, A in memory
-    // on little-endian machines.
+    // Cairo's ARGB32 is native-endian 32-bit words: B, G, R, A in memory on little-endian machines.
     let mut data = vec![0u8; stride as usize * bh as usize];
     for (row, out) in bitmap
         .data
@@ -201,8 +194,7 @@ fn draw(
     cr.restore()
 }
 
-/// Renders pages for printing on a thread of its own, which opens each file
-/// once.
+/// Renders pages for printing on a thread of its own, which opens each file once.
 struct Renderer {
     /// Each page's size as displayed, in points.
     sizes: Vec<(f64, f64)>,
@@ -222,8 +214,8 @@ impl Renderer {
         let files = pages.files().to_vec();
         let list = pages.pages().to_vec();
         let bundle = pages.clone();
-        // Sizes come from the files, opened here once more (cheap next to
-        // rendering); a file that doesn't open gives letter-sized blanks.
+        // Sizes come from the files, opened here once more (cheap next to rendering). A file that
+        // doesn't open gives letter-sized blanks.
         let mut docs: HashMap<usize, Option<HayroDocument>> = HashMap::new();
         let sizes = list
             .iter()
@@ -250,9 +242,8 @@ impl Renderer {
                     let Some(&(file, page, rotation)) = list.get(r.position) else {
                         continue;
                     };
-                    // A page whose annotations were edited is printed from
-                    // a copy written with them, as saving would; the others
-                    // from their files.
+                    // A page whose annotations were edited is printed from a copy written with
+                    // them, as saving would, and the others from their files.
                     let edited = bundle.annotated_page(r.position).map(|copy| {
                         copy.ok()
                             .and_then(|data| HayroDocument::open(data, None).ok())
