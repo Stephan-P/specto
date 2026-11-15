@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 specto-annot.workspace = true
+specto-forms.workspace = true
 specto-doc.workspace = true
 specto-render.workspace = true
 specto-source.workspace = true

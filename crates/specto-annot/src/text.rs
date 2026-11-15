@@ -271,7 +271,7 @@ pub fn winansi(c: char) -> Option<u8> {
 
 /// `text` as the bytes a text box is written in: characters the code page doesn't have become
 /// question marks.
-pub(crate) fn encode(text: &str) -> Vec<u8> {
+pub fn encode(text: &str) -> Vec<u8> {
     text.chars().map(|c| winansi(c).unwrap_or(b'?')).collect()
 }
 

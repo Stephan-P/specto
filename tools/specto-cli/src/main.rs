@@ -30,6 +30,9 @@ enum Command {
         /// Also print the annotations (markup) of every page.
         #[arg(long)]
         annotations: bool,
+        /// Also print the fields of the document's form.
+        #[arg(long)]
+        forms: bool,
     },
     /// Render pages to PNG.
     Render(RenderArgs),
@@ -94,7 +97,8 @@ fn main() -> Result<()> {
             password,
             outline,
             annotations,
-        } => info(&file, password.as_deref(), outline, annotations),
+            forms,
+        } => info(&file, password.as_deref(), outline, annotations, forms),
         Command::Render(args) => render(&args),
         Command::Text {
             file,
@@ -132,7 +136,13 @@ pub(crate) fn open(file: &Path, password: Option<&str>) -> Result<HayroDocument>
     }
 }
 
-fn info(file: &Path, password: Option<&str>, outline: bool, annotations: bool) -> Result<()> {
+fn info(
+    file: &Path,
+    password: Option<&str>,
+    outline: bool,
+    annotations: bool,
+    forms: bool,
+) -> Result<()> {
     let doc = open(file, password)?;
     let pdf = doc.pdf();
     println!("version:  {:?}", pdf.version());
@@ -167,6 +177,26 @@ fn info(file: &Path, password: Option<&str>, outline: bool, annotations: bool) -
             for link in source.links(page) {
                 println!("link p{} {:?} → {:?}", page + 1, link.rect, link.target);
             }
+        }
+    }
+    if forms {
+        let data = specto_source::PdfData::open(file)?;
+        let source = specto_source::SourceDocument::open(data, password)?;
+        for f in specto_forms::fields(&source) {
+            let places: Vec<String> = f
+                .widgets
+                .iter()
+                .map(|w| format!("p{}", w.page + 1))
+                .collect();
+            println!(
+                "field {:?} {:?}{}{} = {:?} on {}",
+                f.name,
+                f.kind,
+                if f.read_only { " read-only" } else { "" },
+                if f.required { " required" } else { "" },
+                f.value,
+                places.join(" "),
+            );
         }
     }
     if annotations {

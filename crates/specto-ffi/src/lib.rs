@@ -147,6 +147,8 @@ impl From<specto_doc::Edit> for EditStep {
             Edit::AddAnnotation(_) => (EditKind::AddAnnotation, 1),
             Edit::RemoveAnnotation(_) => (EditKind::RemoveAnnotation, 1),
             Edit::ChangeAnnotation(_) => (EditKind::ChangeAnnotation, 1),
+            // Forms aren't filled in through this interface.
+            Edit::FillField => (EditKind::ChangeAnnotation, 1),
         };
         Self {
             kind,

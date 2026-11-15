@@ -8,6 +8,7 @@ description = "The edit model of specto: the pages and annotations of a document
 
 [dependencies]
 specto-annot.workspace = true
+specto-forms.workspace = true
 specto-geom.workspace = true
 
 [lints]

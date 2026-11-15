@@ -230,14 +230,14 @@ point to [DECISIONS.md](DECISIONS.md).
 
 ## M5: Forms
 
-- [ ] A forms crate: the AcroForm field tree, inheritance, the mapping of
-  widgets to pages, and field flags (read-only, required, multiline, comb,
-  password).
-- [ ] Field interaction: text through a native input overlay, checkboxes, radio
-  groups, combo and list boxes.
-- [ ] New widget appearances when values change, including font selection and
-  an embedded fallback font for text outside Latin.
+- [x] The forms crate: the field tree, inheritance, widgets by page, flags
+- [x] Filled-in values in the edit document, with undo, and saved with new looks
+- [x] Desktop: checkboxes, radio buttons and typing into text fields
+- [ ] Combo and list boxes.
+- [ ] Comb fields, and a password field that hides what is typed.
+- [ ] An embedded fallback font for text outside Latin.
 - [ ] Tab order, a toggle for highlighting fields, and resetting a form.
+- [ ] Forms of inserted files. Only the form of the opened file is kept.
 - [ ] Saving filled forms incrementally, and an optional flattened export.
 
 ## M6: Android

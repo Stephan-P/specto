@@ -9,6 +9,7 @@ description = "An open document as the specto apps hold it: its files, pages as 
 [dependencies]
 specto-annot.workspace = true
 specto-doc.workspace = true
+specto-forms.workspace = true
 specto-geom.workspace = true
 specto-render.workspace = true
 specto-source.workspace = true

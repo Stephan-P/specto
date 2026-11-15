@@ -2166,6 +2166,7 @@ dependencies = [
  "libc",
  "specto-annot",
  "specto-doc",
+ "specto-forms",
  "specto-render",
  "specto-source",
  "specto-text",
@@ -2197,6 +2198,7 @@ name = "specto-doc"
 version = "0.1.0"
 dependencies = [
  "specto-annot",
+ "specto-forms",
  "specto-geom",
 ]
 
@@ -2215,6 +2217,15 @@ dependencies = [
  "specto-view",
  "thiserror 2.0.21",
  "uniffi",
+]
+
+[[package]]
+name = "specto-forms"
+version = "0.1.0"
+dependencies = [
+ "specto-annot",
+ "specto-geom",
+ "specto-source",
 ]
 
 [[package]]
@@ -2241,6 +2252,7 @@ version = "0.1.0"
 dependencies = [
  "specto-annot",
  "specto-doc",
+ "specto-forms",
  "specto-geom",
  "specto-render",
  "specto-source",
@@ -2285,6 +2297,7 @@ dependencies = [
  "lopdf",
  "specto-annot",
  "specto-doc",
+ "specto-forms",
  "specto-geom",
  "specto-render",
  "specto-source",

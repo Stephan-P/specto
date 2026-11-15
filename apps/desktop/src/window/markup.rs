@@ -398,11 +398,41 @@ pub(super) struct Typing {
     pub(super) place: TextBoxPlace,
     /// The size and font of what is typed, which the markup bar can change meanwhile.
     pub(super) style: Cell<(f64, TextFont)>,
-    /// Whether the box is yet to be made, of what is typed.
-    pub(super) new: bool,
+    /// What the text is for.
+    pub(super) target: TypingTarget,
     /// Where the field is over the page view: its left and top edge, and its width.
     pub(super) area: Cell<(i32, i32, i32)>,
 }
+
+/// What is typed on the page is for.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum TypingTarget {
+    /// A text box yet to be made, of what is typed.
+    NewBox,
+    /// The picked text box.
+    Box,
+    /// A text field of the form: which, how high it is (in points), whether it takes several
+    /// lines, and where its text stands (0 for left, 1 for centered, 2 for right).
+    Field {
+        field: FieldId,
+        height: f64,
+        multiline: bool,
+        alignment: u8,
+    },
+}
+
+impl TypingTarget {
+    pub(super) fn is_field(self) -> bool {
+        matches!(self, TypingTarget::Field { .. })
+    }
+}
+
+/// The room between the edge of a form's text field and its text, in points, as the saved look
+/// has it.
+const FIELD_MARGIN: f64 = 2.0;
+
+/// The height of a line in a form's text field, in text sizes, as the saved look has it.
+const FIELD_LINE: f64 = 1.15;
 
 thread_local! {
     /// The style of the text field for typing on the page, which follows the box's text and the
@@ -631,15 +661,15 @@ impl Window {
                 let color = color_named(inner.tool_colors.get()[tool_index(Tool::Text)]);
                 let style = inner.text_style.get();
                 let place = doc.borrow().new_text_box_place(p, style, color);
-                place.map(|place| (place, String::new(), true))
+                place.map(|place| (place, String::new(), TypingTarget::NewBox))
             }
             None => {
                 let editing = doc.borrow_mut().begin_text_edit();
-                editing.map(|(place, text)| (place, text, false))
+                editing.map(|(place, text)| (place, text, TypingTarget::Box))
             }
         };
-        if let Some((place, text, new)) = on_page {
-            return self.type_on_page(place, &text, new);
+        if let Some((place, text, target)) = on_page {
+            return self.type_on_page(place, &text, target);
         }
         let (text, area) = match new_at {
             Some(p) => (
@@ -698,10 +728,43 @@ impl Window {
         view.grab_focus();
     }
 
-    /// Puts a text field over the page where a text box is (or is to be), in the box's font, size
-    /// and color, so that what is typed appears where it will stand. Escape, or a click elsewhere,
-    /// keeps the text.
-    pub(super) fn type_on_page(&self, place: TextBoxPlace, text: &str, new: bool) {
+    /// A form field that can be filled in was clicked at `(x, y)` of the page view: a box is ticked
+    /// or unticked, a radio button chosen, a text field typed into.
+    pub(super) fn fill_at(&self, x: f64, y: f64) {
+        self.finish_text_entry();
+        let Some(doc) = self.0.document.borrow().clone() else {
+            return;
+        };
+        let mut clicked = None;
+        self.annotate(|d| {
+            clicked = d.click_field(ViewPoint::new(x, y));
+            clicked == Some(FieldClick::Changed)
+        });
+        let Some(FieldClick::Text {
+            field,
+            place,
+            height,
+            multiline,
+            alignment,
+            text,
+        }) = clicked
+        else {
+            return;
+        };
+        doc.borrow_mut().begin_field_text(field);
+        let target = TypingTarget::Field {
+            field,
+            height,
+            multiline,
+            alignment,
+        };
+        self.type_on_page(place, &text, target);
+    }
+
+    /// Puts a text field over the page where a text box is (or is to be), or a text field of the
+    /// form, in its font, size and color, so that what is typed appears where it will stand.
+    /// Escape, or a click elsewhere, keeps the text.
+    pub(super) fn type_on_page(&self, place: TextBoxPlace, text: &str, target: TypingTarget) {
         let inner = &self.0;
         self.finish_typing();
         let view = gtk::TextView::builder()
@@ -714,11 +777,30 @@ impl Window {
             .css_classes(["page-text"])
             .build();
         view.buffer().set_text(text);
+        let mut one_line = false;
+        if let TypingTarget::Field {
+            multiline,
+            alignment,
+            ..
+        } = target
+        {
+            one_line = !multiline;
+            view.set_justification(match alignment {
+                1 => gtk::Justification::Center,
+                2 => gtk::Justification::Right,
+                _ => gtk::Justification::Left,
+            });
+        }
         inner.page_overlay.add_overlay(&view);
         let keys = gtk::EventControllerKey::new();
         let weak = Rc::downgrade(inner);
         keys.connect_key_pressed(move |_, key, _, _| {
-            if key != gdk::Key::Escape {
+            // Enter ends a field of one line, as Escape does.
+            let enter = matches!(
+                key,
+                gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter
+            );
+            if key != gdk::Key::Escape && !(one_line && enter) {
                 return glib::Propagation::Proceed;
             }
             if let Some(inner) = weak.upgrade() {
@@ -749,7 +831,7 @@ impl Window {
             view: view.clone(),
             style: Cell::new((place.size, place.font)),
             place,
-            new,
+            target,
             area: Cell::new((0, 0, 1)),
         }));
         self.show_text_style();
@@ -784,14 +866,29 @@ impl Window {
             (place.width * zoom).round().max(1.0) as i32,
         ));
         view.queue_resize();
-        let margin = (specto_annot::TEXT_MARGIN * zoom).round() as i32;
+        let field = typing.target.is_field();
+        let room = if field {
+            FIELD_MARGIN
+        } else {
+            specto_annot::TEXT_MARGIN
+        };
+        let margin = (room * zoom).round() as i32;
         view.set_left_margin(margin);
         view.set_right_margin(margin);
         // A line of the field is higher than the letters, half of the rest above them: less of a
         // margin on top makes up for it, so that the text stands where the box will have it.
-        let above = (specto_annot::TEXT_MARGIN - 0.12 * size) * zoom;
-        view.set_top_margin(above.max(0.0).round() as i32);
-        view.set_bottom_margin(margin);
+        let above = match typing.target {
+            // A field of one line has its text in the middle.
+            TypingTarget::Field {
+                height,
+                multiline: false,
+                ..
+            } => (height - FIELD_LINE * size) / 2.0,
+            _ => room - 0.12 * size,
+        };
+        view.set_top_margin((above * zoom).max(0.0).round() as i32);
+        view.set_bottom_margin(if field { 0 } else { margin });
+        let line_height = if field { FIELD_LINE } else { 1.2 };
         let c = place.color;
         let byte = |v: f32| (v * 255.0).round() as u8;
         let rgb = format!("rgb({}, {}, {})", byte(c.r), byte(c.g), byte(c.b));
@@ -800,7 +897,7 @@ impl Window {
         let css = format!(
             ".page-text, .page-text text {{ background: none; color: {rgb}; caret-color: {rgb}; \
              font-family: {}; font-weight: {}; font-style: {}; \
-             font-size: {:.2}px; line-height: 1.2; }}\n\
+             font-size: {:.2}px; line-height: {line_height}; }}\n\
              .page-text {{ outline: 1px solid @accent_bg_color; outline-offset: 2px; border-radius: 2px; }}\n",
             font_stack(font.family),
             if font.bold { "bold" } else { "normal" },
@@ -850,10 +947,18 @@ impl Window {
         };
         let mut failed = None;
         self.edit(|d| {
-            if typing.new {
-                d.add_text_box_at(&place, &text);
-            } else if let Err(e) = d.end_text_edit(Some((&text, style))) {
-                failed = Some(e);
+            match typing.target {
+                TypingTarget::NewBox => {
+                    d.add_text_box_at(&place, &text);
+                }
+                TypingTarget::Box => {
+                    if let Err(e) = d.end_text_edit(Some((&text, style))) {
+                        failed = Some(e);
+                    }
+                }
+                TypingTarget::Field { .. } => {
+                    d.end_field_text(Some(&text));
+                }
             }
             // Always: the page is drawn with the box again.
             Some(Edited::default())
@@ -916,7 +1021,13 @@ impl Window {
     /// picked or typed into), set to that thing's size and font.
     pub(super) fn show_text_style(&self) {
         let inner = &self.0;
-        let typing = inner.typing.borrow().as_ref().map(|t| t.style.get());
+        // Not for a field of the form, which has its own size and font.
+        let typing = inner
+            .typing
+            .borrow()
+            .as_ref()
+            .filter(|t| !t.target.is_field())
+            .map(|t| t.style.get());
         let picked = inner
             .document
             .borrow()
@@ -949,7 +1060,9 @@ impl Window {
         let style = self.text_controls_style();
         inner.text_style.set(style);
         let typing = inner.typing.borrow().as_ref().map(|t| {
-            t.style.set(style);
+            if !t.target.is_field() {
+                t.style.set(style);
+            }
             t.view.clone()
         });
         if let Some(view) = typing {

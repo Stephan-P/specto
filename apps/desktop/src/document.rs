@@ -306,6 +306,28 @@ impl Document {
         added
     }
 
+    /// A click at `p` on a form field (see the session's function of this name).
+    pub fn click_field(&mut self, p: specto_geom::ViewPoint) -> Option<specto_session::FieldClick> {
+        let clicked = self.session.click_field(scheduler(), p);
+        if clicked == Some(specto_session::FieldClick::Changed) {
+            self.pages_changed();
+        }
+        clicked
+    }
+
+    /// Starts typing into a text field of the form (see the session's function of this name).
+    pub fn begin_field_text(&mut self, field: specto_doc::FieldId) {
+        self.session.begin_field_text(scheduler(), field);
+        self.pages_changed();
+    }
+
+    /// Ends typing into a text field of the form, with its new text or without a change.
+    pub fn end_field_text(&mut self, text: Option<&str>) -> bool {
+        let changed = self.session.end_field_text(scheduler(), text);
+        self.pages_changed();
+        changed
+    }
+
     /// Starts typing into the picked text box (see the session's function of this name).
     pub fn begin_text_edit(&mut self) -> Option<(specto_session::TextBoxPlace, String)> {
         let editing = self.session.begin_text_edit(scheduler());

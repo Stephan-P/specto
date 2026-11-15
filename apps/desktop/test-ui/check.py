@@ -90,6 +90,10 @@ With the virtual pointer and keyboard, on a Courier text PDF:
 - typed_text_is_kept: text being typed is in the document when it is saved
   or the window closed, goes to the box it was typed into whatever is
   clicked meanwhile, also from the size field, and before pages are inserted
+- fill_form: on a form, the pointer shows what can be filled in; a click
+  ticks a box and chooses a radio button, and a text field is typed into
+  where it is, Enter ending it; undo and redo; text being typed is saved;
+  saved, the values are in the file and shown
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1606,6 +1610,126 @@ def test_typed_text_is_kept(ctx):
     inp.click(*w.screen(0, 110, 376))
     s = w.wait("the second picked", lambda s: s["annotation_text"].startswith("second"))
     check(sorted(s["annotation_text"].split()) == ["kept", "second"], s)
+
+
+def form_pdf(path):
+    """One letter page with a form: a text field "name", a checkbox "agree",
+    and radio buttons "pick" with the choices "a" and "b". A box that is on
+    is green."""
+    def look(content):
+        return (
+            f"<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Length {len(content)} >>\n"
+            f"stream\n{content}\nendstream"
+        ).encode()
+
+    def button(rect, state, more):
+        return (
+            f"<< /Type /Annot /Subtype /Widget /Rect [{rect}] /P 4 0 R /AS /Off"
+            f" /MK << /BC [0 0 0] >> /AP << /N << /{state} 10 0 R /Off 11 0 R >> >> {more} >>"
+        ).encode()
+
+    write_pdf(path, [
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R 6 0 R 7 0 R]"
+        b" /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>",
+        b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >>"
+        b" /Annots [5 0 R 6 0 R 8 0 R 9 0 R] >>",
+        b"<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [100 600 400 624]"
+        b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
+        button("100 540 120 560", "Yes", "/FT /Btn /T (agree) /V /Off"),
+        b"<< /FT /Btn /Ff 32768 /T (pick) /Kids [8 0 R 9 0 R] >>",
+        button("100 480 120 500", "a", "/Parent 7 0 R"),
+        button("140 480 160 500", "b", "/Parent 7 0 R"),
+        look("0 0.8 0 rg 0 0 20 20 re f"),
+        look(""),
+    ])
+
+
+def green(c):
+    return c[1] > 150 and c[0] < 110 and c[2] < 110
+
+
+def test_fill_form(ctx):
+    path = os.path.join(ctx.home, "form.pdf")
+    form_pdf(path)
+    w = ctx.app([path]).window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    at = lambda x, y: w.screen(0, x, y)
+    fields = lambda s: dict(map(tuple, s["fields"]))
+    typing = lambda s: s["text_editor"]
+    check(fields(w.state()) == {"name": "", "agree": "", "pick": ""}, w.state()["fields"])
+    # The pointer says what a click does.
+    inp.move(*at(250, 612))
+    w.wait("the cursor over the text field", lambda s: s["cursor"] == "text")
+    inp.move(*at(110, 550))
+    w.wait("the cursor over the box", lambda s: s["cursor"] == "pointer")
+    inp.move(*at(300, 300))
+    w.wait("the cursor over the page", lambda s: s["cursor"] == "")
+    # A click ticks the box, and another unticks it.
+    inp.click(*at(110, 550))
+    s = w.wait("the box ticked", lambda s: fields(s)["agree"] == "on")
+    check(s["modified"] and s["undo"] == "FillField", s)
+    inp.move(*at(300, 300))
+    w.settled()
+    check(green(pixel(w, "ticked", *at(110, 550))), "the tick isn't shown")
+    inp.click(*at(110, 550))
+    w.wait("the box unticked", lambda s: fields(s)["agree"] == "")
+    inp.move(*at(300, 300))
+    w.settled()
+    check(not green(pixel(w, "unticked", *at(110, 550))), "the tick is still shown")
+    w.action("undo")
+    w.wait("ticked again", lambda s: fields(s)["agree"] == "on")
+    # One radio button, then the other.
+    inp.click(*at(110, 490))
+    w.wait("a chosen", lambda s: fields(s)["pick"] == "a")
+    inp.click(*at(150, 490))
+    w.wait("b chosen", lambda s: fields(s)["pick"] == "b")
+    inp.move(*at(300, 300))
+    w.settled()
+    name = w.screenshot("radio")
+    width, height, pixels = read_ppm(name)
+    def shot(x, y):
+        k = (round(y * ctx.scale) * width + round(x * ctx.scale)) * 3
+        return tuple(pixels[k:k + 3])
+    check(green(shot(*at(150, 490))) and not green(shot(*at(110, 490))), "the wrong button is on")
+    # The text field is typed into where it is, as wide and as high as it
+    # is, and Enter ends that.
+    inp.click(*at(250, 612))
+    s = w.wait("typing", typing)
+    time.sleep(0.4)
+    x, y, width, _, height = w.wait("the field placed", lambda s: s["typing"][3] > 1)["typing"]
+    zoom = s["zoom"]
+    check(abs(width - 300 * zoom) <= 2 and abs(height - 24 * zoom) <= 2, s["typing"])
+    check(not s["text_controls"], "the size and font controls show for a field")
+    inp.type("ada")
+    w.wait("typed", lambda s: s.get("typing_text") == "ada")
+    inp.keys(Input.ENTER)
+    s = w.wait("the name", lambda s: fields(s)["name"] == "ada")
+    check(not typing(s) and s["undo"] == "FillField", s)
+    w.action("undo")
+    w.wait("the name undone", lambda s: fields(s)["name"] == "")
+    w.action("redo")
+    w.wait("the name again", lambda s: fields(s)["name"] == "ada")
+    # Typed on, and saved while typing.
+    inp.click(*at(250, 612))
+    w.wait("typing", typing)
+    time.sleep(0.4)
+    check(w.state()["typing_text"] == "ada", w.state())
+    inp.type(" l")
+    w.wait("typed", lambda s: s.get("typing_text") == "ada l")
+    w.action("save")
+    s = w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    check(not typing(s) and fields(s)["name"] == "ada l", s)
+    w = ctx.app([path]).window()
+    w.settled()
+    w.maximize()
+    s = w.state()
+    check(fields(s) == {"name": "ada l", "agree": "on", "pick": "b"}, s["fields"])
+    check(not s["modified"], s)
+    check(green(pixel(w, "reopened", *w.screen(0, 110, 550))), "the saved tick isn't shown")
 
 
 def test_select_words_and_lines(ctx):

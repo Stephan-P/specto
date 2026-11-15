@@ -45,6 +45,7 @@ pub(super) fn undo_label(edit: Edit) -> String {
         Edit::AddAnnotation(_) => gettext("Undo Add Annotation"),
         Edit::RemoveAnnotation(_) => gettext("Undo Delete Annotation"),
         Edit::ChangeAnnotation(_) => gettext("Undo Change Annotation"),
+        Edit::FillField => gettext("Undo Fill In Field"),
     }
 }
 
@@ -73,6 +74,7 @@ pub(super) fn redo_label(edit: Edit) -> String {
         Edit::AddAnnotation(_) => gettext("Redo Add Annotation"),
         Edit::RemoveAnnotation(_) => gettext("Redo Delete Annotation"),
         Edit::ChangeAnnotation(_) => gettext("Redo Change Annotation"),
+        Edit::FillField => gettext("Redo Fill In Field"),
     }
 }
 
@@ -87,6 +89,7 @@ pub(super) fn edit_name(edit: Edit) -> String {
         Edit::AddAnnotation(t) => return format!("Add {t:?}"),
         Edit::RemoveAnnotation(t) => return format!("Remove {t:?}"),
         Edit::ChangeAnnotation(t) => return format!("Change {t:?}"),
+        Edit::FillField => return "FillField".to_owned(),
     };
     if n == 1 {
         format!("{verb} Page")

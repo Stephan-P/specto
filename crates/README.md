@@ -15,6 +15,8 @@ graph TD
     write[specto-write] --> doc
     write --> render
     doc[specto-doc] --> annot
+    doc --> forms
+    forms[specto-forms] --> annot
     render[specto-render] --> source
     text[specto-text] --> source
     annot[specto-annot] --> source
@@ -50,10 +52,15 @@ Selection, copy and search build on it.
 Annotations such as highlights: the data model, reading the ones a file already
 has, and how they are drawn.
 
+## specto-forms
+
+The form of a file: its fields with their kind, value and flags, and where each
+shows on the pages.
+
 ## specto-doc
 
-The document being edited: its list of pages and the changes made to its
-annotations, with undo and redo. The files it came from are never modified.
+The document being edited: its list of pages, the changes made to its
+annotations and what was filled into its form, with undo and redo. The files it came from are never modified.
 
 ## specto-view
 

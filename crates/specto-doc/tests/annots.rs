@@ -197,3 +197,53 @@ fn saved_and_modified() {
     doc.redo();
     assert!(!doc.is_modified());
 }
+
+#[test]
+fn filling_in_a_form() {
+    use specto_doc::{FieldId, FieldValue};
+
+    let name = FieldId(7, 0);
+    let agreed = FieldId(9, 0);
+    let text = |t: &str| FieldValue::Text(t.to_owned());
+    let mut doc = EditDoc::from_source(A, 1);
+    assert_eq!(doc.field_value(name), None);
+
+    // The file has "Ada" for the name and the box unticked.
+    let in_file = text("Ada");
+    assert!(
+        !doc.fill_field(name, text("Ada"), Some(&in_file)),
+        "as in the file"
+    );
+    assert!(doc.fill_field(name, text("Grace"), Some(&in_file)));
+    assert_eq!(doc.undo_edit(), Some(Edit::FillField));
+    assert!(
+        !doc.fill_field(name, text("Grace"), Some(&in_file)),
+        "twice the same"
+    );
+    assert!(doc.fill_field(
+        agreed,
+        FieldValue::Check(true),
+        Some(&FieldValue::Check(false))
+    ));
+    assert_eq!(doc.field_value(name), Some(&text("Grace")));
+    assert_eq!(
+        doc.form_values(),
+        [(name, text("Grace")), (agreed, FieldValue::Check(true))]
+    );
+    assert!(doc.is_modified());
+
+    // Back to what the file has: nothing to save for that field.
+    assert!(doc.fill_field(name, text("Ada"), Some(&in_file)));
+    assert_eq!(doc.form_values(), [(agreed, FieldValue::Check(true))]);
+
+    // Undone in order, with the other edits.
+    doc.rotate(&[0], Rotation::Cw90);
+    assert_eq!(doc.undo(), Some(Edit::Rotate { pages: 1 }));
+    assert_eq!(doc.undo(), Some(Edit::FillField));
+    assert_eq!(doc.field_value(name), Some(&text("Grace")));
+    assert_eq!(doc.undo(), Some(Edit::FillField));
+    assert_eq!(doc.undo(), Some(Edit::FillField));
+    assert!(doc.form_values().is_empty() && !doc.is_modified());
+    assert!(doc.redo().is_some());
+    assert_eq!(doc.field_value(name), Some(&text("Grace")));
+}

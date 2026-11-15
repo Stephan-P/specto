@@ -204,6 +204,23 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   annotation and scrolls to it, and picking one on the page marks its row
 - Not yet: line width, other fonts than these three, text alignment
 
+## Forms
+
+- A click ticks or unticks a checkbox, and chooses a radio button
+- A click on a text field types into it where it is, in the field's font, size
+  and color. Enter, Escape or a click elsewhere ends typing and keeps the text.
+  In a field of several lines, Enter starts a new line
+- The pointer shows what can be filled in: an I-beam over text fields, a hand
+  over boxes and buttons. Read-only fields are left alone
+- Filling in is undone and redone like other edits, and counts as a change to
+  save
+- Saved as standard form values with a new look for each field, which other
+  programs show and can go on filling in
+- Thumbnails and prints show what was filled in
+- Not yet: combo and list boxes, comb fields, hiding what is typed into a
+  password field, text outside Latin, moving between fields with Tab, the forms
+  of inserted files
+
 ## Saving
 
 - Save (*Primary*+S) and Save As (Shift+*Primary*+S), in the main menu
@@ -268,6 +285,5 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 
 ## Not yet
 
-- Form filling
 - Highlighting the current outline entry
 - Dark mode for page content

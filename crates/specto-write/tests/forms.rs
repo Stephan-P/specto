@@ -1,0 +1,330 @@
+//! Forms through a save: filled in, written, read back with our own reader, and rendered with
+//! hayro, which shows a field only through its widget's appearance, as other programs do.
+
+use std::process::Command;
+
+use lopdf::{Document, Object, Stream, dictionary};
+use specto_doc::{FieldId, FieldValue, PageRef, SourceId};
+use specto_forms::{Field, FieldKind, fields};
+use specto_render::{Document as _, HayroDocument, RenderRequest};
+use specto_source::{PdfData, SourceDocument};
+use specto_write::{AnnotChanges, Source, write_filled};
+
+const MAIN: SourceId = SourceId(0);
+
+/// A page of 600 × 800 with a form: a text field "name" at x 100–400, y 700–730 (white on a
+/// pale blue background, with a border), a multiline one "notes" below it, a checkbox "agree"
+/// at 100–120, 500–520 whose "Yes" look is a green square, and a radio group "size" of two
+/// buttons ("S" and "L") at y 400–420 whose looks are red squares.
+fn fixture() -> Vec<u8> {
+    let mut doc = Document::with_version("1.7");
+    let pages = doc.new_object_id();
+    let page = doc.new_object_id();
+    let font = doc.add_object(dictionary! {
+        "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica",
+        "Encoding" => "WinAnsiEncoding",
+    });
+    let rect =
+        |x0: i64, y0: i64, x1: i64, y1: i64| vec![x0.into(), y0.into(), x1.into(), y1.into()];
+    let square = |doc: &mut Document, color: &str| {
+        doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Form",
+                "BBox" => rect(0, 0, 20, 20),
+            },
+            format!("{color} rg 0 0 20 20 re f").into_bytes(),
+        ))
+    };
+    let empty = |doc: &mut Document| {
+        doc.add_object(Stream::new(
+            dictionary! { "Type" => "XObject", "Subtype" => "Form", "BBox" => rect(0, 0, 20, 20) },
+            Vec::new(),
+        ))
+    };
+    let name = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "P" => page,
+        "T" => Object::string_literal("name"), "Rect" => rect(100, 700, 400, 730),
+        "MK" => dictionary! {
+            "BG" => vec![Object::Real(0.8), Object::Real(0.9), 1.into()],
+            "BC" => vec![0.into(), 0.into(), 0.into()],
+        },
+    });
+    let notes = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "P" => page,
+        "T" => Object::string_literal("notes"), "Rect" => rect(100, 560, 300, 660),
+        "Ff" => 1 << 12, "DA" => Object::string_literal("/Helv 10 Tf 0 0 1 rg"), "Q" => 2,
+    });
+    let (yes, off) = (square(&mut doc, "0 1 0"), empty(&mut doc));
+    let agree = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Btn", "P" => page,
+        "T" => Object::string_literal("agree"), "Rect" => rect(100, 500, 120, 520),
+        "V" => "Off", "AS" => "Off",
+        "AP" => dictionary! { "N" => dictionary! { "Yes" => yes, "Off" => off } },
+    });
+    let size = doc.new_object_id();
+    let mut buttons = Vec::new();
+    for (i, state) in ["S", "L"].into_iter().enumerate() {
+        let (on, off) = (square(&mut doc, "1 0 0"), empty(&mut doc));
+        let mut looks = lopdf::Dictionary::new();
+        looks.set(state, on);
+        looks.set("Off", off);
+        buttons.push(doc.add_object(dictionary! {
+            "Type" => "Annot", "Subtype" => "Widget", "P" => page, "Parent" => size,
+            "Rect" => rect(100 + 50 * i as i64, 400, 120 + 50 * i as i64, 420),
+            "AS" => if state == "S" { "S" } else { "Off" },
+            "AP" => dictionary! { "N" => looks },
+        }));
+    }
+    doc.objects.insert(
+        size,
+        dictionary! {
+            "FT" => "Btn", "Ff" => 1 << 15, "T" => Object::string_literal("size"), "V" => "S",
+            "Kids" => buttons.iter().map(|&b| Object::Reference(b)).collect::<Vec<_>>(),
+        }
+        .into(),
+    );
+    let mut annots = vec![name.into(), notes.into(), agree.into()];
+    annots.extend(buttons.iter().map(|&b| Object::Reference(b)));
+    doc.objects.insert(
+        page,
+        dictionary! { "Type" => "Page", "Parent" => pages, "Annots" => annots }.into(),
+    );
+    doc.objects.insert(
+        pages,
+        dictionary! {
+            "Type" => "Pages", "Count" => 1, "Kids" => vec![page.into()],
+            "MediaBox" => rect(0, 0, 600, 800), "Resources" => dictionary! {},
+        }
+        .into(),
+    );
+    let catalog = doc.add_object(dictionary! {
+        "Type" => "Catalog", "Pages" => pages,
+        "AcroForm" => dictionary! {
+            "Fields" => vec![name.into(), notes.into(), agree.into(), size.into()],
+            "DA" => Object::string_literal("/Helv 0 Tf 0 g"),
+            "DR" => dictionary! { "Font" => dictionary! { "Helv" => font } },
+        },
+    });
+    doc.trailer.set("Root", catalog);
+    let mut out = Vec::new();
+    doc.save_to(&mut out).unwrap();
+    out
+}
+
+fn read(data: &[u8]) -> Vec<Field> {
+    let doc = SourceDocument::open(data.to_vec(), None).expect("the file opens");
+    fields(&doc)
+}
+
+fn field<'a>(all: &'a [Field], name: &str) -> &'a Field {
+    all.iter()
+        .find(|f| f.name == name)
+        .expect("the field is there")
+}
+
+fn fill(data: &[u8], values: &[(FieldId, FieldValue)]) -> Vec<u8> {
+    let data = PdfData::from(data.to_vec());
+    let source = Source {
+        id: MAIN,
+        data: &data,
+        password: None,
+    };
+    let pages = [PageRef::new(MAIN, 0)];
+    let out =
+        write_filled(&[source], &pages, &AnnotChanges::new(), values, true).expect("it saves");
+    qpdf_check(&out);
+    out
+}
+
+/// The page rendered at one pixel a point.
+fn page(data: &[u8]) -> specto_render::Bitmap {
+    let doc = HayroDocument::open(data.to_vec(), None).expect("the file opens");
+    doc.render(&RenderRequest::page(0, 1.0)).unwrap()
+}
+
+fn pixel(page: &specto_render::Bitmap, x: u32, y: u32) -> [u8; 3] {
+    let at = ((799 - y) * page.width + x) as usize * 4;
+    [page.data[at], page.data[at + 1], page.data[at + 2]]
+}
+
+/// How many pixels between two corners (PDF points) `is` holds for.
+fn count(
+    page: &specto_render::Bitmap,
+    x: (u32, u32),
+    y: (u32, u32),
+    is: fn([u8; 3]) -> bool,
+) -> usize {
+    (x.0..x.1)
+        .flat_map(|px| (y.0..y.1).map(move |py| (px, py)))
+        .filter(|&(px, py)| is(pixel(page, px, py)))
+        .count()
+}
+
+fn qpdf_check(data: &[u8]) {
+    let path = std::env::temp_dir().join(format!(
+        "specto-forms-{}-{:x}.pdf",
+        std::process::id(),
+        data.len() ^ data.iter().take(4096).map(|&b| b as usize).sum::<usize>()
+    ));
+    std::fs::write(&path, data).unwrap();
+    let result = Command::new("qpdf").arg("--check").arg(&path).output();
+    std::fs::remove_file(&path).unwrap();
+    let Ok(out) = result else {
+        eprintln!("qpdf not installed; skipping the check");
+        return;
+    };
+    assert!(
+        out.status.success() && out.stderr.is_empty(),
+        "qpdf --check: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn the_fixture_is_read() {
+    let all = read(&fixture());
+    let names: Vec<&str> = all.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, ["name", "notes", "agree", "size"]);
+    assert!(matches!(
+        field(&all, "name").kind,
+        FieldKind::Text {
+            multiline: false,
+            ..
+        }
+    ));
+    assert!(matches!(
+        field(&all, "notes").kind,
+        FieldKind::Text {
+            multiline: true,
+            ..
+        }
+    ));
+    assert_eq!(field(&all, "notes").look.size, 10.0);
+    assert_eq!(field(&all, "notes").look.alignment, 2);
+    assert_eq!(
+        field(&all, "name").look.size,
+        0.0,
+        "from the form: as large as fits"
+    );
+    assert_eq!(field(&all, "agree").kind, FieldKind::Checkbox);
+    assert_eq!(field(&all, "agree").value, Some(FieldValue::Check(false)));
+    assert_eq!(
+        field(&all, "agree").widgets[0].on_state.as_deref(),
+        Some("Yes")
+    );
+    let size = field(&all, "size");
+    assert_eq!(size.kind, FieldKind::Radio);
+    assert_eq!(size.value, Some(FieldValue::Choice(Some("S".to_owned()))));
+    let states: Vec<_> = size.widgets.iter().map(|w| w.on_state.as_deref()).collect();
+    assert_eq!(states, [Some("S"), Some("L")]);
+    assert!(
+        all.iter()
+            .all(|f| f.is_fillable() && f.widgets.iter().all(|w| w.page == 0))
+    );
+}
+
+#[test]
+fn filled_in_values_are_saved_and_show() {
+    let original = fixture();
+    let all = read(&original);
+    let id = |name: &str| field(&all, name).id;
+    let before = page(&original);
+    let dark = |c: [u8; 3]| c.iter().all(|&v| v < 90);
+    let blue = |c: [u8; 3]| c[2] > 150 && c[0] < 100 && c[1] < 100;
+    let green = |c: [u8; 3]| c[1] > 200 && c[0] < 60 && c[2] < 60;
+    let red = |c: [u8; 3]| c[0] > 200 && c[1] < 60 && c[2] < 60;
+    assert_eq!(count(&before, (102, 398), (702, 728), dark), 0);
+    assert!(red(pixel(&before, 110, 410)) && !red(pixel(&before, 160, 410)));
+
+    let out = fill(
+        &original,
+        &[
+            (
+                id("name"),
+                FieldValue::Text("Ada Lovelace (née Byron)".to_owned()),
+            ),
+            (
+                id("notes"),
+                FieldValue::Text(
+                    "A line of notes that is surely long enough to wrap around\nand a second"
+                        .to_owned(),
+                ),
+            ),
+            (id("agree"), FieldValue::Check(true)),
+            (id("size"), FieldValue::Choice(Some("L".to_owned()))),
+        ],
+    );
+
+    // Read back: what was filled in.
+    let now = read(&out);
+    assert_eq!(
+        field(&now, "name").value,
+        Some(FieldValue::Text("Ada Lovelace (née Byron)".to_owned()))
+    );
+    assert_eq!(field(&now, "agree").value, Some(FieldValue::Check(true)));
+    assert_eq!(
+        field(&now, "size").value,
+        Some(FieldValue::Choice(Some("L".to_owned())))
+    );
+
+    // Shown: the name in its field, over the background and inside the border it says it has.
+    let after = page(&out);
+    assert!(
+        count(&after, (102, 398), (702, 728), dark) > 150,
+        "no text in the name field"
+    );
+    assert_eq!(
+        pixel(&after, 380, 715),
+        [204, 230, 255],
+        "the field's background"
+    );
+    assert!(dark(pixel(&after, 250, 729)), "the field's border");
+    assert_eq!(
+        count(&after, (402, 600), (690, 740), dark),
+        0,
+        "text beyond the field"
+    );
+    // The notes: blue, in several lines from the top, against the right edge.
+    assert!(
+        count(&after, (200, 298), (646, 658), blue) > 20,
+        "no first line at the right"
+    );
+    assert!(
+        count(&after, (200, 298), (622, 634), blue) > 10,
+        "no third line"
+    );
+    // (The short last line shows it: nothing of it at the left.)
+    assert_eq!(
+        count(&after, (102, 200), (622, 634), blue),
+        0,
+        "the notes aren't right-aligned"
+    );
+    assert_eq!(
+        count(&after, (100, 300), (540, 558), blue),
+        0,
+        "notes below their field"
+    );
+    // The box ticked, and the other radio button chosen.
+    assert!(green(pixel(&after, 110, 510)));
+    assert!(!red(pixel(&after, 110, 410)) && red(pixel(&after, 160, 410)));
+
+    // Emptied and unticked again.
+    let cleared = fill(
+        &out,
+        &[
+            (id("name"), FieldValue::Text(String::new())),
+            (id("agree"), FieldValue::Check(false)),
+            (id("size"), FieldValue::Choice(None)),
+        ],
+    );
+    let after = page(&cleared);
+    assert_eq!(count(&after, (102, 398), (702, 728), dark), 0);
+    assert_eq!(pixel(&after, 380, 715), [204, 230, 255]);
+    assert!(!green(pixel(&after, 110, 510)));
+    assert!(!red(pixel(&after, 110, 410)) && !red(pixel(&after, 160, 410)));
+    let now = read(&cleared);
+    assert_eq!(field(&now, "size").value, Some(FieldValue::Choice(None)));
+    // A field that isn't in the file is passed over.
+    fill(&original, &[(FieldId(9999, 0), FieldValue::Check(true))]);
+}

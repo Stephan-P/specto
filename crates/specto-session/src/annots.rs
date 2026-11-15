@@ -18,7 +18,7 @@ use specto_annot::{
     AnnotKind, Annotation, Appearance, Color, Date, MarkupStyle, Origin, Path, Shape, StampArt,
     TextFont, shapes,
 };
-use specto_doc::{AnnotId, PageAnnotChanges, PageRef, SourceId};
+use specto_doc::{AnnotId, FieldId, FieldValue, PageAnnotChanges, PageRef, SourceId};
 use specto_geom::{PdfBox, PdfPoint, ViewPoint, ViewSpace};
 use specto_render::scheduler::Scheduler;
 use specto_render::tile::DocId;
@@ -62,6 +62,8 @@ pub(crate) struct Variant {
     /// The annotations the copy has that the file doesn't: text boxes and stamps made or changed
     /// here, which only the renderer can draw.
     baked: Vec<Baked>,
+    /// What the form's fields on the page hold in the copy, other than in the file.
+    form: Vec<(FieldId, FieldValue)>,
     /// The copy, in the scheduler: a document of one page.
     pub(crate) doc_id: DocId,
 }
@@ -339,6 +341,7 @@ impl Session {
         (source, page): FilePage,
         hidden: &[Origin],
         baked: &[Baked],
+        form: &[(FieldId, FieldValue)],
     ) -> Result<Vec<u8>, WriteError> {
         let s = self
             .sources
@@ -363,10 +366,11 @@ impl Session {
             }
         }
         // Not encrypted: it never leaves the program.
-        specto_write::write_edited(
+        specto_write::write_filled(
             &[from],
             &[PageRef::new(source, page)],
             &HashMap::from([((source, page), changes)]),
+            form,
             false,
         )
     }
@@ -382,25 +386,31 @@ impl Session {
     /// As [`sync_variants`](Self::sync_variants), with `ready` being a copy that is written
     /// already: its page, what it leaves out, and the file.
     fn sync_variants_with(&mut self, scheduler: &Scheduler, mut ready: Option<WrittenVariant>) {
-        let wanted: HashMap<FilePage, (Vec<Origin>, Vec<Baked>)> = self
-            .edit
-            .pages_with_annotation_edits()
-            .into_iter()
-            .chain(self.held.as_ref().map(|h| h.page))
-            .map(|(source, page)| {
-                let spec = (self.hidden(source, page), self.baked(source, page));
-                ((source, page), spec)
-            })
-            .filter(|(_, (hidden, baked))| !hidden.is_empty() || !baked.is_empty())
-            .collect();
+        let mut pages = self.edit.pages_with_annotation_edits();
+        pages.extend(self.held.as_ref().map(|h| h.page));
+        pages.extend(self.pages_with_filled_fields());
+        pages.sort_unstable();
+        pages.dedup();
+        type Spec = (Vec<Origin>, Vec<Baked>, Vec<(FieldId, FieldValue)>);
+        let mut wanted: HashMap<FilePage, Spec> = HashMap::new();
+        for key in pages {
+            let spec = (
+                self.hidden(key.0, key.1),
+                self.baked(key.0, key.1),
+                self.page_form(key),
+            );
+            if !spec.0.is_empty() || !spec.1.is_empty() || !spec.2.is_empty() {
+                wanted.insert(key, spec);
+            }
+        }
         let mut changed = false;
         let stale: Vec<FilePage> = self
             .variants
             .iter()
             .filter(|(key, v)| {
-                wanted
-                    .get(key)
-                    .is_none_or(|(hidden, baked)| *hidden != v.hidden || *baked != v.baked)
+                wanted.get(key).is_none_or(|(hidden, baked, form)| {
+                    *hidden != v.hidden || *baked != v.baked || *form != v.form
+                })
             })
             .map(|(key, _)| *key)
             .collect();
@@ -410,14 +420,14 @@ impl Session {
                 changed = true;
             }
         }
-        for (key, (hidden, baked)) in wanted {
+        for (key, (hidden, baked, form)) in wanted {
             if self.variants.contains_key(&key) {
                 continue;
             }
             let file = match ready.take_if(|(k, h, b, _)| *k == key && *h == hidden && *b == baked)
             {
                 Some((_, _, _, file)) => Ok(file),
-                None => self.variant_file(key, &hidden, &baked),
+                None => self.variant_file(key, &hidden, &baked, &form),
             };
             let opened = file.ok().and_then(|f| scheduler.open(f, None).ok());
             if let Some(opened) = opened {
@@ -427,6 +437,7 @@ impl Session {
                     Variant {
                         hidden,
                         baked,
+                        form,
                         doc_id,
                     },
                 );
@@ -895,7 +906,7 @@ impl Session {
     /// without it, written first, so that nothing changes if that can't be done. `None` if the
     /// renderer doesn't draw it now either.
     fn page_without(
-        &self,
+        &mut self,
         id: AnnotId,
         a: &Arc<Annotation>,
     ) -> Result<Option<WrittenVariant>, WriteError> {
@@ -912,7 +923,8 @@ impl Session {
         hidden.sort_by_key(|o| o.index);
         let mut baked = self.baked(source, page);
         baked.retain(|(_, b)| !Arc::ptr_eq(b, a));
-        let file = self.variant_file((source, page), &hidden, &baked)?;
+        let form = self.page_form((source, page));
+        let file = self.variant_file((source, page), &hidden, &baked, &form)?;
         Ok(Some(((source, page), hidden, baked, file)))
     }
 
@@ -1064,7 +1076,7 @@ impl Session {
     }
 
     /// How many pixels a point of the page at `position` is on screen.
-    fn zoom_of_page(&self, position: usize) -> Option<f64> {
+    pub(crate) fn zoom_of_page(&self, position: usize) -> Option<f64> {
         let geometry = self.viewer.pages().get(position)?.displayed();
         let from = geometry.visible_box().min;
         let a = self.viewer.pdf_to_view(position, from)?;

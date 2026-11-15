@@ -145,6 +145,29 @@ on pointer positions and keeps track of which tool is chosen.
 in the page's annotation array and its object number. Saving checks that lopdf
 finds the same object there before touching it.
 
+### Forms
+
+The forms crate reads the form of a file (AcroForm only): each field with its
+kind, value and flags, and its widgets with their page and rectangle.
+Attributes a field inherits from its parents are resolved while reading. Text
+fields, checkboxes and radio buttons can be filled in. Other kinds are read and
+shown as the file draws them.
+
+Like annotations, the edit document holds only what differs from the file: a
+value per field that was filled in, kept per undo step. A field set back to
+what the file has leaves nothing to save. Only the form of the opened file
+counts. Inserted pages bring their widgets along, but not their form.
+
+A field shows through the appearance streams of its widgets, which hayro draws
+with the page. So a page with a filled-in field is rendered from a page variant
+too, with the values written into it exactly as saving would. For a checkbox or
+a radio button that selects one of the looks the file has. For a text field the
+write crate makes a new look from the field's font, size, color and alignment.
+
+A text field is typed into through a text input of the toolkit, placed over the
+widget. Meanwhile the variant shows the field empty. The session says where the
+input goes and in which font and size, and takes the text when typing ends.
+
 ## Rendering pipeline
 
 ```mermaid
@@ -374,11 +397,8 @@ The Android app is written in Kotlin with Jetpack Compose.
 
 None of this exists yet. The tasks are in [TASKS.md](TASKS.md).
 
-- **Forms.** AcroForm only. A forms crate would build the field tree, map
-  widgets to pages, and write new appearance streams when values change. While
-  a field is focused, the frontend would overlay a native text input at the
-  widget's position, which brings input methods, autocorrect and accessibility
-  with it.
+- **More of forms.** Combo and list boxes, comb fields, a fallback font for
+  text outside Latin, tab order, and forms on Android.
 - **Incremental save.** When only annotations or form values changed, append to
   the original file instead of rewriting it. This is faster and keeps existing
   digital signatures valid.

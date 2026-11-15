@@ -420,6 +420,26 @@ Saving, printing and other windows:
   sidebar. The markup is there too, and one undo there removes the page and its
   markup.
 
+### Forms
+
+A form with text fields, checkboxes and radio buttons is needed, such as a tax
+or application form.
+
+- The pointer is an I-beam over text fields and a hand over checkboxes and
+  radio buttons.
+- Tick and untick checkboxes, and choose radio buttons: the form's own marks
+  show, and only one button of a group is on.
+- Type into a text field: the text stands where it does after Enter, in the
+  same size, with no jump. Check a centered or right-aligned field and a field
+  of several lines too.
+- Zoom and scroll while typing: the text field stays on its place.
+- Undo and redo go through the fields in order.
+- Save while typing: what was typed is saved.
+- Save, close and open again: every value is there.
+- The saved file in other programs (Papers or Evince, Firefox, Preview on
+  macOS, Acrobat if at hand): the values show, and can be changed there.
+- Thumbnails and a print show what was filled in.
+
 ### Saving
 
 - LONG: rotate a few pages and press *Primary*+S. "Edited" goes away. Reopened,

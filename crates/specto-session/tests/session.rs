@@ -1251,3 +1251,188 @@ fn typed_text_goes_to_the_box_it_was_typed_into() {
     assert_eq!(texts(&mut session), ["Second"]);
     session.close(&scheduler);
 }
+
+/// A PDF of the numbered object bodies, with a proper cross-reference table.
+fn assemble(mut objects: Vec<(usize, String)>) -> Vec<u8> {
+    objects.sort_by_key(|(number, _)| *number);
+    let size = objects.last().map_or(1, |(number, _)| number + 1);
+    let mut out = String::from("%PDF-1.7\n");
+    let mut offsets = vec![None; size];
+    for (number, body) in &objects {
+        offsets[*number] = Some(out.len());
+        out += &format!("{number} 0 obj\n{body}\nendobj\n");
+    }
+    let xref = out.len();
+    out += &format!("xref\n0 {size}\n");
+    for (number, offset) in offsets.iter().enumerate() {
+        out += &match offset {
+            Some(offset) => format!("{offset:010} 00000 n \n"),
+            None if number == 0 => "0000000000 65535 f \n".into(),
+            None => "0000000000 00000 f \n".into(),
+        };
+    }
+    out += &format!("trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+    out.into_bytes()
+}
+
+/// Two pages of 200 × 300 with a form on the first: a text field "name" at x 20–180,
+/// y 240–260, and a checkbox "agree" at 20–40, 180–200. The second page has a read-only text
+/// field.
+fn form() -> Vec<u8> {
+    let stream = |dict: &str, content: &str| {
+        format!(
+            "<< {dict} /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        )
+    };
+    let look = "/Type /XObject /Subtype /Form /BBox [0 0 20 20]";
+    let objects =
+        vec![
+        (
+            1,
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R 7 0 R 10 0 R] \
+             /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>"
+                .to_owned(),
+        ),
+        (
+            2,
+            "<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 /MediaBox [0 0 200 300] \
+             /Resources << >> >>"
+                .to_owned(),
+        ),
+        (
+            3,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+                .to_owned(),
+        ),
+        (4, "<< /Type /Page /Parent 2 0 R /Annots [6 0 R 7 0 R] >>".to_owned()),
+        (5, "<< /Type /Page /Parent 2 0 R /Annots [10 0 R] >>".to_owned()),
+        (
+            6,
+            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [20 240 180 260] /P 4 0 R >>"
+                .to_owned(),
+        ),
+        (
+            7,
+            "<< /Type /Annot /Subtype /Widget /FT /Btn /T (agree) /Rect [20 180 40 200] /P 4 0 R \
+             /V /Off /AS /Off /AP << /N << /Yes 8 0 R /Off 9 0 R >> >> >>"
+                .to_owned(),
+        ),
+        (8, stream(look, "0 1 0 rg 0 0 20 20 re f")),
+        (9, stream(look, "")),
+        (
+            10,
+            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (fixed) /Ff 1 /V (Set) \
+             /Rect [20 240 180 260] /P 5 0 R >>"
+                .to_owned(),
+        ),
+    ];
+    assemble(objects)
+}
+
+#[test]
+fn filling_in_a_form() {
+    use specto_doc::{Edit, FieldValue};
+    use specto_forms::FieldKind;
+    use specto_session::{FieldClick, FieldHover};
+
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, form());
+    let file = session.viewer.pages()[0].doc;
+    let fields = session.form_fields();
+    assert_eq!(fields.len(), 3);
+    let (name, agree) = (fields[0].id, fields[1].id);
+    assert!(matches!(fields[0].kind, FieldKind::Text { .. }));
+    let at =
+        |s: &Session, page: usize, x, y| s.viewer.pdf_to_view(page, PdfPoint::new(x, y)).unwrap();
+
+    // What the pointer is over: a field to type into, a box to tick, nothing.
+    assert_eq!(
+        session.field_hover(at(&session, 0, 100.0, 250.0)),
+        Some(FieldHover::Text)
+    );
+    assert_eq!(
+        session.field_hover(at(&session, 0, 30.0, 190.0)),
+        Some(FieldHover::Button)
+    );
+    assert_eq!(session.field_hover(at(&session, 0, 100.0, 100.0)), None);
+
+    // A click ticks the box: the page is then shown from a copy with the tick in it.
+    let on_box = at(&session, 0, 30.0, 190.0);
+    assert_eq!(
+        session.click_field(&scheduler, on_box),
+        Some(FieldClick::Changed)
+    );
+    assert_eq!(session.field_value(agree), Some(FieldValue::Check(true)));
+    assert_eq!(session.edit().undo_edit(), Some(Edit::FillField));
+    assert!(session.edit().is_modified());
+    let ticked = session.viewer.pages()[0].doc;
+    assert_ne!(ticked, file);
+    assert_eq!(session.viewer.pages()[1].doc, file);
+    // Again unticks it: as in the file, and from the file.
+    assert_eq!(
+        session.click_field(&scheduler, on_box),
+        Some(FieldClick::Changed)
+    );
+    assert_eq!(session.field_value(agree), Some(FieldValue::Check(false)));
+    assert_eq!(session.viewer.pages()[0].doc, file);
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(session.field_value(agree), Some(FieldValue::Check(true)));
+    assert_ne!(session.viewer.pages()[0].doc, file);
+
+    // A click on the text field says where it is, to type into.
+    let on_name = at(&session, 0, 100.0, 250.0);
+    let Some(FieldClick::Text {
+        field,
+        place,
+        height,
+        multiline,
+        text,
+        ..
+    }) = session.click_field(&scheduler, on_name)
+    else {
+        panic!("a text field is there");
+    };
+    assert_eq!(
+        (field, height, multiline, text.as_str()),
+        (name, 20.0, false, "")
+    );
+    assert!((place.at - PdfPoint::new(20.0, 260.0)).length() < 1e-9);
+    assert_eq!(place.width, 160.0);
+    assert!((4.0..=12.0).contains(&place.size), "{}", place.size);
+    // Typed into, and what was typed kept, or not.
+    session.begin_field_text(&scheduler, name);
+    assert!(!session.end_field_text(&scheduler, None));
+    assert_eq!(
+        session.field_value(name),
+        Some(FieldValue::Text(String::new()))
+    );
+    session.begin_field_text(&scheduler, name);
+    assert!(session.end_field_text(&scheduler, Some("Ada")));
+    assert_eq!(
+        session.field_value(name),
+        Some(FieldValue::Text("Ada".to_owned()))
+    );
+    assert!(!session.end_field_text(&scheduler, Some("Stray")));
+
+    // Nothing to click on the page without fields to fill in: its one is read-only.
+    session.viewer.go_to_page(1);
+    assert_eq!(
+        session.click_field(&scheduler, at(&session, 1, 100.0, 250.0)),
+        None
+    );
+
+    // For printing, the page comes filled in.
+    let bundle = session.bundle(&[0, 1]);
+    assert!(bundle.annotated_page(0).is_some());
+
+    // Saved and opened again: the file has what was filled in.
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    let fields = saved.form_fields();
+    assert_eq!(fields[0].value, Some(FieldValue::Text("Ada".to_owned())));
+    assert_eq!(fields[1].value, Some(FieldValue::Check(true)));
+    assert!(!saved.edit().is_modified());
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}

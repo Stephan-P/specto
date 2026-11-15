@@ -13,6 +13,7 @@
 //! Android app has one per document. The calls that open or close files take it as an argument.
 
 mod annots;
+mod forms;
 mod search;
 mod text;
 
@@ -31,6 +32,7 @@ use specto_text::SearchText;
 use specto_view::{Selection, Settings, ViewPage, Viewer};
 
 pub use annots::{DraftKind, Grip, TextBoxPlace, ViewShape};
+pub use forms::{FieldClick, FieldHover};
 pub use search::{Indexed, SearchStatus};
 pub use text::TextLayer;
 
@@ -138,6 +140,10 @@ pub struct Session {
     /// An annotation the renderer draws that is taken out of its page for the time being, because
     /// it is being moved, resized or typed into.
     held: Option<annots::Held>,
+    /// The fields of the main file's form, read when first asked for.
+    form: Option<Arc<[specto_forms::Field]>>,
+    /// The text field of the form that is being typed into, if any: shown empty meanwhile.
+    typing_field: Option<specto_doc::FieldId>,
     /// The text box that is being typed into, if any: the position of its page, and which it
     /// is. What is typed goes to this one, whatever is picked by then.
     typing_into: Option<(usize, AnnotId)>,
@@ -178,6 +184,8 @@ impl Session {
             draft: None,
             adjust: None,
             held: None,
+            form: None,
+            typing_field: None,
             typing_into: None,
             picked: None,
             indexer: None,
@@ -340,6 +348,10 @@ pub struct PageBundle {
     files: Vec<(PdfData, Option<String>)>,
     /// Index in `files`, page of that file, rotation.
     pages: Vec<(usize, u32, Rotation)>,
+    /// What was filled into the form of the document's main file, and which of `files` that is,
+    /// if pages of it are in the bundle. For rendering those pages as filled in (printing).
+    /// Another document doesn't take it over with the pages: its form is its own file's.
+    form: Option<(usize, Vec<(specto_doc::FieldId, specto_doc::FieldValue)>)>,
     /// What was done to the annotations of those pages: index in `files`, page of that file, the
     /// changes. Only pages with any.
     annots: Vec<(usize, u32, PageAnnotChanges)>,
@@ -369,20 +381,31 @@ impl PageBundle {
         position: usize,
     ) -> Option<Result<Vec<u8>, specto_write::WriteError>> {
         let &(file, page, _) = self.pages.get(position)?;
-        let (_, _, changes) = self
+        let changes = self
             .annots
             .iter()
-            .find(|(f, p, _)| (*f, *p) == (file, page))?;
+            .find(|(f, p, _)| (*f, *p) == (file, page))
+            .map(|(_, _, changes)| changes.clone());
+        // What was filled into the form goes into every page of its file: which fields a page
+        // shows isn't known here, and a page without any is none the worse for it.
+        let form: &[_] = match &self.form {
+            Some((of, values)) if *of == file => values,
+            _ => &[],
+        };
+        if changes.is_none() && form.is_empty() {
+            return None;
+        }
         let (data, password) = &self.files[file];
         let source = specto_write::Source {
             id: MAIN,
             data,
             password: password.as_deref(),
         };
-        Some(specto_write::write_edited(
+        Some(specto_write::write_filled(
             &[source],
             &[PageRef::new(MAIN, page)],
-            &HashMap::from([((MAIN, page), changes.clone())]),
+            &HashMap::from([((MAIN, page), changes.unwrap_or_default())]),
+            form,
             false,
         ))
     }
@@ -395,6 +418,8 @@ pub struct SaveJob {
     pages: Vec<PageRef>,
     /// What was done to the annotations of those pages.
     annots: specto_write::AnnotChanges,
+    /// What was filled into the form.
+    form: Vec<(specto_doc::FieldId, specto_doc::FieldValue)>,
     /// The state being saved, to mark as saved when done.
     pub version: Version,
 }
@@ -402,18 +427,24 @@ pub struct SaveJob {
 impl SaveJob {
     /// The new file's bytes.
     pub fn write(&self) -> Result<Vec<u8>, specto_write::WriteError> {
-        specto_write::write_edited(&self.sources(), &self.pages, &self.annots, true)
+        specto_write::write_filled(&self.sources(), &self.pages, &self.annots, &self.form, true)
     }
 
     /// The new file's bytes without the document's password protection: for a print service, which
     /// can't be given a password.
     pub fn write_unprotected(&self) -> Result<Vec<u8>, specto_write::WriteError> {
-        specto_write::write_edited(&self.sources(), &self.pages, &self.annots, false)
+        specto_write::write_filled(
+            &self.sources(),
+            &self.pages,
+            &self.annots,
+            &self.form,
+            false,
+        )
     }
 
     /// Writes the new file to `path`, replacing it safely if it exists.
     pub fn save(&self, path: &std::path::Path) -> Result<(), specto_write::WriteError> {
-        specto_write::save_edited(path, &self.sources(), &self.pages, &self.annots)
+        specto_write::save_edited(path, &self.sources(), &self.pages, &self.annots, &self.form)
     }
 
     fn sources(&self) -> Vec<specto_write::Source<'_>> {
@@ -459,6 +490,7 @@ impl Session {
             files,
             pages,
             annots,
+            form: self.edit.form_values(),
             version: self.edit.version(),
         }
     }
@@ -486,9 +518,15 @@ impl Session {
                 annots.push((file, p.page, changes));
             }
         }
+        let filled = self.edit.form_values();
+        let form = file_of
+            .get(&MAIN)
+            .filter(|_| !filled.is_empty())
+            .map(|&file| (file, filled));
         PageBundle {
             files,
             pages,
+            form,
             annots,
         }
     }

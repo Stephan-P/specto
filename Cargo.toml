@@ -18,6 +18,7 @@ specto-view = { path = "crates/specto-view", version = "0.1.0" }
 specto-text = { path = "crates/specto-text", version = "0.1.0" }
 specto-annot = { path = "crates/specto-annot", version = "0.1.0" }
 specto-doc = { path = "crates/specto-doc", version = "0.1.0" }
+specto-forms = { path = "crates/specto-forms", version = "0.1.0" }
 specto-session = { path = "crates/specto-session", version = "0.1.0" }
 specto-write = { path = "crates/specto-write", version = "0.1.0" }
 hayro = "0.9"

@@ -1,0 +1,15 @@
+[package]
+name = "specto-forms"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Forms in specto: the fields of a PDF's form, their values, and where they are on the pages"
+
+[dependencies]
+specto-annot.workspace = true
+specto-geom.workspace = true
+specto-source.workspace = true
+
+[lints]
+workspace = true

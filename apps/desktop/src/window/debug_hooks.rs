@@ -389,6 +389,24 @@ impl Window {
                     &d.edit().redo_edit().map(edit_name).unwrap_or_default(),
                 );
         }
+        // What the form's fields hold: [name, value] each, a ticked box "on", an unticked one "".
+        if let Some(doc) = inner.document.borrow().as_ref() {
+            let mut d = doc.borrow_mut();
+            let fields: Vec<String> = d
+                .form_fields()
+                .iter()
+                .map(|f| {
+                    let value = match d.field_value(f.id) {
+                        Some(specto_doc::FieldValue::Text(text)) => text,
+                        Some(specto_doc::FieldValue::Check(true)) => "on".to_owned(),
+                        Some(specto_doc::FieldValue::Choice(Some(choice))) => choice,
+                        _ => String::new(),
+                    };
+                    format!("[{}, {}]", debug::quote(&f.name), debug::quote(&value))
+                })
+                .collect();
+            json.raw("fields", &format!("[{}]", fields.join(", ")));
+        }
         // The annotations of the current page (the file's and new ones), and whether one is picked.
         if let Some(doc) = inner.document.borrow().clone() {
             let mut d = doc.borrow_mut();

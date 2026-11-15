@@ -16,10 +16,12 @@
 
 mod annots;
 
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::Arc;
 
 pub use specto_annot::AnnotType;
+pub use specto_forms::{FieldId, FieldValue};
 pub use specto_geom::Rotation;
 
 use annots::AnnotEdits;
@@ -55,21 +57,34 @@ impl PageRef {
 /// Page", "Undo Highlight"). The count is of pages affected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Edit {
-    Rotate { pages: usize },
-    Delete { pages: usize },
-    Move { pages: usize },
-    Insert { pages: usize },
+    Rotate {
+        pages: usize,
+    },
+    Delete {
+        pages: usize,
+    },
+    Move {
+        pages: usize,
+    },
+    Insert {
+        pages: usize,
+    },
+    /// A field of the form was filled in, or what it held was changed.
+    FillField,
     AddAnnotation(AnnotType),
     RemoveAnnotation(AnnotType),
     ChangeAnnotation(AnnotType),
 }
 
 impl Edit {
-    /// Whether the edit was to annotations: the pages are as they were.
+    /// Whether the edit was to annotations or the form, not to pages: those are as they were.
     pub fn is_annotation(self) -> bool {
         matches!(
             self,
-            Self::AddAnnotation(_) | Self::RemoveAnnotation(_) | Self::ChangeAnnotation(_)
+            Self::AddAnnotation(_)
+                | Self::RemoveAnnotation(_)
+                | Self::ChangeAnnotation(_)
+                | Self::FillField
         )
     }
 }
@@ -84,6 +99,8 @@ struct Step {
     edit: Edit,
     pages: Vec<PageRef>,
     annots: Arc<AnnotEdits>,
+    /// What was filled into the form, by field.
+    form: Arc<BTreeMap<FieldId, FieldValue>>,
     version: u64,
 }
 
@@ -92,6 +109,8 @@ struct Step {
 pub struct EditDoc {
     pages: Vec<PageRef>,
     annots: Arc<AnnotEdits>,
+    /// What was filled into the form, by field.
+    form: Arc<BTreeMap<FieldId, FieldValue>>,
     /// The number the next new annotation gets.
     next_annot: u64,
     /// Identifies the current state.
@@ -111,6 +130,7 @@ impl EditDoc {
         Self {
             pages,
             annots: Arc::default(),
+            form: Arc::default(),
             next_annot: 0,
             version: 0,
             next_version: 1,
@@ -264,6 +284,40 @@ impl EditDoc {
         Some(range)
     }
 
+    /// What was filled into field `field` of the main file's form, if anything was: what it
+    /// holds instead of the value the file has for it.
+    pub fn field_value(&self, field: FieldId) -> Option<&FieldValue> {
+        self.form.get(&field)
+    }
+
+    /// Everything that was filled into the form, by field: what saving writes.
+    pub fn form_values(&self) -> Vec<(FieldId, FieldValue)> {
+        self.form.iter().map(|(id, v)| (*id, v.clone())).collect()
+    }
+
+    /// Fills `value` into field `field`. `in_file` is what the file has for it: filled in
+    /// again, the field is as in the file and nothing is kept for it. Returns whether that
+    /// changed what the field holds.
+    pub fn fill_field(
+        &mut self,
+        field: FieldId,
+        value: FieldValue,
+        in_file: Option<&FieldValue>,
+    ) -> bool {
+        let now = self.form.get(&field).or(in_file);
+        if now == Some(&value) {
+            return false;
+        }
+        self.record(Edit::FillField);
+        let form = Arc::make_mut(&mut self.form);
+        if in_file == Some(&value) {
+            form.remove(&field);
+        } else {
+            form.insert(field, value);
+        }
+        true
+    }
+
     /// What [`undo`](Self::undo) would undo.
     pub fn undo_edit(&self) -> Option<Edit> {
         self.undo.last().map(|s| s.edit)
@@ -298,6 +352,7 @@ impl EditDoc {
             edit: step.edit,
             pages: std::mem::replace(&mut self.pages, step.pages),
             annots: std::mem::replace(&mut self.annots, step.annots),
+            form: std::mem::replace(&mut self.form, step.form),
             version: self.version,
         };
         self.version = step.version;
@@ -310,6 +365,7 @@ impl EditDoc {
             edit,
             pages: self.pages.clone(),
             annots: self.annots.clone(),
+            form: self.form.clone(),
             version: self.version,
         });
         if self.undo.len() > UNDO_LIMIT {

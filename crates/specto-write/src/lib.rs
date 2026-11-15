@@ -42,6 +42,7 @@
 //! keeps its copy.
 
 mod annots;
+mod forms;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
@@ -50,7 +51,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use lopdf::{Dictionary, Document, LoadOptions, Object, ObjectId, SaveOptions};
-use specto_doc::{PageAnnotChanges, PageRef, Rotation, SourceId};
+use specto_doc::{FieldId, FieldValue, PageAnnotChanges, PageRef, Rotation, SourceId};
 use specto_source::hayro_syntax::object::{ObjectIdentifier, Stream as HayroStream};
 use specto_source::{LabelStyle, PageLabels, PdfData};
 
@@ -94,7 +95,7 @@ pub type AnnotChanges = HashMap<(SourceId, u32), PageAnnotChanges>;
 ///
 /// The first source is the main document (see the crate documentation).
 pub fn write(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
-    write_as(sources, pages, &AnnotChanges::new(), true)
+    write_as(sources, pages, &AnnotChanges::new(), &[], true)
 }
 
 /// Like [`write()`], with the annotations changed as `annots` says.
@@ -106,7 +107,19 @@ pub fn write_edited(
     annots: &AnnotChanges,
     protected: bool,
 ) -> Result<Vec<u8>, WriteError> {
-    write_as(sources, pages, annots, protected)
+    write_as(sources, pages, annots, &[], protected)
+}
+
+/// Like [`write_edited`], with `form` filled into the form of the main source: what each field
+/// named holds now.
+pub fn write_filled(
+    sources: &[Source],
+    pages: &[PageRef],
+    annots: &AnnotChanges,
+    form: &[(FieldId, FieldValue)],
+    protected: bool,
+) -> Result<Vec<u8>, WriteError> {
+    write_as(sources, pages, annots, form, protected)
 }
 
 /// Like [`write()`], but the result isn't encrypted, whether the main source is or not.
@@ -114,13 +127,14 @@ pub fn write_edited(
 /// For handing the document to something that can't be given a password, such as a print service.
 /// Not for saving, which would quietly take a document's protection away.
 pub fn write_unprotected(sources: &[Source], pages: &[PageRef]) -> Result<Vec<u8>, WriteError> {
-    write_as(sources, pages, &AnnotChanges::new(), false)
+    write_as(sources, pages, &AnnotChanges::new(), &[], false)
 }
 
 fn write_as(
     sources: &[Source],
     pages: &[PageRef],
     annots: &AnnotChanges,
+    form: &[(FieldId, FieldValue)],
     protected: bool,
 ) -> Result<Vec<u8>, WriteError> {
     let (main, others) = sources.split_first().ok_or(WriteError::NoPages)?;
@@ -130,6 +144,7 @@ fn write_as(
     let mut doc = load(main)?;
     let encryption = doc.encryption_state.take().filter(|_| protected);
     flatten_inherited(&mut doc)?;
+    forms::apply(&mut doc, form)?;
     annotate(&mut doc, main.id, annots)?;
     let catalog_id = doc
         .trailer
@@ -380,17 +395,18 @@ fn doc_page_count_before(page_ids: &HashMap<(SourceId, u32), ObjectId>, main: So
 /// The data goes to a temporary file in the same directory first, which then takes the old file's
 /// place, keeping its permissions.
 pub fn save(path: &Path, sources: &[Source], pages: &[PageRef]) -> Result<(), WriteError> {
-    save_edited(path, sources, pages, &AnnotChanges::new())
+    save_edited(path, sources, pages, &AnnotChanges::new(), &[])
 }
 
-/// Like [`save`], with the annotations changed as `annots` says.
+/// Like [`save`], with the annotations changed as `annots` says and `form` filled into the form.
 pub fn save_edited(
     path: &Path,
     sources: &[Source],
     pages: &[PageRef],
     annots: &AnnotChanges,
+    form: &[(FieldId, FieldValue)],
 ) -> Result<(), WriteError> {
-    let data = write_edited(sources, pages, annots, true)?;
+    let data = write_filled(sources, pages, annots, form, true)?;
     replace_file(path, &data)?;
     Ok(())
 }

@@ -59,6 +59,7 @@ mod imp {
         pub place_tool: Cell<bool>,
         pub on_place: RefCell<Option<PlaceHandler>>,
         pub on_edit_text: RefCell<Option<Box<dyn Fn()>>>,
+        pub on_fill: RefCell<Option<PlaceHandler>>,
         /// Called with a link's URI. The window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links, "text" over text.
@@ -101,6 +102,7 @@ mod imp {
                 place_tool: Cell::default(),
                 on_place: RefCell::default(),
                 on_edit_text: RefCell::default(),
+                on_fill: RefCell::default(),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -321,6 +323,18 @@ impl Canvas {
     /// [`set_place_tool`](Self::set_place_tool)).
     pub fn connect_place(&self, f: impl Fn(f64, f64) + 'static) {
         self.imp().on_place.replace(Some(Box::new(f)));
+    }
+
+    /// `f` is called with where a form field that can be filled in was clicked.
+    pub fn connect_fill(&self, f: impl Fn(f64, f64) + 'static) {
+        self.imp().on_fill.replace(Some(Box::new(f)));
+    }
+
+    /// What kind of form field is at `(x, y)`, if one that can be filled in is.
+    fn field_at(&self, x: f64, y: f64) -> Option<specto_session::FieldHover> {
+        let doc = self.imp().document.borrow().clone()?;
+        let mut d = doc.borrow_mut();
+        d.field_hover(ViewPoint::new(x, y))
     }
 
     /// `f` is called when the text of the picked annotation is asked for: by a double click on it,
@@ -761,6 +775,11 @@ impl Canvas {
                 Grip::Move => "move",
                 Grip::Corner(_) | Grip::End(_) => "crosshair",
             })
+        } else if let Some(field) = self.field_at(x, y) {
+            Some(match field {
+                specto_session::FieldHover::Text => "text",
+                specto_session::FieldHover::Button => "pointer",
+            })
         } else if self.link_at(x, y).is_some() {
             Some("pointer")
         } else {
@@ -968,6 +987,14 @@ impl Canvas {
             // A placing tool puts its thing where the click was.
             if c.imp().place_tool.get() {
                 if let Some(cb) = c.imp().on_place.borrow().as_ref() {
+                    cb(x, y);
+                }
+                return;
+            }
+            // A form field is filled in.
+            if c.field_at(x, y).is_some() {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                if let Some(cb) = c.imp().on_fill.borrow().as_ref() {
                     cb(x, y);
                 }
                 return;

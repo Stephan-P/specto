@@ -25,7 +25,9 @@ pub use photo::{InkSettings, ink_from_photo};
 pub use shapes::{
     AppearanceStream, GraphicsState, Path, Segment, Shape, appearance, look_mark, shapes,
 };
-pub use text::{FontFamily, TEXT_MARGIN, TextFont, box_height, text_width, wrap};
+pub use text::{
+    FontFamily, TEXT_MARGIN, TextFont, box_height, encode as encode_text, text_width, wrap,
+};
 
 /// How wide and high the mark of a note is, in points.
 pub const NOTE_SIZE: f64 = 18.0;

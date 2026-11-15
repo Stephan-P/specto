@@ -326,7 +326,8 @@ impl SourceDocument {
         }
     }
 
-    fn catalog(&self) -> Option<Dict<'_>> {
+    /// The document's catalog: the dictionary everything else in it hangs on.
+    pub fn catalog(&self) -> Option<Dict<'_>> {
         let xref = self.pdf.xref();
         xref.get::<Dict<'_>>(xref.root_id())
     }

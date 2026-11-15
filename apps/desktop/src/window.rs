@@ -6,10 +6,10 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use specto_annot::{AnnotType, Color, FontFamily, MarkupStyle, TextFont};
-use specto_doc::{Edit, Rotation, SourceId};
+use specto_doc::{Edit, FieldId, Rotation, SourceId};
 use specto_geom::ViewPoint;
 use specto_render::{OpenError, PdfData};
-use specto_session::{DraftKind, TextBoxPlace};
+use specto_session::{DraftKind, FieldClick, TextBoxPlace};
 use specto_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
@@ -565,10 +565,15 @@ impl Window {
                 let buffer = typing.view.buffer();
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
                 let (size, font) = typing.style.get();
-                let inside = (typing.place.width - 2.0 * specto_annot::TEXT_MARGIN).max(size);
-                let lines = specto_annot::wrap(&text, size, inside, font).len();
                 let zoom = f64::from(width) / typing.place.width.max(1.0);
-                let needed = (specto_annot::box_height(lines, size, font) * zoom).ceil() as i32;
+                let needed = if let TypingTarget::Field { height, .. } = typing.target {
+                    // A field of the form is as high as it is.
+                    (height * zoom).round() as i32
+                } else {
+                    let inside = (typing.place.width - 2.0 * specto_annot::TEXT_MARGIN).max(size);
+                    let lines = specto_annot::wrap(&text, size, inside, font).len();
+                    (specto_annot::box_height(lines, size, font) * zoom).ceil() as i32
+                };
                 let height = measured.max(needed);
                 Some(gdk::Rectangle::new(x, y, width, height.max(1)))
             });
@@ -576,6 +581,12 @@ impl Window {
         this.0.canvas.connect_place(move |x, y| {
             if let Some(inner) = weak.upgrade() {
                 Window(inner).place(x, y);
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_fill(move |x, y| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).fill_at(x, y);
             }
         });
         let weak = Rc::downgrade(&this.0);
