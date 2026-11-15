@@ -3,7 +3,7 @@
 the document portal. Install it first with packaging/flatpak/build.sh, then
 from the repository root:
 
-    XDG_RUNTIME_DIR=$(mktemp -d /tmp/rt.XXXX) tools/headless/run.sh python3 -I tools/headless/check-flatpak.py
+    XDG_RUNTIME_DIR=$(mktemp -d /tmp/rt.XXXX) apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check-flatpak.py
 
 The separate XDG_RUNTIME_DIR gives the session its own document portal
 (the user's own is mounted at /run/user/UID/doc); it must be a short path,

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Specto, the desktop app (GTK4 + libadwaita)"
+description = "Document viewer and light editor, written in Rust, with GTK 4."
 
 [[bin]]
 name = "specto-gtk"

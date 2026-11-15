@@ -4,7 +4,7 @@
 # automated checks.
 #
 #   cargo build --release -p specto-desktop
-#   tools/headless/run.sh tools/headless/smoke.sh <file.pdf> <out-dir>
+#   apps/desktop/test-ui/run.sh apps/desktop/test-ui/smoke.sh <file.pdf> <out-dir>
 set -u
 pdf=$1 out=$2
 app=net.xfbs.specto obj=/net/xfbs/specto/window/1

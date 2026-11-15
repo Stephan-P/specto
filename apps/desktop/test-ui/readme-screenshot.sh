@@ -5,7 +5,7 @@
 # default size (the monitor must be big enough for it).
 #
 #   cargo build --release -p specto-desktop
-#   SPECTO_SCALE=2 SPECTO_MONITOR=2400x1800 tools/headless/run.sh tools/headless/readme-screenshot.sh
+#   SPECTO_SCALE=2 SPECTO_MONITOR=2400x1800 apps/desktop/test-ui/run.sh apps/desktop/test-ui/readme-screenshot.sh
 set -eu
 pdf=${1:-/usr/share/doc/hwloc/hwloc-a4.pdf}
 out=$(realpath "${2:-apps/desktop/screenshot.png}")

@@ -19,12 +19,6 @@ target/release/specto corpus corpus/files/... --reference  # regression run
 `target/release/specto help <command>` shows a command's options. The
 regression run and the test corpus are described in [corpus/README.md](../corpus/README.md).
 
-## `headless`
-
-Runs the desktop app in a headless compositor. `check.py` is the automated
-end-to-end check, which also runs in CI; `smoke.sh` takes screenshots. See
-[apps/desktop/TESTING.md](../apps/desktop/TESTING.md).
-
 ## `test-files.sh`
 
 Puts copies of the test files for testing by hand in `target/test-files/`.
@@ -34,3 +28,9 @@ Needs the corpus (`corpus/fetch.sh`) and `qpdf`.
 
 Generates the Kotlin bindings for the Android app. Gradle runs it as part of
 the Android build.
+
+## Elsewhere
+
+The desktop app's automated checks are in
+[apps/desktop/test-ui](../apps/desktop/test-ui), described in
+[apps/desktop/TESTING.md](../apps/desktop/TESTING.md).

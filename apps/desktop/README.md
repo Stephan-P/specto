@@ -1,70 +1,88 @@
 # Specto for the desktop
 
-A fast, responsive PDF viewer with light editing capabilities. Built with Rust and GTK 4, designed to fit in well on Linux with the GNOME desktop, but it also runs on macOS.
+A fast, responsive PDF viewer with light editing capabilities. It is built with
+Rust and GTK 4 and designed for the GNOME desktop on Linux. It also runs on
+macOS.
 
 <p align="center">
   <img src="screenshot.png" width="50%" alt="Specto showing two pages side by side, with the table of contents in the sidebar">
 </p>
 
-There are several PDF readers for Linux, but few support basic editing, such as merging PDFs, rotating pages, adding annotations or filling in forms. The editors that do support these are often not pleasant to use. Specto is meant to fill that gap: not a full-fledged PDF editor, but enough to do the common things quickly.
+There are several PDF readers for Linux, but few support basic editing, such as
+merging PDFs, rotating pages, adding annotations or filling in forms. The
+editors that do support these are often not pleasant to use. Specto is meant to
+fill that gap. It is not a full PDF editor, but it does the common things
+quickly.
 
 ## Features
 
-What it can do today:
+The main features are below, and the full list is in
+[FEATURES.md](FEATURES.md).
 
-- Sharp rendering at any zoom, including on HiDPI and fractionally scaled screens
-- Single page, continuous and two-page layouts, optionally with the cover page on its own
-- Fit width, fit page and free zoom, with touchpad pinch and Ctrl+scroll
-- Thumbnails, the table of contents, links, and printed page numbers ("iv", "A-3")
-- Selecting and copying text: drag, double-click a word, triple-click a line, select all
-- Searching, ignoring case and accents, with all matches highlighted
-- Rotating pages, with undo and redo, and saving the result
-- Password-protected PDFs
-- Recent files, and remembering where you were in each file
-- Staying responsive on huge or very complex pages
+- **Rendering**: sharp at any zoom, including on HiDPI and fractionally scaled
+  screens, and responsive on huge or very complex pages
+- **Layouts**: single page, continuous and two-page, optionally with the cover
+  page on its own
+- **Zoom**: fit width, fit page and free zoom, with touchpad pinch and
+  Ctrl+scroll
+- **Navigation**: thumbnails, the table of contents, links, and printed page
+  numbers ("iv", "A-3")
+- **Text**: selecting and copying by dragging, double-click for a word,
+  triple-click for a line
+- **Search**: ignoring case and accents, with all matches highlighted
+- **Editing**: rotating, deleting and reordering pages, inserting pages from
+  other PDFs, and exporting a selection, with undo and redo
+- **Markup**: highlighting, underlining and striking through text, freehand
+  drawing and shapes, saved as standard annotations
+- **Printing**: with the system's print dialog
+- **Encryption**: opens password-protected PDFs, and keeps them protected when
+  saving
+- **History**: recent files, and remembering where you were in each file
 
-Coming next, more editing: reordering and deleting pages, merging documents, annotations (highlights, notes, drawings) and filling in forms.
-
-The full list of features is in [FEATURES.md](FEATURES.md).
+Coming next: text boxes, notes and filling in forms.
 
 ## Implementation
 
-The core is implemented in Rust and shared with the Android app. The GTK app is a thin layer over these shared crates:
-
-- `specto-session`: an open document: its files, the pages as edited, the text selection and the search, and saving
-- `specto-view`: page layout, zoom, scrolling, which parts of which pages to render, text selection, and search results
-- `specto-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
-- `specto-source`: reading the table of contents, links and page labels
-- `specto-text`: the text on each page, for selection and search
-- `specto-doc`: the pages of a document being edited and what was done to its annotations, with undo and redo
-- `specto-annot`: annotations (highlights and other markup): the model, reading the ones a file has, and how they look
-- `specto-write`: saving, by writing the edited pages as a new PDF
-
-The app itself draws the rendered tiles, handles input, and provides the windows, menus and sidebar with GTK 4 and libadwaita. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
+The core is written in Rust and shared with the Android app (see
+[crates/](../../crates/README.md)). The desktop app is a thin layer on top: it
+draws the rendered tiles, handles input, and provides the windows, menus and
+sidebar with GTK 4 and libadwaita. More detail is in
+[docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 
 ## Building
+
+Build and run it with Cargo, from the repository root:
 
 ```sh
 cargo build --release -p specto-desktop
 target/release/specto-gtk file.pdf
 ```
 
-What to install first on Fedora and macOS, and the Flatpak, are in [BUILDING.md](BUILDING.md).
+What to install first on Fedora and macOS, and how to build the Flatpak, is in
+[BUILDING.md](BUILDING.md).
 
 ## Testing
 
-- Automated: `tools/headless/check.py` runs the app in a headless compositor and checks opening, navigation, layouts, zoom, saved state and more, at several screen scales. It runs in CI.
-- By hand: [TESTING.md](TESTING.md) has the setup, test files and the checks that need a person, on Linux and macOS.
+The automated tests are in `test-ui/check.py`, which runs the app in a headless
+compositor and checks opening, navigation, layouts, zoom, saved state
+and more, at several screen scales. It runs in CI.
+
+For manual testing, [TESTING.md](TESTING.md) has the setup, test files and the
+checks that need a person, on Linux and macOS.
 
 ## Project structure
 
-- `src/main.rs`: application, shortcuts, the About dialog, the macOS menu bar
-- `src/window.rs`: a document window: header bar, start page, actions, opening files
-- `src/canvas.rs`: the page view, a `GtkScrollable` widget that draws `specto-view` frames
-- `src/document.rs`: an open document: the shared session plus what belongs to GTK (tile cache of textures, render client)
-- `src/thumbnails.rs`, `src/outline.rs`: the two sidebar tabs
-- `src/state.rs`: saved view state per file
-- `src/i18n.rs`: translations through gettext; `po/specto.pot` is the template of its strings, written by `po/update-pot.sh`
+The code is in `src/`, mostly one file per part of the window. A few things
+that aren't obvious from the file names:
+
+- `src/canvas.rs`: the page view, a scrollable widget that draws the frames
+  planned by the shared viewer
+- `src/document.rs`: an open document, which is the shared session plus what
+  belongs to GTK (the cache of tile textures)
 - `src/debug.rs`: test hooks, only enabled with `SPECTO_DEBUG=1`
-- `FEATURES.md`, `TESTING.md`: the feature list and how to test it
-- `screenshot.png`: the screenshot above, made by `tools/headless/readme-screenshot.sh`
+- `po/`: the template of the translatable strings, and the script that writes
+  it
+- `test-ui/`: the automated checks and the script that runs them in a headless
+  compositor
+- `screenshot.png`: the screenshot above, made by
+  `test-ui/readme-screenshot.sh`

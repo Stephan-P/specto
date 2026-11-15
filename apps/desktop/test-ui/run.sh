@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Runs a command inside a headless mutter Wayland session with its own D-Bus.
 #
-#   tools/headless/run.sh <command…>
-#   SPECTO_SCALE=1.25 tools/headless/run.sh <command…>   # HiDPI / fractional scale
-#   SPECTO_MONITOR=2400x1800 tools/headless/run.sh …     # monitor size (device px)
+#   apps/desktop/test-ui/run.sh <command…>
+#   SPECTO_SCALE=1.25 apps/desktop/test-ui/run.sh <command…>   # HiDPI / fractional scale
+#   SPECTO_MONITOR=2400x1800 apps/desktop/test-ui/run.sh …     # monitor size (device px)
 #
 # Fractional scales use mutter's scale-monitor-framebuffer feature, enabled
 # through a throwaway GSettings keyfile, so the user's settings are untouched.

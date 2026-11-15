@@ -1,8 +1,8 @@
 """Checks the desktop app end to end in a headless session.
 
     cargo build -p specto-desktop
-    tools/headless/run.sh python3 -I tools/headless/check.py [BINARY] [TEST…]
-    SPECTO_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py
+    apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py [BINARY] [TEST…]
+    SPECTO_SCALE=2 apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py
 
 Starts specto-gtk with SPECTO_DEBUG=1 and drives it over D-Bus with its window
 actions plus the test hooks in apps/desktop/src/debug.rs: `debug-state`

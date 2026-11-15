@@ -51,7 +51,7 @@ jobs:
 
   desktop:
     # The desktop app in a headless compositor, driven over D-Bus: see
-    # tools/headless/check.py. At scale 1, fractional and HiDPI.
+    # apps/desktop/test-ui/check.py. At scale 1, fractional and HiDPI.
     runs-on: ubuntu-latest
     container: fedora:44
     steps:
@@ -66,19 +66,19 @@ jobs:
         id: build
         run: cargo build -p specto-desktop
       - name: Scale 1
-        run: tools/headless/run.sh python3 -I tools/headless/check.py
+        run: apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py
         env:
           SPECTO_CHECK_OUT: check-out/1
       - name: Scale 1.25
         # Run even if an earlier scale failed: each says something different.
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: tools/headless/run.sh python3 -I tools/headless/check.py
+        run: apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py
         env:
           SPECTO_SCALE: "1.25"
           SPECTO_CHECK_OUT: check-out/1.25
       - name: Scale 2
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: tools/headless/run.sh python3 -I tools/headless/check.py
+        run: apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check.py
         env:
           SPECTO_SCALE: "2"
           SPECTO_CHECK_OUT: check-out/2

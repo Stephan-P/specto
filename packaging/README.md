@@ -2,7 +2,7 @@
 
 How to build installable packages of the desktop app. Nothing is published yet.
 
-The app ID is `net.xfbs.specto` and the name is "Specto". They are set in `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, and repeated in the file names and contents in `apps/desktop/data/` and `packaging/flatpak/` and in `tools/headless/check.py`.
+The app ID is `net.xfbs.specto` and the name is "Specto". They are set in `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, and repeated in the file names and contents in `apps/desktop/data/` and `packaging/flatpak/` and in `apps/desktop/test-ui/check.py`.
 
 ## Shared files
 
@@ -39,7 +39,7 @@ Saving works in the sandbox: the app writes a temporary file next to the origina
 To check the installed Flatpak automatically (in a headless session with its own document portal):
 
 ```sh
-XDG_RUNTIME_DIR=$(mktemp -d /tmp/rt.XXXX) tools/headless/run.sh python3 -I tools/headless/check-flatpak.py
+XDG_RUNTIME_DIR=$(mktemp -d /tmp/rt.XXXX) apps/desktop/test-ui/run.sh python3 -I apps/desktop/test-ui/check-flatpak.py
 ```
 
 ## Publishing on Flathub
@@ -48,7 +48,7 @@ Not done yet. Flathub builds the app itself, from a tagged commit of the public 
 
 For each release:
 
-1. In `apps/desktop/data/net.xfbs.specto.metainfo.xml`, add a `<release>` with the version and date on top of the others, and retake the screenshot if the window changed (`tools/headless/readme-screenshot.sh`). The version is `version` in the root `Cargo.toml`, which the About dialog shows.
+1. In `apps/desktop/data/net.xfbs.specto.metainfo.xml`, add a `<release>` with the version and date on top of the others, and retake the screenshot if the window changed (`apps/desktop/test-ui/readme-screenshot.sh`). The version is `version` in the root `Cargo.toml`, which the About dialog shows.
 2. Commit, tag (`v0.1.0`) and push. The screenshot's URL in the metainfo must be reachable, since Flathub fetches the image from there.
 3. Write the Flathub files and check them with Flathub's linter:
 

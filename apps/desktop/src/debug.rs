@@ -1,7 +1,7 @@
 //! Test hooks, only registered with `SPECTO_DEBUG=1`.
 //!
 //! Window actions for driving the app from outside (see
-//! `tools/headless/check.py`), called over D-Bus:
+//! `apps/desktop/test-ui/check.py`), called over D-Bus:
 //!
 //! - `win.debug-state(path)`: writes the window's state as JSON
 //! - `win.debug-screenshot(path)`: saves the window at device resolution,

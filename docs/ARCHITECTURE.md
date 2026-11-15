@@ -25,10 +25,10 @@ specto/
 │   └── specto-ffi       # Android bindings: UniFFI (Kotlin), plus JNI for the per-frame path
 ├── apps/
 │   ├── desktop/        # GTK4 + libadwaita (gtk4-rs), Linux (also runs on macOS)
+│   │   └── test-ui/    # the desktop app in a headless compositor: end-to-end checks (CI)
 │   └── android/        # Gradle project, Kotlin + Jetpack Compose, loads libspecto_ffi.so
 └── tools/
-    ├── specto-cli       # the `specto` dev tool: info, render to PNG, text, corpus runs
-    └── headless/       # the desktop app in a headless compositor: end-to-end checks (CI)
+    └── specto-cli       # the `specto` dev tool: info, render to PNG, text, corpus runs
 ```
 
 Crates marked (M5) don't exist yet. Planned dependency direction: `apps (desktop, specto-ffi) → specto-session → specto-view / specto-doc → {specto-annot, specto-forms, specto-text, specto-render} → specto-source → specto-geom`. `specto-write` depends on `specto-doc` + `specto-source`. `specto-doc` holds the page list and the annotation edits, and depends on `specto-annot` and `specto-geom`; `specto-session` turns its pages into the viewer's `ViewPage`s.
@@ -227,7 +227,7 @@ GTK4 + libadwaita via gtk4-rs. Linux first; it also runs on macOS with Homebrew'
 
 - **Corpus:** pdf.js test PDFs, PDFium test corpus, and our own fixtures (forms, rotated pages, odd CropBoxes, encrypted files).
 - **Render regression:** `specto corpus` renders the corpus and compares with Poppler (corpus/README.md). Planned: PDFium as the reference, since Poppler is often the one that's wrong.
-- **Desktop end to end:** `tools/headless/check.py` drives the app in a headless compositor over D-Bus, at several scales, in CI.
+- **Desktop end to end:** `apps/desktop/test-ui/check.py` drives the app in a headless compositor over D-Bus, at several scales, in CI.
 - **Android:** Kotlin unit tests in CI; Compose UI tests on an emulator.
 - **Round-trip:** open → op → save → reopen with our parser *and* with an external validator (qpdf `--check`, and pdf.js/PDFium render).
 - **Fuzzing:** `cargo-fuzz` on parsing and on the save path.

@@ -12,7 +12,7 @@ packages=(
   poppler-utils qpdf
 )
 if [[ "${1:-}" == "--headless" ]]; then
-  # tools/headless: a compositor, a session bus, gdbus, Python with GObject
+  # apps/desktop/test-ui: a compositor, a session bus, gdbus, Python with GObject
   # (the check script), and software OpenGL.
   packages+=(mutter dbus-daemon glib2 python3 python3-gobject mesa-dri-drivers)
 fi
