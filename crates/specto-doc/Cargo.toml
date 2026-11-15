@@ -1,0 +1,13 @@
+[package]
+name = "specto-doc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The edit model of specto: the pages of a document being edited, with undo and redo"
+
+[dependencies]
+specto-geom.workspace = true
+
+[lints]
+workspace = true

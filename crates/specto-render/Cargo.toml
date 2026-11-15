@@ -1,0 +1,16 @@
+[package]
+name = "specto-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+hayro.workspace = true
+specto-geom.workspace = true
+specto-source.workspace = true
+self_cell = "1"
+thiserror.workspace = true
+
+[lints]
+workspace = true

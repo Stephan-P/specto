@@ -23,8 +23,8 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import uniffi.pdfrs_ffi.DocumentInfo
-import uniffi.pdfrs_ffi.PageSize
+import uniffi.specto_ffi.DocumentInfo
+import uniffi.specto_ffi.PageSize
 
 /**
  * What is known about the open document: what it says about itself (which

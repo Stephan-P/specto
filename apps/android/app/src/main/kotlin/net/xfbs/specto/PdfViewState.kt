@@ -26,17 +26,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import uniffi.pdfrs_ffi.Activated
-import uniffi.pdfrs_ffi.DocumentInfo
-import uniffi.pdfrs_ffi.EditState
-import uniffi.pdfrs_ffi.PageSize
-import uniffi.pdfrs_ffi.PdfFile
-import uniffi.pdfrs_ffi.OutlineEntry
-import uniffi.pdfrs_ffi.SavedView
-import uniffi.pdfrs_ffi.SearchStatus
-import uniffi.pdfrs_ffi.ViewListener
-import uniffi.pdfrs_ffi.ViewSession
-import uniffi.pdfrs_ffi.ViewMode
+import uniffi.specto_ffi.Activated
+import uniffi.specto_ffi.DocumentInfo
+import uniffi.specto_ffi.EditState
+import uniffi.specto_ffi.PageSize
+import uniffi.specto_ffi.PdfFile
+import uniffi.specto_ffi.OutlineEntry
+import uniffi.specto_ffi.SavedView
+import uniffi.specto_ffi.SearchStatus
+import uniffi.specto_ffi.ViewListener
+import uniffi.specto_ffi.ViewSession
+import uniffi.specto_ffi.ViewMode
 
 private const val TAG = "specto"
 

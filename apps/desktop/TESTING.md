@@ -7,9 +7,9 @@
 Much of the feature list is also checked automatically, in CI and locally (Linux, needs `mutter`; `ci/install-deps-fedora.sh --headless` installs the packages on Fedora):
 
 ```sh
-cargo build -p pdfrs-desktop
+cargo build -p specto-desktop
 tools/headless/run.sh python3 -I tools/headless/check.py
-PDFRS_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py   # also 1.25
+SPECTO_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py   # also 1.25
 tools/headless/run.sh python3 -I tools/headless/check.py zoom layouts    # some tests only
 ```
 
@@ -20,9 +20,9 @@ The app runs in a headless compositor with its own saved state, so yours isn't t
 All commands and paths are relative to the repository root.
 
 ```sh
-cargo build --release -p pdfrs-desktop
-target/release/pdfrs-gtk                 # start page
-target/release/pdfrs-gtk a.pdf b.pdf     # one window per file
+cargo build --release -p specto-desktop
+target/release/specto-gtk                 # start page
+target/release/specto-gtk a.pdf b.pdf     # one window per file
 ```
 
 macOS needs GTK 4, libadwaita 1.6 or newer and the Adwaita icons from Homebrew: `brew install gtk4 libadwaita adwaita-icon-theme`. Without the icon theme, header bar and sidebar icons are missing.
@@ -49,7 +49,7 @@ qpdf --encrypt secret owner 256 -- corpus/files/pdfjs/test/pdfs/labelled_pages.p
 
 Resetting saved state:
 
-- View state: delete `~/.local/state/pdfrs/view-state.ini` (or `$XDG_STATE_HOME/pdfrs/view-state.ini`). Same path on macOS.
+- View state: delete `~/.local/state/specto/view-state.ini` (or `$XDG_STATE_HOME/specto/view-state.ini`). Same path on macOS.
 - Recent files live in GTK's shared list (`~/.local/share/recently-used.xbel`), which other apps use too. Don't delete it; clear recent history in GNOME Settings → Privacy, or test with files you haven't opened before.
 
 ## Specific checks

@@ -3,7 +3,7 @@
 //! one window.
 //!
 //! What a document is (its files, the pages as edited, the viewer, text,
-//! selection and search) is `pdfrs_session::Session`, which a [`Document`]
+//! selection and search) is `specto_session::Session`, which a [`Document`]
 //! dereferences to. Here is what belongs to GTK: the textures, which tiles
 //! are requested for the canvas and the sidebar, and how the search
 //! indexer's results get to the main loop.
@@ -16,15 +16,15 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use pdfrs_doc::{Edit, Rotation, SourceId};
-use pdfrs_render::OpenError;
-use pdfrs_render::scheduler::{Client, Scheduler};
-use pdfrs_render::tile::{TileCache, TileKey};
-use pdfrs_session::{Options, Session};
-use pdfrs_source::PdfData;
-use pdfrs_view::placeholder_level;
+use specto_doc::{Edit, Rotation, SourceId};
+use specto_render::OpenError;
+use specto_render::scheduler::{Client, Scheduler};
+use specto_render::tile::{TileCache, TileKey};
+use specto_session::{Options, Session};
+use specto_source::PdfData;
+use specto_view::placeholder_level;
 
-pub use pdfrs_session::{Indexed, MAIN, PageBundle, SaveJob, TextLayer};
+pub use specto_session::{Indexed, MAIN, PageBundle, SaveJob, TextLayer};
 
 const CACHE_BUDGET: usize = 384 << 20;
 

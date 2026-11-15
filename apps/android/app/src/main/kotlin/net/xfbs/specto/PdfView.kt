@@ -74,7 +74,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import uniffi.pdfrs_ffi.Activated
+import uniffi.specto_ffi.Activated
 
 /** Radius of the round part of a selection handle. */
 private val HANDLE_RADIUS = 10.dp
@@ -341,7 +341,7 @@ private fun PageCanvas(
 
     // Sharpness probe, off unless `adb shell setprop log.tag.specto DEBUG`:
     // a screenshot's page area should then match
-    // `pdfrs render file.pdf -p <page> -s <device scale>` pixel for pixel.
+    // `specto render file.pdf -p <page> -s <device scale>` pixel for pixel.
     val frame = state.frame
     if (frame != null && frame.settled && frame.complete && Log.isLoggable("specto", Log.DEBUG)) {
         LaunchedEffect(frame) {

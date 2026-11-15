@@ -36,7 +36,7 @@ jobs:
         run: cargo clippy --workspace --all-targets
       - name: Clippy (Android FFI)
         # Check only, so no NDK is needed.
-        run: cargo clippy -p pdfrs-ffi --all-targets --target aarch64-linux-android
+        run: cargo clippy -p specto-ffi --all-targets --target aarch64-linux-android
       - name: Test
         run: cargo test --workspace
 
@@ -55,24 +55,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build the desktop app
         id: build
-        run: cargo build -p pdfrs-desktop
+        run: cargo build -p specto-desktop
       - name: Scale 1
         run: tools/headless/run.sh python3 -I tools/headless/check.py
         env:
-          PDFRS_CHECK_OUT: check-out/1
+          SPECTO_CHECK_OUT: check-out/1
       - name: Scale 1.25
         # Run even if an earlier scale failed: each says something different.
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: tools/headless/run.sh python3 -I tools/headless/check.py
         env:
-          PDFRS_SCALE: "1.25"
-          PDFRS_CHECK_OUT: check-out/1.25
+          SPECTO_SCALE: "1.25"
+          SPECTO_CHECK_OUT: check-out/1.25
       - name: Scale 2
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: tools/headless/run.sh python3 -I tools/headless/check.py
         env:
-          PDFRS_SCALE: "2"
-          PDFRS_CHECK_OUT: check-out/2
+          SPECTO_SCALE: "2"
+          SPECTO_CHECK_OUT: check-out/2
       - name: Upload screenshots of failed checks
         if: failure()
         uses: actions/upload-artifact@v4
@@ -159,7 +159,7 @@ jobs:
           # The app's own animations are part of what is tested.
           disable-animations: false
           working-directory: apps/android
-          script: ./gradlew :app:connectedDebugAndroidTest -Ppdfrs.abis=x86_64
+          script: ./gradlew :app:connectedDebugAndroidTest -Pspecto.abis=x86_64
       - name: Keep the test report
         if: failure()
         uses: actions/upload-artifact@v4

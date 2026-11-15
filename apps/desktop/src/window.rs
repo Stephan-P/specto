@@ -5,10 +5,10 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
-use pdfrs_doc::{Edit, Rotation, SourceId};
-use pdfrs_geom::ViewPoint;
-use pdfrs_render::{OpenError, PdfData};
-use pdfrs_view::{LayoutMode, Viewer, ZoomMode};
+use specto_doc::{Edit, Rotation, SourceId};
+use specto_geom::ViewPoint;
+use specto_render::{OpenError, PdfData};
+use specto_view::{LayoutMode, Viewer, ZoomMode};
 
 use crate::canvas::Canvas;
 use crate::debug;
@@ -1407,7 +1407,7 @@ impl Window {
             let current = v.current_page();
             (current.saturating_sub(2)..(current + 4).min(v.page_count()))
                 .filter_map(|i| {
-                    let at = |x, y| v.pdf_to_view(i, pdfrs_geom::PdfPoint::new(x, y));
+                    let at = |x, y| v.pdf_to_view(i, specto_geom::PdfPoint::new(x, y));
                     let (o, ex, ey) = (at(0.0, 0.0)?, at(1.0, 0.0)?, at(0.0, 1.0)?);
                     Some(format!(
                         "[{i}, {}, {}, {}, {}, {}, {}]",
@@ -1877,7 +1877,7 @@ impl Window {
     }
 
     /// Writes the document to `file`. Local files are written next to the
-    /// old one and renamed into place (see `pdfrs_write::replace_file`);
+    /// old one and renamed into place (see `specto_write::replace_file`);
     /// others through GIO. Returns whether it worked; if not, says why.
     async fn save_to(&self, file: gio::File) -> bool {
         let inner = &self.0;
@@ -2597,8 +2597,8 @@ fn export_name(name: &str, pages: &[usize]) -> String {
 }
 
 /// Why saving failed, for a message.
-fn save_error(e: pdfrs_write::WriteError) -> String {
-    use pdfrs_write::WriteError as E;
+fn save_error(e: specto_write::WriteError) -> String {
+    use specto_write::WriteError as E;
     match e {
         E::Io(e) => {
             // "Permission denied (os error 13)" → without the code.
@@ -2638,7 +2638,7 @@ mod tests {
     #[test]
     fn pages_keep_their_place_after_a_move() {
         for (moved, to) in [(vec![0], 3), (vec![4, 1], 0), (vec![2, 3], 6), (vec![5], 2)] {
-            let mut doc = pdfrs_doc::EditDoc::from_source(pdfrs_doc::SourceId(0), 6);
+            let mut doc = specto_doc::EditDoc::from_source(specto_doc::SourceId(0), 6);
             let range = doc.move_pages(&moved, to).expect("moved");
             for page in 0..6u32 {
                 let now = doc.pages().iter().position(|p| p.page == page).unwrap();

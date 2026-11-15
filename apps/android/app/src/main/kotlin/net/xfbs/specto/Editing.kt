@@ -34,8 +34,8 @@ import java.io.File
 import java.io.RandomAccessFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import uniffi.pdfrs_ffi.EditKind
-import uniffi.pdfrs_ffi.EditStep
+import uniffi.specto_ffi.EditKind
+import uniffi.specto_ffi.EditStep
 
 /** "rotate", "delete", …: what [step] did, to follow "Undo" or "Redo" in a menu. */
 internal fun editName(step: EditStep): String = when (step.kind) {

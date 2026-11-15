@@ -116,9 +116,9 @@ import kotlinx.coroutines.withContext
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import uniffi.pdfrs_ffi.Activated
-import uniffi.pdfrs_ffi.PdfFile
-import uniffi.pdfrs_ffi.PdfException
+import uniffi.specto_ffi.Activated
+import uniffi.specto_ffi.PdfFile
+import uniffi.specto_ffi.PdfException
 
 class MainActivity : ComponentActivity() {
     /** The document to show: from "Open with", or picked in the app. */

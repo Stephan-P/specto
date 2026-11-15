@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val rustAbis = providers.gradleProperty("pdfrs.abis").map { it.split(',').map(String::trim) }
+val rustAbis = providers.gradleProperty("specto.abis").map { it.split(',').map(String::trim) }
 
 android {
     namespace = "net.xfbs.specto"
@@ -48,7 +48,7 @@ android {
     }
 
     // Data written by Rust that the Kotlin side must read; see ViewFrameTest.
-    sourceSets.getByName("test").resources.directories.add("../../../crates/pdfrs-ffi/fixtures")
+    sourceSets.getByName("test").resources.directories.add("../../../crates/specto-ffi/fixtures")
 }
 
 dependencies {
@@ -75,7 +75,7 @@ dependencies {
 
 // --- Rust -------------------------------------------------------------------
 //
-// `cargoNdkBuild` cross-compiles crates/pdfrs-ffi into jniLibs, and
+// `cargoNdkBuild` cross-compiles crates/specto-ffi into jniLibs, and
 // `uniffiBindgen` generates the Kotlin bindings from the resulting library.
 // Both are wired in as generated sources, so a normal build or "Run" in
 // Android Studio picks up Rust changes.
@@ -114,7 +114,7 @@ abstract class CargoNdkBuild : CargoTask() {
         abis.get().forEach { args += listOf("-t", it) }
         args += listOf("-o", outputDir.get().asFile.path)
         // Always optimized: the renderer is unusably slow in a debug build.
-        args += listOf("build", "-p", "pdfrs-ffi", "--release")
+        args += listOf("build", "-p", "specto-ffi", "--release")
         cargo(*args.toTypedArray(), env = mapOf("ANDROID_NDK_HOME" to ndkDir.get().asFile.path))
     }
 }
@@ -125,7 +125,7 @@ abstract class UniffiBindgen : CargoTask() {
 
     @TaskAction
     fun generate() {
-        val library = jniLibs.get().asFileTree.matching { include("**/libpdfrs_ffi.so") }.first()
+        val library = jniLibs.get().asFileTree.matching { include("**/libspecto_ffi.so") }.first()
         cargo(
             "run", "--quiet", "-p", "uniffi-bindgen", "--",
             "generate", library.path,

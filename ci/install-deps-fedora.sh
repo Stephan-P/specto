@@ -8,7 +8,7 @@ set -euo pipefail
 packages=(
   gcc pkgconf-pkg-config git curl
   gtk4-devel libadwaita-devel
-  # Reference tools used by tests: qpdf checks the files pdfrs-write saves.
+  # Reference tools used by tests: qpdf checks the files specto-write saves.
   poppler-utils qpdf
 )
 if [[ "${1:-}" == "--headless" ]]; then

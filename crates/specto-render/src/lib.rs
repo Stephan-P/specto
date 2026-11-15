@@ -1,0 +1,91 @@
+//! Page rasterization for specto.
+//!
+//! Everything engine-specific stays behind [`Document`] so that the rest of the
+//! code base never sees hayro types. See `docs/ARCHITECTURE.md` ("Rendering pipeline").
+
+mod hayro_backend;
+pub mod scheduler;
+pub mod tile;
+
+pub use hayro_backend::HayroDocument;
+#[doc(hidden)]
+pub use hayro_backend::check_geometry_matches_hayro;
+pub use specto_geom::{DeviceIntRect, DeviceIntSize, PageGeometry, Rotation};
+
+/// Which parts of a page to draw.
+///
+/// The viewer renders page content and annotations separately: page tiles are
+/// expensive and cached, while annotations come from the edit model and are
+/// drawn as an overlay (see ARCHITECTURE.md, "Data model").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
+pub enum Content {
+    /// Page content stream plus the annotations stored in the file.
+    #[default]
+    PageAndAnnotations,
+    /// Only the page content stream.
+    PageOnly,
+}
+
+/// Parameters for rendering one page (or one tile of a page).
+#[derive(Clone, Copy, Debug)]
+pub struct RenderRequest {
+    /// Zero-based page index.
+    pub page: usize,
+    /// Device pixels per PDF point (zoom × HiDPI scale factor).
+    pub scale: f64,
+    /// Clockwise rotation on top of the page's own `/Rotate`.
+    pub rotation: Rotation,
+    pub content: Content,
+    /// Background as straight (non-premultiplied) RGBA. `None` → transparent.
+    pub background: Option<[u8; 4]>,
+    /// Only render this region of the full page bitmap
+    /// (see [`PageGeometry::pixel_size`]). `None` → whole page.
+    pub region: Option<DeviceIntRect>,
+}
+
+impl RenderRequest {
+    /// Whole page, white background, with annotations.
+    pub fn page(page: usize, scale: f64) -> Self {
+        Self {
+            page,
+            scale,
+            rotation: Rotation::None,
+            content: Content::default(),
+            background: Some([255, 255, 255, 255]),
+            region: None,
+        }
+    }
+}
+
+/// A rendered bitmap: premultiplied RGBA8, rows top to bottom, no padding.
+#[derive(Clone, Debug)]
+pub struct Bitmap {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
+pub use specto_source::{OpenError, PdfData};
+
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum RenderError {
+    #[error("page index {0} out of range")]
+    PageOutOfRange(usize),
+    #[error("requested bitmap of {0}×{1} px exceeds the size limit")]
+    TooLarge(u32, u32),
+    #[error("region lies outside the page bitmap")]
+    RegionOutOfBounds,
+    #[error("the renderer panicked")]
+    Panicked,
+}
+
+/// An opened, read-only PDF that can be rasterized.
+///
+/// Implementations may keep caches internally and need not be `Send`; the
+/// [`scheduler`] opens one instance per worker thread.
+pub trait Document {
+    fn page_count(&self) -> usize;
+    /// Geometry of the page as stored in the file (its own `/Rotate` included).
+    fn page_geometry(&self, page: usize) -> Option<PageGeometry>;
+    fn render(&self, request: &RenderRequest) -> Result<Bitmap, RenderError>;
+}

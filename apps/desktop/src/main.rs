@@ -1,6 +1,6 @@
 //! Specto, the desktop app (GTK4 + libadwaita).
 //!
-//! `pdfrs-gtk [FILE…]` opens each file in its own window.
+//! `specto-gtk [FILE…]` opens each file in its own window.
 
 mod canvas;
 mod debug;

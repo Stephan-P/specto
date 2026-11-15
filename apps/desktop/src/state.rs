@@ -1,10 +1,10 @@
 //! Per-file view state (page, position, zoom, layout, sidebar), remembered
-//! across sessions in `$XDG_STATE_HOME/pdfrs/view-state.ini`.
+//! across sessions in `$XDG_STATE_HOME/specto/view-state.ini`.
 
 use std::path::PathBuf;
 
 use gtk::glib;
-use pdfrs_view::{LayoutMode, ViewState, ZoomMode};
+use specto_view::{LayoutMode, ViewState, ZoomMode};
 
 /// Older entries beyond this many files are dropped.
 const MAX_FILES: usize = 200;
@@ -23,7 +23,7 @@ fn path() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| glib::home_dir().join(".local/state"));
-    base.join("pdfrs/view-state.ini")
+    base.join("specto/view-state.ini")
 }
 
 fn load_file() -> glib::KeyFile {

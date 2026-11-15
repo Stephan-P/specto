@@ -18,7 +18,7 @@ use lopdf::{
     Dictionary, Document, EncryptionState, EncryptionVersion, IncrementalDocument, Object,
     ObjectId, Permissions, Stream, dictionary,
 };
-use pdfrs_render::{Content, Document as _, HayroDocument, RenderRequest};
+use specto_render::{Content, Document as _, HayroDocument, RenderRequest};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -57,7 +57,7 @@ fn load_corpus(dir: &Path) -> Result<()> {
         };
         let hy = !matches!(
             HayroDocument::open(data, None),
-            Err(pdfrs_render::OpenError::Invalid)
+            Err(specto_render::OpenError::Invalid)
         );
         lo_ok += lo as u32;
         hy_ok += hy as u32;
@@ -150,7 +150,7 @@ fn ops(a: &Path, b: &Path, out: &Path) -> Result<()> {
         ensure!(
             matches!(
                 HayroDocument::open(data, None),
-                Err(pdfrs_render::OpenError::PasswordRequired)
+                Err(specto_render::OpenError::PasswordRequired)
             ),
             "opened without a password"
         );

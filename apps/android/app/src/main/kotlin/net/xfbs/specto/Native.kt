@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import java.nio.ByteBuffer
 
 /**
- * JNI functions of libpdfrs_ffi (crates/pdfrs-ffi/src/jni.rs) for what runs
+ * JNI functions of libspecto_ffi (crates/specto-ffi/src/jni.rs) for what runs
  * every frame and for tile pixels. A call through the generated UniFFI
  * bindings costs a few hundred microseconds, which is fine for opening a file
  * or changing a mode but not for something done several times per frame.
@@ -13,7 +13,7 @@ import java.nio.ByteBuffer
  */
 object Native {
     init {
-        System.loadLibrary("pdfrs_ffi")
+        System.loadLibrary("specto_ffi")
     }
 
     /** View size in dp and the display density. */

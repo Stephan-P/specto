@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import uniffi.pdfrs_ffi.SavedView
+import uniffi.specto_ffi.SavedView
 
 class DocumentStoreTest {
     @get:Rule

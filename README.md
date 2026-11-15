@@ -28,37 +28,35 @@ Both apps are usable as PDF viewers. They render pages sharply at any zoom and o
 
 ## Building
 
-The code still carries the project's working name, pdfrs: the crates, the desktop program (`pdfrs-gtk`) and the command-line tool (`pdfrs`).
-
 ```sh
 cargo build --release
-target/release/pdfrs-gtk file.pdf                         # the desktop app
-target/release/pdfrs info file.pdf                        # the command-line dev tool
-target/release/pdfrs render file.pdf -o out -s 2          # pages → PNG
-target/release/pdfrs text file.pdf -p 1                   # the text layer
-target/release/pdfrs save file.pdf -o out.pdf -p 3,1-2    # pick, reorder, rotate (-r 90) pages
-target/release/pdfrs corpus corpus/files/... --reference  # regression run, see corpus/README.md
+target/release/specto-gtk file.pdf                         # the desktop app
+target/release/specto info file.pdf                        # the command-line dev tool
+target/release/specto render file.pdf -o out -s 2          # pages → PNG
+target/release/specto text file.pdf -p 1                   # the text layer
+target/release/specto save file.pdf -o out.pdf -p 3,1-2    # pick, reorder, rotate (-r 90) pages
+target/release/specto corpus corpus/files/... --reference  # regression run, see corpus/README.md
 ```
 
 The desktop app needs the GTK 4 and libadwaita development packages; see [apps/desktop/README.md](apps/desktop/README.md). For Android, see [apps/android/README.md](apps/android/README.md). To build a Flatpak and install it, see [packaging/README.md](packaging/README.md).
 
 ## Layout
 
-- `crates/pdfrs-geom`: typed coordinate spaces and page geometry (crop box, rotation)
-- `crates/pdfrs-source`: opening (large files are memory-mapped), metadata, outline, links and page labels
-- `crates/pdfrs-text`: text layer (characters with positions, words, lines)
-- `crates/pdfrs-doc`: edit model (the pages of a document being edited, undo and redo)
-- `crates/pdfrs-write`: saving (a full rewrite with lopdf, checked against the original)
-- `crates/pdfrs-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
-- `crates/pdfrs-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
-- `crates/pdfrs-session`: an open document as both apps hold it (its files, the pages as edited, viewer, text, selection, search, saving)
-- `crates/pdfrs-ffi`: bindings for Android (UniFFI, plus JNI for the per-frame path)
-- `apps/desktop`: GTK 4 + libadwaita app (`pdfrs-gtk`)
+- `crates/specto-geom`: typed coordinate spaces and page geometry (crop box, rotation)
+- `crates/specto-source`: opening (large files are memory-mapped), metadata, outline, links and page labels
+- `crates/specto-text`: text layer (characters with positions, words, lines)
+- `crates/specto-doc`: edit model (the pages of a document being edited, undo and redo)
+- `crates/specto-write`: saving (a full rewrite with lopdf, checked against the original)
+- `crates/specto-render`: `Document` trait + hayro backend, tile grid and cache, background render scheduler
+- `crates/specto-view`: UI-agnostic viewer core (layout modes, zoom, scrolling, tile planning)
+- `crates/specto-session`: an open document as both apps hold it (its files, the pages as edited, viewer, text, selection, search, saving)
+- `crates/specto-ffi`: bindings for Android (UniFFI, plus JNI for the per-frame path)
+- `apps/desktop`: GTK 4 + libadwaita app (`specto-gtk`)
 - `apps/android`: Android app (Kotlin + Compose)
-- `tools/pdfrs-cli`: the `pdfrs` dev tool
+- `tools/specto-cli`: the `specto` dev tool
 - `tools/test-files.sh`: copies of the test files for testing by hand, in `target/test-files/`
 - `tools/headless`: run the desktop app under a headless compositor; `check.py` is the automated end-to-end check (also in CI), `smoke.sh` takes screenshots
-- `spikes/`: early prototypes behind the measurements in docs/M0-FINDINGS.md. Only `lopdf-spike` is left (editing and saving, with the incremental and encrypted saving that `pdfrs-write` doesn't do yet); the tiled GTK viewer and the text extraction check were removed once the desktop app and `pdfrs-text` had replaced them
+- `spikes/`: early prototypes behind the measurements in docs/M0-FINDINGS.md. Only `lopdf-spike` is left (editing and saving, with the incremental and encrypted saving that `specto-write` doesn't do yet); the tiled GTK viewer and the text extraction check were removed once the desktop app and `specto-text` had replaced them
 - `packaging/`: installable packages of the desktop app (Flatpak)
 - `corpus/`: test corpus fetch script (the files are git-ignored)
 

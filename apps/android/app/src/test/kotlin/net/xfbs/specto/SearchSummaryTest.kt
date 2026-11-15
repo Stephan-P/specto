@@ -2,7 +2,7 @@ package net.xfbs.specto
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import uniffi.pdfrs_ffi.SearchStatus
+import uniffi.specto_ffi.SearchStatus
 
 class SearchSummaryTest {
     private fun status(matches: Int, current: Int?, searched: Int, pages: Int = 100) =

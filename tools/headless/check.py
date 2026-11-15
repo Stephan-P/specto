@@ -1,10 +1,10 @@
 """Checks the desktop app end to end in a headless session.
 
-    cargo build -p pdfrs-desktop
+    cargo build -p specto-desktop
     tools/headless/run.sh python3 -I tools/headless/check.py [BINARY] [TEST…]
-    PDFRS_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py
+    SPECTO_SCALE=2 tools/headless/run.sh python3 -I tools/headless/check.py
 
-Starts pdfrs-gtk with PDFRS_DEBUG=1 and drives it over D-Bus with its window
+Starts specto-gtk with SPECTO_DEBUG=1 and drives it over D-Bus with its window
 actions plus the test hooks in apps/desktop/src/debug.rs: `debug-state`
 dumps the window's state as JSON, `debug-screenshot` saves a PPM image.
 
@@ -82,7 +82,7 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   found while the pages are indexed in the background
 
 Saved state and recent files go to a temporary directory, not the user's.
-Screenshots of failed tests are kept in $PDFRS_CHECK_OUT (default: a
+Screenshots of failed tests are kept in $SPECTO_CHECK_OUT (default: a
 temporary directory, printed at the end).
 
 Standard library only, except for the pointer, keyboard and clipboard
@@ -101,7 +101,7 @@ import traceback
 
 APP_ID = "net.xfbs.specto"
 APP_PATH = "/net/xfbs/specto"
-TIMEOUT = float(os.environ.get("PDFRS_CHECK_TIMEOUT", "20"))
+TIMEOUT = float(os.environ.get("SPECTO_CHECK_TIMEOUT", "20"))
 
 # One colour per page: the corners of the RGB cube at 0, 128 and 255,
 # without greys (the UI's colours) and blues close to the accent colour.
@@ -285,7 +285,7 @@ def gvariant_str(s):
 
 
 class App:
-    """A running pdfrs-gtk."""
+    """A running specto-gtk."""
 
     def __init__(self, ctx, files=()):
         self.ctx = ctx
@@ -935,7 +935,7 @@ def test_search(ctx):
     # Escape closes the bar and ends the search.
     inp.keys(Input.ESCAPE)
     s = w.wait("the search to end", lambda s: not s["search_bar"])
-    check("matches" not in s and s["focus"] == "PdfrsCanvas", s)
+    check("matches" not in s and s["focus"] == "SpectoCanvas", s)
 
 
 def test_search_indexes_in_background(ctx):
@@ -1190,7 +1190,7 @@ def test_delete_pages(ctx):
     w.settled("page 3", lambda s: s["page"] == 2)
     # The document has the focus: Delete deletes the current page, and the
     # next one takes its place.
-    w.wait("the canvas focused", lambda s: s["focus"] == "PdfrsCanvas")
+    w.wait("the canvas focused", lambda s: s["focus"] == "SpectoCanvas")
     inp.keys(Input.DELETE)
     s = w.wait("page 3 deleted", lambda s: len(s["edit_pages"]) == PAGES - 1)
     check(file_pages(s) == [0, 1] + list(range(3, PAGES)), s["edit_pages"])
@@ -1515,7 +1515,7 @@ TESTS = [v for k, v in list(globals().items()) if k.startswith("test_")]
 class Context:
     def __init__(self, binary, tmp, out):
         self.binary, self.tmp, self.out = binary, tmp, out
-        self.scale = float(os.environ.get("PDFRS_SCALE", "1"))
+        self.scale = float(os.environ.get("SPECTO_SCALE", "1"))
         self.pages = os.path.join(tmp, "pages.pdf")
         self.broken = os.path.join(tmp, "broken.pdf")
         self.text = os.path.join(tmp, "text.pdf")
@@ -1531,7 +1531,7 @@ class Context:
         """Fresh saved state and recent files for each test."""
         home = tempfile.mkdtemp(prefix=f"{self.test}-", dir=self.tmp)
         self.home = home
-        self.env = dict(os.environ, PDFRS_DEBUG="1")
+        self.env = dict(os.environ, SPECTO_DEBUG="1")
         for var in ("XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"):
             self.env[var] = os.path.join(home, var.lower())
 
@@ -1557,11 +1557,11 @@ class Context:
 
 def main():
     args = sys.argv[1:]
-    binary = os.path.abspath(args.pop(0) if args and os.sep in args[0] else "target/debug/pdfrs-gtk")
+    binary = os.path.abspath(args.pop(0) if args and os.sep in args[0] else "target/debug/specto-gtk")
     tests = [t for t in TESTS if not args or t.__name__.removeprefix("test_") in args]
-    tmp = tempfile.mkdtemp(prefix="pdfrs-check-")
+    tmp = tempfile.mkdtemp(prefix="specto-check-")
     open(os.path.join(tmp, "app.log"), "w").close()
-    out = os.environ.get("PDFRS_CHECK_OUT") or os.path.join(tmp, "out")
+    out = os.environ.get("SPECTO_CHECK_OUT") or os.path.join(tmp, "out")
     os.makedirs(out, exist_ok=True)
     ctx = Context(binary, tmp, out)
     failed = []

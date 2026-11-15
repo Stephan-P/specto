@@ -31,13 +31,13 @@ The full list of features is in [FEATURES.md](FEATURES.md).
 
 The core is implemented in Rust and shared with the Android app. The GTK app is a thin layer over these shared crates:
 
-- `pdfrs-session`: an open document: its files, the pages as edited, the text selection and the search, and saving
-- `pdfrs-view`: page layout, zoom, scrolling, which parts of which pages to render, text selection, and search results
-- `pdfrs-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
-- `pdfrs-source`: reading the table of contents, links and page labels
-- `pdfrs-text`: the text on each page, for selection and search
-- `pdfrs-doc`: the pages of a document being edited, with undo and redo
-- `pdfrs-write`: saving, by writing the edited pages as a new PDF
+- `specto-session`: an open document: its files, the pages as edited, the text selection and the search, and saving
+- `specto-view`: page layout, zoom, scrolling, which parts of which pages to render, text selection, and search results
+- `specto-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
+- `specto-source`: reading the table of contents, links and page labels
+- `specto-text`: the text on each page, for selection and search
+- `specto-doc`: the pages of a document being edited, with undo and redo
+- `specto-write`: saving, by writing the edited pages as a new PDF
 
 The app itself draws the rendered tiles, handles input, and provides the windows, menus and sidebar with GTK 4 and libadwaita. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 
@@ -51,9 +51,9 @@ sudo dnf install gtk4-devel libadwaita-devel
 # macOS (Homebrew)
 brew install gtk4 libadwaita adwaita-icon-theme
 
-cargo build --release -p pdfrs-desktop
-target/release/pdfrs-gtk                 # start page
-target/release/pdfrs-gtk file.pdf        # open a file
+cargo build --release -p specto-desktop
+target/release/specto-gtk                 # start page
+target/release/specto-gtk file.pdf        # open a file
 ```
 
 ## Testing
@@ -65,10 +65,10 @@ target/release/pdfrs-gtk file.pdf        # open a file
 
 - `src/main.rs`: application, shortcuts, the macOS menu bar
 - `src/window.rs`: a document window: header bar, start page, actions, opening files
-- `src/canvas.rs`: the page view, a `GtkScrollable` widget that draws `pdfrs-view` frames
+- `src/canvas.rs`: the page view, a `GtkScrollable` widget that draws `specto-view` frames
 - `src/document.rs`: an open document: the shared session plus what belongs to GTK (tile cache of textures, render client)
 - `src/thumbnails.rs`, `src/outline.rs`: the two sidebar tabs
 - `src/state.rs`: saved view state per file
-- `src/debug.rs`: test hooks, only enabled with `PDFRS_DEBUG=1`
+- `src/debug.rs`: test hooks, only enabled with `SPECTO_DEBUG=1`
 - `FEATURES.md`, `TESTING.md`: the feature list and how to test it
 - `screenshot.png`: the screenshot above, made by `tools/headless/readme-screenshot.sh`

@@ -40,7 +40,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import uniffi.pdfrs_ffi.SearchStatus
+import uniffi.specto_ffi.SearchStatus
 
 /** Identifies the search field to UI tests. */
 const val SEARCH_FIELD_TAG = "search-field"

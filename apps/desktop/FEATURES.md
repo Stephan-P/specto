@@ -1,6 +1,6 @@
 # Desktop app features
 
-What the desktop app (`pdfrs-gtk`, GTK 4 and libadwaita) currently does. For testing these by hand, see [TESTING.md](TESTING.md).
+What the desktop app (`specto-gtk`, GTK 4 and libadwaita) currently does. For testing these by hand, see [TESTING.md](TESTING.md).
 
 Shortcuts use *Primary*: Ctrl on Linux, Cmd on macOS.
 

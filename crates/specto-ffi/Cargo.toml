@@ -1,0 +1,28 @@
+[package]
+name = "specto-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+# cdylib for Android (libspecto_ffi.so), lib for host tests.
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+specto-doc.workspace = true
+specto-geom.workspace = true
+specto-render.workspace = true
+specto-session.workspace = true
+specto-source.workspace = true
+specto-view.workspace = true
+thiserror.workspace = true
+uniffi.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Direct `Bitmap` access for the JNI tile path (see src/jni.rs).
+ndk = { version = "0.9", features = ["bitmap"] }
+jni-sys = "0.3"
+
+[lints]
+workspace = true

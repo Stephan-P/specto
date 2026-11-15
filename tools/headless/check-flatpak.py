@@ -55,7 +55,7 @@ class Sandboxed:
         self.log = open(os.path.join(tmp, "app.log"), "w")
         # The debug hooks write their output to a folder the app may write.
         self.proc = subprocess.Popen(
-            ["flatpak", "run", "--env=PDFRS_DEBUG=1", f"--filesystem={self.out}",
+            ["flatpak", "run", "--env=SPECTO_DEBUG=1", f"--filesystem={self.out}",
              APP, inside],
             env=ENV, stdout=self.log, stderr=self.log,
         )
@@ -160,7 +160,7 @@ def run(tmp):
 
 
 def main():
-    tmp = tempfile.mkdtemp(prefix="pdfrs-flatpak-")
+    tmp = tempfile.mkdtemp(prefix="specto-flatpak-")
     try:
         run(tmp)
     except CheckFailed as e:

@@ -3,7 +3,7 @@
 
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use pdfrs_source::{OutlineItem, Target};
+use specto_source::{OutlineItem, Target};
 
 fn store(items: &[OutlineItem]) -> gio::ListStore {
     let store = gio::ListStore::new::<glib::BoxedAnyObject>();

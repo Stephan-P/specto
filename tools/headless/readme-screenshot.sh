@@ -4,12 +4,12 @@
 # side by side with the Contents tab open, at scale 2, in a window of the
 # default size (the monitor must be big enough for it).
 #
-#   cargo build --release -p pdfrs-desktop
-#   PDFRS_SCALE=2 PDFRS_MONITOR=2400x1800 tools/headless/run.sh tools/headless/readme-screenshot.sh
+#   cargo build --release -p specto-desktop
+#   SPECTO_SCALE=2 SPECTO_MONITOR=2400x1800 tools/headless/run.sh tools/headless/readme-screenshot.sh
 set -eu
 pdf=${1:-/usr/share/doc/hwloc/hwloc-a4.pdf}
 out=$(realpath "${2:-apps/desktop/screenshot.png}")
-bin=${PDFRS_GTK:-target/release/pdfrs-gtk}
+bin=${SPECTO_GTK:-target/release/specto-gtk}
 app=net.xfbs.specto obj=/net/xfbs/specto/window/1
 win() { gdbus call --session --dest $app --object-path $obj \
           --method org.gtk.Actions.Activate "$1" "${2:-[]}" '{}' >/dev/null; }
@@ -19,7 +19,7 @@ home=$(mktemp -d)
 trap 'kill $pid 2>/dev/null; rm -rf "$home"' EXIT
 # Light mode, whatever the desktop is set to.
 ADW_DEBUG_COLOR_SCHEME=prefer-light \
-  XDG_STATE_HOME=$home/state XDG_DATA_HOME=$home/data PDFRS_DEBUG=1 "$bin" "$pdf" 2>/dev/null &
+  XDG_STATE_HOME=$home/state XDG_DATA_HOME=$home/data SPECTO_DEBUG=1 "$bin" "$pdf" 2>/dev/null &
 pid=$!
 sleep 2
 win sidebar-page "[<'outline'>]"

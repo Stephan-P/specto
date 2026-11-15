@@ -155,7 +155,7 @@ class ViewFrame private constructor(
         private const val PAGE_BYTES = 32
         private const val TILE_BYTES = 32
 
-        /** Reads the layout documented in crates/pdfrs-ffi/src/hot.rs ([b] in native byte order). */
+        /** Reads the layout documented in crates/specto-ffi/src/hot.rs ([b] in native byte order). */
         fun decode(b: ByteBuffer, length: Int): ViewFrame {
             b.position(0)
             val flags = b.getInt()

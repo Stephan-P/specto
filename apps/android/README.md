@@ -34,11 +34,11 @@ The full list of features, with how to check each one, is in [FEATURES.md](FEATU
 
 The core is implemented in Rust and shared with the desktop app. The Android app is a Kotlin and Compose layer over these shared crates:
 
-- `pdfrs-view`: page layout, zoom, scrolling, and which parts of which pages to render
-- `pdfrs-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
-- `pdfrs-source`: reading the table of contents, links and page labels
+- `specto-view`: page layout, zoom, scrolling, and which parts of which pages to render
+- `specto-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
+- `specto-source`: reading the table of contents, links and page labels
 
-They're compiled into `libpdfrs_ffi.so`. The crate `pdfrs-ffi` exposes them to Kotlin through UniFFI, plus a few hand-written JNI functions for the work done on every frame, where UniFFI's overhead was too high. The app itself draws the rendered tiles and handles gestures, the file picker and recent documents. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
+They're compiled into `libspecto_ffi.so`. The crate `specto-ffi` exposes them to Kotlin through UniFFI, plus a few hand-written JNI functions for the work done on every frame, where UniFFI's overhead was too high. The app itself draws the rendered tiles and handles gestures, the file picker and recent documents. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 
 ## Building
 

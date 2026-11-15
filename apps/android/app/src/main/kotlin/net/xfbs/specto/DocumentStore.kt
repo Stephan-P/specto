@@ -6,7 +6,7 @@ import java.io.File
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
-import uniffi.pdfrs_ffi.SavedView
+import uniffi.specto_ffi.SavedView
 
 /** Documents remembered beyond this many are forgotten, oldest first. */
 private const val MAX_DOCUMENTS = 200

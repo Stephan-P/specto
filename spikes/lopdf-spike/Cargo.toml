@@ -9,7 +9,7 @@ description = "M0 spike: can lopdf do our editing + saving? Throwaway code."
 lopdf = "0.47"
 getrandom = "0.4"
 anyhow.workspace = true
-pdfrs-render.workspace = true
+specto-render.workspace = true
 
 [lints]
 workspace = true

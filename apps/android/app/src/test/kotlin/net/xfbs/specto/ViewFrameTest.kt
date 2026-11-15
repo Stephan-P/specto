@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Decodes `crates/pdfrs-ffi/fixtures/frame.bin`: the bytes Rust writes for a
+ * Decodes `crates/specto-ffi/fixtures/frame.bin`: the bytes Rust writes for a
  * known frame (`fixture_frame` in the crate's tests, which also checks that
  * the file is current). If the layout changes on the Rust side, that test
  * fails first; this one fails if the Kotlin decoder is not updated to match.

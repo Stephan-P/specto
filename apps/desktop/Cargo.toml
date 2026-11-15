@@ -1,5 +1,5 @@
 [package]
-name = "pdfrs-desktop"
+name = "specto-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,21 +7,21 @@ license.workspace = true
 description = "Specto, the desktop app (GTK4 + libadwaita)"
 
 [[bin]]
-name = "pdfrs-gtk"
+name = "specto-gtk"
 path = "src/main.rs"
 
 [dependencies]
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_6"] }
 async-channel = "2"
-pdfrs-doc.workspace = true
-pdfrs-geom.workspace = true
-pdfrs-render.workspace = true
-pdfrs-session.workspace = true
-pdfrs-source.workspace = true
-pdfrs-text.workspace = true
-pdfrs-write.workspace = true
-pdfrs-view.workspace = true
+specto-doc.workspace = true
+specto-geom.workspace = true
+specto-render.workspace = true
+specto-session.workspace = true
+specto-source.workspace = true
+specto-text.workspace = true
+specto-write.workspace = true
+specto-view.workspace = true
 
 [lints]
 workspace = true

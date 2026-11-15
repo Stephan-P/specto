@@ -1,0 +1,19 @@
+[package]
+name = "specto-write"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Saving for specto: writes the pages of an edited document as a new PDF"
+
+[dependencies]
+lopdf = "0.47"
+specto-doc.workspace = true
+specto-source.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+specto-render.workspace = true
+
+[lints]
+workspace = true

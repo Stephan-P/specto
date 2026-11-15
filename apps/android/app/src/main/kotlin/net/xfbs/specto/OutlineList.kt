@@ -28,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import uniffi.pdfrs_ffi.OutlineEntry
+import uniffi.specto_ffi.OutlineEntry
 
 /**
  * The indices of the [entries] to show, given the indices of the [expanded]

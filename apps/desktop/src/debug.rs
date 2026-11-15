@@ -1,4 +1,4 @@
-//! Test hooks, only registered with `PDFRS_DEBUG=1`.
+//! Test hooks, only registered with `SPECTO_DEBUG=1`.
 //!
 //! Window actions for driving the app from outside (see
 //! `tools/headless/check.py`), called over D-Bus:
@@ -20,7 +20,7 @@ use gtk::{gdk, glib};
 
 /// Whether the test hooks are enabled.
 pub fn enabled() -> bool {
-    std::env::var_os("PDFRS_DEBUG").is_some()
+    std::env::var_os("SPECTO_DEBUG").is_some()
 }
 
 /// Saves `window` at device resolution, so HiDPI sharpness shows: as PPM if

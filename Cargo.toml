@@ -10,14 +10,14 @@ rust-version = "1.92" # hayro 0.9 requires 1.92
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-pdfrs-geom = { path = "crates/pdfrs-geom" }
-pdfrs-source = { path = "crates/pdfrs-source" }
-pdfrs-render = { path = "crates/pdfrs-render" }
-pdfrs-view = { path = "crates/pdfrs-view" }
-pdfrs-text = { path = "crates/pdfrs-text" }
-pdfrs-doc = { path = "crates/pdfrs-doc" }
-pdfrs-session = { path = "crates/pdfrs-session" }
-pdfrs-write = { path = "crates/pdfrs-write" }
+specto-geom = { path = "crates/specto-geom" }
+specto-source = { path = "crates/specto-source" }
+specto-render = { path = "crates/specto-render" }
+specto-view = { path = "crates/specto-view" }
+specto-text = { path = "crates/specto-text" }
+specto-doc = { path = "crates/specto-doc" }
+specto-session = { path = "crates/specto-session" }
+specto-write = { path = "crates/specto-write" }
 hayro = "0.9"
 anyhow = "1"
 thiserror = "2"

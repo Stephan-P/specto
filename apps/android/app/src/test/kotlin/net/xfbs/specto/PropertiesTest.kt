@@ -5,8 +5,8 @@ import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import uniffi.pdfrs_ffi.DocumentInfo
-import uniffi.pdfrs_ffi.PageSize
+import uniffi.specto_ffi.DocumentInfo
+import uniffi.specto_ffi.PageSize
 
 class PropertiesTest {
     @Test

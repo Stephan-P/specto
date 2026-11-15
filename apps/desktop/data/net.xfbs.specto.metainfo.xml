@@ -30,7 +30,7 @@
     </ul>
   </description>
   <provides>
-    <binary>pdfrs-gtk</binary>
+    <binary>specto-gtk</binary>
     <mediatype>application/pdf</mediatype>
   </provides>
   <categories>

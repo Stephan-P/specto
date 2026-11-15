@@ -1,0 +1,19 @@
+[package]
+name = "specto-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "An open document as the specto apps hold it: its files, pages as edited, viewer, text, selection and search"
+
+[dependencies]
+specto-doc.workspace = true
+specto-geom.workspace = true
+specto-render.workspace = true
+specto-source.workspace = true
+specto-text.workspace = true
+specto-view.workspace = true
+specto-write.workspace = true
+
+[lints]
+workspace = true

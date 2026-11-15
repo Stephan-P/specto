@@ -2,7 +2,7 @@
 
 How to build installable packages of the desktop app. Nothing is published yet.
 
-The app ID is `net.xfbs.specto` and the name is "Specto"; the project, its crates and the program (`pdfrs-gtk`) are called pdfrs. Renaming the app would mean changing `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, the file names and contents in `apps/desktop/data/` and `packaging/flatpak/`, and the ID in `tools/headless/check.py`.
+The app ID is `net.xfbs.specto` and the name is "Specto". They are set in `APP_ID` and `APP_NAME` in `apps/desktop/src/main.rs`, and repeated in the file names and contents in `apps/desktop/data/` and `packaging/flatpak/` and in `tools/headless/check.py`.
 
 ## Shared files
 

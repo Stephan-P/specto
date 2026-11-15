@@ -3,7 +3,7 @@
     set-scale.py          # print the monitor and its supported scales
     set-scale.py 1.25     # apply the closest supported scale (temporary config)
 
-Used by run.sh when PDFRS_SCALE is set.
+Used by run.sh when SPECTO_SCALE is set.
 """
 import sys
 from gi.repository import Gio, GLib

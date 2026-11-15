@@ -27,9 +27,9 @@ Rendering only needs read access. Editing and saving need a mutable object model
 
 **Concern:** lopdf for editing + hayro-syntax for rendering means two parsers seeing the same file. That's acceptable because the edit model never re-parses (sources are immutable). But the two parsers may disagree on malformed files.
 
-**Decision:** lopdf in `pdfrs-write` for the object model and saving, with hayro for viewing. In M0, lopdf loaded 1092/1095 corpus files and passed every editing scenario (delete, merge, reorder, incremental annotation, encryption). Merging needs our own page-import code (renumber objects, push down inherited attributes), because lopdf has none. See [M0-FINDINGS.md](M0-FINDINGS.md).
+**Decision:** lopdf in `specto-write` for the object model and saving, with hayro for viewing. In M0, lopdf loaded 1092/1095 corpus files and passed every editing scenario (delete, merge, reorder, incremental annotation, encryption). Merging needs our own page-import code (renumber objects, push down inherited attributes), because lopdf has none. See [M0-FINDINGS.md](M0-FINDINGS.md).
 
-**Since (M3):** the concern above came true in a few corpus files: lopdf drops streams without a valid `/Length`, decrypts per-stream `/Crypt` filters wrongly, and loses objects behind damaged cross-reference tables. `pdfrs-write` now takes each stream's bytes from hayro where the two disagree, and reads every result back with hayro, refusing to save if any page differs from its source. A writer built entirely on hayro-syntax's reading (with pdf-writer for output) remains the fallback if lopdf's gaps grow.
+**Since (M3):** the concern above came true in a few corpus files: lopdf drops streams without a valid `/Length`, decrypts per-stream `/Crypt` filters wrongly, and loses objects behind damaged cross-reference tables. `specto-write` now takes each stream's bytes from hayro where the two disagree, and reads every result back with hayro, refusing to save if any page differs from its source. A writer built entirely on hayro-syntax's reading (with pdf-writer for output) remains the fallback if lopdf's gaps grow.
 
 ## D3: Desktop UI toolkit: GTK4 + libadwaita (Decided, 2026-11-14)
 
@@ -44,7 +44,7 @@ The desktop app targets **Linux only**. That removes gpui's main advantage (cons
 | Platforms | Linux great; macOS/Windows functional but look foreign | macOS + Linux good, Windows maturing |
 | Look | Native GNOME look | Custom look (whatever you design) |
 
-Because `pdfrs-view` is UI-agnostic, a later port (e.g. to gpui) would only replace `apps/desktop`. The M0 canvas spike measured about 55 fps during sustained fast scroll and zoom of a 384-page PDF, with negligible snapshot cost. See [M0-FINDINGS.md](M0-FINDINGS.md).
+Because `specto-view` is UI-agnostic, a later port (e.g. to gpui) would only replace `apps/desktop`. The M0 canvas spike measured about 55 fps during sustained fast scroll and zoom of a 384-page PDF, with negligible snapshot cost. See [M0-FINDINGS.md](M0-FINDINGS.md).
 
 ## D4: Android UI: Kotlin + Jetpack Compose with Rust core via UniFFI (Proposed)
 
@@ -59,7 +59,7 @@ Because `pdfrs-view` is UI-agnostic, a later port (e.g. to gpui) would only repl
 
 ## D5: FFI: UniFFI for the coarse API, hand-written JNI for the hot path (Decided, 2026-11-14)
 
-UniFFI (Mozilla) generates the Kotlin bindings for everything called occasionally: opening documents, changing modes, callbacks such as `tiles_ready`. Anything per frame or per tile goes through a few hand-written JNI functions instead (`crates/pdfrs-ffi/src/jni.rs` over `hot.rs`), using only `jni-sys` and the `ndk` crate:
+UniFFI (Mozilla) generates the Kotlin bindings for everything called occasionally: opening documents, changing modes, callbacks such as `tiles_ready`. Anything per frame or per tile goes through a few hand-written JNI functions instead (`crates/specto-ffi/src/jni.rs` over `hot.rs`), using only `jni-sys` and the `ndk` crate:
 
 - **Tile pixels:** returning a 6.6 MB page through UniFFI cost about 6 ms extra; JNI copies once into the locked `Bitmap` (M0).
 - **Per-frame calls** (scroll, zoom, frame, finished tiles): even a trivial UniFFI call cost 200–370 µs through JNA, against about 4 µs of actual work. On a Pixel 9a, moving these to JNI cut slow frames from 1.65% to 0.61% (debug build; M0-FINDINGS.md, "On a phone").
@@ -116,7 +116,7 @@ Preview and GNOME Papers open more than PDF. We stay PDF-first until the PDF fea
 
 **What this asks of M1–M5:** keep the door open, at no extra cost.
 
-- `Document`, the scheduler and `pdfrs-view` stay free of PDF-only assumptions. Today's `Document` trait (page count, page geometry, render a region) already is.
+- `Document`, the scheduler and `specto-view` stay free of PDF-only assumptions. Today's `Document` trait (page count, page geometry, render a region) already is.
 - Text, outline and editing are capabilities a document may or may not have, not things every document is assumed to support.
 
 ## Open questions

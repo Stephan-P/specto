@@ -1,0 +1,13 @@
+[package]
+name = "specto-geom"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Typed coordinate spaces and page transforms for specto"
+
+[dependencies]
+euclid = "0.22"
+
+[lints]
+workspace = true

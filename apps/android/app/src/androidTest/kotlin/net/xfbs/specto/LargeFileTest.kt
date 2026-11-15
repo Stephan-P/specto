@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import uniffi.pdfrs_ffi.PdfFile
+import uniffi.specto_ffi.PdfFile
 
 /**
  * Files too large to want in memory: Rust maps them (from 64 MB) instead of

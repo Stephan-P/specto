@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{cairo, glib};
-use pdfrs_render::{Bitmap, Document as _, HayroDocument, RenderRequest};
+use specto_render::{Bitmap, Document as _, HayroDocument, RenderRequest};
 
 use crate::document::PageBundle;
 

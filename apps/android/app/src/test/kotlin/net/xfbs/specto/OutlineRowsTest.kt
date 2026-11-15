@@ -2,7 +2,7 @@ package net.xfbs.specto
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import uniffi.pdfrs_ffi.OutlineEntry
+import uniffi.specto_ffi.OutlineEntry
 
 class OutlineRowsTest {
     private fun entry(title: String, depth: Int, hasChildren: Boolean = false) =

@@ -6,8 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
-# Host-side generator for the Kotlin bindings of pdfrs-ffi. Kept out of the
-# pdfrs-ffi crate so the CLI's dependencies are never built for Android.
+# Host-side generator for the Kotlin bindings of specto-ffi. Kept out of the
+# specto-ffi crate so the CLI's dependencies are never built for Android.
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
 

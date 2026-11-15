@@ -1,4 +1,4 @@
-//! The page view: draws `pdfrs_view::Frame`s and implements `GtkScrollable`,
+//! The page view: draws `specto_view::Frame`s and implements `GtkScrollable`,
 //! so a `GtkScrolledWindow` around it provides scrollbars and kinetic scrolling.
 
 use std::cell::{Cell, RefCell};
@@ -7,12 +7,14 @@ use std::time::Instant;
 use adw::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, glib, graphene, gsk};
-use pdfrs_geom::{DeviceRect, LayoutVector, ViewPoint, ViewSize, ViewVector};
-use pdfrs_source::{NamedAction, Target};
-use pdfrs_view::{Granularity, Selection, Viewer, over_text, text_char, text_position, text_quads};
+use specto_geom::{DeviceRect, LayoutVector, ViewPoint, ViewSize, ViewVector};
+use specto_source::{NamedAction, Target};
+use specto_view::{
+    Granularity, Selection, Viewer, over_text, text_char, text_position, text_quads,
+};
 
 use crate::document::SharedDocument;
-use pdfrs_doc::SourceId;
+use specto_doc::SourceId;
 
 /// Dragging a selection this close to the top or bottom edge (logical px)
 /// scrolls the view.
@@ -91,7 +93,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for Canvas {
-        const NAME: &'static str = "PdfrsCanvas";
+        const NAME: &'static str = "SpectoCanvas";
         type Type = super::Canvas;
         type ParentType = gtk::Widget;
         type Interfaces = (gtk::Scrollable,);
@@ -192,7 +194,7 @@ mod imp {
             // already took > 500 ms) that aren't sharp yet. Cheap pages
             // render in milliseconds and never flash one.
             let viewport = DeviceRect::new(
-                pdfrs_geom::DevicePoint::origin(),
+                specto_geom::DevicePoint::origin(),
                 (obj.width() as f64 * scale, obj.height() as f64 * scale).into(),
             );
             let busy: Vec<DeviceRect> = frame
@@ -323,7 +325,7 @@ impl Canvas {
         &self,
         snapshot: &gtk::Snapshot,
         d: &mut crate::document::Document,
-        pages: &[pdfrs_view::PageDraw],
+        pages: &[specto_view::PageDraw],
         scale: f64,
     ) {
         let yellow = gdk::RGBA::new(0.965, 0.827, 0.176, 0.5);
@@ -334,7 +336,7 @@ impl Canvas {
                 continue;
             }
             let (viewer, mut texts, _) = d.text();
-            let Some(text) = pdfrs_view::TextPages::text_page(&mut texts, page.page) else {
+            let Some(text) = specto_view::TextPages::text_page(&mut texts, page.page) else {
                 continue;
             };
             snapshot.push_clip(&logical(page.rect, scale));
@@ -351,7 +353,7 @@ impl Canvas {
         &self,
         snapshot: &gtk::Snapshot,
         d: &mut crate::document::Document,
-        pages: &[pdfrs_view::PageDraw],
+        pages: &[specto_view::PageDraw],
         scale: f64,
     ) {
         let (viewer, mut texts, selection) = d.text();

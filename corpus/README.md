@@ -5,8 +5,8 @@ Run `./fetch.sh` to download the corpus into `files/` (not committed).
 Then, from the repository root:
 
 ```sh
-cargo build --release -p pdfrs-cli
-target/release/pdfrs corpus corpus/files/pdfjs/test/pdfs --reference --max-pages 3
+cargo build --release -p specto-cli
+target/release/specto corpus corpus/files/pdfjs/test/pdfs --reference --max-pages 3
 ```
 
 This writes `out/corpus/report.md`, `results.tsv`, and side-by-side PNGs for pages that differ from

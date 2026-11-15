@@ -31,7 +31,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for Thumbnail {
-        const NAME: &'static str = "PdfrsThumbnail";
+        const NAME: &'static str = "SpectoThumbnail";
         type Type = super::Thumbnail;
         type ParentType = gtk::Widget;
     }
