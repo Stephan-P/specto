@@ -2,19 +2,19 @@
 
 ## Prerequisites
 
-- Rust 1.92 or newer (`rust-version` in the workspace `Cargo.toml`), installed
-  with [rustup](https://rustup.rs), with the Android target and `cargo-ndk`:
+- Rust 1.92 or newer, installed with [rustup](https://rustup.rs), with the
+  Android target and cargo-ndk:
 
   ```sh
   rustup target add aarch64-linux-android
   cargo install cargo-ndk
   ```
 
-- Android Studio, or the Android SDK on its own, with the NDK version named
-  in `build.gradle.kts` (`ndkVersion`). In Android Studio it is under
-  Settings → Languages & Frameworks → Android SDK → SDK Tools, with "Show
-  Package Details" ticked.
-- A JDK. Android Studio brings one; to use it from a terminal on macOS:
+- Android Studio, or the Android SDK on its own, with the NDK version that
+  `build.gradle.kts` names as `ndkVersion`. In Android Studio's settings it is
+  under Languages & Frameworks, Android SDK, SDK Tools, with "Show Package
+  Details" ticked.
+- A JDK. Android Studio brings one. To use it from a terminal on macOS:
 
   ```sh
   export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
@@ -30,8 +30,11 @@ part of the build, so there is no separate Rust step. The app runs on Android
 From `apps/android`, with a phone connected or an emulator running:
 
 ```sh
-./gradlew installDebug       # build and install
-./gradlew assembleDebug      # only build: build/outputs/apk/debug/
+# build and install
+./gradlew installDebug
+
+# only build, into build/outputs/apk/debug/
+./gradlew assembleDebug
 ```
 
 With more than one device connected, say which one:
@@ -41,89 +44,107 @@ adb devices
 ANDROID_SERIAL=emulator-5554 ./gradlew installDebug
 ```
 
-The release build is the one to judge speed by, and the one users get: its
-code is shrunk by R8, which removes what the app doesn't use. Without a key
-of its own (see below) it is signed with the debug key, which is fine for
-trying it:
+## Release build
+
+The release build is the one to judge speed by, and the one users get. Its code
+is shrunk by R8, which removes what the app doesn't use.
 
 ```sh
 ./gradlew installRelease
 ```
 
-The UI tests run against the debug build, which isn't shrunk. What R8 must
-not touch is listed in `proguard-rules.pro`; after changing that file, or
-how Kotlin reaches the Rust library, open a document in the release build
-and see that it draws.
+Without a key of its own (see below) it is signed with the debug key, which is
+fine for trying it.
+
+The UI tests run against the debug build, which isn't shrunk. What R8 must not
+touch is listed in `proguard-rules.pro`. After changing that file, or how
+Kotlin reaches the Rust library, open a document in the release build and see
+that it draws.
 
 ## A release for others
 
-A build to hand out has to be signed with a key that stays the same for as
-long as the app exists: Android installs an update only if it is signed with
-the key of the version it replaces. Create one once, and keep the file and
-its password somewhere safe, outside the repository:
+A build to hand out has to be signed with a key that stays the same for as long
+as the app exists, because Android installs an update only if it is signed with
+the key of the version it replaces. Create one once, and keep the file and its
+password somewhere safe, outside the repository:
 
 ```sh
 keytool -genkeypair -v -keystore ~/specto-release.jks -alias specto \
     -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Then say where it is in `apps/android/keystore.properties`, which Git
-ignores:
+Then say where it is in `apps/android/keystore.properties`, which Git ignores:
 
 ```properties
 storeFile=/home/me/specto-release.jks
-storePassword=…
+storePassword=<password>
 keyAlias=specto
-keyPassword=…
+keyPassword=<password>
 ```
 
-With that file in place, `./gradlew assembleRelease` signs
-`build/outputs/apk/release/specto-release.apk` with the key (and
-`bundleRelease` an app bundle, for stores that want one); without it,
-the debug key is used as before. To see which key signed an APK:
+With that file in place, the release build is signed with the key. Without it,
+the debug key is used.
+
+```sh
+# an APK, in build/outputs/apk/release/
+./gradlew assembleRelease
+
+# an app bundle, for stores that want one
+./gradlew bundleRelease
+```
+
+To see which key signed an APK:
 
 ```sh
 $ANDROID_HOME/build-tools/<version>/apksigner verify --print-certs specto-release.apk
 ```
 
-Before a release, raise `versionCode` (and `versionName`) in
-`build.gradle.kts`: Android takes an update only with a higher code.
+Before a release, raise `versionCode` and `versionName` in `build.gradle.kts`.
+Android takes an update only with a higher code.
 
 ## Emulators on Intel and AMD machines
 
-The Rust library is built for `arm64-v8a`, which covers phones and the
-emulator on Apple Silicon. An emulator on an Intel or AMD machine needs
-`x86_64`:
+The Rust library is built for arm64-v8a, which covers phones and the emulator
+on Apple Silicon. An emulator on an Intel or AMD machine needs x86_64:
 
 ```sh
 rustup target add x86_64-linux-android
 ./gradlew installDebug -Pspecto.abis=x86_64
 ```
 
-To build both, pass `-Pspecto.abis=arm64-v8a,x86_64`, or change `specto.abis`
-in `gradle.properties`.
+To build both, pass both, or change `specto.abis` in `gradle.properties`:
+
+```sh
+./gradlew installDebug -Pspecto.abis=arm64-v8a,x86_64
+```
 
 ## Tests
 
 ```sh
-./gradlew testDebugUnitTest                                       # unit tests
-ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest  # UI tests on an emulator
-```
+# unit tests
+./gradlew testDebugUnitTest
 
-The serial matters when a phone is plugged in as well: a UI test run installs
-and then removes the app on its target. To run only some test classes:
+# UI tests on an emulator
+ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest
 
-```sh
+# only some UI test classes
 ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest \
     -Pandroid.testInstrumentationRunnerArguments.class=net.xfbs.specto.EditTest,net.xfbs.specto.ShareTest
 ```
 
-What the tests cover is in the [README](README.md#testing).
+Set the serial when a phone is plugged in as well, because a UI test run
+installs and then removes the app on its target. What the tests cover, and what
+is checked by hand, is in [TESTING.md](TESTING.md).
 
 ## When something is off
 
-- After the Rust library or its bindings were renamed or removed, run
-  `./gradlew clean`: generated files from before are otherwise packaged next
-  to the new ones.
-- The first install on a freshly started emulator sometimes fails; a second
+- After the Rust library or its bindings were renamed or removed, clean the
+  build. Generated files from before are otherwise packaged next to the new
+  ones.
+
+  ```sh
+  ./gradlew clean
+  ```
+
+- The first install on a freshly started emulator sometimes fails, and a second
   try works.

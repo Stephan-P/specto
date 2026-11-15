@@ -114,8 +114,9 @@ What each crate does is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   and since (rendering, HiDPI, text, Android)
 - [apps/desktop/FEATURES.md](apps/desktop/FEATURES.md) and
   [apps/android/FEATURES.md](apps/android/FEATURES.md): what each app does
-- [apps/desktop/TESTING.md](apps/desktop/TESTING.md): testing the desktop app,
-  by hand and automated
+- [apps/desktop/TESTING.md](apps/desktop/TESTING.md) and
+  [apps/android/TESTING.md](apps/android/TESTING.md): testing each app, by hand
+  and automated
 - [corpus/README.md](corpus/README.md): the test corpus and regression runs
 
 ## Similar projects

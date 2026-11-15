@@ -1,6 +1,7 @@
 # Specto for Android
 
-A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and Jetpack Compose, it shares its core with the desktop app.
+A fast, pleasant PDF reader for Android phones and tablets. It is built with
+Rust and Jetpack Compose.
 
 <p align="center">
   <img src="screenshot-phone.png" width="20%" alt="Specto on a phone: a page of a manual with diagrams, the page number, and a strip of page thumbnails along the bottom">
@@ -8,84 +9,107 @@ A fast, pleasant PDF reader for Android phones and tablets. Built with Rust and 
   <img src="screenshot-tablet.png" width="72%" alt="Specto on a tablet: two pages side by side, with the table of contents in a sidebar">
 </p>
 
-Android has few open-source PDF viewers, and the ones there are tend to feel clunky: slow to render, blurry while zooming, or awkward to navigate. Specto aims to be a reader that is simply nice to use, with smooth page turns, sharp pages at any zoom, and quick ways to find your way around a long document. Light editing, such as annotations and filling in forms, will follow.
+Android has a few open-source PDF viewers, but I haven't found one that I love.
+They either don't feel finished or are missing features I expect. Many can
+render a page crisply and turn it smoothly. What I miss is the combination: a
+polished interface, search, full screen, two pages side by side on a tablet,
+and light editing. Specto is my attempt at a reader that has all of it.
 
 ## Features
 
-What it can do today:
+The main features are below, and the full list is in
+[FEATURES.md](FEATURES.md).
 
-- Paged reading with swipes, each page fitted to the screen, or continuous scrolling
-- Pinch and double-tap zoom, with pages sharp at any zoom
-- A thumbnail strip, a grid of all pages, the table of contents, links, and printed page numbers ("iii (3 / 240)")
-- Search, with all matches highlighted
-- Selecting text, and copying or sharing it
-- Editing pages: rotating, deleting and reordering them, with undo, and saving the result
-- Two pages side by side on tablets and other wide windows, optionally with the cover page on its own
-- Fit page or fit width, full screen, keyboard navigation, light and dark mode
-- Password-protected PDFs
-- Recent documents, and continuing where you left off
-- Printing, sharing the open document with other apps, and its properties (title, author, page size, …)
-- Optional: keep the screen on while reading, turn pages with the volume keys
-- In English and German
+- **Reading**: one page at a time with swipes, each page fitted to the screen,
+  or continuous scrolling
+- **Zoom**: pinch and double tap, fit page or fit width, with pages sharp at
+  any zoom
+- **Navigation**: a thumbnail strip, a grid of all pages, the table of
+  contents, links, and printed page numbers ("iii (3 / 240)")
+- **Search**: ignoring case and accents, with all matches highlighted
+- **Text**: selecting, copying and sharing
+- **Editing**: rotating, deleting and reordering pages, with undo and redo, and
+  saving the result
+- **Tablets**: a sidebar, and two pages side by side on wide windows,
+  optionally with the cover page on its own
+- **Printing and sharing**: with the system's print dialog and share sheet
+- **Encryption**: password-protected PDFs
+- **History**: recent documents, and continuing where you left off
+- **Usability**: full screen, keyboard navigation, light and dark mode, document
+  properties, and optionally keeping the screen on and turning pages with the
+  volume keys
+- **Languages**: English and German
 
-Coming next: inserting pages from other documents, annotations, and filling in forms.
-
-The full list of features, with how to check each one, is in [FEATURES.md](FEATURES.md).
+Coming next: inserting pages from other documents, annotations, and filling in
+forms.
 
 ## Implementation
 
-The core is implemented in Rust and shared with the desktop app. The Android app is a Kotlin and Compose layer over these shared crates:
+The core is written in Rust and shared with the desktop app (see
+[crates/](../../crates/README.md)). It is compiled into one native library,
+which Kotlin reaches through UniFFI, plus a few hand-written JNI functions for
+the work done on every frame, where UniFFI's overhead was too high.
 
-- `specto-view`: page layout, zoom, scrolling, and which parts of which pages to render
-- `specto-render`: rendering pages into tiles in the background, with [hayro](https://github.com/LaurenzV/hayro), a PDF renderer written in Rust
-- `specto-source`: reading the table of contents, links and page labels
-
-They're compiled into `libspecto_ffi.so`. The crate `specto-ffi` exposes them to Kotlin through UniFFI, plus a few hand-written JNI functions for the work done on every frame, where UniFFI's overhead was too high. The app itself draws the rendered tiles and handles gestures, the file picker and recent documents. More detail is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
+The app itself is written in Kotlin with Jetpack Compose. It draws the rendered
+tiles and handles gestures, the file picker and recent documents. More detail
+is in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
 
 ## Building
 
+Build it and install it on a connected device or emulator:
+
 ```sh
 cd apps/android
-./gradlew installDebug      # build and install on a connected device or emulator
+./gradlew installDebug
 ```
 
-What to install first, release builds and their signing key, and emulators on Intel machines are in [BUILDING.md](BUILDING.md). The app runs on Android 8.0 (API 26) and newer.
+What to install first, release builds and their signing key, and emulators on
+Intel machines are in [BUILDING.md](BUILDING.md). The app runs on Android 8.0
+(API 26) and newer.
 
 ## Testing
 
 ```sh
 cd apps/android
-./gradlew testDebugUnitTest                                       # unit tests
-ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest  # UI tests on an emulator
+
+# unit tests
+./gradlew testDebugUnitTest
+
+# UI tests on an emulator
+ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest
 ```
 
-The UI tests (`ReaderTest`, `DocumentTest`) cover most of [FEATURES.md](FEATURES.md) on phone-sized and tablet-sized screens: turning pages by swipe and key, the strip, the page grid, the table of contents, links, printed page numbers, full screen, the sidebar and two pages on wide windows, rotation, passwords, and what is remembered; further classes cover search, text selection, page edits and saving, sharing, printing and the settings. The serial matters when a phone is plugged in as well: a test run installs and then removes the app on its target.
+The UI tests cover most of [FEATURES.md](FEATURES.md) on phone-sized and
+tablet-sized screens. Set the serial when a phone is plugged in as well,
+because a test run installs and then removes the app on its target.
 
-CI builds the app (the release build too, so that code shrinking is known to go through) and runs the unit tests on every change, and the UI tests on an emulator for pushes to `main`. What tests can't judge (how it looks and feels, the file picker, pinch zoom) is checked by hand with [FEATURES.md](FEATURES.md).
+CI builds the app, including the release build, and runs the unit tests on
+every change. It runs the UI tests on an emulator for pushes to the main
+branch. What tests can't judge (how it looks and feels, the file picker, pinch
+zoom) is checked by hand, as described in [TESTING.md](TESTING.md).
 
 ## Project structure
 
-The layout is flatter than Android's usual one (`app/src/main/kotlin/net/xfbs/…`): the Gradle project is the app, and `build.gradle.kts` says where its parts are. The files are all in the package `net.xfbs.specto`, without directories repeating that.
+The layout is flatter than Android's usual one, which would put the code under
+`app/src/main/kotlin/net/xfbs/specto`. The Gradle project is the app, and
+`build.gradle.kts` says where its parts are. Sorry to developers who are used
+to that deeply nested structure, but it gives me the ick.
 
-In `src/`:
+The code is in `src/`, mostly one file per part of the screen. A few things
+that aren't obvious from the file names:
 
-- `MainActivity.kt`: the activity, theme, top bar, menus and dialogs
-- `StartScreen.kt`: the start screen with recent documents
-- `PdfView.kt`, `PdfViewState.kt`: the page view, its gestures, keys and state
-- `ViewFrame.kt`: one frame of the view as planned in Rust, decoded from the JNI call
-- `Native.kt`: the JNI functions (the rest of the Rust API comes through UniFFI's generated bindings)
-- `ThumbnailStrip.kt`, `PagesGrid.kt`, `OutlineList.kt`: the strip, the page grid and the table of contents
-- `DocumentStore.kt`: recent documents and where each was left off
-- `Share.kt`, `Print.kt`: handing the document to the share sheet and to the print dialog
-- `CrashLog.kt`, `SpectoApp.kt`: the log of crashes that Settings shows, set up as the app starts
-
-Elsewhere:
-
-- `AndroidManifest.xml`, `res/`: the manifest and Android's resources (icons, themes)
-- `res/values/strings.xml`: everything the app says, in English; `res/values-de/` has the German translation, and another language is another such copy (a unit test checks that each has every text, with its placeholders)
+- `src/Native.kt`: the hand-written JNI functions. The rest of the Rust API
+  comes through the bindings that UniFFI generates during the build
+- `src/ViewFrame.kt`: one frame of the view as planned in Rust, decoded from
+  the JNI call
+- `src/DocumentStore.kt`: recent documents and where each was left off
+- `res/values/strings.xml`: everything the app says, in English. The German
+  translation is a copy of it in `res/values-de/`, and another language is
+  another such copy. A unit test checks that each has every text, with its
+  placeholders
 - `proguard-rules.pro`: what code shrinking must leave alone in a release build
-- `test/`: unit tests
-- `test-ui/`: UI tests, with their test PDFs in `assets/` (written by `make-fixtures.py`)
-- `build.gradle.kts`: the build, including cross-compiling the Rust library
-- `FEATURES.md`: the feature list, as things to check by hand
-- `screenshot-phone.png`, `screenshot-tablet.png`: the screenshots above, taken on the emulators with hwloc's manual (BSD licence), the document the desktop app's screenshot shows too
+- `test/`, `test-ui/`: the unit tests and the UI tests. The test PDFs in
+  `test-ui/assets` are written by `test-ui/make-fixtures.py`
+- `screenshot-phone.png`, `screenshot-tablet.png`: the screenshots above, taken
+  on the emulators with the same document as the desktop app's screenshot
+  (hwloc's manual, BSD license)
