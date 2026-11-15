@@ -43,9 +43,9 @@ here.
 - On the start screen the overflow menu has only Open and Settings
 - Properties shows the file name, what the document says about itself (title,
   author, subject, keywords, the programs it was made with, when it was created
-  and changed), the number of pages, their size in millimeters with its name
-  (such as A4), the file size and the PDF version. Values can be selected and
-  copied
+  and changed), the number of pages, their size with its name (in millimeters,
+  such as A4, or in inches for sizes like Letter), the file size and the PDF
+  version. Values can be selected and copied
 
 ## Reading one page at a time
 
@@ -170,8 +170,9 @@ document is saved.
 ## Saving
 
 - Save in the overflow menu, while there are unsaved edits, writes over the
-  file the document was opened from. A new PDF is written beside it first, so a
-  failure leaves the file as it was. The document stays open, and the edits can
+  file the document was opened from. The new PDF is written to the app's own
+  storage first and then copied over the file, so a document that can't be
+  written leaves the file as it was. The document stays open, and the edits can
   still be undone
 - Save is only offered where the app may write to the file, which is the case
   for documents opened with the file picker. Documents handed over by other

@@ -22,6 +22,8 @@ ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest
 Set the serial when a phone is plugged in as well, because a UI test run
 installs and then removes the app on its target. The tests are in `test/` and
 `test-ui/`, and the UI tests run on a phone-sized and a tablet-sized emulator.
+The emulator has to be set to English, because the UI tests find buttons and
+menu items by their English texts.
 
 CI runs the unit tests on every change, and the UI tests for pushes to the main
 branch.
@@ -31,7 +33,10 @@ Not covered, and left to the manual pass:
 - How anything looks or feels
 - The system's file picker, and opening from another app
 - The share sheet, and the print dialog beyond what it is handed
-- Saving over a file, and the system's dialog asking where to save
+- Saving over a file that came from the system's file picker, and the
+  system's dialog asking where to save
+- The release build. The UI tests run against the debug build, whose code
+  isn't shrunk (see BUILDING.md, "Release build")
 - Pinch zoom
 - Dark mode and the camera cutout
 - Whether the screen really stays on
