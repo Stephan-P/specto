@@ -208,7 +208,7 @@ mod imp {
                             // Not `append_scaled_texture`: on a HiDPI surface
                             // GSK renders that node at logical resolution and
                             // scales the result up, blurring every tile
-                            // (measured on macOS, see M0-FINDINGS.md). A plain
+                            // (measured on macOS). A plain
                             // texture node is sampled at device resolution,
                             // 1:1 when `layer.exact`.
                             snapshot.append_texture(texture, &logical(layer.dest, scale));
@@ -1336,7 +1336,7 @@ fn logical(r: DeviceRect, scale: f64) -> graphene::Rect {
 /// of its surface. At fractional scales the widget can sit at e.g. 31.25
 /// device px (a 25 px CSD shadow × 1.25), and then every tile is resampled
 /// between pixels. Measured at scale 1.25: edge contrast 80.7 without this,
-/// identical to an exact render with it (M0-FINDINGS.md).
+/// identical to an exact render with it.
 fn device_pixel_snap(widget: &impl IsA<gtk::Widget>, scale: f64) -> (f32, f32) {
     let Some(native) = widget.native() else {
         return (0.0, 0.0);

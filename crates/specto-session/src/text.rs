@@ -64,7 +64,7 @@ impl TextPages for TextLayer<'_> {
         if let Some(t) = self.cache.get(key) {
             return Some(t);
         }
-        // A fraction of a millisecond for most pages (M0-FINDINGS.md), so
+        // A fraction of a millisecond for most pages, so
         // this runs on the caller's thread when a page is first needed.
         let source = self.sources.get(p.source.0 as usize)?;
         let text = Arc::new(Extractor::new(source.doc.pdf()).page(p.page as usize)?);

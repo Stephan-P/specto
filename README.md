@@ -116,8 +116,6 @@ command-line tool, for development, is described in
 - [docs/DECISIONS.md](docs/DECISIONS.md): technology choices, the alternatives
   considered, and open questions
 - [docs/TASKS.md](docs/TASKS.md): the task list, by milestone
-- [docs/M0-FINDINGS.md](docs/M0-FINDINGS.md): measurements from the prototypes
-  and since (rendering, HiDPI, text, Android)
 - [apps/desktop/FEATURES.md](apps/desktop/FEATURES.md) and
   [apps/android/FEATURES.md](apps/android/FEATURES.md): what each app does
 - [apps/desktop/TESTING.md](apps/desktop/TESTING.md) and

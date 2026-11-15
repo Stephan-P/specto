@@ -175,7 +175,7 @@ graph TD
   tiles are rendered at physical pixels. A settled view is drawn from tiles at
   the exact device scale, one to one, so it is pixel-identical to a direct
   render at that scale. This was measured on macOS at scale 2 and on Linux at
-  1.25, 1.5 and 2 (see [M0-FINDINGS.md](M0-FINDINGS.md)).
+  1.25, 1.5 and 2.
 - **Zoom.** While zooming, tiles come from zoom levels a factor of √2 apart,
   rendered at or above the device scale and downsampled. Continuous zooming
   then reuses a few cached levels instead of rendering every zoom in between.
@@ -339,7 +339,7 @@ The Android app is written in Kotlin with Jetpack Compose.
   on the desktop. It avoids chatty calls across the boundary.
 - The work done on every frame (planning the frame, copying tiles) uses
   hand-written JNI instead, because UniFFI's overhead per call was too high
-  (see [M0-FINDINGS.md](M0-FINDINGS.md)).
+  (see D5 in [DECISIONS.md](DECISIONS.md)).
 - Tiles are copied from Rust into Android bitmaps through the NDK, and Compose
   draws them on a canvas.
 - Files are opened and saved through the Storage Access Framework. Saving

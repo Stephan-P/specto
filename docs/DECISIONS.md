@@ -1,8 +1,11 @@
 # Technology decisions
 
 The choices Specto is built on, with the alternatives that were considered. All
-of them were decided on 2026-11-14 unless a section says otherwise. The
-measurements they refer to are in [M0-FINDINGS.md](M0-FINDINGS.md).
+of them were decided on 2026-11-14 unless a section says otherwise.
+
+The measurements they refer to were written up in full in
+`docs/M0-FINDINGS.md`, which has since been removed. Commit 7273d64 is the last
+one that has it.
 
 ## D1: Rendering engine
 
