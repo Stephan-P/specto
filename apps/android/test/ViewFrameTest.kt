@@ -106,40 +106,53 @@ class ViewFrameTest {
 
     @Test
     fun annotations() {
-        assertEquals(3, frame.shapeCount)
+        val shapes = frame.shapes
+        assertEquals(3, shapes.count)
 
         // A highlight on the first page: a quadrilateral that darkens.
-        assertEquals(0, frame.shapePage(0))
-        assertTrue(frame.shapeIsFilled(0) && frame.shapeDarkens(0) && frame.shapeIsClosed(0))
-        assertFalse(frame.shapeIsStroked(0) || frame.shapeIsRound(0))
-        assertEquals(0xFFFFEB3B.toInt(), frame.shapeFill(0))
-        assertEquals(100f, frame.shapeStartX(0))
-        assertEquals(200f, frame.shapeStartY(0))
-        assertEquals(0..2, frame.segments(0))
-        assertFalse(frame.segmentIsCurve(1))
-        assertEquals(300f, frame.segmentX(1, 0))
-        assertEquals(170.5f, frame.segmentY(1, 0))
+        assertEquals(0, shapes.page(0))
+        assertTrue(shapes.isFilled(0) && shapes.darkens(0) && shapes.isClosed(0))
+        assertFalse(shapes.isStroked(0) || shapes.isRound(0))
+        assertEquals(0xFFFFEB3B.toInt(), shapes.fill(0))
+        assertEquals(100f, shapes.startX(0))
+        assertEquals(200f, shapes.startY(0))
+        assertEquals(0..2, shapes.segments(0))
+        assertFalse(shapes.segmentIsCurve(1))
+        assertEquals(300f, shapes.segmentX(1, 0))
+        assertEquals(170.5f, shapes.segmentY(1, 0))
 
         // A line under some text on the second.
-        assertEquals(1, frame.shapePage(1))
-        assertTrue(frame.shapeIsStroked(1))
-        assertFalse(frame.shapeIsFilled(1) || frame.shapeDarkens(1) || frame.shapeIsClosed(1))
-        assertEquals(0xFFE01C24.toInt(), frame.shapeStroke(1))
-        assertEquals(2.5f, frame.shapeStrokeWidth(1))
-        assertEquals(3..3, frame.segments(1))
-        assertEquals(400f, frame.segmentX(3, 0))
+        assertEquals(1, shapes.page(1))
+        assertTrue(shapes.isStroked(1))
+        assertFalse(shapes.isFilled(1) || shapes.darkens(1) || shapes.isClosed(1))
+        assertEquals(0xFFE01C24.toInt(), shapes.stroke(1))
+        assertEquals(2.5f, shapes.strokeWidth(1))
+        assertEquals(3..3, shapes.segments(1))
+        assertEquals(400f, shapes.segmentX(3, 0))
 
         // A drawing: filled and outlined with a round pen, with a curve.
-        assertTrue(frame.shapeIsFilled(2) && frame.shapeIsStroked(2) && frame.shapeIsRound(2))
-        assertEquals(0x8000FF00.toInt(), frame.shapeFill(2))
-        assertEquals(4..5, frame.segments(2))
-        assertTrue(frame.segmentIsCurve(4))
-        assertEquals(520f, frame.segmentX(4, 0))
-        assertEquals(560f, frame.segmentX(4, 1))
-        assertEquals(580f, frame.segmentX(4, 2))
-        assertEquals(1400f, frame.segmentY(4, 2))
-        assertFalse(frame.segmentIsCurve(5))
-        assertEquals(1450f, frame.segmentY(5, 0))
+        assertTrue(shapes.isFilled(2) && shapes.isStroked(2) && shapes.isRound(2))
+        assertEquals(0x8000FF00.toInt(), shapes.fill(2))
+        assertEquals(4..5, shapes.segments(2))
+        assertTrue(shapes.segmentIsCurve(4))
+        assertEquals(520f, shapes.segmentX(4, 0))
+        assertEquals(560f, shapes.segmentX(4, 1))
+        assertEquals(580f, shapes.segmentX(4, 2))
+        assertEquals(1400f, shapes.segmentY(4, 2))
+        assertFalse(shapes.segmentIsCurve(5))
+        assertEquals(1450f, shapes.segmentY(5, 0))
+
+        // One on the second of the thumbnails, which is page 3.
+        val small = frame.thumbnailShapes
+        assertEquals(1, small.count)
+        assertEquals(1, small.page(0))
+        assertEquals(1, frame.thumbnailSlot(3))
+        assertTrue(small.isFilled(0) && small.darkens(0) && small.isClosed(0))
+        assertEquals(120f, small.startX(0))
+        assertEquals(0..2, small.segments(0))
+        assertEquals(480.5f, small.segmentX(0, 0))
+        assertEquals(215f, small.segmentY(2, 0))
+        assertTrue(frame.sameThumbnailsAs(frame))
 
         // The highlight is picked.
         assertArrayEquals(floatArrayOf(98f, 202f, 302f, 202f, 302f, 168.5f, 98f, 168.5f), frame.picked, 0f)

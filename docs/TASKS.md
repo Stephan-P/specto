@@ -190,6 +190,7 @@ point to [DECISIONS.md](DECISIONS.md).
   data and placed with a click
 - [x] Desktop: font, bold, italic and size for text boxes, in the three font
   families no PDF needs to embed
+- [x] Android: markup shows in the thumbnails
 - [ ] Page copies for deleted annotations are written while the user waits.
   That is fine for ordinary files. For very large ones, write them in the
   background, and keep lopdf's reading of a file between two deletions.
@@ -206,8 +207,6 @@ point to [DECISIONS.md](DECISIONS.md).
 - [ ] Android: build the app with the annotation edit kinds that were added to
   the shared code without a Kotlin build.
 - [ ] Squiggly underlines drawn as a wavy line.
-- [ ] Android: show markup in the thumbnails too. The page view already draws
-  it.
 - [ ] Text follow-ups: alignment, typing on pages shown rotated, and any font
   of the system together with characters beyond Windows Latin. Both of those
   need a font embedded in the file and are one piece of work. Such characters

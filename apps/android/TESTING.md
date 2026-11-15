@@ -148,6 +148,8 @@ These need a document with real text.
 - Mark a selection that runs over several lines, and in continuous scrolling
   over a page break: every line is marked, on both pages.
 - Scroll, zoom and rotate the device: the marks stay on their text.
+- Look at the thumbnail strip, and at the page grid: the marks are on the
+  thumbnails, where they are on the pages. Undo takes them away there too.
 - Tap a mark: a box around it, and Delete in the menu. The bars stay as they
   are. Tap blank paper: the box goes, and the bars still stay.
 - Save, then open the file in another PDF program: the marks are there, and

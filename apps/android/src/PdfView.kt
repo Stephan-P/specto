@@ -566,7 +566,8 @@ private fun PageCanvas(
                         val paint = if (f.tileIsExact(t)) exactPaint else scaledPaint
                         canvas.nativeCanvas.drawBitmap(bitmap, null, dest, paint)
                     }
-                    shapes.draw(canvas.nativeCanvas, f, p, dest)
+                    dest.set(left, top, left + size.width, top + size.height)
+                    shapes.draw(canvas.nativeCanvas, f.shapes, p, dest)
                 }
             }
         }
@@ -599,10 +600,10 @@ private fun PageCanvas(
 }
 
 /**
- * Draws the annotations of a frame that aren't part of the pages as rendered
- * ([ViewFrame.shapeCount]), reusing its paints and path from frame to frame.
+ * Draws [FrameShapes], the annotations that aren't part of the pages as rendered, reusing its
+ * paints and path from one time to the next.
  */
-private class ShapePainter {
+internal class ShapePainter {
     private val path = android.graphics.Path()
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -619,52 +620,56 @@ private class ShapePainter {
     }
 
     /**
-     * Draws the shapes of the [page]th visible page of [frame] onto [canvas], which is clipped to
-     * that page.
+     * Draws those of [shapes] that are on [page] onto [canvas], which is clipped to that page.
      *
-     * [scratch] is a rectangle to use. Highlights first: they darken the page under them, together,
-     * so that two that overlap don't darken it twice. Then the rest, on top of the page.
+     * [bounds] is where the page is on the canvas. Highlights first: they darken the page under
+     * them, together, so that two that overlap don't darken it twice. Then the rest, on top of the
+     * page.
      */
-    fun draw(canvas: android.graphics.Canvas, frame: ViewFrame, page: Int, scratch: RectF) {
-        val shapes = (0 until frame.shapeCount).filter { frame.shapePage(it) == page }
-        if (shapes.isEmpty()) return
-        if (shapes.any(frame::shapeDarkens)) {
-            scratch.set(
-                frame.pageLeft(page),
-                frame.pageTop(page),
-                frame.pageLeft(page) + frame.pageWidth(page),
-                frame.pageTop(page) + frame.pageHeight(page),
-            )
-            val layer = canvas.saveLayer(scratch, darken)
-            for (i in shapes) if (frame.shapeDarkens(i)) draw(canvas, frame, i)
+    fun draw(canvas: android.graphics.Canvas, shapes: FrameShapes, page: Int, bounds: RectF) {
+        var any = false
+        var darkening = false
+        for (i in 0 until shapes.count) {
+            if (shapes.page(i) != page) continue
+            any = true
+            if (shapes.darkens(i)) darkening = true
+        }
+        if (!any) return
+        if (darkening) {
+            val layer = canvas.saveLayer(bounds, darken)
+            for (i in 0 until shapes.count) {
+                if (shapes.page(i) == page && shapes.darkens(i)) draw(canvas, shapes, i)
+            }
             canvas.restoreToCount(layer)
         }
-        for (i in shapes) if (!frame.shapeDarkens(i)) draw(canvas, frame, i)
+        for (i in 0 until shapes.count) {
+            if (shapes.page(i) == page && !shapes.darkens(i)) draw(canvas, shapes, i)
+        }
     }
 
-    private fun draw(canvas: android.graphics.Canvas, frame: ViewFrame, i: Int) {
+    private fun draw(canvas: android.graphics.Canvas, shapes: FrameShapes, i: Int) {
         path.rewind()
-        path.moveTo(frame.shapeStartX(i), frame.shapeStartY(i))
-        for (s in frame.segments(i)) {
-            if (frame.segmentIsCurve(s)) {
+        path.moveTo(shapes.startX(i), shapes.startY(i))
+        for (s in shapes.segments(i)) {
+            if (shapes.segmentIsCurve(s)) {
                 path.cubicTo(
-                    frame.segmentX(s, 0), frame.segmentY(s, 0),
-                    frame.segmentX(s, 1), frame.segmentY(s, 1),
-                    frame.segmentX(s, 2), frame.segmentY(s, 2),
+                    shapes.segmentX(s, 0), shapes.segmentY(s, 0),
+                    shapes.segmentX(s, 1), shapes.segmentY(s, 1),
+                    shapes.segmentX(s, 2), shapes.segmentY(s, 2),
                 )
             } else {
-                path.lineTo(frame.segmentX(s, 0), frame.segmentY(s, 0))
+                path.lineTo(shapes.segmentX(s, 0), shapes.segmentY(s, 0))
             }
         }
-        if (frame.shapeIsClosed(i)) path.close()
-        if (frame.shapeIsFilled(i)) {
-            fill.color = frame.shapeFill(i)
+        if (shapes.isClosed(i)) path.close()
+        if (shapes.isFilled(i)) {
+            fill.color = shapes.fill(i)
             canvas.drawPath(path, fill)
         }
-        if (frame.shapeIsStroked(i)) {
-            val round = frame.shapeIsRound(i)
-            stroke.color = frame.shapeStroke(i)
-            stroke.strokeWidth = frame.shapeStrokeWidth(i)
+        if (shapes.isStroked(i)) {
+            val round = shapes.isRound(i)
+            stroke.color = shapes.stroke(i)
+            stroke.strokeWidth = shapes.strokeWidth(i)
             stroke.strokeCap = if (round) Paint.Cap.ROUND else Paint.Cap.BUTT
             stroke.strokeJoin = if (round) Paint.Join.ROUND else Paint.Join.MITER
             canvas.drawPath(path, stroke)

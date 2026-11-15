@@ -163,7 +163,8 @@ edits, they change nothing in a file until the document is saved.
 - Marking and deleting are edits: "Edited" shows beside the title, Undo and
   Redo in the overflow menu take them back and repeat them ("Undo add
   annotation"), and they are saved, shared and printed with the document
-- The thumbnails don't show marks until the document is saved
+- The thumbnails show marks as the page does, in the strip, the page grid and
+  the sidebar
 
 ## Editing pages
 

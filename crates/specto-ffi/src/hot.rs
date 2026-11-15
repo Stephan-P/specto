@@ -58,12 +58,18 @@
 //! }
 //! 4 × { f32 x, y }     the corners of the box around the picked
 //!                      annotation, zeros if flag bit 6 isn't set
+//! u32 shape_count      annotations to draw over the thumbnails: as the
+//! u32 unused           shapes above, with `page` an index into the
+//! shape_count × { .. } thumbnails, in units of which 1000 make the width
+//!                      of that page, from its top left corner
 //! ```
 //!
 //! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then `count × { u64 id, u32
 //! width, u32 height }`.
 
-use crate::{FinishedTile, Frame, HighlightKind, Point, Rect, SegmentDraw, ZoomMode, find_session};
+use crate::{
+    FinishedTile, Frame, HighlightKind, Point, Rect, SegmentDraw, ShapeDraw, ZoomMode, find_session,
+};
 
 /// See `ViewSession::set_viewport`.
 ///
@@ -287,9 +293,19 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
         put_point(buf, top);
     }
     let zero = Point { x: 0.0, y: 0.0 };
-    put_u32(buf, frame.shapes.len() as u32);
+    put_shapes(buf, &frame.shapes);
+    let picked = (frame.picked.len() == 4).then_some(&frame.picked[..]);
+    for i in 0..4 {
+        put_point(buf, picked.map_or(zero, |p| p[i]));
+    }
+    put_shapes(buf, &frame.thumbnail_shapes);
+}
+
+fn put_shapes(buf: &mut Vec<u8>, shapes: &[ShapeDraw]) {
+    let zero = Point { x: 0.0, y: 0.0 };
+    put_u32(buf, shapes.len() as u32);
     put_u32(buf, 0);
-    for shape in &frame.shapes {
+    for shape in shapes {
         put_u32(buf, shape.page);
         put_u32(
             buf,
@@ -315,10 +331,6 @@ pub(crate) fn encode_frame(frame: &Frame, buf: &mut Vec<u8>) {
                 put_point(buf, p);
             }
         }
-    }
-    let picked = (frame.picked.len() == 4).then_some(&frame.picked[..]);
-    for i in 0..4 {
-        put_point(buf, picked.map_or(zero, |p| p[i]));
     }
 }
 

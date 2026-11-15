@@ -503,6 +503,12 @@ class PdfViewState(
      */
     fun thumbnailId(page: Int): Long = thumbnails?.thumbnailId(page) ?: 0
 
+    /**
+     * The frame whose [ViewFrame.thumbnailShapes] to draw over the thumbnails, or null before the
+     * first one.
+     */
+    val thumbnailFrame: ViewFrame? get() = thumbnails
+
     fun bitmap(id: Long): Bitmap? = bitmaps[id]
 
     fun setViewport(widthDp: Float, heightDp: Float, density: Float) {

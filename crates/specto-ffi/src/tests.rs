@@ -1345,49 +1345,54 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     };
     let selection_start = edge(edges & 1 != 0);
     let selection_end = edge(edges & 2 != 0);
-    let shape_count = u32_(&mut b);
-    assert_eq!(u32_(&mut b), 0);
-    let shapes = (0..shape_count)
-        .map(|_| {
-            let page = u32_(&mut b);
-            let flags = u32_(&mut b);
-            let (fill, stroke) = (u32_(&mut b), u32_(&mut b));
-            let stroke_width = f32::from_ne_bytes(u32_(&mut b).to_ne_bytes());
-            let segments = u32_(&mut b);
-            ShapeDraw {
-                page,
-                fill: (flags & 1 != 0).then_some(fill),
-                stroke: (flags & 2 != 0).then_some(stroke),
-                multiply: flags & 4 != 0,
-                closed: flags & 8 != 0,
-                round: flags & 16 != 0,
-                stroke_width,
-                start: point(&mut b),
-                segments: (0..segments)
-                    .map(|_| {
-                        let kind = u32_(&mut b);
-                        assert_eq!(u32_(&mut b), 0);
-                        let points = [point(&mut b), point(&mut b), point(&mut b)];
-                        match kind {
-                            0 => SegmentDraw::Line { to: points[0] },
-                            1 => SegmentDraw::Curve {
-                                c1: points[0],
-                                c2: points[1],
-                                to: points[2],
-                            },
-                            other => panic!("segment kind {other}"),
-                        }
-                    })
-                    .collect(),
-            }
-        })
-        .collect();
+    let shapes = |b: &mut &[u8]| -> Vec<ShapeDraw> {
+        let shape_count = u32_(b);
+        assert_eq!(u32_(b), 0);
+        (0..shape_count)
+            .map(|_| {
+                let page = u32_(b);
+                let flags = u32_(b);
+                let (fill, stroke) = (u32_(b), u32_(b));
+                let stroke_width = f32::from_ne_bytes(u32_(b).to_ne_bytes());
+                let segments = u32_(b);
+                ShapeDraw {
+                    page,
+                    fill: (flags & 1 != 0).then_some(fill),
+                    stroke: (flags & 2 != 0).then_some(stroke),
+                    multiply: flags & 4 != 0,
+                    closed: flags & 8 != 0,
+                    round: flags & 16 != 0,
+                    stroke_width,
+                    start: point(b),
+                    segments: (0..segments)
+                        .map(|_| {
+                            let kind = u32_(b);
+                            assert_eq!(u32_(b), 0);
+                            let points = [point(b), point(b), point(b)];
+                            match kind {
+                                0 => SegmentDraw::Line { to: points[0] },
+                                1 => SegmentDraw::Curve {
+                                    c1: points[0],
+                                    c2: points[1],
+                                    to: points[2],
+                                },
+                                other => panic!("segment kind {other}"),
+                            }
+                        })
+                        .collect(),
+                }
+            })
+            .collect()
+    };
+    let page_shapes = shapes(&mut b);
     let outline: Vec<Point> = (0..4).map(|_| point(&mut b)).collect();
     let picked = if flags & 64 != 0 { outline } else { Vec::new() };
+    let thumbnail_shapes = shapes(&mut b);
     assert!(b.is_empty(), "trailing bytes");
     Frame {
-        shapes,
+        shapes: page_shapes,
         picked,
+        thumbnail_shapes,
         selection: flags & 32 != 0,
         highlights,
         selection_start,
@@ -1580,6 +1585,27 @@ fn fixture_frame() -> Frame {
             Point { x: 302.0, y: 168.5 },
             Point { x: 98.0, y: 168.5 },
         ],
+        thumbnail_shapes: vec![ShapeDraw {
+            page: 1,
+            fill: Some(0xFFFF_EB3B),
+            multiply: true,
+            stroke: None,
+            stroke_width: 0.0,
+            round: false,
+            closed: true,
+            start: Point { x: 120.0, y: 250.0 },
+            segments: vec![
+                SegmentDraw::Line {
+                    to: Point { x: 480.5, y: 250.0 },
+                },
+                SegmentDraw::Line {
+                    to: Point { x: 480.5, y: 215.0 },
+                },
+                SegmentDraw::Line {
+                    to: Point { x: 120.0, y: 215.0 },
+                },
+            ],
+        }],
     }
 }
 
@@ -1631,6 +1657,18 @@ fn marking_text() {
             .iter()
             .any(|s| s.stroke.is_some() && s.fill.is_none())
     );
+
+    // The thumbnail of the page shows them too, where they are on the page: the page is 200
+    // by 300 points, and the word starts 20 from the left and ends 53 from the top.
+    assert!(frame.thumbnail_shapes.is_empty());
+    session.set_thumbnail_range(0, 1);
+    let small = session.frame().thumbnail_shapes;
+    assert_eq!(small.len(), 2);
+    let mark = small.iter().find(|s| s.multiply).unwrap();
+    assert_eq!(mark.page, 0);
+    assert!((mark.start.x - 100.0).abs() < 5.0, "{mark:?}");
+    assert!((mark.start.y - 265.0).abs() < 5.0, "{mark:?}");
+    session.set_thumbnail_range(0, 0);
 
     // A tap on a mark picks it, a tap elsewhere lets go of it.
     assert!(frame.picked.is_empty());

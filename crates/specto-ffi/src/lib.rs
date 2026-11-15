@@ -424,7 +424,15 @@ pub struct Frame {
     /// The four corners of the box around the annotation that is picked
     /// ([`ViewSession::pick_annotation_at`]). Empty if none is, or it is on no visible page.
     pub picked: Vec<Point>,
+    /// The annotations to draw over the thumbnails, in order.
+    ///
+    /// `page` is an index into [`Frame::thumbnails`]. Positions and pen widths are in units of
+    /// which [`THUMBNAIL_UNITS`] make the width of that page, from its top left corner.
+    pub thumbnail_shapes: Vec<ShapeDraw>,
 }
+
+/// The width of every page in the units of [`Frame::thumbnail_shapes`].
+pub const THUMBNAIL_UNITS: f64 = 1000.0;
 
 /// Size of a page as displayed, in PDF points.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
@@ -607,6 +615,23 @@ impl Shared {
             let overlay = session.overlay(page.page);
             shapes.extend(overlay.iter().map(|s| shape_draw(slot as u32, s, px)));
         }
+        // The same over the thumbnails, each in units of its own page's width.
+        let mut thumbnail_shapes = Vec::new();
+        for (slot, position) in (thumbnail_first..thumbnail_first.saturating_add(count)).enumerate()
+        {
+            let position = position as usize;
+            let size = session
+                .viewer
+                .pages()
+                .get(position)
+                .map(|p| p.displayed().size());
+            let Some(size) = size.filter(|s| s.width > 0.0) else {
+                continue;
+            };
+            let height = THUMBNAIL_UNITS * size.height / size.width;
+            let overlay = session.overlay_in(position, THUMBNAIL_UNITS, height);
+            thumbnail_shapes.extend(overlay.iter().map(|s| shape_draw(slot as u32, s, 1.0)));
+        }
         let visible = |position: usize| planned.pages.iter().any(|p| p.page == position);
         let picked = match session.picked_outline() {
             Some((position, corners)) if visible(position) => corners
@@ -679,6 +704,7 @@ impl Shared {
         Frame {
             shapes,
             picked,
+            thumbnail_shapes,
             selection: selection.is_some(),
             highlights,
             selection_start,
@@ -724,8 +750,8 @@ impl Shared {
     }
 }
 
-/// An annotation's shape as a frame has it: `px` device pixels per logical one, on the page at
-/// index `page` of the frame.
+/// An annotation's shape as a frame has it: `px` of the frame's units per unit of `shape`, on the
+/// page at index `page` of the frame.
 fn shape_draw(page: u32, shape: &ViewShape, px: f64) -> ShapeDraw {
     let point = |p: ViewPoint| Point {
         x: (p.x * px) as f32,

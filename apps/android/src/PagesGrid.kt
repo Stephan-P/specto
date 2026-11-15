@@ -99,12 +99,17 @@ const val THUMBNAIL_PREFETCH = 6
 
 private val thumbnailPaint = Paint().apply { isFilterBitmap = true }
 
+/** Draws the marks on the thumbnails. One for all of them: they are drawn one after another. */
+private val thumbnailShapes = ShapePainter()
+private val thumbnailBounds = RectF()
+
 /**
  * The thumbnail of [page] on a white sheet, filling the space it is given (the caller sets the
  * aspect ratio), outlined, more strongly if [selected] (the page being read).
  *
  * Blank until the thumbnail is rendered. The thumbnails are the page view's own low-resolution
- * placeholder tiles, so nothing is rendered twice. The caller must announce the pages it shows with
+ * placeholder tiles, so nothing is rendered twice. Annotations made since the file was read are
+ * drawn over them, as in the page view. The caller must announce the pages it shows with
  * [PdfViewState.showThumbnails].
  */
 @Composable
@@ -119,6 +124,7 @@ fun PageThumbnail(
 ) {
     val tile = state.thumbnailId(page)
     val bitmap = if (tile != 0L) state.bitmap(tile) else null
+    val marks = state.thumbnailFrame
     val outline =
         if (selected) {
             Modifier.border(selectedBorder, MaterialTheme.colorScheme.primary)
@@ -136,6 +142,19 @@ fun PageThumbnail(
                         it.nativeCanvas.drawBitmap(
                             bitmap, null, RectF(0f, 0f, size.width, size.height), thumbnailPaint,
                         )
+                    }
+                }
+                // What was marked since the file was read isn't in the bitmap.
+                if (marks != null) {
+                    drawIntoCanvas {
+                        val canvas = it.nativeCanvas
+                        val scale = size.width / ViewFrame.THUMBNAIL_UNITS
+                        val count = canvas.save()
+                        canvas.scale(scale, scale)
+                        thumbnailBounds.set(0f, 0f, ViewFrame.THUMBNAIL_UNITS, size.height / scale)
+                        val slot = marks.thumbnailSlot(page)
+                        thumbnailShapes.draw(canvas, marks.thumbnailShapes, slot, thumbnailBounds)
+                        canvas.restoreToCount(count)
                     }
                 }
             }

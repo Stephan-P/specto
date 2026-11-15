@@ -59,70 +59,26 @@ class ViewFrame private constructor(
     /** Where the selection ends, likewise. */
     val selectionEnd: FloatArray?,
     /**
-     * Five numbers per shape: its page, its flags, fill and stroke color, and its first segment.
+     * The shapes to draw over the pages, under the highlights: the annotations that aren't part of
+     * the pages as rendered (those made or changed since the file was read).
+     *
+     * [FrameShapes.page] is one of the visible pages (as for [page]), and positions are in device
+     * pixels like everything else here.
      */
-    private val shapeHeads: IntArray,
-    private val shapeWidths: FloatArray,
-    /** Where each shape's outline starts: x and y. */
-    private val shapeStarts: FloatArray,
-    private val segmentCurved: BooleanArray,
-    /** Six numbers per segment: x and y of up to three points. */
-    private val segmentPoints: FloatArray,
+    val shapes: FrameShapes,
     /**
      * The box around the annotation that is picked, as x and y of its four corners, around it. Null
      * if none is picked, or it isn't on screen.
      */
     val picked: FloatArray?,
-) {
     /**
-     * How many shapes there are to draw over the pages, under the highlights: the annotations that
-     * aren't part of the pages as rendered (those made or changed since the file was read).
+     * The same for the thumbnails.
      *
-     * Each is an outline, filled, drawn along with a pen, or both, and belongs to one page.
+     * [FrameShapes.page] is a [thumbnailSlot]. Positions and pen widths are in units of which
+     * [THUMBNAIL_UNITS] make the width of that page, from its top left corner.
      */
-    val shapeCount: Int get() = shapeWidths.size
-
-    /** Which of the visible pages shape [i] is on (as for [page]): it is clipped to that page. */
-    fun shapePage(i: Int): Int = shapeHeads[5 * i]
-
-    fun shapeIsFilled(i: Int): Boolean = shapeHeads[5 * i + 1] and 1 != 0
-    fun shapeIsStroked(i: Int): Boolean = shapeHeads[5 * i + 1] and 2 != 0
-
-    /** The fill darkens what is under it, as a highlighter does, instead of covering it. */
-    fun shapeDarkens(i: Int): Boolean = shapeHeads[5 * i + 1] and 4 != 0
-
-    /** The outline ends where it starts. */
-    fun shapeIsClosed(i: Int): Boolean = shapeHeads[5 * i + 1] and 8 != 0
-
-    /** The pen is round: round ends and joins. */
-    fun shapeIsRound(i: Int): Boolean = shapeHeads[5 * i + 1] and 16 != 0
-
-    /** Colors as 0xAARRGGBB. */
-    fun shapeFill(i: Int): Int = shapeHeads[5 * i + 2]
-    fun shapeStroke(i: Int): Int = shapeHeads[5 * i + 3]
-    fun shapeStrokeWidth(i: Int): Float = shapeWidths[i]
-
-    fun shapeStartX(i: Int): Float = shapeStarts[2 * i]
-    fun shapeStartY(i: Int): Float = shapeStarts[2 * i + 1]
-
-    /**
-     * The pieces of shape [i]'s outline, each from where the one before ended: indices for the
-     * `segment*` accessors.
-     */
-    fun segments(i: Int): IntRange {
-        val end = if (i + 1 < shapeCount) shapeHeads[5 * (i + 1) + 4] else segmentCurved.size
-        return shapeHeads[5 * i + 4] until end
-    }
-
-    /**
-     * A cubic curve, with control points 0 and 1 and its end as point 2. Otherwise a line to point
-     * 0.
-     */
-    fun segmentIsCurve(s: Int): Boolean = segmentCurved[s]
-
-    fun segmentX(s: Int, point: Int): Float = segmentPoints[6 * s + 2 * point]
-    fun segmentY(s: Int, point: Int): Float = segmentPoints[6 * s + 2 * point + 1]
-
+    val thumbnailShapes: FrameShapes,
+) {
     /** What [picked] covers, as left, top, right, bottom. */
     fun pickedBounds(): FloatArray? {
         val p = picked ?: return null
@@ -172,9 +128,15 @@ class ViewFrame private constructor(
      */
     fun thumbnailId(page: Int): Long = thumbnails.getOrElse(page - thumbnailFirst) { 0 }
 
-    /** Whether [other] reports the same thumbnails for the same pages. */
+    /** Which entry of the thumbnails [page] (zero-based) is: what [thumbnailShapes] go by. */
+    fun thumbnailSlot(page: Int): Int = page - thumbnailFirst
+
+    /** Whether [other] reports the same thumbnails for the same pages, with the same shapes. */
     fun sameThumbnailsAs(other: ViewFrame?): Boolean =
-        other != null && thumbnailFirst == other.thumbnailFirst && thumbnails.contentEquals(other.thumbnails)
+        other != null &&
+            thumbnailFirst == other.thumbnailFirst &&
+            thumbnails.contentEquals(other.thumbnails) &&
+            thumbnailShapes.sameAs(other.thumbnailShapes)
 
     /** Zero-based page index of the [i]th visible page. */
     fun page(i: Int): Int = pageIndex[i]
@@ -232,9 +194,11 @@ class ViewFrame private constructor(
         const val HIGHLIGHT_MATCH = 1
         const val HIGHLIGHT_CURRENT_MATCH = 2
 
+        /** The width of every page in the units of [thumbnailShapes]. */
+        const val THUMBNAIL_UNITS = 1000f
+
         private const val PAGE_BYTES = 32
         private const val TILE_BYTES = 32
-        private const val SEGMENT_BYTES = 32
 
         /**
          * Reads the layout documented in crates/specto-ffi/src/hot.rs ([b] in native byte order).
@@ -299,32 +263,10 @@ class ViewFrame private constructor(
             val selectionStart = edge(edges and 1 != 0)
             val selectionEnd = edge(edges and 2 != 0)
 
-            val shapes = b.getInt()
-            b.getInt()
-            // Segments are at most what is left.
-            val maxSegments = (length - b.position()) / SEGMENT_BYTES
-            val shapeHeads = IntArray(5 * shapes)
-            val shapeWidths = FloatArray(shapes)
-            val shapeStarts = FloatArray(2 * shapes)
-            val curved = BooleanArray(maxSegments)
-            val points = FloatArray(6 * maxSegments)
-            var s = 0
-            for (i in 0 until shapes) {
-                for (k in 0 until 4) shapeHeads[5 * i + k] = b.getInt()
-                shapeHeads[5 * i + 4] = s
-                shapeWidths[i] = b.getFloat()
-                val segments = b.getInt()
-                shapeStarts[2 * i] = b.getFloat()
-                shapeStarts[2 * i + 1] = b.getFloat()
-                repeat(segments) {
-                    curved[s] = b.getInt() == 1
-                    b.getInt()
-                    for (k in 0 until 6) points[6 * s + k] = b.getFloat()
-                    s++
-                }
-            }
+            val shapes = FrameShapes.read(b, length)
             // Always there, but only meaningful if its bit is set.
             val outline = FloatArray(8) { b.getFloat() }
+            val thumbnailShapes = FrameShapes.read(b, length)
             return ViewFrame(
                 complete = flags and 1 != 0,
                 settled = flags and 2 != 0,
@@ -353,13 +295,116 @@ class ViewFrame private constructor(
                 highlightKinds = highlightKinds,
                 selectionStart = selectionStart,
                 selectionEnd = selectionEnd,
-                shapeHeads = shapeHeads,
-                shapeWidths = shapeWidths,
-                shapeStarts = shapeStarts,
-                segmentCurved = curved.copyOf(s),
-                segmentPoints = points,
+                shapes = shapes,
                 picked = outline.takeIf { flags and 64 != 0 },
+                thumbnailShapes = thumbnailShapes,
             )
+        }
+    }
+}
+
+/**
+ * Outlines to draw over pages, in order: each is filled, drawn along with a pen, or both, and
+ * belongs to one page.
+ *
+ * Kept in flat arrays like the rest of a [ViewFrame].
+ */
+class FrameShapes private constructor(
+    /**
+     * Five numbers per shape: its page, its flags, fill and stroke color, and its first segment.
+     */
+    private val heads: IntArray,
+    private val widths: FloatArray,
+    /** Where each shape's outline starts: x and y. */
+    private val starts: FloatArray,
+    private val curved: BooleanArray,
+    /** Six numbers per segment: x and y of up to three points. */
+    private val points: FloatArray,
+) {
+    val count: Int get() = widths.size
+
+    /** Which page shape [i] is on: it is clipped to that page. */
+    fun page(i: Int): Int = heads[5 * i]
+
+    fun isFilled(i: Int): Boolean = heads[5 * i + 1] and 1 != 0
+    fun isStroked(i: Int): Boolean = heads[5 * i + 1] and 2 != 0
+
+    /** The fill darkens what is under it, as a highlighter does, instead of covering it. */
+    fun darkens(i: Int): Boolean = heads[5 * i + 1] and 4 != 0
+
+    /** The outline ends where it starts. */
+    fun isClosed(i: Int): Boolean = heads[5 * i + 1] and 8 != 0
+
+    /** The pen is round: round ends and joins. */
+    fun isRound(i: Int): Boolean = heads[5 * i + 1] and 16 != 0
+
+    /** Colors as 0xAARRGGBB. */
+    fun fill(i: Int): Int = heads[5 * i + 2]
+    fun stroke(i: Int): Int = heads[5 * i + 3]
+    fun strokeWidth(i: Int): Float = widths[i]
+
+    fun startX(i: Int): Float = starts[2 * i]
+    fun startY(i: Int): Float = starts[2 * i + 1]
+
+    /**
+     * The pieces of shape [i]'s outline, each from where the one before ended: indices for the
+     * `segment*` accessors.
+     */
+    fun segments(i: Int): IntRange {
+        val end = if (i + 1 < count) heads[5 * (i + 1) + 4] else curved.size
+        return heads[5 * i + 4] until end
+    }
+
+    /**
+     * A cubic curve, with control points 0 and 1 and its end as point 2. Otherwise a line to point
+     * 0.
+     */
+    fun segmentIsCurve(s: Int): Boolean = curved[s]
+
+    fun segmentX(s: Int, point: Int): Float = points[6 * s + 2 * point]
+    fun segmentY(s: Int, point: Int): Float = points[6 * s + 2 * point + 1]
+
+    /** Whether [other] holds the same shapes. */
+    fun sameAs(other: FrameShapes): Boolean =
+        heads.contentEquals(other.heads) &&
+            widths.contentEquals(other.widths) &&
+            starts.contentEquals(other.starts) &&
+            curved.contentEquals(other.curved) &&
+            points.contentEquals(other.points)
+
+    companion object {
+        private const val SEGMENT_BYTES = 32
+
+        /**
+         * Reads a list of shapes from where [b] stands, in the layout documented in
+         * crates/specto-ffi/src/hot.rs. [length] is where the frame ends in [b].
+         */
+        fun read(b: ByteBuffer, length: Int): FrameShapes {
+            val shapes = b.getInt()
+            b.getInt()
+            // Segments are at most what is left.
+            val maxSegments = (length - b.position()) / SEGMENT_BYTES
+            val heads = IntArray(5 * shapes)
+            val widths = FloatArray(shapes)
+            val starts = FloatArray(2 * shapes)
+            val curved = BooleanArray(maxSegments)
+            val points = FloatArray(6 * maxSegments)
+            var s = 0
+            for (i in 0 until shapes) {
+                for (k in 0 until 4) heads[5 * i + k] = b.getInt()
+                heads[5 * i + 4] = s
+                widths[i] = b.getFloat()
+                val segments = b.getInt()
+                starts[2 * i] = b.getFloat()
+                starts[2 * i + 1] = b.getFloat()
+                repeat(segments) {
+                    curved[s] = b.getInt() == 1
+                    b.getInt()
+                    for (k in 0 until 6) points[6 * s + k] = b.getFloat()
+                    s++
+                }
+            }
+            return FrameShapes(heads, widths, starts, curved.copyOf(s), points.copyOf(6 * s))
         }
     }
 }
