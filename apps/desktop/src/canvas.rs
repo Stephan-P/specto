@@ -589,6 +589,20 @@ impl Canvas {
         markup
     }
 
+    /// Picks the annotation `id` on the page at `position` and scrolls to
+    /// it (see `Session::pick_and_show`).
+    pub fn pick_and_show(&self, position: usize, id: specto_doc::AnnotId) {
+        let Some(doc) = self.imp().document.borrow().clone() else {
+            return;
+        };
+        let found = doc.borrow_mut().pick_and_show(position, id);
+        if found {
+            // Scrollbars, a redraw, the page number.
+            self.update_viewer(|_| {});
+            self.picked_changed();
+        }
+    }
+
     /// Lets go of the picked annotation. Returns whether there was one.
     pub fn unpick_annotation(&self) -> bool {
         let Some(doc) = self.imp().document.borrow().clone() else {

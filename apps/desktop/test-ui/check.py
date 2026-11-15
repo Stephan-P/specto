@@ -77,6 +77,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   for its text; the text tool asks for text and makes a text box of it; a
   double click or Enter asks again; a text box moves with its text; saved,
   both are in the file, and a text box emptied is deleted
+- markup_list: the Markup page of the sidebar lists every annotation with
+  its page, kind and text, follows edits, and a row picks its annotation and
+  shows its page; it is filled from the file when a document opens on it
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed; a click picks an annotation, Delete deletes it and
   not the page, Escape lets go; undo; saved, they're in the file and shown;
@@ -1264,6 +1267,67 @@ def test_text_tools(ctx):
     check(s["undo"] == "Remove FreeText", s)
     w.settled()
     check(dark_pixels(w, "emptied", at(100, 372), at(330, 340)) < 10, "the deleted text is still shown")
+
+
+def test_markup_list(ctx):
+    path = os.path.join(ctx.home, "listed.pdf")
+    shutil.copy(ctx.text, path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    # The Markup page of the sidebar: empty to begin with.
+    w.action("sidebar-page", gvariant_str("markup"))
+    s = w.wait("the markup list", lambda s: s["sidebar_page"] == "markup")
+    check(s["markup_list"] == [], s)
+    # A highlight is listed with the text it marks, a rectangle as what it
+    # is, each with its page.
+    inp.drag(w.char(0, 0, 4), w.char(0, 0, 14, before=False))
+    selected(w, "quick brown")
+    w.action("highlight")
+    s = w.wait("the highlight listed", lambda s: len(s["markup_list"]) == 1)
+    check(s["markup_list"][0] == ["1", "Highlight", "quick brown"], s["markup_list"])
+    w.action("show-markup")
+    w.wait("the markup bar", lambda s: s["markup_bar"])
+    time.sleep(0.4)
+    w.action("markup-tool", gvariant_str("rectangle"))
+    inp.drag(w.screen(0, 100, 480), w.screen(0, 200, 400))
+    s = w.wait("the rectangle listed", lambda s: len(s["markup_list"]) == 2)
+    check(s["markup_list"][1] == ["1", "Rectangle", ""], s["markup_list"])
+    w.action("markup-tool", gvariant_str("rectangle"))
+    # A row picks its annotation; a comment typed for it shows in the list.
+    w.action("debug-markup-row", gvariant_str("1"))
+    w.wait("the rectangle picked", lambda s: s["annotation_picked"] and s["markup_color"] == "red")
+    w.action("debug-markup-row", gvariant_str("0"))
+    w.wait("the highlight picked", lambda s: s["annotation_text"] == "quick brown")
+    w.action("debug-markup-row", gvariant_str("1"))
+    w.wait("the rectangle picked", lambda s: s["annotation_text"] == "")
+    inp.keys(Input.ENTER)
+    w.wait("its editor", lambda s: s["text_editor"])
+    time.sleep(0.4)
+    inp.type("a box")
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the comment listed", lambda s: s["markup_list"][1][2] == "a box")
+    # Deleted and undone, the list follows.
+    inp.keys(Input.DELETE)
+    w.wait("one row", lambda s: len(s["markup_list"]) == 1)
+    w.action("undo")
+    w.wait("two rows", lambda s: len(s["markup_list"]) == 2)
+    # Saved and opened again: the sidebar is on Markup, with what the file
+    # has. From page 3, a row leads back to its page.
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    w = ctx.app([path]).window()
+    s = w.settled("the list from the file", lambda s: len(s["markup_list"]) == 2)
+    check(s["sidebar_page"] == "markup", s)
+    check(s["markup_list"] == [["1", "Highlight", "quick brown"], ["1", "Rectangle", "a box"]],
+          s["markup_list"])
+    w.action("last-page")
+    w.wait("the last page", lambda s: s["page"] == len(TEXT) - 1)
+    w.action("debug-markup-row", gvariant_str("0"))
+    w.wait("back on page 1", lambda s: s["page"] == 0 and s["annotation_picked"])
 
 
 def test_select_words_and_lines(ctx):

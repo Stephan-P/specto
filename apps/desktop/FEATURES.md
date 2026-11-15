@@ -174,6 +174,10 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   show and can edit
 - Markup a file has without a ready-made look (some programs leave that out) is
   shown where it is text markup
+- The Markup page of the sidebar lists all markup of the document, also what
+  other programs made: its color, its text (what was marked, a note, a
+  comment), what kind it is, and its page. A click on a row picks the
+  annotation and scrolls to it, and picking one on the page marks its row
 - Not yet: line width, text size, typing directly on the page
 
 ## Saving

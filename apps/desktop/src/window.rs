@@ -16,6 +16,7 @@ use crate::canvas::Canvas;
 use crate::debug;
 use crate::document::{Document, Indexed, MAIN, PageBundle, SaveJob, SharedDocument};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
+use crate::markup_list::{Entry, MarkupList};
 use crate::outline::OutlineView;
 use crate::print;
 use crate::state;
@@ -78,8 +79,11 @@ pub struct Inner {
     recent_title: gtk::Label,
     recent_list: gtk::ListBox,
     sidebar: RefCell<Option<Sidebar>>,
-    /// Thumbnails / Contents, if the document has an outline.
+    /// The sidebar's pages: Thumbnails, Contents if the document has an
+    /// outline, and Markup.
     sidebar_stack: RefCell<Option<adw::ViewStack>>,
+    /// The list of the document's markup in the sidebar.
+    markup_list: RefCell<Option<MarkupList>>,
     last_page: Cell<usize>,
     /// The last message shown as a toast, for tests.
     last_toast: RefCell<String>,
@@ -490,6 +494,7 @@ impl Window {
             recent_list,
             sidebar: RefCell::default(),
             sidebar_stack: RefCell::default(),
+            markup_list: RefCell::default(),
             last_page: Cell::new(usize::MAX),
             last_toast: RefCell::default(),
             search_bar,
@@ -528,6 +533,14 @@ impl Window {
         let weak = Rc::downgrade(&this.0);
         this.0.canvas.connect_picked(move || {
             if let Some(inner) = weak.upgrade() {
+                let picked = inner
+                    .document
+                    .borrow()
+                    .as_ref()
+                    .and_then(|d| d.borrow().picked);
+                if let Some(list) = inner.markup_list.borrow().as_ref() {
+                    list.select(picked);
+                }
                 Window(inner).show_markup_color();
             }
         });
@@ -1022,11 +1035,15 @@ impl Window {
             },
         );
         sidebar.widget.add_controller(delete_keys());
+        let stack = adw::ViewStack::new();
+        stack.add_titled_with_icon(
+            &sidebar.widget,
+            Some("thumbnails"),
+            &gettext("Thumbnails"),
+            "view-grid-symbolic",
+        );
         let outline = document.borrow().outline();
-        if outline.is_empty() {
-            inner.split.set_sidebar(Some(&sidebar.widget));
-            inner.sidebar_stack.replace(None);
-        } else {
+        if !outline.is_empty() {
             let weak = Rc::downgrade(&self.0);
             let labels = Rc::downgrade(&document);
             // Outline targets are pages of the file.
@@ -1044,34 +1061,48 @@ impl Window {
                     inner.canvas.follow(MAIN, target);
                 }
             });
-            let stack = adw::ViewStack::new();
-            stack.add_titled_with_icon(
-                &sidebar.widget,
-                Some("thumbnails"),
-                &gettext("Thumbnails"),
-                "view-grid-symbolic",
-            );
             stack.add_titled_with_icon(
                 &outline.widget,
                 Some("outline"),
                 &gettext("Contents"),
                 "view-list-symbolic",
             );
-            let switcher = adw::ViewSwitcher::builder()
-                .stack(&stack)
-                .policy(adw::ViewSwitcherPolicy::Narrow)
-                .margin_start(6)
-                .margin_end(6)
-                .margin_top(6)
-                .margin_bottom(6)
-                .build();
-            let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            column.append(&switcher);
-            column.append(&stack);
-            stack.set_vexpand(true);
-            inner.split.set_sidebar(Some(&column));
-            inner.sidebar_stack.replace(Some(stack));
         }
+        // Every annotation of the document. Filled when it is looked at:
+        // it reads the annotations of every page.
+        let weak = Rc::downgrade(&self.0);
+        let markup = MarkupList::new(move |(position, id)| {
+            if let Some(inner) = weak.upgrade() {
+                inner.canvas.pick_and_show(position, id);
+            }
+        });
+        stack.add_titled_with_icon(
+            &markup.widget,
+            Some("markup"),
+            &gettext("Markup"),
+            "document-edit-symbolic",
+        );
+        inner.markup_list.replace(Some(markup));
+        let weak = Rc::downgrade(&self.0);
+        stack.connect_visible_child_name_notify(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).refresh_markup_list();
+            }
+        });
+        let switcher = adw::ViewSwitcher::builder()
+            .stack(&stack)
+            .policy(adw::ViewSwitcherPolicy::Narrow)
+            .margin_start(6)
+            .margin_end(6)
+            .margin_top(6)
+            .margin_bottom(6)
+            .build();
+        let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        column.append(&switcher);
+        column.append(&stack);
+        stack.set_vexpand(true);
+        inner.split.set_sidebar(Some(&column));
+        inner.sidebar_stack.replace(Some(stack));
         inner.sidebar.replace(Some(sidebar));
         inner.document.replace(Some(document.clone()));
         inner.canvas.set_document(Some(document.clone()));
@@ -1494,6 +1525,16 @@ impl Window {
                     w.insert_file(file).await;
                 });
             }),
+            // Activates a row of the markup list, by its number from 0.
+            action("debug-markup-row", |w, row| {
+                let at = row.parse::<usize>().ok().and_then(|i| {
+                    let list = w.0.markup_list.borrow();
+                    list.as_ref()?.entries().get(i).map(|e| e.at)
+                });
+                if let Some((position, id)) = at {
+                    w.0.canvas.pick_and_show(position, id);
+                }
+            }),
             // Answers the open "Save changes?" dialog.
             action("debug-alert-response", |w, response| {
                 if let Some(alert) = w.0.alert.borrow().clone() {
@@ -1709,6 +1750,24 @@ impl Window {
                 .bool("annotation_picked", d.picked.is_some())
                 .str("annotation_text", &d.picked_text().unwrap_or_default())
                 .bool("text_editor", inner.text_editor.borrow().is_some());
+            // The rows of the markup list: [page, kind, text] each.
+            let rows: Vec<String> = inner
+                .markup_list
+                .borrow()
+                .as_ref()
+                .map(MarkupList::entries)
+                .unwrap_or_default()
+                .iter()
+                .map(|e| {
+                    format!(
+                        "[{}, {}, {}]",
+                        debug::quote(&e.page),
+                        debug::quote(&e.kind),
+                        debug::quote(&e.text)
+                    )
+                })
+                .collect();
+            json.raw("markup_list", &format!("[{}]", rows.join(", ")));
         }
         inner.canvas.with_viewer(|v| {
             json.num("page", v.current_page() as f64)
@@ -2485,9 +2544,36 @@ impl Window {
         self.update_search_status();
     }
 
+    /// Fills the list of markup in the sidebar from the document, if it is
+    /// what the sidebar shows: after an edit, and when it is turned to.
+    fn refresh_markup_list(&self) {
+        let inner = &self.0;
+        let shown = inner
+            .sidebar_stack
+            .borrow()
+            .as_ref()
+            .and_then(|s| s.visible_child_name())
+            .is_some_and(|name| name == "markup");
+        let (Some(doc), true) = (inner.document.borrow().clone(), shown) else {
+            return;
+        };
+        let mut d = doc.borrow_mut();
+        let entries = d
+            .all_annotations()
+            .into_iter()
+            .map(|(position, id, a)| Entry::new((position, id), &a, d.page_label(position)))
+            .collect();
+        let picked = d.picked;
+        drop(d);
+        if let Some(list) = inner.markup_list.borrow().as_ref() {
+            list.set(entries, picked);
+        }
+    }
+
     /// Updates what depends on the edits: Undo and Redo, the title, the
     /// page count.
     fn update_edit_state(&self) {
+        self.refresh_markup_list();
         let inner = &self.0;
         let Some(doc) = inner.document.borrow().clone() else {
             return;
@@ -2811,7 +2897,7 @@ impl Window {
             })
             .build()]);
 
-        // Which sidebar page to show: "thumbnails" or "outline".
+        // Which sidebar page to show: "thumbnails", "outline" or "markup".
         let weak = Rc::downgrade(&self.0);
         window.add_action_entries([gio::ActionEntry::builder("sidebar-page")
             .parameter_type(Some(&String::static_variant_type()))

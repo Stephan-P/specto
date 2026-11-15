@@ -235,6 +235,37 @@ impl Session {
         self.edit.annotations(p.source, p.page, &imported)
     }
 
+    /// Every annotation of the document that is shown, in the order of its
+    /// pages: the position of its page, which it is, and the annotation.
+    /// This reads the annotations of every page of the files, once.
+    pub fn all_annotations(&mut self) -> Vec<(usize, AnnotId, Arc<Annotation>)> {
+        (0..self.edit.page_count())
+            .flat_map(|position| {
+                self.annotations(position)
+                    .into_iter()
+                    .filter(|(_, a)| a.flags.is_visible())
+                    .map(move |(id, a)| (position, id, a))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// Picks the annotation `id` on the page at `position` and scrolls to
+    /// it. Returns whether it is there.
+    pub fn pick_and_show(&mut self, position: usize, id: AnnotId) -> bool {
+        let Some((_, a)) = self
+            .annotations(position)
+            .into_iter()
+            .find(|(i, _)| *i == id)
+        else {
+            return false;
+        };
+        self.picked = Some((position, id));
+        self.selection = None;
+        self.viewer.reveal(position, a.rect);
+        true
+    }
+
     /// The annotations of the file that page `page` of `source` must be
     /// rendered without: the deleted ones, and changed ones the frontend
     /// draws.

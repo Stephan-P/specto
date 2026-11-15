@@ -6,6 +6,7 @@ mod canvas;
 mod debug;
 mod document;
 mod i18n;
+mod markup_list;
 mod outline;
 mod print;
 mod state;
@@ -247,6 +248,7 @@ fn menubar() -> gio::Menu {
             (&gettext("Show Sidebar"), "win.show-sidebar"),
             (&gettext("Thumbnails"), "win.sidebar-page::thumbnails"),
             (&gettext("Contents"), "win.sidebar-page::outline"),
+            (&gettext("Markup"), "win.sidebar-page::markup"),
         ]),
     ]);
     let go = submenu(&[

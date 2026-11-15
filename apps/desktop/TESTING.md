@@ -354,6 +354,13 @@ Saving, printing and other windows:
 - Text boxes and notes after saving and reopening: they can still be edited.
   In other programs the text shows in the same place and size, and can be
   edited there.
+- The Markup page of the sidebar on `comments.pdf` and `freetexts.pdf` from the
+  corpus: every annotation on the pages is in the list and the other way
+  round. A click on a row scrolls to the annotation and frames it. Rows with
+  long text are cut after three lines and show all of it as a tooltip.
+- Add, change, delete and undo markup with the list open: it follows at once
+  and keeps its scroll position.
+- LONG with the Markup page open: opening the document and editing stay quick.
 - Save, close and open again: markup, drawings and shapes look the same as
   before saving. Compare the color, the position and the height of the lines
   closely.
