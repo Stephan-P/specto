@@ -1,7 +1,7 @@
 //! Bookkeeping for the tiles whose pixels live in Kotlin `Bitmap`s.
 //!
-//! Like `specto_render::tile::TileCache`, but it stores no pixels, reports
-//! what it evicts (so Kotlin can release the bitmap), and is `Send`.
+//! Like `specto_render::tile::TileCache`, but it stores no pixels, reports what it evicts (so
+//! Kotlin can release the bitmap), and is `Send`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -15,8 +15,8 @@ struct Cached {
     id: u64,
     bytes: usize,
     last_used: u64,
-    /// A page's low-resolution placeholder: evicted last, because it is
-    /// what makes scrolling back instant (and thumbnails will reuse it).
+    /// A page's low-resolution placeholder: evicted last, because it is what makes scrolling back
+    /// instant, and thumbnails reuse it.
     placeholder: bool,
 }
 
@@ -34,8 +34,9 @@ pub(crate) struct TileBook {
     cached: HashMap<TileKey, Cached>,
     /// Rendered, but not yet copied into a bitmap.
     pending: HashMap<u64, Pending>,
-    /// Tiles that failed to render. Treated as present so they aren't
-    /// requested again on every frame; they just draw nothing.
+    /// Tiles that failed to render.
+    ///
+    /// Treated as present so they aren't requested again on every frame. They just draw nothing.
     failed: HashSet<TileKey>,
     evicted: Vec<u64>,
 }
@@ -81,9 +82,9 @@ impl TileBook {
     ) -> Vec<FinishedTile> {
         self.pending.clear();
         let mut out = Vec::new();
-        // A tile can be rendered twice: it stays requested until the frontend
-        // has collected it. Hand out each key once, or the frontend ends up
-        // with a bitmap that nothing here refers to (and never evicts).
+        // A tile can be rendered twice: it stays requested until the frontend has collected it.
+        // Hand out each key once, or the frontend ends up with a bitmap that nothing here refers to
+        // (and never evicts).
         let mut seen = HashSet::new();
         for f in finished {
             match f.result {
@@ -142,10 +143,11 @@ impl TileBook {
         self.evict_to(0);
     }
 
-    /// Evicts least recently used tiles until at most `target` bytes remain,
-    /// sparing those used in the current frame. Placeholders go last: unlike
-    /// on desktop they can't simply stay forever, since at up to 0.5 MB per
-    /// page a long document would exceed the whole budget.
+    /// Evicts least recently used tiles until at most `target` bytes remain, sparing those used in
+    /// the current frame.
+    ///
+    /// Placeholders go last: unlike on desktop they can't simply stay forever, since at up to 0.5
+    /// MB per page a long document would exceed the whole budget.
     fn evict_to(&mut self, target: usize) {
         let mut candidates: Vec<(bool, u64, TileKey)> = self
             .cached
@@ -244,7 +246,7 @@ mod tests {
     fn unclaimed_tiles_are_dropped_and_rendered_again() {
         let mut book = TileBook::new(1 << 20);
         let first = book.add_finished(vec![finished(0)], |_| false);
-        // The frontend never claimed it; the next batch supersedes it.
+        // The frontend never claimed it, and the next batch supersedes it.
         let second = book.add_finished(vec![finished(0)], |_| false);
         assert!(!book.claim(first[0].id, |_| true));
         assert!(book.claim(second[0].id, |_| true));

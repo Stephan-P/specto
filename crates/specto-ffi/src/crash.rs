@@ -1,15 +1,13 @@
 //! A record of panics, for bug reports.
 //!
-//! A panic on Android leaves little behind: the message goes to a standard
-//! error stream nobody reads, and most panics don't even end the app (a
-//! tile that fails to render is skipped, a failed call surfaces in Kotlin as
-//! an exception). So each one is also appended to a log file of the app's
-//! own, which the app shows in its settings and the user can share. Nothing
-//! is sent anywhere.
+//! A panic on Android leaves little behind: the message goes to a standard error stream nobody
+//! reads, and most panics don't even end the app (a tile that fails to render is skipped, a failed
+//! call surfaces in Kotlin as an exception). So each one is also appended to a log file of the
+//! app's own, which the app shows in its settings and the user can share. Nothing is sent anywhere.
 //!
-//! The file is shared with the Kotlin side (`CrashLog.kt`), which writes
-//! uncaught exceptions to it in the same form and keeps it short: entries
-//! start with a line of `--- `, the time in UTC, and what happened.
+//! The file is shared with the Kotlin side (`CrashLog.kt`), which writes uncaught exceptions to it
+//! in the same form and keeps it short: entries start with a line of `--- `, the time in UTC, and
+//! what happened.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -18,14 +16,15 @@ use std::path::PathBuf;
 use std::sync::{Mutex, Once};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Where panics are recorded; none until [`log_panics_to`] says.
+/// Where panics are recorded, which is nowhere until [`log_panics_to`] says.
 static LOG: Mutex<Option<PathBuf>> = Mutex::new(None);
 static HOOK: Once = Once::new();
 
-/// From now on, appends every panic in this library to the file at `path`
-/// (created if missing): when, on which thread, the message and where in
-/// the code. Whatever handled panics before still does. Call it once, when
-/// the app starts; calling it again changes the file.
+/// From now on, appends every panic in this library to the file at `path` (created if missing):
+/// when, on which thread, the message and where in the code.
+///
+/// Whatever handled panics before still does. Call it once, when the app starts. Calling it again
+/// changes the file.
 #[uniffi::export]
 pub fn log_panics_to(path: String) {
     *LOG.lock().unwrap_or_else(|e| e.into_inner()) = Some(PathBuf::from(path));
@@ -38,8 +37,9 @@ pub fn log_panics_to(path: String) {
     });
 }
 
-/// Appends `info` to the log. Never panics itself: a failure to write is
-/// ignored, there being nowhere left to report it.
+/// Appends `info` to the log.
+///
+/// Never panics itself: a failure to write is ignored, there being nowhere left to report it.
 fn record(info: &PanicHookInfo<'_>) {
     let Some(path) = LOG.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
         return;
@@ -68,12 +68,11 @@ fn record(info: &PanicHookInfo<'_>) {
     }
 }
 
-/// `seconds` since 1970 as a date and time in UTC, like
-/// "2026-11-15T18:42:10Z".
+/// `seconds` since 1970 as a date and time in UTC, like "2026-11-15T18:42:10Z".
 fn utc(seconds: u64) -> String {
     let (days, rest) = (seconds / 86_400, seconds % 86_400);
-    // Days to a date: Howard Hinnant's `civil_from_days`, for years from
-    // 1970 on. Years here start in March, so a leap day ends one.
+    // Days to a date: Howard Hinnant's `civil_from_days`, for years from 1970 on. Years here start
+    // in March, so a leap day ends one.
     let z = days + 719_468;
     let (era, day_of_era) = (z / 146_097, z % 146_097);
     let year_of_era =
@@ -123,7 +122,7 @@ mod tests {
         assert!(caught.is_err());
         let log = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
-        // Other tests may panic on purpose meanwhile; this one is in there.
+        // Other tests may panic on purpose meanwhile, but this one is in there.
         let entry = log
             .split("--- ")
             .find(|e| e.contains("number 7 went wrong"))

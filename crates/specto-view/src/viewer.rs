@@ -14,13 +14,13 @@ use crate::layout::{
     spread_points,
 };
 
-/// A release faster than this (logical px/s) turns the page in swipe mode,
-/// however short the drag was.
+/// A release faster than this (logical pixels per second) turns the page in swipe mode, however
+/// short the drag was.
 const FLICK_VELOCITY: f64 = 250.0;
 
-/// A page as the viewer sees it: which page of which document, and how it is
-/// shown. In M3 these come from the edit model, so reordering or merging is
-/// just a new list.
+/// A page as the viewer sees it: which page of which document, and how it is shown.
+///
+/// These come from the edit model, so reordering or merging is just a new list.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewPage {
     pub doc: DocId,
@@ -71,42 +71,42 @@ impl ZoomMode {
 pub struct ViewState {
     /// The page at the top of the viewport.
     pub page: usize,
-    /// How far down that page the viewport starts, as a fraction of the
-    /// page's height (so it survives a different window size or zoom).
+    /// How far down that page the viewport starts, as a fraction of the page's height (so it
+    /// survives a different window size or zoom).
+    ///
     /// Negative if it starts in the margin or gap above the page.
     pub page_offset: f64,
     pub layout: LayoutMode,
     pub cover_alone: bool,
     pub zoom_mode: ZoomMode,
-    /// Logical px per point; only used with `ZoomMode::Fixed`.
+    /// Logical pixels per point, only used with `ZoomMode::Fixed`.
     pub zoom: f64,
 }
 
 #[derive(Clone, Debug)]
 pub struct Settings {
-    /// Gap between spreads and between the pages of a spread, logical px.
+    /// Gap between spreads and between the pages of a spread, logical pixels.
     pub gap: f64,
-    /// Space around the content, logical px.
+    /// Space around the content, logical pixels.
     pub margin: f64,
     pub min_zoom: f64,
     pub max_zoom: f64,
     /// In two-page modes, show the first page on its own.
     pub cover_alone: bool,
-    /// What tiles contain. Becomes `PageOnly` once annotations are drawn
-    /// from the edit model (M4).
+    /// What tiles contain: by default, the page with the annotations its file has.
     pub content: Content,
     /// Prefetch tiles this many viewport heights above and below.
     pub prefetch: f64,
-    /// Swipe paging for the paged layout modes (touch screens): all spreads
-    /// are laid out side by side, each fitted to the viewport on its own, and
-    /// scrolling can slide to the neighbouring spread. The frontend lets the
-    /// view come to rest with [`Viewer::snap_delta`]. Without it, paged modes
-    /// lay out only the current spread and change it with
-    /// [`Viewer::next_page`] / [`Viewer::previous_page`].
+    /// Swipe paging for the paged layout modes (touch screens): all spreads are laid out side by
+    /// side, each fitted to the viewport on its own, and scrolling can slide to the neighboring
+    /// spread.
+    ///
+    /// The frontend lets the view come to rest with [`Viewer::snap_delta`]. Without it, paged modes
+    /// lay out only the current spread and change it with [`Viewer::next_page`] and
+    /// [`Viewer::previous_page`].
     pub swipe: bool,
-    /// How long the zoom must stay unchanged (and no zoom gesture be active)
-    /// before the view counts as settled and switches from √2-level tiles to
-    /// tiles at the exact device scale.
+    /// How long the zoom must stay unchanged (and no zoom gesture be active) before the view counts
+    /// as settled and switches from √2-level tiles to tiles at the exact device scale.
     pub settle_delay: Duration,
 }
 
@@ -134,9 +134,10 @@ pub struct Frame {
     pub requests: Vec<TileKey>,
     /// Every visible tile is available at full sharpness.
     pub complete: bool,
-    /// The view is still zooming (or just stopped) and is drawn from √2-level
-    /// tiles. Once settled it switches to exact-scale tiles: redraw at this
-    /// time even if nothing else happens.
+    /// The view is still zooming (or just stopped) and is drawn from √2-level tiles.
+    ///
+    /// Once settled it switches to exact-scale tiles: redraw at this time even if nothing else
+    /// happens.
     pub settles_at: Option<Instant>,
 }
 
@@ -144,8 +145,9 @@ pub struct Frame {
 #[derive(Clone, Debug)]
 pub struct PageDraw {
     pub page: usize,
-    /// The page, snapped to whole device pixels. Fill it white, then draw
-    /// `layers` in order, clipped to this rectangle.
+    /// The page, snapped to whole device pixels.
+    ///
+    /// Fill it white, then draw `layers` in order, clipped to this rectangle.
     pub rect: DeviceRect,
     pub layers: Vec<TileDraw>,
     /// Every visible tile of this page is available at full sharpness.
@@ -156,14 +158,15 @@ pub struct PageDraw {
 pub struct TileDraw {
     pub key: TileKey,
     pub dest: DeviceRect,
-    /// The tile maps 1:1 onto device pixels: draw without filtering.
+    /// The tile maps one to one onto device pixels: draw without filtering.
     pub exact: bool,
 }
 
-/// A content position that should stay put across relayouts (zoom, resize,
-/// mode changes): a point within a spread, in points, and where it was on screen.
-/// Points in a margin or gap are clamped to the spread's edge; the rest is
-/// kept in logical px, since margins and gaps don't scale with zoom.
+/// A content position that should stay put across relayouts (zoom, resize, mode changes): a point
+/// within a spread, in points, and where it was on screen.
+///
+/// Points in a margin or gap are clamped to the spread's edge. The rest is kept in logical pixels,
+/// since margins and gaps don't scale with zoom.
 struct Anchor {
     spread: usize,
     rel: (f64, f64),
@@ -171,18 +174,18 @@ struct Anchor {
     view: ViewPoint,
 }
 
-/// UI-agnostic viewer state: layout, zoom and scrolling, plus planning which
-/// tiles to draw and request. Frontends feed it input and draw its [`Frame`]s.
+/// UI-agnostic viewer state: layout, zoom and scrolling, plus planning which tiles to draw and
+/// request. Frontends feed it input and draw its [`Frame`]s.
 pub struct Viewer {
     pages: Vec<ViewPage>,
     sizes: Vec<PageSize>,
     settings: Settings,
     mode: LayoutMode,
     zoom_mode: ZoomMode,
-    /// Logical px per point.
+    /// Logical pixels per point.
     zoom: f64,
     viewport: ViewSize,
-    /// Device px per logical px.
+    /// Device pixels per logical pixels.
     scale: f64,
     /// Layout position of the viewport's top-left corner.
     scroll: LayoutVector,
@@ -191,7 +194,7 @@ pub struct Viewer {
     /// Current spread in paged modes.
     current: usize,
     layout: Layout,
-    /// Device scale of the last frame; a change restarts the settle delay.
+    /// Device scale of the last frame. A change restarts the settle delay.
     last_device_scale: Option<TileScale>,
     /// A zoom gesture ended since the last frame (restarts the settle delay).
     zoom_dirty: bool,
@@ -199,25 +202,25 @@ pub struct Viewer {
     zoom_changed_at: Option<Instant>,
     /// A zoom gesture (pinch) is in progress.
     gesture: bool,
-    /// Whether `frame` has run yet. The first frame is settled right away:
-    /// nothing is zooming, so there's no reason to render levels first.
+    /// Whether `frame` has run yet.
+    ///
+    /// The first frame is settled right away: nothing is zooming, so there's no reason to render
+    /// levels first.
     framed: bool,
-    /// Swipe mode: logical px per point of each spread. `zoom` is the
-    /// current spread's.
+    /// Swipe mode: logical pixels per point of each spread. `zoom` is the current spread's.
     spread_zoom: Vec<f64>,
-    /// Swipe mode with `ZoomMode::Fixed`: zoom relative to fitting the page
-    /// (1 = the whole page is visible), shared by all spreads.
+    /// Swipe mode with `ZoomMode::Fixed`: zoom relative to fitting the page (1 = the whole page is
+    /// visible), shared by all spreads.
     factor: f64,
     /// Whether the last layout was a swipe strip.
     was_strip: bool,
-    /// Swipe mode: the fit the reader had before zooming in, which a page
-    /// turn returns to.
+    /// Swipe mode: the fit the reader had before zooming in, which a page turn returns to.
     strip_fit: ZoomMode,
 }
 
 /// The tile scales one page is drawn with.
 struct Scales {
-    /// Device px per point the page is shown at (quantized).
+    /// Device pixels per point the page is shown at (quantized).
     device: TileScale,
     /// The √2 level at or above `device`.
     level: TileScale,
@@ -232,8 +235,8 @@ impl Scales {
         let device = TileScale::exact(device_px_per_point);
         let l = level_for_scale(device.get());
         let level = TileScale::from_level(l);
-        // Exact tiles only when they differ from the level (they're the same
-        // key when the zoom lands on a level, e.g. 100% at scale 2).
+        // Exact tiles only when they differ from the level (they're the same key when the zoom
+        // lands on a level, such as 100% at scale 2).
         let target = if settled { device } else { level };
         let fallbacks = if target == level {
             [l - 2, l - 1, l + 1, l + 2]
@@ -324,8 +327,7 @@ impl Viewer {
         self.scroll
     }
 
-    /// Where page `i` is on screen, or `None` if it isn't laid out (paged
-    /// modes without swiping).
+    /// Where page `i` is on screen, or `None` if it isn't laid out (paged modes without swiping).
     pub fn page_rect(&self, i: usize) -> Option<ViewRect> {
         let r = (*self.layout.page_rects.get(i)?)?;
         let o = self.offset_of(self.page_spread[i]);
@@ -335,10 +337,9 @@ impl Viewer {
         ))
     }
 
-    /// The page the user is looking at: in continuous modes the one with the
-    /// largest visible area (the last page once scrolled to the very end), in
-    /// paged modes the first of the current spread, and while swiping the
-    /// first of the spread under the middle of the viewport.
+    /// The page the user is looking at: in continuous modes the one with the largest visible area
+    /// (the last page once scrolled to the very end), in paged modes the first of the current
+    /// spread, and while swiping the first of the spread under the middle of the viewport.
     pub fn current_page(&self) -> usize {
         if self.is_strip() {
             let centre = self.scroll.x + self.viewport.width / 2.0;
@@ -352,8 +353,8 @@ impl Viewer {
             return self.spreads.get(self.current).map_or(0, |s| s[0]);
         }
         let view = self.view_layout_rect();
-        // At the end of the document the last page may never get the largest
-        // share of the viewport, but it is where the user has arrived.
+        // At the end of the document the last page may never get the largest share of the viewport,
+        // but it is where the user has arrived.
         let scrollable = self.layout.size.height - self.viewport.height;
         if scrollable > 0.0 && self.scroll.y >= scrollable - 0.5 {
             return self.pages.len().saturating_sub(1);
@@ -372,8 +373,8 @@ impl Viewer {
             .map_or(0, |(i, _)| i)
     }
 
-    /// The pages shown together with [`current_page`](Self::current_page):
-    /// the pair it belongs to in the two-page modes, otherwise just itself.
+    /// The pages shown together with [`current_page`](Self::current_page): the pair it belongs to
+    /// in the two-page modes, otherwise just itself.
     pub fn current_spread(&self) -> &[usize] {
         self.page_spread
             .get(self.current_page())
@@ -420,9 +421,8 @@ impl Viewer {
         self.page_to_view(i, page)
     }
 
-    /// The point in page `i`'s PDF user space that is at `p` on screen,
-    /// whether `p` is on the page or beside it: the inverse of
-    /// [`pdf_to_view`](Self::pdf_to_view).
+    /// The point in page `i`'s PDF user space that is at `p` on screen, whether `p` is on the page
+    /// or beside it: the inverse of [`pdf_to_view`](Self::pdf_to_view).
     pub fn view_to_pdf(&self, i: usize, p: ViewPoint) -> Option<PdfPoint> {
         let r = self.page_rect(i)?;
         let zoom = self.zoom_of(self.page_spread[i]);
@@ -436,9 +436,10 @@ impl Viewer {
         )
     }
 
-    /// Scrolls so that `area` (PDF points of page `i`) is on screen, unless
-    /// it already is: for search results. It ends up a third of the way
-    /// down the view, and horizontally only moves if it has to.
+    /// Scrolls so that `area` (PDF points of page `i`) is on screen, unless it already is: for
+    /// search results.
+    ///
+    /// It ends up a third of the way down the view, and horizontally only moves if it has to.
     pub fn reveal(&mut self, i: usize, area: PdfBox) {
         if i >= self.pages.len() {
             return;
@@ -454,8 +455,8 @@ impl Viewer {
                 corners.iter().map(|&p| v.pdf_to_view(i, p)).collect();
             Some(specto_geom::euclid::Box2D::from_points(points?))
         };
-        // Pages of other spreads aren't laid out in the paged modes, and
-        // while swiping only the current spread scrolls.
+        // Pages of other spreads aren't laid out in the paged modes, and while swiping only the
+        // current spread scrolls.
         let shown = self.page_rect(i).is_some()
             && (!self.is_strip() || self.page_spread[i] == self.current);
         if !shown {
@@ -488,9 +489,9 @@ impl Viewer {
         }
     }
 
-    /// The visible page nearest to `p`, and `p` in that page's PDF user
-    /// space, also when `p` is outside the page (a margin, the gap between
-    /// pages, beyond the viewport). For dragging a text selection.
+    /// The visible page nearest to `p`, and `p` in that page's PDF user space, also when `p` is
+    /// outside the page (a margin, the gap between pages, beyond the viewport). For dragging a text
+    /// selection.
     pub fn nearest_pdf_point(&self, p: ViewPoint) -> Option<(usize, PdfPoint)> {
         let (i, page) = self
             .spreads_near(0.0)
@@ -516,8 +517,8 @@ impl Viewer {
 
     // --- changes ------------------------------------------------------------
 
-    /// Replaces the page list (after reorder, delete, merge, rotate), trying
-    /// to keep the current page in view.
+    /// Replaces the page list (after reorder, delete, merge, rotate), trying to keep the current
+    /// page in view.
     pub fn set_pages(&mut self, pages: Vec<ViewPage>) {
         let keep = self.current_page();
         self.sizes = pages.iter().map(|p| p.displayed().size()).collect();
@@ -530,10 +531,10 @@ impl Viewer {
         }
     }
 
-    /// Replaces the page list with one of the same pages in the same sizes
-    /// that are only rendered from elsewhere (another document, or another
-    /// page of one): nothing moves. If a size did change, this is
-    /// [`set_pages`](Self::set_pages).
+    /// Replaces the page list with one of the same pages in the same sizes that are only rendered
+    /// from elsewhere (another document, or another page of one): nothing moves.
+    ///
+    /// If a size did change, this is [`set_pages`](Self::set_pages).
     pub fn set_page_sources(&mut self, pages: Vec<ViewPage>) {
         let same = pages.len() == self.pages.len()
             && pages
@@ -547,8 +548,8 @@ impl Viewer {
         }
     }
 
-    /// Viewport size in logical pixels and the device scale factor
-    /// (e.g. 2.0 on a Retina display, 1.25 on a fractionally scaled one).
+    /// Viewport size in logical pixels and the device scale factor (such as 2.0 on a Retina
+    /// display, 1.25 on a fractionally scaled one).
     pub fn set_viewport(&mut self, size: ViewSize, scale_factor: f64) {
         let anchor = self.anchor_at(ViewPoint::new(self.viewport.width / 2.0, 0.0));
         self.viewport = size;
@@ -602,9 +603,8 @@ impl Viewer {
 
     /// Sets a fixed zoom, keeping the content under `anchor` in place.
     ///
-    /// While swiping, only the current page is zoomed: its neighbours stay
-    /// fitted, turning the page returns to the fitted view, and a page can't
-    /// be made smaller than fitting the viewport.
+    /// While swiping, only the current page is zoomed: its neighbors stay fitted, turning the page
+    /// returns to the fitted view, and a page can't be made smaller than fitting the viewport.
     pub fn set_zoom(&mut self, zoom: f64, anchor: ViewPoint) {
         let a = self.anchor_at(anchor);
         self.zoom_mode = ZoomMode::Fixed;
@@ -644,8 +644,8 @@ impl Viewer {
             .copied()
             .flatten()
             .map_or(0.0, |r| {
-                // Slightly negative when the viewport starts in the margin or
-                // gap above the page (e.g. at the very top of the document).
+                // Slightly negative when the viewport starts in the margin or gap above the page
+                // (at the very top of the document, for example).
                 ((top - r.origin.y) / r.size.height).clamp(-0.5, 1.0)
             });
         ViewState {
@@ -658,8 +658,9 @@ impl Viewer {
         }
     }
 
-    /// Restores a [`ViewState`]. Out-of-range values (e.g. the file changed
-    /// and has fewer pages now) are clamped.
+    /// Restores a [`ViewState`].
+    ///
+    /// Out-of-range values (the file may have changed and have fewer pages now) are clamped.
     pub fn restore_view_state(&mut self, state: &ViewState) {
         if self.pages.is_empty() {
             return;
@@ -670,9 +671,8 @@ impl Viewer {
         self.zoom_mode = state.zoom_mode;
         if state.zoom.is_finite() {
             self.zoom = state.zoom;
-            // Swipe mode zooms relative to the fitted page; have the layout
-            // derive that from `zoom` for the restored page, as it does when
-            // the mode is entered.
+            // Swipe mode zooms relative to the fitted page. Have the layout derive that from `zoom`
+            // for the restored page, as it does when the mode is entered.
             self.was_strip = false;
         }
         let page = state.page.min(self.pages.len() - 1);
@@ -688,14 +688,14 @@ impl Viewer {
         }
     }
 
-    /// A zoom gesture (pinch) started: until [`end_zoom_gesture`](Self::end_zoom_gesture)
-    /// the view never counts as settled, so pausing mid-pinch doesn't
-    /// render (and cache) exact-scale tiles for an intermediate zoom.
+    /// A zoom gesture (pinch) started: until [`end_zoom_gesture`](Self::end_zoom_gesture) the view
+    /// never counts as settled, so pausing mid-pinch doesn't render (and cache) exact-scale tiles
+    /// for an intermediate zoom.
     pub fn begin_zoom_gesture(&mut self) {
         self.gesture = true;
     }
 
-    /// The zoom gesture ended; the view settles after `settle_delay`.
+    /// The zoom gesture ended, and the view settles after `settle_delay`.
     pub fn end_zoom_gesture(&mut self) {
         self.gesture = false;
         self.zoom_dirty = true;
@@ -713,8 +713,8 @@ impl Viewer {
                 .is_none_or(|t| now.saturating_duration_since(t) >= self.settings.settle_delay)
     }
 
-    /// Device pixels per point actually used for drawing: zoom × device
-    /// scale, quantized like tile scales so exact tiles map 1:1.
+    /// Device pixels per point actually used for drawing: the zoom times the device scale,
+    /// quantized like tile scales so exact tiles map one to one.
     pub fn device_scale(&self) -> TileScale {
         TileScale::exact(self.zoom * self.scale)
     }
@@ -726,8 +726,8 @@ impl Viewer {
         self.adopt_slot();
     }
 
-    /// The low-resolution whole-page tile for page `i`, shown while sharp
-    /// tiles load. Also suitable for thumbnails, so both share one render.
+    /// The low-resolution whole-page tile for page `i`, shown while sharp tiles load. Also suitable
+    /// for thumbnails, so both share one render.
     pub fn placeholder_key(&self, i: usize) -> Option<TileKey> {
         let page = self.pages.get(i)?;
         Some(TileKey {
@@ -741,31 +741,33 @@ impl Viewer {
         })
     }
 
-    /// Scrolls by `delta`. While swiping, this can slide to the neighbouring
-    /// spreads; call [`snap_delta`](Self::snap_delta) when the drag ends.
+    /// Scrolls by `delta`.
+    ///
+    /// While swiping, this can slide to the neighboring spreads. Call
+    /// [`snap_delta`](Self::snap_delta) when the drag ends.
     pub fn scroll_by(&mut self, delta: ViewVector) {
         self.scroll += LayoutVector::new(delta.x, delta.y);
         self.clamp_scroll();
         self.adopt_slot();
     }
 
-    /// Like [`scroll_by`](Self::scroll_by), but while swiping it stops at the
-    /// edges of the current spread: for flings, which shouldn't turn pages.
+    /// Like [`scroll_by`](Self::scroll_by), but while swiping it stops at the edges of the current
+    /// spread: for flings, which shouldn't turn pages.
     pub fn scroll_in_page_by(&mut self, delta: ViewVector) {
         self.scroll += LayoutVector::new(delta.x, delta.y);
         self.clamp_scroll();
         self.confine_to_current();
     }
 
-    /// While swiping: how far the view still has to scroll to come to rest
-    /// after a drag or pinch that left it between two spreads, or `None` if
-    /// it rests where it is. `velocity` is that of the scrolling at release,
-    /// in logical px/s with the sign of [`scroll_by`](Self::scroll_by) deltas:
-    /// a flick turns the page even after a short drag, and otherwise the
-    /// spread covering more than half of the viewport wins.
+    /// While swiping: how far the view still has to scroll to come to rest after a drag or pinch
+    /// that left it between two spreads, or `None` if it rests where it is.
     ///
-    /// The frontend animates [`scroll_by`](Self::scroll_by) over this
-    /// distance. At most one page is turned per drag.
+    /// `velocity` is that of the scrolling at release, in logical pixels per second with the sign
+    /// of [`scroll_by`](Self::scroll_by) deltas: a flick turns the page even after a short drag,
+    /// and otherwise the spread covering more than half of the viewport wins.
+    ///
+    /// The frontend animates [`scroll_by`](Self::scroll_by) over this distance. At most one page is
+    /// turned per drag.
     pub fn snap_delta(&self, velocity: ViewVector) -> Option<ViewVector> {
         if !self.is_strip() {
             return None;
@@ -800,8 +802,9 @@ impl Viewer {
         Some(ViewVector::new(target - x, 0.0))
     }
 
-    /// Shows page `i` at the top of the viewport. While swiping, going to
-    /// another page (or pair) leaves a zoomed-in view for the fitted one.
+    /// Shows page `i` at the top of the viewport.
+    ///
+    /// While swiping, going to another page (or pair) leaves a zoomed-in view for the fitted one.
     pub fn go_to_page(&mut self, i: usize) {
         if self.is_strip()
             && self.zoom_mode == ZoomMode::Fixed
@@ -814,8 +817,8 @@ impl Viewer {
         self.show_page(i);
     }
 
-    /// [`go_to_page`](Self::go_to_page) without touching the zoom: for
-    /// changes of the layout around a page the reader stays on.
+    /// [`go_to_page`](Self::go_to_page) without touching the zoom: for changes of the layout around
+    /// a page the reader stays on.
     fn show_page(&mut self, i: usize) {
         let Some(&spread) = self.page_spread.get(i) else {
             return;
@@ -839,11 +842,11 @@ impl Viewer {
         self.clamp_scroll();
     }
 
-    /// Goes to a position given in PDF user space of page `i`, as link and
-    /// outline destinations specify it: `top` ends up at the top of the
-    /// viewport (below the margin), and `left` at the left edge if the page is
-    /// wider than the viewport. Missing coordinates keep the page top / the
-    /// current horizontal scroll.
+    /// Goes to a position given in PDF user space of page `i`, as link and outline destinations
+    /// specify it: `top` ends up at the top of the viewport (below the margin), and `left` at the
+    /// left edge if the page is wider than the viewport.
+    ///
+    /// Missing coordinates keep the page top or the current horizontal scroll.
     pub fn go_to_pdf_position(&mut self, i: usize, left: Option<f64>, top: Option<f64>) {
         self.go_to_page(i);
         if left.is_none() && top.is_none() {
@@ -897,11 +900,10 @@ impl Viewer {
 
     /// Plans a frame at time `now`. `cached` tells whether the frontend has a tile.
     ///
-    /// While zooming, pages are drawn from √2-level tiles (rendered at or
-    /// above the device scale and downsampled), so continuous zooming reuses
-    /// a few cached levels. Once the view is settled (no zoom change for
-    /// `settle_delay` and no gesture in progress), it requests tiles at the
-    /// exact device scale and draws them 1:1, with level tiles as fallback.
+    /// While zooming, pages are drawn from √2-level tiles (rendered at or above the device scale
+    /// and downsampled), so continuous zooming reuses a few cached levels. Once the view is settled
+    /// (no zoom change for `settle_delay` and no gesture in progress), it requests tiles at the
+    /// exact device scale and draws them one to one, with level tiles as fallback.
     pub fn frame(&mut self, now: Instant, cached: impl Fn(&TileKey) -> bool) -> Frame {
         let signature = self.settle_signature();
         let rescaled = self.last_device_scale.replace(signature) != Some(signature);
@@ -911,9 +913,8 @@ impl Viewer {
         self.framed = true;
         let settled = self.is_settled(now);
 
-        // What to prepare beyond the viewport: while swiping, the spreads to
-        // the left and right, so that a swipe shows them at once; otherwise a
-        // band above and below.
+        // What to prepare beyond the viewport: while swiping, the spreads to the left and right, so
+        // that a swipe shows them at once. Otherwise a band above and below.
         let (band_x, band_y) = if self.is_strip() {
             (self.viewport.width, 0.0)
         } else {
@@ -941,8 +942,8 @@ impl Viewer {
 
         for (s, spread) in self.spreads_near(band_x.max(band_y)) {
             let offset = self.offset_of(s);
-            // Every page of a spread has the spread's zoom; spreads differ
-            // while swiping, where each is fitted to the viewport on its own.
+            // Every page of a spread has the spread's zoom. Spreads differ while swiping, where
+            // each is fitted to the viewport on its own.
             let scales = Scales::new(self.zoom_of(s) * self.scale, settled);
             let target = scales.target;
             for &i in &spread.pages {
@@ -955,8 +956,7 @@ impl Viewer {
                     ((r.origin.x - offset.x) * self.scale).round(),
                     ((r.origin.y - offset.y) * self.scale).round(),
                 );
-                // Sized from the quantized device scale, exactly like an
-                // exact-scale page bitmap.
+                // Sized from the quantized device scale, exactly like an exact-scale page bitmap.
                 let px = displayed.pixel_size(scales.device.get());
                 let rect = DeviceRect::new(origin, (px.width as f64, px.height as f64).into());
                 let placeholder = placeholder_level(&displayed)
@@ -993,9 +993,8 @@ impl Viewer {
                 sharpens |= scales.device != scales.level;
 
                 let mut layers = Vec::new();
-                // The placeholder is drawn only under gaps (below), but kept
-                // requested: it doubles as the thumbnail and makes scrolling
-                // back instant.
+                // The placeholder is drawn only under gaps (below), but kept requested: it doubles
+                // as the thumbnail and makes scrolling back instant.
                 let mut placeholder_layer = None;
                 if let Some(p) = placeholder {
                     let k = key(p, (0, 0));
@@ -1021,8 +1020,8 @@ impl Viewer {
                 if missing {
                     frame.complete = false;
                     layers.extend(placeholder_layer);
-                    // Fill gaps with whatever neighbouring levels are cached,
-                    // coarser first so finer ones end up on top.
+                    // Fill gaps with whatever neighboring levels are cached, coarser first so finer
+                    // ones end up on top.
                     for &f in &scales.fallbacks {
                         if placeholder.is_some_and(|p| f <= p) {
                             continue;
@@ -1052,8 +1051,8 @@ impl Viewer {
             _ => None,
         };
 
-        // Placeholders for visible pages first (already queued), then sharp
-        // visible tiles, then neighbouring placeholders and the prefetch band.
+        // Placeholders for visible pages first (already queued), then sharp visible tiles, then
+        // neighboring placeholders and the prefetch band.
         frame.requests.extend(missing_sharp);
         if let (Some(&first), Some(&last)) =
             (visible_pages.iter().min(), visible_pages.iter().max())
@@ -1070,8 +1069,8 @@ impl Viewer {
             }
         }
         frame.requests.extend(prefetch);
-        // Drop duplicates (a placeholder can be both a neighbour and in the
-        // prefetch band), keeping the first, highest-priority occurrence.
+        // Drop duplicates (a placeholder can be both a neighbor and in the prefetch band), keeping
+        // the first, highest-priority occurrence.
         let mut seen = std::collections::HashSet::new();
         frame.requests.retain(|k| seen.insert(*k));
         frame
@@ -1094,9 +1093,9 @@ impl Viewer {
         self.current = self.current.min(self.spreads.len().saturating_sub(1));
     }
 
-    /// The zoom relative to what `fit` (`FitWidth` or `FitPage`) would give
-    /// here: 1.0 when the view is fitted that way, 2.0 when zoomed in to
-    /// twice that. For "zoom in / back to fit" toggles such as double tap.
+    /// The zoom relative to what `fit` (`FitWidth` or `FitPage`) would give here: 1.0 when the view
+    /// is fitted that way, 2.0 when zoomed in to twice that. For "zoom in / back to fit" toggles
+    /// such as double tap.
     pub fn zoom_relative_to(&self, fit: ZoomMode) -> f64 {
         let fitted = if self.is_strip() {
             self.spread_fit(self.current, fit)
@@ -1134,7 +1133,7 @@ impl Viewer {
         self.settings.swipe && !self.mode.is_continuous()
     }
 
-    /// Logical px per point of spread `s` (an index into `self.spreads`).
+    /// Logical pixels per point of spread `s` (an index into `self.spreads`).
     fn zoom_of(&self, s: usize) -> f64 {
         if self.is_strip() {
             self.spread_zoom.get(s).copied().unwrap_or(self.zoom)
@@ -1143,10 +1142,10 @@ impl Viewer {
         }
     }
 
-    /// What to subtract from layout coordinates of spread `s` to get view
-    /// coordinates. While swiping, vertical scrolling belongs to the current
-    /// spread; its neighbours are shown from their top, wherever the current
-    /// one has been panned to.
+    /// What to subtract from layout coordinates of spread `s` to get view coordinates.
+    ///
+    /// While swiping, vertical scrolling belongs to the current spread. Its neighbors are shown
+    /// from their top, wherever the current one has been panned to.
     fn offset_of(&self, s: usize) -> LayoutVector {
         if self.is_strip() && s != self.current {
             LayoutVector::new(self.scroll.x, 0.0)
@@ -1155,9 +1154,9 @@ impl Viewer {
         }
     }
 
-    /// What a change of restarts the settle delay: the device scale, or
-    /// while swiping the zoom relative to fitting the page (turning to a
-    /// page of another size changes the scale, but nothing is zooming).
+    /// What a change of restarts the settle delay: the device scale, or while swiping the zoom
+    /// relative to fitting the page (turning to a page of another size changes the scale, but
+    /// nothing is zooming).
     fn settle_signature(&self) -> TileScale {
         if self.is_strip() {
             let factor = match self.zoom_mode {
@@ -1170,8 +1169,7 @@ impl Viewer {
         }
     }
 
-    /// The zoom at which spread `s` fits the viewport: its width, or for
-    /// `FitPage` all of it.
+    /// The zoom at which spread `s` fits the viewport: its width, or for `FitPage` all of it.
     fn spread_fit(&self, s: usize, mode: ZoomMode) -> Option<f64> {
         let pages = self.spreads.get(s)?;
         let m = self.settings.margin;
@@ -1200,9 +1198,10 @@ impl Viewer {
         }
     }
 
-    /// While swiping: once the viewport lies entirely within another
-    /// spread's slot, that spread becomes the current one. It was shown from
-    /// its top while sliding in, so that is where its scrolling starts.
+    /// While swiping: once the viewport lies entirely within another spread's slot, that spread
+    /// becomes the current one.
+    ///
+    /// It was shown from its top while sliding in, so that is where its scrolling starts.
     fn adopt_slot(&mut self) {
         if !self.is_strip() {
             return;
@@ -1217,9 +1216,8 @@ impl Viewer {
             self.current = j;
             self.scroll.y = 0.0;
             if self.zoom_mode == ZoomMode::Fixed {
-                // The page left behind returns to its fitted size, which
-                // moves everything after it: realign with the new page,
-                // which was fitted all along and so doesn't change.
+                // The page left behind returns to its fitted size, which moves everything after it:
+                // realign with the new page, which was fitted all along and so doesn't change.
                 self.zoom_mode = self.strip_fit;
                 self.keep_settled();
                 self.relayout(None);
@@ -1232,9 +1230,9 @@ impl Viewer {
         }
     }
 
-    /// After a change of zoom that the reader doesn't see as zooming (a
-    /// fitted page taking the place of a zoomed one): don't restart the
-    /// settle delay, so the page isn't drawn from level tiles for a moment.
+    /// After a change of zoom that the reader doesn't see as zooming (a fitted page taking the
+    /// place of a zoomed one): don't restart the settle delay, so the page isn't drawn from level
+    /// tiles for a moment.
     fn keep_settled(&mut self) {
         if self.last_device_scale.is_some() {
             self.last_device_scale = Some(self.settle_signature());
@@ -1250,8 +1248,7 @@ impl Viewer {
             && self.zoom_mode == ZoomMode::Fixed
             && let Some(fit) = fit_page.get(self.current)
         {
-            // Coming from a layout with one zoom for everything: keep it for
-            // the current page.
+            // Coming from a layout with one zoom for everything: keep it for the current page.
             self.factor = (self.zoom / fit).max(1.0);
         }
         self.was_strip = true;
@@ -1264,8 +1261,8 @@ impl Viewer {
                     _ => fit,
                 };
                 let zoom = match self.zoom_mode {
-                    // Only the current spread is zoomed; the others wait
-                    // fitted, as they will be when turned to.
+                    // Only the current spread is zoomed, and the others wait fitted, as they will
+                    // be when turned to.
                     ZoomMode::Fixed if s == self.current => fit * self.factor,
                     ZoomMode::Fixed => fitted(self.strip_fit),
                     mode => fitted(mode),
@@ -1357,7 +1354,7 @@ impl Viewer {
         } else {
             self.scroll.x.clamp(0.0, size.width - vw)
         };
-        // Content shorter than the viewport is centred vertically.
+        // Content shorter than the viewport is centered vertically.
         self.scroll.y = if size.height <= vh {
             -(vh - size.height) / 2.0
         } else {
@@ -1376,8 +1373,8 @@ impl Viewer {
         )
     }
 
-    /// Laid-out spreads within `band` logical px of the viewport along the
-    /// direction they are arranged in, with their index into `self.spreads`.
+    /// Laid-out spreads within `band` logical pixels of the viewport along the direction they are
+    /// arranged in, with their index into `self.spreads`.
     fn spreads_near(&self, band: f64) -> impl Iterator<Item = (usize, &LaidSpread)> {
         let spreads = &self.layout.spreads;
         let (first, end) = if self.is_strip() {
@@ -1440,9 +1437,8 @@ impl Viewer {
     }
 }
 
-/// The largest level at which the whole page fits in one tile, used for the
-/// blurry placeholder shown before sharp tiles arrive. Capped so tiny pages
-/// don't get large placeholders.
+/// The largest level at which the whole page fits in one tile, used for the blurry placeholder
+/// shown before sharp tiles arrive. Capped so tiny pages don't get large placeholders.
 pub fn placeholder_level(g: &PageGeometry) -> Option<i32> {
     let s = g.size();
     let max = s.width.max(s.height);
@@ -1460,8 +1456,8 @@ pub fn placeholder_level(g: &PageGeometry) -> Option<i32> {
     None
 }
 
-/// Converts part of a page's device rectangle into pixels of the page bitmap
-/// at `scale`, rounded outwards.
+/// Converts part of a page's device rectangle into pixels of the page bitmap at `scale`, rounded
+/// outwards.
 fn scaled_area(
     page: DeviceRect,
     part: DeviceRect,
@@ -1493,7 +1489,7 @@ fn tile_draw(key: TileKey, page: &ViewPage, rect: DeviceRect) -> Option<TileDraw
             ),
             (region.width() as f64 * fx, region.height() as f64 * fy).into(),
         ),
-        // Page origins are whole device pixels, so scale 1 means 1:1.
+        // Page origins are whole device pixels, so scale 1 means one to one.
         exact: fx == 1.0 && fy == 1.0,
     })
 }

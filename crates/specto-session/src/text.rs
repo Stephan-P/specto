@@ -9,8 +9,7 @@ use specto_view::TextPages;
 
 use crate::{FilePage, Source};
 
-/// Text pages by page of the file, with the least recently used dropped
-/// beyond `limit`.
+/// Text pages by page of the file, with the least recently used dropped beyond `limit`.
 pub(crate) struct TextCache {
     pages: HashMap<FilePage, (Arc<TextPage>, u64)>,
     clock: u64,
@@ -48,8 +47,7 @@ impl TextCache {
     }
 }
 
-/// The document's text pages, extracted on demand (see
-/// [`Session::text`](crate::Session::text)).
+/// The document's text pages, extracted on demand (see [`Session::text`](crate::Session::text)).
 pub struct TextLayer<'a> {
     pub(crate) sources: &'a [Source],
     pub(crate) pages: &'a [PageRef],
@@ -64,8 +62,8 @@ impl TextPages for TextLayer<'_> {
         if let Some(t) = self.cache.get(key) {
             return Some(t);
         }
-        // A fraction of a millisecond for most pages, so
-        // this runs on the caller's thread when a page is first needed.
+        // A fraction of a millisecond for most pages, so this runs on the caller's thread when a
+        // page is first needed.
         let source = self.sources.get(p.source.0 as usize)?;
         let text = Arc::new(Extractor::new(source.doc.pdf()).page(p.page as usize)?);
         self.cache.insert(key, text.clone());

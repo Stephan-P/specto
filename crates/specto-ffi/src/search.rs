@@ -1,21 +1,19 @@
 //! Searching: how this session runs the shared one's indexer.
 //!
-//! The search itself is `specto_session`'s. Every page's text is prepared
-//! for it once, by a background thread, from the first search on; what is
-//! here hands that thread's pages to the session and tells the frontend
-//! when what it shows of the search has changed.
+//! The search itself is `specto_session`'s. Every page's text is prepared for it once, by a
+//! background thread, from the first search on. What is here hands that thread's pages to the
+//! session and tells the frontend when what it shows of the search has changed.
 
 use std::sync::Arc;
 
 use crate::{Shared, State};
 
-/// The frontend hears about every this many pages indexed, to show how far
-/// the search has got (and at once when a page adds matches).
+/// The frontend hears about every this many pages indexed, to show how far the search has got (and
+/// at once when a page adds matches).
 const PROGRESS_PAGES: usize = 16;
 
-/// Starts preparing the pages not indexed yet for searching, in a
-/// background thread: from the current page to the end, then from the
-/// start. Does nothing if that is already running or done.
+/// Starts preparing the pages not indexed yet for searching, in a background thread: from the
+/// current page to the end, then from the start. Does nothing if that is already running or done.
 pub(crate) fn start_indexing(shared: &Arc<Shared>, state: &mut State) {
     let from = state.session.viewer.current_page();
     let session = Arc::downgrade(shared);

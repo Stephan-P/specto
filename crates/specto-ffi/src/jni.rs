@@ -1,6 +1,7 @@
-//! JNI functions behind `net.xfbs.specto.Native`: the per-frame path and tile
-//! pixels, which are too hot (or too big) for UniFFI. Each is a thin wrapper
-//! around [`crate::hot`] or [`crate::claim_tile`]; sessions are looked up by
+//! JNI functions behind `net.xfbs.specto.Native`: the per-frame path and tile pixels, which are too
+//! hot (or too big) for UniFFI.
+//!
+//! Each is a thin wrapper around [`crate::hot`] or [`crate::claim_tile`]. Sessions are looked up by
 //! id, so a closed session is simply not found.
 #![allow(unsafe_code)]
 
@@ -16,8 +17,8 @@ const ERR_UNKNOWN_TILE: jint = -1;
 const ERR_BITMAP: jint = -2;
 const ERR_PANIC: jint = -4;
 
-/// Runs `f`, turning a panic into `on_panic`: unwinding across
-/// `extern "system"` would abort the app.
+/// Runs `f`, turning a panic into `on_panic`: unwinding across `extern "system"` would abort the
+/// app.
 fn guarded<T>(on_panic: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(on_panic)
 }
@@ -112,12 +113,12 @@ pub extern "system" fn Java_net_xfbs_specto_Native_setThumbnailRange(
 ///
 /// # Safety
 ///
-/// `env` and `buffer` must be valid for the current JNI call, and the
-/// returned slice must not outlive it or be aliased by the caller's thread
-/// (Kotlin only reads the buffer after the native method returns).
+/// `env` and `buffer` must be valid for the current JNI call, and the returned slice must not
+/// outlive it or be aliased by the caller's thread (Kotlin only reads the buffer after the native
+/// method returns).
 unsafe fn direct_buffer<'a>(env: *mut JNIEnv, buffer: jobject) -> Option<&'a mut [u8]> {
-    // SAFETY: `env` is the valid JNI environment of this call, and its
-    // function table is complete on Android (JNI 1.6).
+    // SAFETY: `env` is the valid JNI environment of this call, and its function table is complete
+    // on Android (JNI 1.6).
     let (address, capacity) = unsafe {
         let functions = &**env;
         (
@@ -128,8 +129,8 @@ unsafe fn direct_buffer<'a>(env: *mut JNIEnv, buffer: jobject) -> Option<&'a mut
     if address.is_null() || capacity <= 0 {
         return None;
     }
-    // SAFETY: the JVM guarantees `capacity` bytes at `address` for a direct
-    // buffer, which the caller keeps referenced during the call.
+    // SAFETY: the JVM guarantees `capacity` bytes at `address` for a direct buffer, which the
+    // caller keeps referenced during the call.
     Some(unsafe { std::slice::from_raw_parts_mut(address.cast::<u8>(), capacity as usize) })
 }
 
@@ -192,14 +193,13 @@ pub unsafe extern "system" fn Java_net_xfbs_specto_Native_takeFinished(
 
 /// `Native.copyTile(session: Long, tile: Long, bitmap: Bitmap): Int`
 ///
-/// Copies a finished tile into `bitmap`, which must be mutable `ARGB_8888`
-/// with the tile's dimensions. UniFFI can't pass a `Bitmap`, and returning
-/// pixels through it costs extra copies (measured in M0).
+/// Copies a finished tile into `bitmap`, which must be mutable `ARGB_8888` with the tile's
+/// dimensions. UniFFI can't pass a `Bitmap`, and returning pixels through it costs extra copies.
 ///
 /// # Safety
 ///
-/// Must only be called by the JVM as the native method above, which
-/// guarantees that `env` and `bitmap` are valid for the duration of the call.
+/// Must only be called by the JVM as the native method above, which guarantees that `env` and
+/// `bitmap` are valid for the duration of the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_net_xfbs_specto_Native_copyTile(
     env: *mut JNIEnv,
@@ -235,8 +235,8 @@ fn write(src: &specto_render::Bitmap, bitmap: &Bitmap) -> jint {
     let row = src.width as usize * 4;
     let stride = info.stride() as usize;
     for (y, line) in src.data.chunks_exact(row).enumerate() {
-        // SAFETY: while locked, the bitmap owns `stride * height` bytes at
-        // `dst`, and `row <= stride`. The source is our own `Vec`.
+        // SAFETY: while locked, the bitmap owns `stride * height` bytes at `dst`, and `row <=
+        // stride`. The source is our own `Vec`.
         unsafe {
             std::ptr::copy_nonoverlapping(line.as_ptr(), dst.cast::<u8>().add(y * stride), row);
         }

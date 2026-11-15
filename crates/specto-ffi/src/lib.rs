@@ -1,21 +1,18 @@
 //! UniFFI surface for the Android app.
 //!
-//! A [`ViewSession`] is one open document on screen: it owns the document
-//! itself (a `specto_session::Session`, the same as in the desktop app: the
-//! file, its pages, the viewer, text, selection and search), the render
-//! scheduler and the bookkeeping for tiles. Kotlin forwards gestures, asks
-//! for a [`Frame`] and draws it. See `docs/ARCHITECTURE.md` ("Android").
+//! A [`ViewSession`] is one open document on screen: it owns the document itself (a
+//! `specto_session::Session`, the same as in the desktop app: the file, its pages, the viewer,
+//! text, selection and search), the render scheduler and the bookkeeping for tiles. Kotlin forwards
+//! gestures, asks for a [`Frame`] and draws it. See `docs/ARCHITECTURE.md` ("Android").
 //!
-//! UniFFI is used for everything that happens occasionally (opening, modes,
-//! viewport changes). Its Kotlin bindings go through JNA, and a single call
-//! costs a few hundred microseconds on a phone, so what runs every frame goes
-//! through plain JNI instead (`jni.rs`, backed by [`hot`]): scrolling,
-//! zooming, planning a frame and collecting finished tiles.
+//! UniFFI is used for everything that happens occasionally (opening, modes, viewport changes). Its
+//! Kotlin bindings go through JNA, and a single call costs a few hundred microseconds on a phone,
+//! so what runs every frame goes through plain JNI instead (`jni.rs`, backed by [`hot`]):
+//! scrolling, zooming, planning a frame and collecting finished tiles.
 //!
-//! Tile pixels never cross UniFFI either (M0 measured that as too slow).
-//! Kotlin owns one `Bitmap` per tile, keyed by an opaque id, and fills it
-//! through JNI. Which tiles exist is decided here: the cache bookkeeping
-//! lives in Rust, and [`Frame::evicted`] tells Kotlin which bitmaps to drop.
+//! Tile pixels never cross UniFFI either, which was measured as too slow. Kotlin owns one `Bitmap`
+//! per tile, keyed by an opaque id, and fills it through JNI. Which tiles exist is decided here:
+//! the cache bookkeeping lives in Rust, and [`Frame::evicted`] tells Kotlin which bitmaps to drop.
 
 pub mod crash;
 pub mod hot;
@@ -53,8 +50,8 @@ pub enum PdfError {
     UnsupportedEncryption,
     #[error("not a valid PDF file")]
     Invalid,
-    // Not `message`: in the generated Kotlin exception that would clash
-    // with `Throwable.message`, and the bindings wouldn't compile.
+    // Not `message`: in the generated Kotlin exception that would clash with `Throwable.message`,
+    // and the bindings wouldn't compile.
     #[error("couldn't read the file: {reason}")]
     Io { reason: String },
     #[error("couldn't save the document: {reason}")]
@@ -77,13 +74,14 @@ impl From<OpenError> for PdfError {
 #[uniffi::export(with_foreign)]
 pub trait ViewListener: Send + Sync {
     /// Finished tiles are waiting in [`ViewSession::take_finished`].
+    ///
     /// Called from a render thread, so hop to the main thread first.
     fn tiles_ready(&self);
 
-    /// A search got further: it found more, or has been through more of
-    /// the document. [`ViewSession::search_status`] and the next frame show
-    /// what changed (the view may have moved to a first match). Called from
-    /// a background thread, like [`tiles_ready`](Self::tiles_ready).
+    /// A search got further: it found more, or has been through more of the document.
+    ///
+    /// [`ViewSession::search_status`] and the next frame show what changed (the view may have moved
+    /// to a first match). Called from a background thread, like [`tiles_ready`](Self::tiles_ready).
     fn search_changed(&self);
 }
 
@@ -98,21 +96,20 @@ pub enum LayoutMode {
 /// How the document is presented, as offered in the app's menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ViewMode {
-    /// One page at a time, each fitted to the screen; swipe left and right.
+    /// One page at a time, each fitted to the screen, turned by swiping left and right.
     Paged,
-    /// All pages in one column fitted to the width; scroll up and down.
+    /// All pages in one column fitted to the width, scrolled up and down.
     Continuous,
 }
 
-/// One line of the outline (table of contents), which is a tree flattened
-/// in reading order.
+/// One line of the outline (table of contents), which is a tree flattened in reading order.
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct OutlineEntry {
     pub title: String,
     /// Nesting level, 0 for top-level items.
     pub depth: u32,
-    /// Zero-based page the item leads to, if it leads into this document
-    /// and the page is still in it.
+    /// Zero-based page the item leads to, if it leads into this document and the page is still in
+    /// it.
     pub page: Option<u32>,
     /// Whether deeper entries follow that belong to this one.
     pub has_children: bool,
@@ -125,7 +122,7 @@ pub enum EditKind {
     Delete,
     Move,
     Insert,
-    /// An annotation was added, deleted or changed; `pages` is then 1.
+    /// An annotation was added, deleted or changed. `pages` is then 1.
     AddAnnotation,
     RemoveAnnotation,
     ChangeAnnotation,
@@ -180,8 +177,7 @@ pub enum Activated {
     Uri { uri: String },
 }
 
-/// What the app remembers about a document between sessions, to continue
-/// where the reader left off.
+/// What the app remembers about a document between sessions, to continue where the reader left off.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
 pub struct SavedView {
     /// Zero-based page at the top of the view.
@@ -190,21 +186,20 @@ pub struct SavedView {
     pub page_offset: f64,
     /// [`ViewMode::Paged`] rather than continuous.
     pub paged: bool,
-    /// Logical pixels per point if the reader had zoomed in; `None` if the
-    /// view was fitted.
+    /// Logical pixels per point if the reader had zoomed in, or `None` if the view was fitted.
     pub zoom: Option<f64>,
     /// Two pages side by side.
     pub two_pages: bool,
     /// With two pages: the first page on its own, like a book's cover.
     pub cover_alone: bool,
-    /// Fitted means the page's width rather than the whole page; see
-    /// [`ViewSession::set_fit_width`].
+    /// Fitted means the page's width rather than the whole page (see
+    /// [`ViewSession::set_fit_width`]).
     pub fit_width: bool,
 }
 
-/// What a document says about itself (its `/Info` dictionary and header),
-/// for a properties dialog. Any of it may be missing or wrong: it is whatever
-/// the program that wrote the file put there.
+/// What a document says about itself (its `/Info` dictionary and header), for a properties dialog.
+///
+/// Any of it may be missing or wrong: it is whatever the program that wrote the file put there.
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct DocumentInfo {
     pub title: Option<String>,
@@ -215,10 +210,10 @@ pub struct DocumentInfo {
     pub creator: Option<String>,
     /// The program that turned it into a PDF.
     pub producer: Option<String>,
-    /// ISO 8601 with the offset from UTC, e.g. `2024-03-05T14:22:10+01:00`.
+    /// ISO 8601 with the offset from UTC, such as `2024-03-05T14:22:10+01:00`.
     pub created: Option<String>,
     pub modified: Option<String>,
-    /// E.g. "1.7".
+    /// The PDF version the file states, such as "1.7".
     pub pdf_version: String,
 }
 
@@ -279,17 +274,17 @@ pub enum HighlightKind {
 pub struct SearchStatus {
     /// Matches found so far.
     pub matches: u32,
-    /// Which of them is the current one, counted from 0; `None` if nothing
-    /// has been found (yet).
+    /// Which of them is the current one, counted from 0, or `None` if nothing has been found yet.
     pub current: Option<u32>,
-    /// How many pages have been searched; the rest follow in the background.
+    /// How many pages have been searched. The rest follow in the background.
     pub pages_searched: u32,
     pub pages: u32,
 }
 
-/// Text to highlight: the part of one line that is selected or was found,
-/// as the four corners of a quadrilateral (lines can be rotated). "Start"
-/// and "end" are along the line, "bottom" is its baseline side.
+/// Text to highlight: the part of one line that is selected or was found, as the four corners of a
+/// quadrilateral (lines can be rotated).
+///
+/// "Start" and "end" are along the line, "bottom" is its baseline side.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
 pub struct Highlight {
     pub kind: HighlightKind,
@@ -299,15 +294,15 @@ pub struct Highlight {
     pub start_top: Point,
 }
 
-/// One end of the selection on screen: the edge of its first or last line,
-/// where a handle for moving that end belongs.
+/// One end of the selection on screen: the edge of its first or last line, where a handle for
+/// moving that end belongs.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Record)]
 pub struct SelectionEdge {
     pub bottom: Point,
     pub top: Point,
 }
 
-/// How selected text is marked; see [`ViewSession::mark_selection`].
+/// How selected text is marked (see [`ViewSession::mark_selection`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum Markup {
     Highlight,
@@ -329,18 +324,18 @@ pub enum SegmentDraw {
     },
 }
 
-/// A piece of an annotation that the frontend draws over a page: those
-/// made or changed since the file was read, and ones the file gives no
-/// look for. (The rest are part of the page as rendered.) An outline in
-/// device pixels, filled, drawn along with a pen, or both. Colours are
-/// 0xAARRGGBB.
+/// A piece of an annotation that the frontend draws over a page: those made or changed since the
+/// file was read, and ones the file gives no look for.
+///
+/// (The rest are part of the page as rendered.) An outline in device pixels, filled, drawn along
+/// with a pen, or both. Colors are 0xAARRGGBB.
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct ShapeDraw {
     /// Which of [`Frame::pages`] it is on (an index): clip it to that page.
     pub page: u32,
     pub fill: Option<u32>,
-    /// The fill darkens what is under it, as a highlighter does (the blend
-    /// mode Multiply), instead of covering it.
+    /// The fill darkens what is under it, as a highlighter does (the blend mode Multiply), instead
+    /// of covering it.
     pub multiply: bool,
     pub stroke: Option<u32>,
     pub stroke_width: f32,
@@ -357,7 +352,7 @@ pub struct TileDraw {
     /// Id of a tile previously handed out by [`ViewSession::take_finished`].
     pub id: u64,
     pub dest: Rect,
-    /// The tile maps 1:1 onto device pixels: draw without filtering.
+    /// The tile maps one to one onto device pixels: draw without filtering.
     pub exact: bool,
 }
 
@@ -368,10 +363,10 @@ pub struct PageDraw {
     /// Fill this white, then draw `tiles` in order, clipped to it.
     pub rect: Rect,
     pub tiles: Vec<TileDraw>,
-    /// The page takes long to render (it has huge images, or a render of it
-    /// was slow) and what is visible of it isn't sharp yet: show that it is
-    /// being worked on. Other pages are sharp within milliseconds and never
-    /// say so.
+    /// The page takes long to render (it has huge images, or a render of it was slow) and what is
+    /// visible of it isn't sharp yet: show that it is being worked on.
+    ///
+    /// Other pages are sharp within milliseconds and never say so.
     pub busy: bool,
 }
 
@@ -383,26 +378,26 @@ pub struct Frame {
     pub evicted: Vec<u64>,
     /// Every visible tile is sharp. If not, more tiles are on their way.
     pub complete: bool,
-    /// The zoom has been still long enough that pages are drawn from tiles
-    /// at the exact device scale, 1:1. While zooming they come from a few
-    /// fixed zoom levels and are scaled.
+    /// The zoom has been still long enough that pages are drawn from tiles at the exact device
+    /// scale, one to one.
+    ///
+    /// While zooming they come from a few fixed zoom levels and are scaled.
     pub settled: bool,
-    /// Call [`ViewSession::frame`] again after this many milliseconds even if
-    /// nothing else happens: that is when the view settles and sharpens.
+    /// Call [`ViewSession::frame`] again after this many milliseconds even if nothing else happens:
+    /// that is when the view settles and sharpens.
     pub settles_in_ms: Option<u32>,
     /// Device pixels per PDF point that pages are drawn at.
     pub device_scale: f64,
-    /// Zero-based index of the page the user is looking at; with two pages,
-    /// the first of the pair.
+    /// Zero-based index of the page the user is looking at. With two pages, the first of the pair.
     pub current_page: u32,
-    /// The last page shown together with it: the same page, or with two
-    /// pages the second of the pair.
+    /// The last page shown together with it: the same page, or with two pages the second of the
+    /// pair.
     pub last_page: u32,
     /// Logical pixels (dp) per PDF point.
     pub zoom: f64,
     pub zoom_mode: ZoomMode,
-    /// The zoom relative to the view mode's fitted state (the whole page
-    /// when paged, the width when continuous): 1.0 when fitted.
+    /// The zoom relative to the view mode's fitted state (the whole page when paged, the width when
+    /// continuous): 1.0 when fitted.
     pub zoom_factor: f64,
     /// Whether the view is [`ViewMode::Paged`].
     pub paged: bool,
@@ -412,24 +407,22 @@ pub struct Frame {
     pub cover_alone: bool,
     /// First page of the range set with [`ViewSession::set_thumbnail_range`].
     pub thumbnail_first: u32,
-    /// For each page of that range, the id of its thumbnail tile, or 0 while
-    /// it is still being rendered.
+    /// For each page of that range, the id of its thumbnail tile, or 0 while it is still being
+    /// rendered.
     pub thumbnails: Vec<u64>,
     /// Whether any text is selected, on screen or not.
     pub selection: bool,
-    /// The selected text and the search's matches on the visible pages:
-    /// draw these over the pages, in order.
+    /// The selected text and the search's matches on the visible pages: draw these over the pages,
+    /// in order.
     pub highlights: Vec<Highlight>,
-    /// Where the selection starts and ends, for its handles; `None` for an
-    /// end that isn't on a visible page.
+    /// Where the selection starts and ends, for its handles, with `None` for an end that isn't on a
+    /// visible page.
     pub selection_start: Option<SelectionEdge>,
     pub selection_end: Option<SelectionEdge>,
-    /// The annotations to draw over the visible pages, in order, under the
-    /// highlights.
+    /// The annotations to draw over the visible pages, in order, under the highlights.
     pub shapes: Vec<ShapeDraw>,
     /// The four corners of the box around the annotation that is picked
-    /// ([`ViewSession::pick_annotation_at`]), around it; empty if none is,
-    /// or it is on no visible page.
+    /// ([`ViewSession::pick_annotation_at`]). Empty if none is, or it is on no visible page.
     pub picked: Vec<Point>,
 }
 
@@ -449,30 +442,30 @@ pub struct FinishedTile {
 }
 
 struct State {
-    /// The document: its file, pages, viewer, text, selection and search,
-    /// as the desktop app has it too.
+    /// The document: its file, pages, viewer, text, selection and search, as the desktop app has it
+    /// too.
     session: Session,
     tiles: TileBook,
-    /// The last frame encoded for [`hot::frame`], kept so a caller whose
-    /// buffer was too small can fetch it again without planning a new one.
+    /// The last frame encoded for [`hot::frame`], kept so a caller whose buffer was too small can
+    /// fetch it again without planning a new one.
     encoded: Vec<u8>,
     /// Pages whose thumbnails the frontend is showing (first, count).
     thumbnails: (u32, u32),
-    /// What the view is fitted to unless the reader zoomed, and returns to:
-    /// `FitPage` or `FitWidth`.
+    /// What the view is fitted to unless the reader zoomed, and returns to: `FitPage` or
+    /// `FitWidth`.
     fit: specto_view::ZoomMode,
-    /// The state of the pages last written as a copy on the side (see
-    /// `ViewSession::save_to_fd`), which may yet become the saved one.
+    /// The state of the pages last written as a copy on the side (see `ViewSession::save_to_fd`),
+    /// which may yet become the saved one.
     written: Option<specto_doc::Version>,
 }
 
-/// How many pages' text is kept (the least recently used go first). A page
-/// takes about 100 bytes per character.
+/// How many pages' text is kept (the least recently used go first). A page takes about 100 bytes
+/// per character.
 const TEXT_PAGES: usize = 24;
 
 impl State {
-    /// Moves the end of the selection that isn't its anchor to the text
-    /// nearest to `p`. A selection never shrinks to nothing this way.
+    /// Moves the end of the selection that isn't its anchor to the text nearest to `p`. A selection
+    /// never shrinks to nothing this way.
     fn select_to(&mut self, p: ViewPoint) {
         let (viewer, mut texts, selection) = self.session.text();
         let (Some(s), Some(to)) = (selection.as_mut(), text_position(viewer, &mut texts, p)) else {
@@ -487,8 +480,8 @@ impl State {
 
     /// Does what a link or outline entry of file `source` asks for.
     fn follow(&mut self, source: SourceId, target: &Target) -> Activated {
-        // Destinations name pages of the file; where such a page is now is
-        // the session's to say (it may be gone).
+        // Destinations name pages of the file. Where such a page is now is the session's to say (it
+        // may be gone).
         let destination = match target {
             Target::Destination(d) => match self.session.position_of(source, d.page) {
                 Some(page) => Some(page),
@@ -588,10 +581,9 @@ impl Shared {
                     .collect(),
             })
             .collect();
-        // Thumbnails are the pages' placeholder tiles, so the page view and
-        // the thumbnail grid share one render. They are requested after
-        // everything the page view wants: the scheduler has one queue, and
-        // each frame replaces it.
+        // Thumbnails are the pages' placeholder tiles, so the page view and the thumbnail grid
+        // share one render. They are requested after everything the page view wants: the scheduler
+        // has one queue, and each frame replaces it.
         let (thumbnail_first, count) = *thumbnails;
         let thumbnail_ids = (thumbnail_first..thumbnail_first.saturating_add(count))
             .map(|page| {
@@ -627,9 +619,8 @@ impl Shared {
             _ => Vec::new(),
         };
 
-        // What the search found and what is selected on the visible pages.
-        // Positions come in logical pixels; everything in a frame is in
-        // device pixels.
+        // What the search found and what is selected on the visible pages. Positions come in
+        // logical pixels, and everything in a frame is in device pixels.
         let found: Vec<_> = planned
             .pages
             .iter()
@@ -723,7 +714,7 @@ impl Shared {
         let State { session, tiles, .. } = &mut *state;
         let viewer = &session.viewer;
         tiles.add_finished(finished, |key| {
-            // Keys name a page of a file; the viewer goes by position.
+            // Keys name a page of a file, while the viewer goes by position.
             let position = viewer
                 .pages()
                 .iter()
@@ -733,8 +724,8 @@ impl Shared {
     }
 }
 
-/// An annotation's shape as a frame has it: `px` device pixels per logical
-/// one, on the page at index `page` of the frame.
+/// An annotation's shape as a frame has it: `px` device pixels per logical one, on the page at
+/// index `page` of the frame.
 fn shape_draw(page: u32, shape: &ViewShape, px: f64) -> ShapeDraw {
     let point = |p: ViewPoint| Point {
         x: (p.x * px) as f32,
@@ -811,8 +802,8 @@ fn shape_draw(page: u32, shape: &ViewShape, px: f64) -> ShapeDraw {
     }
 }
 
-/// The fit a view mode starts with: the whole page when swiping through
-/// pages, the width when scrolling.
+/// The fit a view mode starts with: the whole page when swiping through pages, the width when
+/// scrolling.
 fn default_fit(paged: bool) -> specto_view::ZoomMode {
     fit_mode(!paged)
 }
@@ -836,8 +827,8 @@ fn layout_for(paged: bool, two_pages: bool) -> specto_view::LayoutMode {
     }
 }
 
-/// Live sessions by id, so the JNI function can find one without being handed
-/// a raw pointer. A closed session simply isn't found.
+/// Live sessions by id, so the JNI function can find one without being handed a raw pointer. A
+/// closed session simply isn't found.
 static SESSIONS: LazyLock<Mutex<HashMap<u64, Weak<Shared>>>> = LazyLock::new(Mutex::default);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
@@ -846,11 +837,11 @@ fn find_session(id: u64) -> Option<Arc<Shared>> {
     sessions.get(&id)?.upgrade()
 }
 
-/// The Rust half of `Native.copyTile`: hands the pixels of finished
-/// tile `tile` of session `session` to `write`, which copies them into the
-/// frontend's bitmap. If `write` returns `true`, the tile counts as cached
-/// from now on. Returns `false` for unknown sessions and tiles, or if `write`
-/// did.
+/// The Rust half of `Native.copyTile`: hands the pixels of finished tile `tile` of session
+/// `session` to `write`, which copies them into the frontend's bitmap.
+///
+/// If `write` returns `true`, the tile counts as cached from now on. Returns `false` for unknown
+/// sessions and tiles, or if `write` did.
 pub fn claim_tile(session: u64, tile: u64, write: impl FnOnce(&Bitmap) -> bool) -> bool {
     let Some(session) = find_session(session) else {
         return false;
@@ -865,17 +856,16 @@ pub struct ViewSession {
     shared: Arc<Shared>,
 }
 
-/// The bytes of a file to open, read once and reusable, e.g. to try again
-/// with a password.
+/// The bytes of a file to open, read once and reusable, for instance to try again with a password.
 #[derive(uniffi::Object)]
 pub struct PdfFile(PdfData);
 
 #[uniffi::export]
 impl PdfFile {
-    /// Takes over the open file descriptor `fd` (from
-    /// `ParcelFileDescriptor.detachFd()`) and reads the file, or maps it if
-    /// it's large; see [`PdfData`]. The descriptor is closed either way.
-    /// Pipes, as some document providers hand out, are read.
+    /// Takes over the open file descriptor `fd` (from `ParcelFileDescriptor.detachFd()`) and reads
+    /// the file, or maps it if it's large (see [`PdfData`]).
+    ///
+    /// The descriptor is closed either way. Pipes, as some document providers hand out, are read.
     #[uniffi::constructor]
     pub fn from_fd(fd: i32) -> Result<Arc<Self>, PdfError> {
         if fd < 0 {
@@ -886,8 +876,8 @@ impl PdfFile {
         #[cfg(unix)]
         {
             use std::os::fd::FromRawFd;
-            // SAFETY: the caller hands over ownership of an open descriptor
-            // (detachFd), so nothing else closes or uses it.
+            // SAFETY: the caller hands over ownership of an open descriptor (detachFd), so nothing
+            // else closes or uses it.
             #[allow(unsafe_code)]
             let file = unsafe { std::fs::File::from_raw_fd(fd) };
             PdfData::from_file(file)
@@ -917,9 +907,9 @@ impl PdfFile {
         self.0.is_mapped()
     }
 
-    /// Up to `length` bytes starting at `offset`: fewer at the end of the
-    /// file, none beyond it. For recognising a file by parts of its content
-    /// without copying all of it.
+    /// Up to `length` bytes starting at `offset`: fewer at the end of the file, none beyond it.
+    ///
+    /// For recognising a file by parts of its content without copying all of it.
     pub fn read(&self, offset: u64, length: u32) -> Vec<u8> {
         let size = self.0.len() as u64;
         let start = offset.min(size);
@@ -954,9 +944,8 @@ impl ViewSession {
 }
 
 impl ViewSession {
-    /// Writes the document as edited to the descriptor `fd`, which is
-    /// closed either way, with its password protection or without.
-    /// Returns the version of the document that was written.
+    /// Writes the document as edited to the descriptor `fd`, which is closed either way, with its
+    /// password protection or without. Returns the version of the document that was written.
     fn write_to_fd(&self, fd: i32, protected: bool) -> Result<specto_doc::Version, PdfError> {
         if fd < 0 {
             return Err(PdfError::Save {
@@ -967,8 +956,8 @@ impl ViewSession {
         {
             use std::io::Write;
             use std::os::fd::FromRawFd;
-            // SAFETY: the caller hands over ownership of an open descriptor
-            // (detachFd), so nothing else closes or uses it.
+            // SAFETY: the caller hands over ownership of an open descriptor (detachFd), so nothing
+            // else closes or uses it.
             #[allow(unsafe_code)]
             let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
             let job = self.shared.lock().session.save_job();
@@ -986,9 +975,9 @@ impl ViewSession {
                 .map_err(|e| PdfError::Save {
                     reason: e.to_string(),
                 })?;
-            // Cuts off what a longer file had beyond this, and gets it onto
-            // the disk. Neither works on everything a descriptor can be (a
-            // pipe to a document provider), and neither is needed there.
+            // Cuts off what a longer file had beyond this, and gets it onto the disk. Neither works
+            // on everything a descriptor can be (a pipe to a document provider), and neither is
+            // needed there.
             let _ = file.set_len(data.len() as u64);
             let _ = file.sync_all();
             Ok(job.version)
@@ -1057,9 +1046,9 @@ impl ViewSession {
         self.shared.lock().session.viewer.page_count() as u32
     }
 
-    /// The pages' printed numbers ("i", "ii", "1", "A-3", …), one per page,
-    /// for documents that number their pages other than 1, 2, 3. `None`
-    /// otherwise: then a page's number is its position.
+    /// The pages' printed numbers (such as "i", "ii", "1" or "A-3"), one per page, for documents
+    /// that number their pages other than 1, 2, 3. `None` otherwise: then a page's number is its
+    /// position.
     pub fn page_labels(&self) -> Option<Vec<String>> {
         let state = self.shared.lock();
         let labels = state.session.labels()?;
@@ -1070,8 +1059,8 @@ impl ViewSession {
         )
     }
 
-    /// The zero-based page the user means by `text`: a printed page number
-    /// (exactly, then ignoring case), else a position counted from 1.
+    /// The zero-based page the user means by `text`: a printed page number (exactly, then ignoring
+    /// case), else a position counted from 1.
     pub fn find_page(&self, text: String) -> Option<u32> {
         let state = self.shared.lock();
         state.session.find_page(text.trim()).map(|i| i as u32)
@@ -1095,13 +1084,11 @@ impl ViewSession {
         }
     }
 
-    /// The outline (table of contents), flattened in reading order. Empty if
-    /// the document has none.
+    /// The outline (table of contents), flattened in reading order. Empty if the document has none.
     pub fn outline(&self) -> Vec<OutlineEntry> {
         let state = self.shared.lock();
         let entries = self.shared.outline.iter().map(|(entry, target)| {
-            // Destinations name pages of the file, which may have moved or
-            // been deleted.
+            // Destinations name pages of the file, which may have moved or been deleted.
             let page = match target {
                 Some(Target::Destination(d)) => state.session.position_of(MAIN, d.page),
                 _ => None,
@@ -1122,8 +1109,8 @@ impl ViewSession {
         }
     }
 
-    /// A tap at (`x`, `y`) in logical pixels from the view's top-left: follows
-    /// the link there, if there is one.
+    /// A tap at (`x`, `y`) in logical pixels from the view's top-left: follows the link there, if
+    /// there is one.
     pub fn tap(&self, x: f64, y: f64) -> Activated {
         let mut state = self.shared.lock();
         match state.session.link_at(ViewPoint::new(x, y)) {
@@ -1134,17 +1121,16 @@ impl ViewSession {
 
     // --- annotations -------------------------------------------------------
     //
-    // Marks on the text, and whatever else a file brings along (notes,
-    // drawings, text boxes). What a frame must draw of them is in
-    // [`Frame::shapes`]; the rest is part of the pages as rendered. Adding
-    // and deleting one are edits like those of the pages: undone with
-    // [`undo`](Self::undo), saved with the document.
+    // Marks on the text, and whatever else a file brings along (notes, drawings, text boxes). What
+    // a frame must draw of them is in [`Frame::shapes`]. The rest is part of the pages as rendered.
+    // Adding and deleting one are edits like those of the pages: undone with [`undo`](Self::undo),
+    // saved with the document.
 
-    /// Marks the selected text: a highlight, or a line under or through
-    /// it. The selection is given up. Returns whether anything was marked
-    /// (not without a selection).
+    /// Marks the selected text: a highlight, or a line under or through it.
+    ///
+    /// The selection is given up. Returns whether anything was marked (not without a selection).
     pub fn mark_selection(&self, markup: Markup) -> bool {
-        // The colours the desktop app starts out with.
+        // The colors the desktop app starts out with.
         let (style, color) = match markup {
             Markup::Highlight => (MarkupStyle::Highlight, Color::new(1.0, 0.92, 0.23)),
             Markup::Underline => (MarkupStyle::Underline, Color::new(0.88, 0.11, 0.14)),
@@ -1153,11 +1139,11 @@ impl ViewSession {
         self.shared.lock().session.mark_selection(style, color)
     }
 
-    /// A tap at (`x`, `y`) in logical pixels: picks the topmost annotation
-    /// there, or none if there is none (or only one its file doesn't let
-    /// be changed). Returns whether one is picked now. The picked one is
-    /// outlined ([`Frame::picked`]) and is what
-    /// [`remove_picked_annotation`](Self::remove_picked_annotation) deletes.
+    /// A tap at (`x`, `y`) in logical pixels: picks the topmost annotation there, or none if there
+    /// is none (or only one its file doesn't let be changed).
+    ///
+    /// Returns whether one is picked now. The picked one is outlined ([`Frame::picked`]) and is
+    /// what [`remove_picked_annotation`](Self::remove_picked_annotation) deletes.
     pub fn pick_annotation_at(&self, x: f64, y: f64) -> bool {
         let mut state = self.shared.lock();
         let picked = state.session.annotation_at(ViewPoint::new(x, y));
@@ -1170,9 +1156,10 @@ impl ViewSession {
         self.shared.lock().session.picked.take().is_some()
     }
 
-    /// Deletes the picked annotation. Returns whether there was one.
-    /// Fails for an annotation of a file that can't be saved either: its
-    /// page has to be written anew without it.
+    /// Deletes the picked annotation.
+    ///
+    /// Returns whether there was one. Fails for an annotation of a file that can't be saved either:
+    /// its page has to be written anew without it.
     pub fn remove_picked_annotation(&self) -> Result<bool, PdfError> {
         self.shared
             .lock()
@@ -1185,13 +1172,11 @@ impl ViewSession {
 
     // --- editing ---------------------------------------------------------------
     //
-    // Pages are named by their position at the time of the call, from 0.
-    // Every edit can be undone. After one, positions have changed: ask
-    // again for the page count, sizes, labels and outline, and plan a new
-    // frame. A selection is dropped, and a search runs again by itself.
+    // Pages are named by their position at the time of the call, from 0. Every edit can be undone.
+    // After one, positions have changed: ask again for the page count, sizes, labels and outline,
+    // and plan a new frame. A selection is dropped, and a search runs again by itself.
 
-    /// Turns `pages` by a quarter, clockwise or the other way. Returns
-    /// whether anything changed.
+    /// Turns `pages` by a quarter, clockwise or the other way. Returns whether anything changed.
     pub fn rotate_pages(&self, pages: Vec<u32>, clockwise: bool) -> bool {
         let by = if clockwise {
             specto_geom::Rotation::Cw90
@@ -1201,15 +1186,17 @@ impl ViewSession {
         self.shared.lock().session.rotate(&positions(&pages), by)
     }
 
-    /// Removes `pages` from the document. Not all of them: a document
-    /// keeps at least one page. Returns whether anything changed.
+    /// Removes `pages` from the document.
+    ///
+    /// Not all of them: a document keeps at least one page. Returns whether anything changed.
     pub fn delete_pages(&self, pages: Vec<u32>) -> bool {
         self.shared.lock().session.delete(&positions(&pages))
     }
 
-    /// Moves `pages`, in their order in the document, to before the page
-    /// now at position `to` (the page count: to the end). Returns the
-    /// position the first of them ends up at, or `None` if nothing moved.
+    /// Moves `pages`, in their order in the document, to before the page now at position `to` (the
+    /// page count: to the end).
+    ///
+    /// Returns the position the first of them ends up at, or `None` if nothing moved.
     pub fn move_pages(&self, pages: Vec<u32>, to: u32) -> Option<u32> {
         let moved = self
             .shared
@@ -1219,8 +1206,9 @@ impl ViewSession {
         Some(moved.start as u32)
     }
 
-    /// Takes back the last edit. Returns what it was, or `None` if there
-    /// was nothing to undo.
+    /// Takes back the last edit.
+    ///
+    /// Returns what it was, or `None` if there was nothing to undo.
     pub fn undo(&self) -> Option<EditStep> {
         self.shared
             .lock()
@@ -1248,20 +1236,17 @@ impl ViewSession {
         }
     }
 
-    /// Writes the document as edited, as a new PDF, to the open file
-    /// descriptor `fd` (from `ParcelFileDescriptor.detachFd()`, opened for
-    /// writing), which is closed either way. Takes a while for a large
-    /// document: call it off the main thread.
+    /// Writes the document as edited, as a new PDF, to the open file descriptor `fd` (from
+    /// `ParcelFileDescriptor.detachFd()`, opened for writing), which is closed either way.
     ///
-    /// With `counts_as_saved`, the document is unmodified once written
-    /// (edits made meanwhile stay unsaved); without, this is a copy on the
-    /// side, to share for instance, or to put in the document's place
-    /// afterwards (then [`written_is_saved`](Self::written_is_saved) says
-    /// so).
+    /// Takes a while for a large document: call it off the main thread.
     ///
-    /// The session goes on reading the file it was opened from. That file
-    /// may be the one written to only if it isn't mapped
-    /// ([`PdfFile::is_mapped`]): a mapped file must not change while open.
+    /// With `counts_as_saved`, the document is unmodified once written (edits made meanwhile stay
+    /// unsaved). Without, this is a copy on the side, to share for instance, or to put in the
+    /// document's place afterwards (then [`written_is_saved`](Self::written_is_saved) says so).
+    ///
+    /// The session goes on reading the file it was opened from. That file may be the one written to
+    /// only if it isn't mapped ([`PdfFile::is_mapped`]): a mapped file must not change while open.
     pub fn save_to_fd(&self, fd: i32, counts_as_saved: bool) -> Result<(), PdfError> {
         let version = self.write_to_fd(fd, true)?;
         let mut state = self.shared.lock();
@@ -1273,19 +1258,17 @@ impl ViewSession {
         Ok(())
     }
 
-    /// Writes the document as edited to `fd` like
-    /// [`save_to_fd`](Self::save_to_fd), but without its password
-    /// protection, and without it counting as saved or as the copy
-    /// [`written_is_saved`](Self::written_is_saved) is about: what the
-    /// system's print service is given, which can't be told a password.
+    /// Writes the document as edited to `fd` like [`save_to_fd`](Self::save_to_fd), but without its
+    /// password protection, and without it counting as saved or as the copy
+    /// [`written_is_saved`](Self::written_is_saved) is about: what the system's print service is
+    /// given, which can't be told a password.
     pub fn print_to_fd(&self, fd: i32) -> Result<(), PdfError> {
         self.write_to_fd(fd, false).map(|_| ())
     }
 
-    /// The copy last written with [`save_to_fd`](Self::save_to_fd) has
-    /// become the saved document (it was put where the document is kept):
-    /// the document is unmodified, unless it was edited since that copy.
-    /// Does nothing if no copy was written.
+    /// The copy last written with [`save_to_fd`](Self::save_to_fd) has become the saved document
+    /// (it was put where the document is kept): the document is unmodified, unless it was edited
+    /// since that copy. Does nothing if no copy was written.
     pub fn written_is_saved(&self) {
         let mut state = self.shared.lock();
         if let Some(version) = state.written.take() {
@@ -1295,13 +1278,13 @@ impl ViewSession {
 
     // --- text selection ------------------------------------------------------
     //
-    // Positions are in logical pixels from the view's top-left, like taps.
-    // The selection shows up in frames: [`Frame::highlights`] and the edges
-    // for its handles.
+    // Positions are in logical pixels from the view's top-left, like taps. The selection shows up
+    // in frames: [`Frame::highlights`] and the edges for its handles.
 
-    /// A long press at (`x`, `y`): selects the word there and returns true,
-    /// or does nothing and returns false if there is no text there. Moving
-    /// on with [`select_to`](Self::select_to) then selects word by word.
+    /// A long press at (`x`, `y`): selects the word there and returns true, or does nothing and
+    /// returns false if there is no text there.
+    ///
+    /// Moving on with [`select_to`](Self::select_to) then selects word by word.
     pub fn select_word_at(&self, x: f64, y: f64) -> bool {
         let mut state = self.shared.lock();
         let (viewer, mut texts, selection) = state.session.text();
@@ -1320,9 +1303,9 @@ impl ViewSession {
         true
     }
 
-    /// Takes hold of one end of the selection (its end, or else its start),
-    /// as when a handle is touched: [`select_to`](Self::select_to) then
-    /// moves that end, character by character, and the other one stays.
+    /// Takes hold of one end of the selection (its end, or else its start), as when a handle is
+    /// touched: [`select_to`](Self::select_to) then moves that end, character by character, and the
+    /// other one stays.
     pub fn grab_selection(&self, end: bool) {
         let mut state = self.shared.lock();
         let (_, mut texts, selection) = state.session.text();
@@ -1336,9 +1319,10 @@ impl ViewSession {
         *selection = Some(held);
     }
 
-    /// Extends the selection to the text nearest to (`x`, `y`): from the
-    /// word first selected, or moving the end last grabbed. `Native.selectTo`
-    /// does the same without UniFFI's overhead, for drags.
+    /// Extends the selection to the text nearest to (`x`, `y`): from the word first selected, or
+    /// moving the end last grabbed.
+    ///
+    /// `Native.selectTo` does the same without UniFFI's overhead, for drags.
     pub fn select_to(&self, x: f64, y: f64) {
         hot::select_to(self.id, x, y);
     }
@@ -1354,26 +1338,25 @@ impl ViewSession {
         self.shared.lock().session.selection = None;
     }
 
-    /// The selected text, for copying: lines and pages separated by
-    /// newlines. `None` if nothing is selected or the selection holds no
-    /// text. Reads every selected page, which takes a while for a long
-    /// document selected as a whole.
+    /// The selected text, for copying: lines and pages separated by newlines.
+    ///
+    /// `None` if nothing is selected or the selection holds no text. Reads every selected page,
+    /// which takes a while for a long document selected as a whole.
     pub fn selected_text(&self) -> Option<String> {
         self.shared.lock().session.selected_text()
     }
 
     // --- search ---------------------------------------------------------------
     //
-    // Matches show up in frames like the selection does
-    // ([`Frame::highlights`]). The document is read for searching once, in
-    // the background, starting with the first search; until that is done a
-    // search keeps finding more, and says so through
-    // [`ViewListener::search_changed`].
+    // Matches show up in frames like the selection does ([`Frame::highlights`]). The document is
+    // read for searching once, in the background, starting with the first search. Until that is
+    // done a search keeps finding more, and says so through [`ViewListener::search_changed`].
 
-    /// Searches for `text`, ignoring case and accents, and goes to the
-    /// first match from the current page on. Each call starts afresh, so
-    /// this can follow a search field as it is typed into; text with nothing
-    /// to search for ends the search.
+    /// Searches for `text`, ignoring case and accents, and goes to the first match from the current
+    /// page on.
+    ///
+    /// Each call starts afresh, so this can follow a search field as it is typed into. Text with
+    /// nothing to search for ends the search.
     pub fn search(&self, text: String) {
         let mut state = self.shared.lock();
         if state.session.search(&text) {
@@ -1384,8 +1367,7 @@ impl ViewSession {
         }
     }
 
-    /// Goes to the next (or previous) match; after the last one comes the
-    /// first again.
+    /// Goes to the next (or previous) match. After the last one comes the first again.
     pub fn search_step(&self, forward: bool) {
         let mut state = self.shared.lock();
         if state.session.search_step(forward) {
@@ -1397,7 +1379,7 @@ impl ViewSession {
         self.shared.lock().session.end_search();
     }
 
-    /// How the search stands; `None` if there is none.
+    /// How the search stands, or `None` if there is none.
     pub fn search_status(&self) -> Option<SearchStatus> {
         let status = self.shared.lock().session.search_status()?;
         Some(SearchStatus {
@@ -1408,7 +1390,7 @@ impl ViewSession {
         })
     }
 
-    /// Sizes of all pages as displayed, e.g. for the thumbnail grid's cells.
+    /// Sizes of all pages as displayed, for the thumbnail grid's cells for instance.
     pub fn page_sizes(&self) -> Vec<PageSize> {
         let state = self.shared.lock();
         state
@@ -1426,15 +1408,16 @@ impl ViewSession {
             .collect()
     }
 
-    /// The pages whose thumbnails are on screen (`count` may be 0). Frames
-    /// report their tiles in [`Frame::thumbnails`], keep them cached, and
-    /// request the ones still missing.
+    /// The pages whose thumbnails are on screen (`count` may be 0).
+    ///
+    /// Frames report their tiles in [`Frame::thumbnails`], keep them cached, and request the ones
+    /// still missing.
     pub fn set_thumbnail_range(&self, first: u32, count: u32) {
         hot::set_thumbnail_range(self.id, first, count);
     }
 
-    /// View size in logical pixels (dp) and device pixels per logical pixel
-    /// (the display density, e.g. 2.625).
+    /// View size in logical pixels (dp) and device pixels per logical pixel (the display density,
+    /// such as 2.625).
     pub fn set_viewport(&self, width: f64, height: f64, scale: f64) {
         hot::set_viewport(self.id, width, height, scale);
     }
@@ -1448,8 +1431,8 @@ impl ViewSession {
             .scroll_by(ViewVector::new(dx, dy));
     }
 
-    /// Multiplies the zoom, keeping the content under (`x`, `y`) in place
-    /// (logical pixels from the view's top-left).
+    /// Multiplies the zoom, keeping the content under (`x`, `y`) in place (logical pixels from the
+    /// view's top-left).
     pub fn zoom_by(&self, factor: f64, x: f64, y: f64) {
         self.shared
             .lock()
@@ -1458,10 +1441,11 @@ impl ViewSession {
             .zoom_by(factor, ViewPoint::new(x, y));
     }
 
-    /// Switches between swiping through pages and scrolling, keeping the
-    /// page. Sessions start out [`ViewMode::Continuous`]. A change of mode
-    /// also returns to the mode's own fit: the whole page when swiping, the
-    /// width when scrolling (see [`set_fit_width`](Self::set_fit_width)).
+    /// Switches between swiping through pages and scrolling, keeping the page.
+    ///
+    /// Sessions start out [`ViewMode::Continuous`]. A change of mode also returns to the mode's own
+    /// fit: the whole page when swiping, the width when scrolling (see
+    /// [`set_fit_width`](Self::set_fit_width)).
     pub fn set_view_mode(&self, mode: ViewMode) {
         let mut state = self.shared.lock();
         let paged = mode == ViewMode::Paged;
@@ -1475,9 +1459,10 @@ impl ViewSession {
         viewer.set_zoom_mode(fit);
     }
 
-    /// Chooses what the view is fitted to: the page's width, with the rest
-    /// of a taller page reached by scrolling, or the whole page. Also undoes
-    /// any zooming. The choice holds until the view mode changes.
+    /// Chooses what the view is fitted to: the page's width, with the rest of a taller page reached
+    /// by scrolling, or the whole page.
+    ///
+    /// Also undoes any zooming. The choice holds until the view mode changes.
     pub fn set_fit_width(&self, fit_width: bool) {
         let mut state = self.shared.lock();
         state.fit = fit_mode(fit_width);
@@ -1485,9 +1470,11 @@ impl ViewSession {
         state.session.viewer.set_zoom_mode(fit);
     }
 
-    /// Shows pages two side by side (or one at a time again), in either view
-    /// mode, keeping the page. With `cover_alone`, the first page stands on
-    /// its own, so that a book's left and right pages end up left and right.
+    /// Shows pages two side by side (or one at a time again), in either view mode, keeping the
+    /// page.
+    ///
+    /// With `cover_alone`, the first page stands on its own, so that a book's left and right pages
+    /// end up left and right.
     pub fn set_spread(&self, two_pages: bool, cover_alone: bool) {
         let mut state = self.shared.lock();
         let fit = state.fit;
@@ -1501,8 +1488,8 @@ impl ViewSession {
         viewer.set_zoom_mode(fit);
     }
 
-    /// Where the reader is, to be stored and passed to
-    /// [`restore_view`](Self::restore_view) the next time the document is opened.
+    /// Where the reader is, to be stored and passed to [`restore_view`](Self::restore_view) the
+    /// next time the document is opened.
     pub fn saved_view(&self) -> SavedView {
         let state = self.shared.lock();
         let view = state.session.viewer.view_state();
@@ -1517,9 +1504,9 @@ impl ViewSession {
         }
     }
 
-    /// Continues where [`saved_view`](Self::saved_view) left off. Call once
-    /// the viewport is set. Values that no longer fit (the file changed) are
-    /// clamped.
+    /// Continues where [`saved_view`](Self::saved_view) left off.
+    ///
+    /// Call once the viewport is set. Values that no longer fit (the file changed) are clamped.
     pub fn restore_view(&self, saved: SavedView) {
         self.set_view_mode(if saved.paged {
             ViewMode::Paged
@@ -1551,10 +1538,11 @@ impl ViewSession {
         state.session.viewer.set_zoom_mode(fit);
     }
 
-    /// Call when a drag or pinch ends in paged mode: how far the view still
-    /// has to scroll to come to rest on a page (animate `scrollBy` over it),
-    /// or `None` if it rests where it is. (`vx`, `vy`) is the scrolling
-    /// velocity at release in logical px/s; a flick turns the page.
+    /// Call when a drag or pinch ends in paged mode: how far the view still has to scroll to come
+    /// to rest on a page (animate `scrollBy` over it), or `None` if it rests where it is.
+    ///
+    /// (`vx`, `vy`) is the scrolling velocity at release in logical pixels per second. A flick
+    /// turns the page.
     pub fn snap_delta(&self, vx: f64, vy: f64) -> Option<Offset> {
         let state = self.shared.lock();
         let delta = state.session.viewer.snap_delta(ViewVector::new(vx, vy))?;
@@ -1564,8 +1552,10 @@ impl ViewSession {
         })
     }
 
-    /// A pinch (or zoom animation) starts. Until [`end_zoom_gesture`](Self::end_zoom_gesture),
-    /// no exact-scale tiles are rendered for the zooms passed through.
+    /// A pinch (or zoom animation) starts.
+    ///
+    /// Until [`end_zoom_gesture`](Self::end_zoom_gesture), no exact-scale tiles are rendered for
+    /// the zooms passed through.
     pub fn begin_zoom_gesture(&self) {
         self.shared.lock().session.viewer.begin_zoom_gesture();
     }
@@ -1600,9 +1590,8 @@ impl ViewSession {
         self.shared.lock().session.viewer.go_to_page(page as usize);
     }
 
-    /// Goes to the next or previous page: the next pair with two pages, and
-    /// the top of the neighbouring page when scrolling continuously. Nothing
-    /// happens at either end of the document.
+    /// Goes to the next or previous page: the next pair with two pages, and the top of the
+    /// neighboring page when scrolling continuously. Nothing happens at either end of the document.
     pub fn turn_page(&self, forward: bool) {
         let mut state = self.shared.lock();
         if forward {
@@ -1613,20 +1602,22 @@ impl ViewSession {
     }
 
     /// Plans what to draw now and queues the tiles that are still missing.
+    ///
     /// Call after anything changed: input, a new viewport, or new tiles.
     pub fn frame(&self) -> Frame {
         self.shared.frame(&mut self.shared.lock())
     }
 
-    /// Tiles that finished rendering. For each, create a bitmap of the given
-    /// size and pass it to `Native.copyTile`; then call [`frame`](Self::frame).
-    /// Tiles not copied before the next call are discarded.
+    /// Tiles that finished rendering.
+    ///
+    /// For each, create a bitmap of the given size and pass it to `Native.copyTile`, then call
+    /// [`frame`](Self::frame). Tiles not copied before the next call are discarded.
     pub fn take_finished(&self) -> Vec<FinishedTile> {
         self.shared.take_finished()
     }
 
-    /// Drops every tile the last frame didn't use (`onTrimMemory`). Their ids
-    /// show up in the next frame's `evicted`.
+    /// Drops every tile the last frame didn't use (`onTrimMemory`). Their ids show up in the next
+    /// frame's `evicted`.
     pub fn trim_memory(&self) {
         self.shared.lock().tiles.trim();
     }

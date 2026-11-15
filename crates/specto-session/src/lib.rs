@@ -1,18 +1,16 @@
-//! An open document, as both apps hold it: the files its pages come from,
-//! the page list as edited, the viewer, the text layer, the selection and
-//! the search. No toolkit and no pixels: what a frontend adds is its tile
-//! cache and how it gets called back.
+//! An open document, as both apps hold it: the files its pages come from, the page list as edited,
+//! the viewer, the text layer, the selection and the search.
 //!
-//! The pages shown come from an [`EditDoc`], so they can be rotated,
-//! deleted, moved and inserted, including pages of other files. Each file
-//! is a source; the first ([`MAIN`]) is the one opened, whose outline the
-//! document has. Each page keeps its page label from its file. Positions in the viewer are where a page
-//! is now; caches of what doesn't change with editing (text, search text,
-//! links) are keyed by the page of the file it comes from.
+//! No toolkit and no pixels: what a frontend adds is its tile cache and how it gets called back.
 //!
-//! A session doesn't own the render scheduler: the desktop app shares one
-//! between its windows, the Android app has one per document. The calls
-//! that open or close files take it as an argument.
+//! The pages shown come from an [`EditDoc`], so they can be rotated, deleted, moved and inserted,
+//! including pages of other files. Each file is a source, and the first ([`MAIN`]) is the one
+//! opened, whose outline the document has. Each page keeps its page label from its file. Positions
+//! in the viewer are where a page is now. Caches of what doesn't change with editing (text, search
+//! text, links) are keyed by the page of the file it comes from.
+//!
+//! A session doesn't own the render scheduler: the desktop app shares one between its windows, the
+//! Android app has one per document. The calls that open or close files take it as an argument.
 
 mod annots;
 mod search;
@@ -39,7 +37,7 @@ pub use text::TextLayer;
 use search::{Indexer, Search};
 use text::TextCache;
 
-/// The file a document is opened from; its first source.
+/// The file a document is opened from, which is its first source.
 pub const MAIN: SourceId = SourceId(0);
 
 /// A page of one of the files.
@@ -50,10 +48,10 @@ type FilePage = (SourceId, u32);
 pub struct Options {
     /// The viewer's settings: gaps, margins and the like.
     pub settings: Settings,
-    /// Full text pages kept (for selection and highlights), the least
-    /// recently used going first. A page takes about 100 bytes per
-    /// character, so not a whole long document; search uses the compact
-    /// `SearchText` instead.
+    /// Full text pages kept (for selection and highlights), the least recently used going first.
+    ///
+    /// A page takes about 100 bytes per character, so not a whole long document. Search uses the
+    /// compact `SearchText` instead.
     pub text_pages: usize,
 }
 
@@ -81,7 +79,7 @@ struct Source {
     links: HashMap<u32, Vec<Link>>,
     /// The annotations each page has in the file, read on first use.
     annots: HashMap<u32, Arc<[Arc<Annotation>]>>,
-    /// The file's page labels, if it has any that differ from 1, 2, 3, …
+    /// The file's page labels, if it has any that differ from 1, 2, 3 and so on.
     labels: Option<PageLabels>,
     /// Every page's text prepared for searching, filled in the background.
     index: Vec<Option<SearchText>>,
@@ -116,13 +114,12 @@ impl Source {
 }
 
 pub struct Session {
-    /// The files pages come from, by [`SourceId`]: [`MAIN`] first, then
-    /// files pages were inserted from. Kept while undo can bring their
-    /// pages back.
+    /// The files pages come from, by [`SourceId`]: [`MAIN`] first, then files pages were inserted
+    /// from. Kept while undo can bring their pages back.
     sources: Vec<Source>,
-    /// Page labels, if the document has any that differ from 1, 2, 3, …:
-    /// each page keeps the label it has in its file, through edits (see
-    /// `PageLabels::of_pages`).
+    /// Page labels, if the document has any that differ from 1, 2, 3 and so on.
+    ///
+    /// Each page keeps the label it has in its file, through edits (see `PageLabels::of_pages`).
     labels: Option<PageLabels>,
     /// The pages as edited.
     edit: EditDoc,
@@ -131,19 +128,18 @@ pub struct Session {
     texts: TextCache,
     /// The text selection, if any.
     pub selection: Option<Selection>,
-    /// Pages rendered from a copy of theirs instead of from their file
-    /// (see [`annots`]), by page of the file.
+    /// Pages rendered from a copy of theirs instead of from their file (see [`annots`]), by page of
+    /// the file.
     variants: HashMap<FilePage, annots::Variant>,
     /// The annotation being drawn with the pointer, if any.
     draft: Option<annots::Draft>,
     /// The annotation being moved or resized with the pointer, if any.
     adjust: Option<annots::Adjust>,
-    /// An annotation the renderer draws that is taken out of its page for
-    /// the time being, because it is being moved, resized or typed into.
+    /// An annotation the renderer draws that is taken out of its page for the time being, because
+    /// it is being moved, resized or typed into.
     held: Option<annots::Held>,
-    /// The annotation that is picked (to delete it, later to change it),
-    /// if any: the position of its page, and which it is (from
-    /// [`annotation_at`](Self::annotation_at)).
+    /// The annotation that is picked (to delete it, later to change it), if any: the position of
+    /// its page, and which it is (from [`annotation_at`](Self::annotation_at)).
     pub picked: Option<(usize, AnnotId)>,
     /// The indexer thread, if one was started and not stopped.
     indexer: Option<Arc<Indexer>>,
@@ -153,8 +149,9 @@ pub struct Session {
 
 impl Session {
     /// Parses `data` and registers it with `scheduler` for rendering.
-    /// Before the session is dropped, [`close`](Self::close) should take
-    /// its files out of the scheduler again.
+    ///
+    /// Before the session is dropped, [`close`](Self::close) should take its files out of the
+    /// scheduler again.
     pub fn open(
         scheduler: &Scheduler,
         data: PdfData,
@@ -184,8 +181,9 @@ impl Session {
         })
     }
 
-    /// Opens another file to insert pages from. Returns its id and page
-    /// count; its pages are in the document once inserted.
+    /// Opens another file to insert pages from.
+    ///
+    /// Returns its id and page count. Its pages are in the document once inserted.
     pub fn add_source(
         &mut self,
         scheduler: &Scheduler,
@@ -196,15 +194,13 @@ impl Session {
         let id = SourceId(self.sources.len() as u32);
         let count = source.geometries.len() as u32;
         self.sources.push(source);
-        // The indexer has a list of pages to do; start over to include
-        // the new ones.
+        // The indexer has a list of pages to do, so start over to include the new ones.
         self.stop_indexing();
         Ok((id, count))
     }
 
-    /// Takes the session's files out of `scheduler`, the one it was opened
-    /// with, and stops the search indexer. Nothing of the session renders
-    /// afterwards.
+    /// Takes the session's files out of `scheduler`, the one it was opened with, and stops the
+    /// search indexer. Nothing of the session renders afterwards.
     pub fn close(&mut self, scheduler: &Scheduler) {
         for s in &self.sources {
             scheduler.close(s.doc_id);
@@ -225,20 +221,20 @@ impl Session {
         self.main().outline()
     }
 
-    /// The pages as edited. They change through the session only, which
-    /// keeps the viewer and everything else in step.
+    /// The pages as edited.
+    ///
+    /// They change through the session only, which keeps the viewer and everything else in step.
     pub fn edit(&self) -> &EditDoc {
         &self.edit
     }
 
-    /// Records that the state at `version` (see [`SaveJob::version`]) is
-    /// what is on disk now.
+    /// Records that the state at `version` (see [`SaveJob::version`]) is what is on disk now.
     pub fn mark_saved(&mut self, version: Version) {
         self.edit.mark_saved_version(version);
     }
 
-    /// The viewer, the text layer and the selection, borrowed together, as
-    /// the selection functions need them all.
+    /// The viewer, the text layer and the selection, borrowed together, as the selection functions
+    /// need them all.
     pub fn text(&mut self) -> (&Viewer, TextLayer<'_>, &mut Option<Selection>) {
         (
             &self.viewer,
@@ -258,14 +254,13 @@ impl Session {
         (!text.is_empty()).then_some(text)
     }
 
-    /// The document's own page numbering ("iv", "A-3", …), if it has one
-    /// that differs from 1, 2, 3, … and its pages are still those of the
-    /// file, in their original order.
+    /// The document's own page numbering (such as "iv" or "A-3"), if it has one that differs from
+    /// 1, 2, 3 and so on, and its pages are still those of the file, in their original order.
     pub fn labels(&self) -> Option<&PageLabels> {
         self.labels.as_ref()
     }
 
-    /// The label of page `i` ("iv", "A-3", …), or its number.
+    /// The label of page `i` (such as "iv" or "A-3"), or its number.
     pub fn page_label(&self, i: usize) -> String {
         self.labels
             .as_ref()
@@ -285,8 +280,8 @@ impl Session {
     }
 
     /// The target of the link under `p` (viewport coordinates), if any.
-    /// Destinations name pages of the file the link is in, which is
-    /// returned with it.
+    ///
+    /// Destinations name pages of the file the link is in, which is returned with it.
     pub fn link_at(&mut self, p: ViewPoint) -> Option<(SourceId, Target)> {
         let (page, at) = self.viewer.hit_test(p)?;
         let view_page = self.viewer.pages().get(page)?;
@@ -307,8 +302,8 @@ impl Session {
     }
 }
 
-/// The viewer's pages for the pages of `edit`: each rendered from its
-/// file, or from the copy of it in `variants`, which has the one page.
+/// The viewer's pages for the pages of `edit`: each rendered from its file, or from the copy of it
+/// in `variants`, which has the one page.
 fn view_pages(
     edit: &EditDoc,
     sources: &[Source],
@@ -332,17 +327,17 @@ fn view_pages(
         .collect()
 }
 
-/// Pages taken out of a session to put into another one, as when dragging
-/// pages from one window to another: the files they come from (the data is
-/// shared, not copied) and each page with the rotation the user gave it.
+/// Pages taken out of a session to put into another one, as when dragging pages from one window to
+/// another: the files they come from (the data is shared, not copied) and each page with the
+/// rotation the user gave it.
 #[derive(Clone, Debug)]
 pub struct PageBundle {
     /// Each file and its password.
     files: Vec<(PdfData, Option<String>)>,
     /// Index in `files`, page of that file, rotation.
     pages: Vec<(usize, u32, Rotation)>,
-    /// What was done to the annotations of those pages: index in `files`,
-    /// page of that file, the changes. Only pages with any.
+    /// What was done to the annotations of those pages: index in `files`, page of that file, the
+    /// changes. Only pages with any.
     annots: Vec<(usize, u32, PageAnnotChanges)>,
 }
 
@@ -356,16 +351,15 @@ impl PageBundle {
         &self.files
     }
 
-    /// The pages: index in [`files`](Self::files), page of that file, and
-    /// the rotation the user gave it.
+    /// The pages: index in [`files`](Self::files), page of that file, and the rotation the user
+    /// gave it.
     pub fn pages(&self) -> &[(usize, u32, Rotation)] {
         &self.pages
     }
 
-    /// The page at `position` of [`pages`](Self::pages) as a file of its
-    /// own, unrotated and not encrypted, if anything was done to its
-    /// annotations: for rendering it as edited, which its own file can't
-    /// give (printing). `None` if the page is as in its file.
+    /// The page at `position` of [`pages`](Self::pages) as a file of its own, unrotated and not
+    /// encrypted, if anything was done to its annotations: for rendering it as edited, which its
+    /// own file can't give (printing). `None` if the page is as in its file.
     pub fn annotated_page(
         &self,
         position: usize,
@@ -390,8 +384,7 @@ impl PageBundle {
     }
 }
 
-/// What saving needs, taken from the session so the file can be written
-/// on another thread.
+/// What saving needs, taken from the session so the file can be written on another thread.
 pub struct SaveJob {
     /// Each source's file and password, the main one first.
     files: Vec<(SourceId, PdfData, Option<String>)>,
@@ -408,8 +401,8 @@ impl SaveJob {
         specto_write::write_edited(&self.sources(), &self.pages, &self.annots, true)
     }
 
-    /// The new file's bytes without the document's password protection:
-    /// for a print service, which can't be given a password.
+    /// The new file's bytes without the document's password protection: for a print service, which
+    /// can't be given a password.
     pub fn write_unprotected(&self) -> Result<Vec<u8>, specto_write::WriteError> {
         specto_write::write_edited(&self.sources(), &self.pages, &self.annots, false)
     }
@@ -439,8 +432,7 @@ impl Session {
         self.save_pages(self.edit.pages().to_vec())
     }
 
-    /// A copy of what's needed to save `pages` (the main file's catalog
-    /// comes along).
+    /// A copy of what's needed to save `pages` (the main file's catalog comes along).
     pub fn save_pages(&self, pages: Vec<PageRef>) -> SaveJob {
         let used: HashSet<SourceId> = pages.iter().map(|p| p.source).collect();
         let files = self
@@ -467,8 +459,8 @@ impl Session {
         }
     }
 
-    /// The pages at `which` (in document order), to insert into another
-    /// session with [`insert_bundle`](Self::insert_bundle).
+    /// The pages at `which` (in document order), to insert into another session with
+    /// [`insert_bundle`](Self::insert_bundle).
     pub fn bundle(&self, which: &[usize]) -> PageBundle {
         let mut which: Vec<usize> = which.to_vec();
         which.sort_unstable();
@@ -497,13 +489,13 @@ impl Session {
         }
     }
 
-    /// Inserts the pages of `bundle` (from another session) before position
-    /// `at`, as one edit, keeping their rotation and what was done to their
-    /// annotations there (unless this session has edited the annotations of
-    /// the same page of the same file itself). Files the session already
-    /// has (the same data) are reused, the others opened with `scheduler`.
-    /// Returns where the pages ended up, or the error opening a file (then
-    /// nothing is inserted).
+    /// Inserts the pages of `bundle` (from another session) before position `at`, as one edit,
+    /// keeping their rotation and what was done to their annotations there (unless this session has
+    /// edited the annotations of the same page of the same file itself).
+    ///
+    /// Files the session already has (the same data) are reused, the others opened with
+    /// `scheduler`. Returns where the pages ended up, or the error opening a file (then nothing is
+    /// inserted).
     pub fn insert_bundle(
         &mut self,
         scheduler: &Scheduler,
@@ -548,29 +540,25 @@ impl Session {
         Ok(range)
     }
 
-    /// Turns the pages at `which` clockwise by `by`. Returns whether
-    /// anything changed.
+    /// Turns the pages at `which` clockwise by `by`. Returns whether anything changed.
     pub fn rotate(&mut self, which: &[usize], by: Rotation) -> bool {
         self.edit.rotate(which, by) && self.pages_changed()
     }
 
-    /// Removes the pages at `which` (not all of them). Returns whether
-    /// anything changed.
+    /// Removes the pages at `which` (not all of them). Returns whether anything changed.
     pub fn delete(&mut self, which: &[usize]) -> bool {
         self.edit.delete(which) && self.pages_changed()
     }
 
-    /// Moves the pages at `which` before position `to`. Returns where they
-    /// ended up.
+    /// Moves the pages at `which` before position `to`. Returns where they ended up.
     pub fn move_pages(&mut self, which: &[usize], to: usize) -> Option<Range<usize>> {
         let range = self.edit.move_pages(which, to)?;
         self.pages_changed();
         Some(range)
     }
 
-    /// Inserts all pages of each of `sources` (from
-    /// [`add_source`](Self::add_source)), in order, before position `at`,
-    /// as one edit. Returns where they ended up.
+    /// Inserts all pages of each of `sources` (from [`add_source`](Self::add_source)), in order,
+    /// before position `at`, as one edit. Returns where they ended up.
     pub fn insert(&mut self, at: usize, sources: &[SourceId]) -> Option<Range<usize>> {
         let mut refs = Vec::new();
         for &source in sources {
@@ -582,8 +570,8 @@ impl Session {
         Some(range)
     }
 
-    /// Takes back the last edit; returns what it was. `scheduler` is the
-    /// one the session was opened with.
+    /// Takes back the last edit and returns what it was. `scheduler` is the one the session was
+    /// opened with.
     pub fn undo(&mut self, scheduler: &Scheduler) -> Option<Edit> {
         let edit = self.edit.undo()?;
         self.undone_or_redone(scheduler, edit);
@@ -597,9 +585,9 @@ impl Session {
         Some(edit)
     }
 
-    /// After undo or redo of `edit`: the pages are as they were unless it
-    /// was one to them; what they are rendered from may have changed with
-    /// an annotation of a file.
+    /// After undo or redo of `edit`: the pages are as they were unless it was one to them.
+    ///
+    /// What they are rendered from may have changed with an annotation of a file.
     fn undone_or_redone(&mut self, scheduler: &Scheduler, edit: Edit) {
         self.picked = None;
         if edit.is_annotation() {
@@ -609,8 +597,8 @@ impl Session {
         }
     }
 
-    /// The position of page `page` of file `source` (e.g. a link's
-    /// target), if it's in the document.
+    /// The position of page `page` of file `source` (a link's target, for example), if it's in the
+    /// document.
     pub fn position_of(&self, source: SourceId, page: usize) -> Option<usize> {
         self.edit
             .pages()
@@ -618,9 +606,10 @@ impl Session {
             .position(|p| p.source == source && p.page as usize == page)
     }
 
-    /// Updates everything that depends on the page list. Selections and
-    /// search results hold positions, so the selection is dropped and the
-    /// search runs again.
+    /// Updates everything that depends on the page list.
+    ///
+    /// Selections and search results hold positions, so the selection is dropped and the search
+    /// runs again.
     fn pages_changed(&mut self) -> bool {
         let pages = view_pages(&self.edit, &self.sources, &self.variants);
         let sources = &self.sources;

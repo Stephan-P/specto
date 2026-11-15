@@ -1,5 +1,5 @@
-//! A session through its public interface: text, search and links across
-//! page edits, pages of a second file, and saving.
+//! A session through its public interface: text, search and links across page edits, pages of a
+//! second file, and saving.
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -11,10 +11,11 @@ use specto_session::{Indexed, MAIN, Options, Session};
 use specto_source::Target;
 use specto_view::{Selection, TextPages};
 
-/// A file of `pages` pages of 200 × 300 pt. Page n (from 1) reads
-/// "`word` page n" and, below that, "common text". The first two pages are
-/// numbered i and ii, the rest from 1. A link on the first page leads to
-/// the third, if there is one.
+/// A file of `pages` pages of 200 by 300 points.
+///
+/// Page n (from 1) reads "`word` page n" and, below that, "common text". The first two pages are
+/// numbered i and ii, the rest from 1. A link on the first page leads to the third, if there is
+/// one.
 fn book(pages: usize, word: &str) -> Vec<u8> {
     let mut objects: Vec<(usize, String)> = Vec::new();
     let kids: String = (0..pages).map(|i| format!("{} 0 R ", 10 + 2 * i)).collect();
@@ -89,8 +90,7 @@ fn book(pages: usize, word: &str) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// The Android app keeps its session behind a mutex and calls it from
-/// several threads.
+/// The Android app keeps its session behind a mutex and calls it from several threads.
 #[test]
 fn a_session_can_move_between_threads() {
     fn is_send<T: Send>() {}
@@ -114,9 +114,8 @@ fn all_text(session: &mut Session) -> String {
     text
 }
 
-/// Runs the indexer until it has nothing more to hand over, as a frontend
-/// would: its pages come over a channel and go into the session here.
-/// Returns how many pages it indexed.
+/// Runs the indexer until it has nothing more to hand over, as a frontend would: its pages come
+/// over a channel and go into the session here. Returns how many pages it indexed.
 fn index(session: &mut Session, from: usize) -> usize {
     let (tx, rx) = mpsc::channel::<Indexed>();
     if !session.start_indexing(from, move |page| tx.send(page).is_ok()) {
@@ -163,7 +162,7 @@ fn pages_keep_their_labels() {
     assert_eq!(session.page_label(0), "i");
     assert_eq!(session.page_label(2), "1");
     assert_eq!(session.find_page("ii"), Some(1));
-    // "1" is the page labelled 1, not the first page.
+    // "1" is the page labeled 1, not the first page.
     assert_eq!(session.find_page("1"), Some(2));
 
     // Turned, deleted or moved, pages keep their labels.
@@ -184,8 +183,8 @@ fn pages_keep_their_labels() {
     assert!(session.undo(&scheduler).is_some());
     assert_eq!(session.page_label(1), "ii");
 
-    // Back in the file's order, the labels are the file's again; a file
-    // whose labels are 1, 2, 3, … has none.
+    // Back in the file's order, the labels are the file's again. A file whose labels are 1, 2, 3
+    // and so on has none.
     assert!(session.undo(&scheduler).is_some());
     assert_eq!(session.labels(), session.main().page_labels().as_ref());
     session.close(&scheduler);
@@ -311,8 +310,8 @@ fn pages_of_another_file() {
     assert!(session.search("beta"));
     assert_eq!(session.current_match().unwrap().page, 1);
 
-    // Its links and labels are its own: the pages keep their labels, and
-    // the first file's link still finds its page.
+    // Its links and labels are its own: the pages keep their labels, and the first file's link
+    // still finds its page.
     let labels: Vec<String> = (0..5).map(|i| session.page_label(i)).collect();
     assert_eq!(labels, ["i", "i", "ii", "1", "ii"]);
     assert_eq!(session.position_of(other, 2), Some(3));
@@ -352,7 +351,7 @@ fn pages_from_one_session_into_another() {
             "gamma page 2"
         ]
     );
-    // The rotation comes along; it's one edit.
+    // The rotation comes along, and it's one edit.
     assert_eq!(to.edit().pages()[2].rotation, Rotation::Cw90);
     assert_eq!(
         to.edit().undo_edit(),
@@ -412,7 +411,7 @@ fn saving_writes_the_pages_as_edited() {
     let order: Vec<&str> = text.lines().filter(|l| l.contains("page")).collect();
     assert_eq!(order, ["alpha page 1", "alpha page 3", "beta page 1"]);
 
-    // Some of the pages only, e.g. to export a selection.
+    // Some of the pages only, as when exporting a selection.
     let pages = vec![session.edit().pages()[2]];
     let exported = session.save_pages(pages).write().unwrap();
     let mut exported = open(&scheduler, exported);
@@ -453,7 +452,7 @@ fn the_indexer_stops_when_told() {
         assert!(Instant::now() < deadline, "the first thread never finished");
         std::thread::sleep(Duration::from_millis(5));
     };
-    // From the page asked for on, then from the start; not the one done.
+    // From the page asked for on, then from the start, but not the one done.
     let mut pages = 0;
     let mut first_match = None;
     while let Ok(page) = rx.recv_timeout(Duration::from_secs(30)) {
@@ -520,8 +519,8 @@ fn marking_text_and_saving_it() {
         );
         assert!(a.modified.is_some_and(|d| d.year >= 2026));
     }
-    // Drawn where the text is: the first line of page 1 starts at x 20,
-    // baseline y 250 of a page 300 high.
+    // Drawn where the text is: the first line of page 1 starts at x 20, baseline y 250 of a page
+    // 300 high.
     let shapes = session.overlay(0);
     assert_eq!(shapes.len(), 2);
     let ViewShape::Fill { quad, multiply, .. } = shapes[0] else {
@@ -545,8 +544,8 @@ fn marking_text_and_saving_it() {
     assert!((0..3).all(|p| session.annotations(p).is_empty()));
     assert!(session.redo(&scheduler).is_some());
 
-    // Underlining a word on page 2, then picking and deleting it. The page
-    // is scrolled to first, as only pages near the view can be pointed at.
+    // Underlining a word on page 2, then picking and deleting it. The page is scrolled to first, as
+    // only pages near the view can be pointed at.
     session.viewer.go_to_page(1);
     let word = session
         .viewer
@@ -577,8 +576,8 @@ fn marking_text_and_saving_it() {
     assert!(!session.remove_picked_annotation(&scheduler).unwrap());
     assert_eq!(session.annotations(1).len(), 1);
 
-    // Saved: the highlights are in the file, with the page they are on
-    // moved to the front and a page deleted.
+    // Saved: the highlights are in the file, with the page they are on moved to the front and a
+    // page deleted.
     assert_eq!(session.move_pages(&[2], 0), Some(0..1));
     assert!(session.delete(&[1]));
     let written = session.save_job().write().unwrap();
@@ -616,8 +615,8 @@ fn deleting_an_annotation_the_file_has() {
     // The renderer draws it with the page: nothing for the frontend to do.
     assert!(session.overlay(0).is_empty());
 
-    // Picked like any other, and deleted: the page is then rendered from
-    // a copy of its own, without it; the other page from the file as before.
+    // Picked like any other, and deleted: the page is then rendered from a copy of its own, without
+    // it. The other page comes from the file as before.
     let on_it = session
         .viewer
         .pdf_to_view(0, PdfPoint::new(25.0, 255.0))
@@ -675,8 +674,8 @@ fn annotations_go_with_pages_to_another_session() {
     from.selection = Some(Selection::all(1));
     assert!(from.mark_selection(MarkupStyle::Highlight, Color::new(1.0, 0.9, 0.0)));
     let bundle = from.bundle(&[0, 1]);
-    // For printing: the marked page as a file with the highlight in it, the
-    // other one straight from its file.
+    // For printing: the marked page as a file with the highlight in it, the other one straight from
+    // its file.
     let copy = bundle
         .annotated_page(0)
         .expect("page 1 was marked")
@@ -687,8 +686,7 @@ fn annotations_go_with_pages_to_another_session() {
     printed.close(&scheduler);
     assert!(bundle.annotated_page(1).is_none());
 
-    // Into another document: the highlight comes along, as part of the
-    // one edit.
+    // Into another document: the highlight comes along, as part of the one edit.
     let mut to = open(&scheduler, book(1, "beta"));
     assert_eq!(
         to.insert_bundle(&scheduler, 1, &bundle).unwrap(),
@@ -755,8 +753,8 @@ fn drawing_with_the_pointer() {
     let AnnotKind::Ink { strokes } = &stroke.kind else {
         panic!("not ink");
     };
-    // Thinned out, but still the wave: it starts and ends where the
-    // pointer did, and goes up and down in between.
+    // Thinned out, but still the wave: it starts and ends where the pointer did, and goes up and
+    // down in between.
     let points = &strokes[0];
     assert!((8..80).contains(&points.len()), "{} points", points.len());
     assert!((points[0] - PdfPoint::new(50.0, 100.0)).length() < 0.01);
@@ -779,8 +777,7 @@ fn drawing_with_the_pointer() {
     let corner = session.viewer.pdf_to_view(0, stroke.rect.min).unwrap();
     assert!(session.annotation_at(corner).is_none());
 
-    // A rectangle from corner to corner; it stays on its page when the
-    // pointer leaves it.
+    // A rectangle from corner to corner. It stays on its page when the pointer leaves it.
     assert!(session.begin_draft(DraftKind::Square, red, 2.0, at(&session, 20.0, 280.0)));
     session.extend_draft(at(&session, 100.0, 200.0));
     session.extend_draft(ViewPoint::new(-500.0, -500.0));
@@ -791,7 +788,7 @@ fn drawing_with_the_pointer() {
     assert!(square.rect.min.x <= 0.0 && square.rect.max.y >= 300.0);
     assert!((square.rect.max.x - 21.0).abs() < 0.01);
 
-    // A click with a shape tool draws nothing; Escape gives a drawing up.
+    // A click with a shape tool draws nothing, and Escape gives a drawing up.
     assert!(session.begin_draft(DraftKind::Circle, red, 2.0, at(&session, 50.0, 50.0)));
     assert!(!session.finish_draft());
     assert!(session.begin_draft(DraftKind::Line, red, 2.0, at(&session, 50.0, 50.0)));
@@ -844,15 +841,15 @@ fn moving_and_resizing() {
     draw(&mut session, DraftKind::Line, (20.0, 150.0), (120.0, 150.0));
     let frame = |s: &mut Session, i: usize| s.annotations(0)[i].1.frame();
 
-    // Nothing to take hold of on the empty page; the rectangle is taken
-    // by its inside, and moved by as far as the pointer goes.
+    // Nothing to take hold of on the empty page. The rectangle is taken by its inside, and moved by
+    // as far as the pointer goes.
     assert_eq!(session.grip_at(at(&session, 150.0, 250.0)), None);
     let inside = at(&session, 75.0, 75.0);
     assert_eq!(session.grip_at(inside), Some(Grip::Move));
     assert!(session.begin_adjust(&scheduler, inside).unwrap());
     assert!(session.is_adjusting() && session.picked.is_some());
     session.adjust_to(inside + ViewVector::new(10.0 * unit, 0.0));
-    // Shown where it is going; the document has it where it was.
+    // Shown where it is going, while the document has it where it was.
     assert_eq!(frame(&mut session, 0).min.x, 50.0);
     assert_eq!(session.picked_handles().len(), 4);
     assert!(session.finish_adjust(&scheduler));
@@ -874,8 +871,7 @@ fn moving_and_resizing() {
     assert!((f.min.x - 60.0).abs() < 1e-6 && (f.min.y - 50.0).abs() < 1e-6);
     assert!((f.max.x - 140.0).abs() < 1e-6 && (f.max.y - 130.0).abs() < 1e-6);
 
-    // A drag that ends where it began changes nothing, and Escape gives
-    // one up.
+    // A drag that ends where it began changes nothing, and Escape gives one up.
     assert!(
         session
             .begin_adjust(&scheduler, at(&session, 100.0, 90.0))
@@ -892,8 +888,8 @@ fn moving_and_resizing() {
     assert!(!session.is_adjusting());
     assert!((frame(&mut session, 0).min.x - 60.0).abs() < 1e-6);
 
-    // The line: taken on the line (it gets picked by that), and then by
-    // an end, which goes where the pointer does.
+    // The line: taken on the line (it gets picked by that), and then by an end, which goes where
+    // the pointer does.
     let on_line = at(&session, 70.0, 150.0);
     assert_eq!(session.grip_at(on_line), Some(Grip::Move));
     assert!(session.begin_adjust(&scheduler, on_line).unwrap());
@@ -922,8 +918,8 @@ fn moving_and_resizing() {
     };
     assert!((to - PdfPoint::new(200.0, 300.0)).length() < 1e-6, "{to:?}");
 
-    // Saved and opened again, they are the file's, drawn with the page,
-    // and still to be moved: the look in the file is known to be ours.
+    // Saved and opened again, they are the file's, drawn with the page, and still to be moved: the
+    // look in the file is known to be ours.
     let written = session.save_job().write().unwrap();
     let mut saved = open(&scheduler, written);
     let (id, square) = saved.annotations(0)[0].clone();
@@ -971,8 +967,8 @@ fn notes_and_text_boxes() {
     let file = session.viewer.pages()[0].doc;
     let at = |s: &Session, x, y| s.viewer.pdf_to_view(0, PdfPoint::new(x, y)).unwrap();
 
-    // A note: picked when made, its text set afterwards. The frontend
-    // draws its mark; the page is still the file's.
+    // A note: picked when made, its text set afterwards. The frontend draws its mark, and the page
+    // is still the file's.
     assert!(!session.add_note(ViewPoint::new(-50.0, -50.0), yellow));
     assert!(session.add_note(at(&session, 150.0, 100.0), yellow));
     assert_eq!(
@@ -990,8 +986,8 @@ fn notes_and_text_boxes() {
     assert!(session.picked_handles().is_empty());
     assert!(session.grip_at(at(&session, 155.0, 95.0)).is_some());
 
-    // A text box: no text, no box. With text, the renderer draws it, from
-    // a copy of the page with it in.
+    // A text box: no text, no box. With text, the renderer draws it, from a copy of the page with
+    // it in.
     let place = at(&session, 20.0, 200.0);
     assert!(!session.add_text_box(&scheduler, place, "  ", (12.0, TextFont::default()), black));
     assert!(session.add_text_box(
@@ -1039,8 +1035,8 @@ fn notes_and_text_boxes() {
     assert!(session.redo(&scheduler).is_some());
     assert_ne!(session.viewer.pages()[0].doc, file);
 
-    // Saved and opened again: both are the file's, and their text can
-    // still be changed. Emptied, a text box is deleted.
+    // Saved and opened again: both are the file's, and their text can still be changed. Emptied, a
+    // text box is deleted.
     let written = session.save_job().write().unwrap();
     let mut saved = open(&scheduler, written);
     let types: Vec<AnnotType> = saved
@@ -1083,8 +1079,7 @@ fn where_a_text_box_is_typed_into() {
     let scheduler = Scheduler::new(1, || {});
     let mut session = open(&scheduler, book(2, "alpha"));
     let file = session.viewer.pages()[0].doc;
-    // The page is 200 points wide in a view of 400: two pixels a point,
-    // less the margins around it.
+    // The page is 200 points wide in a view of 400: two pixels a point, less the margins around it.
     let unit = session
         .viewer
         .pdf_to_view(0, PdfPoint::new(1.0, 0.0))
@@ -1145,7 +1140,7 @@ fn where_a_text_box_is_typed_into() {
         Some("Other words")
     );
     assert_ne!(session.viewer.pages()[0].doc, file);
-    // In another size and font with it, as one edit; and those alone.
+    // In another size and font with it, as one edit, and those alone.
     assert_eq!(session.picked_text_style(), Some((14.0, serif)));
     assert!(session.undo(&scheduler).is_some());
     assert_eq!(

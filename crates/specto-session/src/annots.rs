@@ -1,18 +1,15 @@
-//! The document's annotations: those of its files (read when a page is
-//! first asked for) as the edits have left them.
+//! The document's annotations: those of its files (read when a page is first asked for) as the
+//! edits have left them.
 //!
-//! Who draws what: the annotations of a file are part of the page as the
-//! renderer draws it, from their appearance streams. The frontend draws,
-//! from [`Session::overlay`], those that have no such look in the file:
-//! the ones made here, ones changed here, and ones the file gives no
-//! appearance for.
+//! Who draws what: the annotations of a file are part of the page as the renderer draws it, from
+//! their appearance streams. The frontend draws, from [`Session::overlay`], those that have no such
+//! look in the file: the ones made here, ones changed here, and ones the file gives no appearance
+//! for.
 //!
-//! The renderer draws all of a page's annotations or none. So when one of
-//! a file is deleted (or changed so that the frontend draws it), its page
-//! is rendered from a *variant* instead: a copy of that one page without
-//! the annotation, written the way saving writes it and opened as a
-//! document of its own. Text, links and everything else still come from
-//! the file.
+//! The renderer draws all of a page's annotations or none. So when one of a file is deleted (or
+//! changed so that the frontend draws it), its page is rendered from a *variant* instead: a copy of
+//! that one page without the annotation, written the way saving writes it and opened as a document
+//! of its own. Text, links and everything else still come from the file.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,8 +27,7 @@ use specto_write::WriteError;
 
 use crate::{FilePage, Session, view_pages};
 
-/// An annotation taken out of its page for the time being (see
-/// `Session::held`).
+/// An annotation taken out of its page for the time being (see `Session::held`).
 #[derive(Clone, Debug)]
 pub(crate) struct Held {
     /// Its page of its file.
@@ -53,32 +49,30 @@ pub struct TextBoxPlace {
     /// Its width in points, and how many pixels a point is on screen.
     pub width: f64,
     pub zoom: f64,
-    /// The size of its text in points, its font and its colour.
+    /// The size of its text in points, its font and its color.
     pub size: f64,
     pub font: TextFont,
     pub color: Color,
 }
 
-/// A page rendered from a copy of itself with other annotations than the
-/// file has.
+/// A page rendered from a copy of itself with other annotations than the file has.
 pub(crate) struct Variant {
     /// The annotations of the file the copy leaves out.
     hidden: Vec<Origin>,
-    /// The annotations the copy has that the file doesn't: text boxes and
-    /// stamps made or changed here, which only the renderer can draw.
+    /// The annotations the copy has that the file doesn't: text boxes and stamps made or changed
+    /// here, which only the renderer can draw.
     baked: Vec<Baked>,
     /// The copy, in the scheduler: a document of one page.
     pub(crate) doc_id: DocId,
 }
 
-/// A variant that is written but not opened yet: its page, the annotations
-/// it leaves out and has in addition, and the file.
+/// A variant that is written but not opened yet: its page, the annotations it leaves out and has in
+/// addition, and the file.
 type WrittenVariant = (FilePage, Vec<Origin>, Vec<Baked>, Vec<u8>);
 
-/// Whether `annotation` is one made or changed here that the frontend
-/// can't draw, so that the renderer must, from a copy of the page with it
-/// in: a text box, or a stamp (whose image the file may have, see
-/// `StampArt::InFile`).
+/// Whether `annotation` is one made or changed here that the frontend can't draw, so that the
+/// renderer must, from a copy of the page with it in: a text box, or a stamp (whose image the file
+/// may have, see `StampArt::InFile`).
 fn bakes(annotation: &Annotation) -> bool {
     let has_look = annotation.appearance == Appearance::Generated
         && specto_annot::appearance(annotation).is_some();
@@ -86,12 +80,11 @@ fn bakes(annotation: &Annotation) -> bool {
     shapes(annotation).is_none() && (has_look || moved_stamp)
 }
 
-/// An annotation a page's copy has that the file doesn't: in place of the
-/// one the file has there, or in addition.
+/// An annotation a page's copy has that the file doesn't: in place of the one the file has there,
+/// or in addition.
 type Baked = (Option<Origin>, Arc<Annotation>);
 
-/// Whether the frontend draws `annotation` (see the module documentation)
-/// rather than the renderer.
+/// Whether the frontend draws `annotation` (see the module documentation) rather than the renderer.
 fn floats(annotation: &Annotation) -> bool {
     matches!(
         annotation.appearance,
@@ -99,8 +92,7 @@ fn floats(annotation: &Annotation) -> bool {
     ) && shapes(annotation).is_some()
 }
 
-/// A piece of an annotation's look where it is on screen, in viewport
-/// coordinates (see [`Shape`]).
+/// A piece of an annotation's look where it is on screen, in viewport coordinates (see [`Shape`]).
 #[derive(Clone, Debug, PartialEq)]
 pub enum ViewShape {
     Fill {
@@ -130,15 +122,14 @@ pub enum ViewShape {
 pub enum Grip {
     /// The whole of it, to move it.
     Move,
-    /// A corner of its frame (0 to 3, around it), to resize it: the corner
-    /// across stays where it is.
+    /// A corner of its frame (0 to 3, around it), to resize it: the corner across stays where it
+    /// is.
     Corner(usize),
     /// An end of a line (0 or 1), to put it elsewhere.
     End(usize),
 }
 
-/// An annotation being moved or resized: the document has it as it was
-/// until the drag ends.
+/// An annotation being moved or resized: the document has it as it was until the drag ends.
 #[derive(Clone, Debug)]
 pub(crate) struct Adjust {
     id: AnnotId,
@@ -185,8 +176,8 @@ fn grips(a: &Annotation) -> Vec<(Grip, PdfPoint)> {
 pub enum DraftKind {
     /// A freehand stroke along the pointer's way.
     Ink,
-    /// A rectangle, an ellipse in it, or a line, from where the drag
-    /// started to where the pointer is.
+    /// A rectangle, an ellipse in it, or a line, from where the drag started to where the pointer
+    /// is.
     Square,
     Circle,
     Line,
@@ -200,8 +191,7 @@ pub(crate) struct Draft {
     position: usize,
     color: Color,
     line_width: f64,
-    /// Where the pointer has been, on that page; for all but ink only the
-    /// first and the last count.
+    /// Where the pointer has been, on that page. For all but ink only the first and the last count.
     points: Vec<PdfPoint>,
     /// How far apart points of a stroke are kept, in points: about a pixel.
     step: f64,
@@ -230,8 +220,8 @@ impl Draft {
         Some(a)
     }
 
-    /// Whether the drag went anywhere: a click with a shape tool draws
-    /// nothing, a click with the pen a dot.
+    /// Whether the drag went anywhere: a click with a shape tool draws nothing, a click with the
+    /// pen a dot.
     fn is_worth_keeping(&self) -> bool {
         match self.kind {
             DraftKind::Ink => !self.points.is_empty(),
@@ -261,8 +251,7 @@ impl Session {
             .clone()
     }
 
-    /// The annotations of the page at position `position`, as edited:
-    /// bottom to top.
+    /// The annotations of the page at position `position`, as edited: bottom to top.
     pub fn annotations(&mut self, position: usize) -> Vec<(AnnotId, Arc<Annotation>)> {
         let Some(&p) = self.edit.pages().get(position) else {
             return Vec::new();
@@ -271,8 +260,9 @@ impl Session {
         self.edit.annotations(p.source, p.page, &imported)
     }
 
-    /// Every annotation of the document that is shown, in the order of its
-    /// pages: the position of its page, which it is, and the annotation.
+    /// Every annotation of the document that is shown, in the order of its pages: the position of
+    /// its page, which it is, and the annotation.
+    ///
     /// This reads the annotations of every page of the files, once.
     pub fn all_annotations(&mut self) -> Vec<(usize, AnnotId, Arc<Annotation>)> {
         (0..self.edit.page_count())
@@ -286,8 +276,8 @@ impl Session {
             .collect()
     }
 
-    /// Picks the annotation `id` on the page at `position` and scrolls to
-    /// it. Returns whether it is there.
+    /// Picks the annotation `id` on the page at `position` and scrolls to it. Returns whether it is
+    /// there.
     pub fn pick_and_show(&mut self, position: usize, id: AnnotId) -> bool {
         let Some((_, a)) = self
             .annotations(position)
@@ -302,9 +292,8 @@ impl Session {
         true
     }
 
-    /// The annotations of the file that page `page` of `source` must be
-    /// rendered without: the deleted ones, and changed ones the frontend
-    /// draws.
+    /// The annotations of the file that page `page` of `source` must be rendered without: the
+    /// deleted ones, and changed ones the frontend draws.
     fn hidden(&self, source: SourceId, page: u32) -> Vec<Origin> {
         let PageAnnotChanges {
             mut removed,
@@ -324,8 +313,8 @@ impl Session {
         removed
     }
 
-    /// The annotations page `page` of `source` must be rendered with that
-    /// the file doesn't have: text boxes and stamps made or changed here.
+    /// The annotations page `page` of `source` must be rendered with that the file doesn't have:
+    /// text boxes and stamps made or changed here.
     fn baked(&self, source: SourceId, page: u32) -> Vec<Baked> {
         let changes = self.edit.annotation_changes(source, page);
         changes
@@ -343,8 +332,8 @@ impl Session {
             .collect()
     }
 
-    /// Page `page` of `source` as a file of its own, without the
-    /// annotations `hidden` and with `baked`.
+    /// Page `page` of `source` as a file of its own, without the annotations `hidden` and with
+    /// `baked`.
     fn variant_file(
         &self,
         (source, page): FilePage,
@@ -366,8 +355,8 @@ impl Session {
         };
         for (origin, a) in baked {
             match origin {
-                // One that is hidden for now (it is being dragged about)
-                // isn't written in its place either.
+                // One that is hidden for now (it is being dragged about) isn't written in its place
+                // either.
                 Some(origin) if hidden.contains(origin) => {}
                 Some(origin) => changes.replaced.push((*origin, a.clone())),
                 None => changes.added.push(a.clone()),
@@ -382,15 +371,16 @@ impl Session {
         )
     }
 
-    /// Makes the variants what the edits ask for: a copy for every page
-    /// with hidden annotations, none for the others. A page whose copy
-    /// can't be written is shown from its file, with all its annotations.
+    /// Makes the variants what the edits ask for: a copy for every page with hidden annotations,
+    /// none for the others.
+    ///
+    /// A page whose copy can't be written is shown from its file, with all its annotations.
     pub(crate) fn sync_variants(&mut self, scheduler: &Scheduler) {
         self.sync_variants_with(scheduler, None);
     }
 
-    /// As [`sync_variants`](Self::sync_variants); `ready` is a copy that is
-    /// written already: its page, what it leaves out, and the file.
+    /// As [`sync_variants`](Self::sync_variants), with `ready` being a copy that is written
+    /// already: its page, what it leaves out, and the file.
     fn sync_variants_with(&mut self, scheduler: &Scheduler, mut ready: Option<WrittenVariant>) {
         let wanted: HashMap<FilePage, (Vec<Origin>, Vec<Baked>)> = self
             .edit
@@ -449,8 +439,8 @@ impl Session {
         }
     }
 
-    /// The annotations of the page at `position` that the frontend draws,
-    /// the one being drawn there included.
+    /// The annotations of the page at `position` that the frontend draws, the one being drawn there
+    /// included.
     fn floating(&mut self, position: usize) -> Vec<Arc<Annotation>> {
         let draft = self
             .draft
@@ -458,8 +448,7 @@ impl Session {
             .filter(|d| d.position == position)
             .and_then(Draft::annotation)
             .map(Arc::new);
-        // The one being moved or resized is drawn as it would become,
-        // whoever draws it otherwise.
+        // The one being moved or resized is drawn as it would become, whoever draws it otherwise.
         let adjusted = self
             .adjust
             .as_ref()
@@ -481,10 +470,9 @@ impl Session {
         all
     }
 
-    /// The annotation that could be moved or resized by a drag from `p`
-    /// (viewport coordinates), and what of it the drag would take hold of:
-    /// a handle of the picked one, the picked one itself, or another one
-    /// under `p` that can be moved.
+    /// The annotation that could be moved or resized by a drag from `p` (viewport coordinates), and
+    /// what of it the drag would take hold of: a handle of the picked one, the picked one itself,
+    /// or another one under `p` that can be moved.
     fn grip_under(&mut self, p: ViewPoint) -> Option<(usize, AnnotId, Arc<Annotation>, Grip)> {
         if let Some((position, id)) = self.picked
             && let Some((_, a)) = self.picked_one()
@@ -507,15 +495,13 @@ impl Session {
         a.is_adjustable().then_some((position, id, a, Grip::Move))
     }
 
-    /// What a drag from `p` would take hold of, if anything: for choosing
-    /// the pointer's shape, and whether a drag is to move something rather
-    /// than select text.
+    /// What a drag from `p` would take hold of, if anything: for choosing the pointer's shape, and
+    /// whether a drag is to move something rather than select text.
     pub fn grip_at(&mut self, p: ViewPoint) -> Option<Grip> {
         self.grip_under(p).map(|(_, _, _, grip)| grip)
     }
 
-    /// Where the handles of the picked annotation are on screen, if it can
-    /// be resized.
+    /// Where the handles of the picked annotation are on screen, if it can be resized.
     pub fn picked_handles(&mut self) -> Vec<ViewPoint> {
         let Some((position, _)) = self.picked else {
             return Vec::new();
@@ -534,12 +520,12 @@ impl Session {
             .collect()
     }
 
-    /// Starts moving or resizing what [`grip_at`](Self::grip_at) finds at
-    /// `p`, which becomes the picked annotation. Returns whether there was
-    /// something. Follow with [`adjust_to`](Self::adjust_to) as the pointer
-    /// moves and [`finish_adjust`](Self::finish_adjust) when the button is
-    /// let go. Errors as
-    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
+    /// Starts moving or resizing what [`grip_at`](Self::grip_at) finds at `p`, which becomes the
+    /// picked annotation.
+    ///
+    /// Returns whether there was something. Follow with [`adjust_to`](Self::adjust_to) as the
+    /// pointer moves and [`finish_adjust`](Self::finish_adjust) when the button is let go. Errors
+    /// as [`remove_picked_annotation`](Self::remove_picked_annotation).
     pub fn begin_adjust(
         &mut self,
         scheduler: &Scheduler,
@@ -551,8 +537,7 @@ impl Session {
         let Some(from) = self.viewer.view_to_pdf(position, p) else {
             return Ok(false);
         };
-        // One the renderer draws must be out of the page while it is
-        // dragged about.
+        // One the renderer draws must be out of the page while it is dragged about.
         let ready = self.page_without(id, &a)?;
         self.hold(position, &a);
         self.picked = Some((position, id));
@@ -569,8 +554,8 @@ impl Session {
         Ok(true)
     }
 
-    /// The pointer of a drag that moves or resizes is at `p` now. The
-    /// pointer counts as far as its page goes.
+    /// The pointer of a drag that moves or resizes is at `p` now. The pointer counts as far as its
+    /// page goes.
     pub fn adjust_to(&mut self, p: ViewPoint) {
         let Some(adjust) = self.adjust.as_mut() else {
             return;
@@ -639,8 +624,7 @@ impl Session {
         self.sync_variants(scheduler);
     }
 
-    /// The drag has ended: the annotation stays as it is now. Returns
-    /// whether it changed.
+    /// The drag has ended: the annotation stays as it is now. Returns whether it changed.
     pub fn finish_adjust(&mut self, scheduler: &Scheduler) -> bool {
         let Some(adjust) = self.adjust.take() else {
             return false;
@@ -659,12 +643,12 @@ impl Session {
         changed
     }
 
-    /// Starts drawing at `p` (viewport coordinates) with a pen of
-    /// `line_width` points in `color`. Returns whether it did: `p` must be
-    /// on a page. Follow with [`extend_draft`](Self::extend_draft) as the
-    /// pointer moves and [`finish_draft`](Self::finish_draft) when the
-    /// button is let go; meanwhile [`overlay`](Self::overlay) shows what is
-    /// drawn so far.
+    /// Starts drawing at `p` (viewport coordinates) with a pen of `line_width` points in `color`.
+    ///
+    /// Returns whether it did: `p` must be on a page. Follow with
+    /// [`extend_draft`](Self::extend_draft) as the pointer moves and
+    /// [`finish_draft`](Self::finish_draft) when the button is let go. Meanwhile
+    /// [`overlay`](Self::overlay) shows what is drawn so far.
     pub fn begin_draft(
         &mut self,
         kind: DraftKind,
@@ -695,8 +679,7 @@ impl Session {
         true
     }
 
-    /// The pointer of a drag that draws is at `p` now. The drawing stays on
-    /// the page it started on.
+    /// The pointer of a drag that draws is at `p` now. The drawing stays on the page it started on.
     pub fn extend_draft(&mut self, p: ViewPoint) {
         let Some(draft) = self.draft.as_mut() else {
             return;
@@ -740,8 +723,9 @@ impl Session {
         self.draft = None;
     }
 
-    /// The drag has ended: what was drawn becomes an annotation. Returns
-    /// whether there is one (not for a shape of no size).
+    /// The drag has ended: what was drawn becomes an annotation.
+    ///
+    /// Returns whether there is one (not for a shape of no size).
     pub fn finish_draft(&mut self) -> bool {
         let Some(mut draft) = self.draft.take() else {
             return false;
@@ -750,9 +734,8 @@ impl Session {
             return false;
         }
         if draft.kind == DraftKind::Ink {
-            // The points a pointer leaves are far more than the stroke
-            // needs: those within a third of a pixel of the line between
-            // their neighbours go.
+            // The points a pointer leaves are far more than the stroke needs: those within a third
+            // of a pixel of the line between their neighbors go.
             draft.points = simplify(&draft.points, draft.step / 3.0);
         }
         let Some(mut a) = draft.annotation() else {
@@ -766,16 +749,16 @@ impl Session {
         true
     }
 
-    /// What to draw over the page at `position`, bottom to top: the
-    /// annotations the frontend draws, where they are on screen now.
+    /// What to draw over the page at `position`, bottom to top: the annotations the frontend draws,
+    /// where they are on screen now.
     pub fn overlay(&mut self, position: usize) -> Vec<ViewShape> {
         let annotations = self.floating(position);
         let viewer = &self.viewer;
         on_screen(&annotations, |p| viewer.pdf_to_view(position, p))
     }
 
-    /// Like [`overlay`](Self::overlay), for the page drawn `width` by
-    /// `height` with its top left corner at the origin: a thumbnail.
+    /// Like [`overlay`](Self::overlay), for the page drawn `width` by `height` with its top left
+    /// corner at the origin: a thumbnail.
     pub fn overlay_in(&mut self, position: usize, width: f64, height: f64) -> Vec<ViewShape> {
         let annotations = self.floating(position);
         let Some(page) = self.viewer.pages().get(position) else {
@@ -792,9 +775,10 @@ impl Session {
         })
     }
 
-    /// Marks the selected text in `style` and `color`, as one edit: one
-    /// annotation per page the selection touches. The selection is given
-    /// up. Returns whether anything was marked.
+    /// Marks the selected text in `style` and `color`, as one edit: one annotation per page the
+    /// selection touches.
+    ///
+    /// The selection is given up. Returns whether anything was marked.
     pub fn mark_selection(&mut self, style: MarkupStyle, color: Color) -> bool {
         let modified = Some(now());
         let mut new = Vec::new();
@@ -820,8 +804,8 @@ impl Session {
                 let Some(mut a) = Annotation::text_markup(style, quads, color) else {
                     continue;
                 };
-                // The marked text, as other programs put it there too: it
-                // is what a list of annotations shows.
+                // The marked text, as other programs put it there too: it is what a list of
+                // annotations shows.
                 a.contents = Some(contents).filter(|c| !c.is_empty());
                 a.modified = modified;
                 new.push((p.source, p.page, a));
@@ -835,9 +819,8 @@ impl Session {
         true
     }
 
-    /// The topmost annotation under `p` (viewport coordinates) that can be
-    /// picked: the position of its page, and which it is. Not ones the
-    /// file says are locked or read-only.
+    /// The topmost annotation under `p` (viewport coordinates) that can be picked: the position of
+    /// its page, and which it is. Not ones the file says are locked or read-only.
     pub fn annotation_at(&mut self, p: ViewPoint) -> Option<(usize, AnnotId)> {
         let (position, at) = self.viewer.hit_test(p)?;
         let view_page = self.viewer.pages().get(position)?;
@@ -857,8 +840,7 @@ impl Session {
             .find(|(i, _)| *i == id)
     }
 
-    /// The corners of the box around the picked annotation on screen, and
-    /// the position of its page.
+    /// The corners of the box around the picked annotation on screen, and the position of its page.
     pub fn picked_outline(&mut self) -> Option<(usize, [ViewPoint; 4])> {
         let (position, _) = self.picked?;
         let (id, a) = self.picked_one()?;
@@ -879,10 +861,9 @@ impl Session {
         ))
     }
 
-    /// For an edit to the annotation `a` after which the renderer must not
-    /// draw it as it is any more (it is deleted, changed, or drawn by the
-    /// frontend from then on): the copy of its page without it, written
-    /// first, so that nothing changes if that can't be done. `None` if the
+    /// For an edit to the annotation `a` after which the renderer must not draw it as it is any
+    /// more (it is deleted, changed, or drawn by the frontend from then on): the copy of its page
+    /// without it, written first, so that nothing changes if that can't be done. `None` if the
     /// renderer doesn't draw it now either.
     fn page_without(
         &self,
@@ -906,11 +887,11 @@ impl Session {
         Ok(Some(((source, page), hidden, baked, file)))
     }
 
-    /// Deletes the annotation that is picked. Returns whether there was
-    /// one, or why it can't be deleted: for one of a file, its page must
-    /// be written anew without it (see the module documentation), which
-    /// fails for the files saving fails for. `scheduler` is the one the
-    /// session was opened with.
+    /// Deletes the annotation that is picked.
+    ///
+    /// Returns whether there was one, or why it can't be deleted: for one of a file, its page must
+    /// be written anew without it (see the module documentation), which fails for the files saving
+    /// fails for. `scheduler` is the one the session was opened with.
     pub fn remove_picked_annotation(&mut self, scheduler: &Scheduler) -> Result<bool, WriteError> {
         let Some((id, a)) = self.picked_one() else {
             return Ok(false);
@@ -924,10 +905,11 @@ impl Session {
         Ok(removed)
     }
 
-    /// Gives the picked annotation the colour `color`; it stays picked.
-    /// Returns whether it changed: not if nothing is picked, it has that
-    /// colour already, or it is of a kind only its file knows how to draw.
-    /// Errors as [`remove_picked_annotation`](Self::remove_picked_annotation).
+    /// Gives the picked annotation the color `color`, and it stays picked.
+    ///
+    /// Returns whether it changed: not if nothing is picked, it has that color already, or it is of
+    /// a kind only its file knows how to draw. Errors as
+    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
     pub fn recolor_picked_annotation(
         &mut self,
         scheduler: &Scheduler,
@@ -939,9 +921,8 @@ impl Session {
         if a.color == Some(color) {
             return Ok(false);
         }
-        // Not one whose look in the file may hold more than its values
-        // say: a line can have arrowheads and a rectangle a dashed border,
-        // which drawing them anew here would lose.
+        // Not one whose look in the file may hold more than its values say: a line can have
+        // arrowheads and a rectangle a dashed border, which drawing them anew here would lose.
         if !a.is_redrawable() {
             return Ok(false);
         }
@@ -958,8 +939,8 @@ impl Session {
         Ok(done)
     }
 
-    /// Puts an annotation on the page under `p` (viewport coordinates),
-    /// made by `make` from where that is on the page, and picks it.
+    /// Puts an annotation on the page under `p` (viewport coordinates), made by `make` from where
+    /// that is on the page, and picks it.
     fn place(&mut self, p: ViewPoint, make: impl FnOnce(PdfPoint) -> Option<Annotation>) -> bool {
         let Some((position, _)) = self.viewer.hit_test(p) else {
             return false;
@@ -980,10 +961,11 @@ impl Session {
         true
     }
 
-    /// Puts a drawing made elsewhere (a signature) on the page with its
-    /// middle at `p` (viewport coordinates), `width` points wide, and picks
-    /// it. The strokes are in a box of `size` with y pointing down. Returns
-    /// whether it did: `p` must be on a page.
+    /// Puts a drawing made elsewhere (a signature) on the page with its middle at `p` (viewport
+    /// coordinates), `width` points wide, and picks it.
+    ///
+    /// The strokes are in a box of `size` with y pointing down. Returns whether it did: `p` must be
+    /// on a page.
     pub fn add_drawing(
         &mut self,
         p: ViewPoint,
@@ -998,9 +980,9 @@ impl Session {
         })
     }
 
-    /// Puts a picture (a signature from a photo) on the page with its
-    /// middle at `p` (viewport coordinates), `width` points wide, and picks
-    /// it. Returns whether it did: `p` must be on a page.
+    /// Puts a picture (a signature from a photo) on the page with its middle at `p` (viewport
+    /// coordinates), `width` points wide, and picks it. Returns whether it did: `p` must be on a
+    /// page.
     pub fn add_stamp(
         &mut self,
         scheduler: &Scheduler,
@@ -1015,8 +997,8 @@ impl Session {
         placed
     }
 
-    /// Puts a note at `p` (viewport coordinates) in `color`, and picks it.
-    /// Returns whether it did: `p` must be on a page.
+    /// Puts a note at `p` (viewport coordinates) in `color`, and picks it. Returns whether it did:
+    /// `p` must be on a page.
     pub fn add_note(&mut self, p: ViewPoint, color: Color) -> bool {
         let Some((position, _)) = self.viewer.hit_test(p) else {
             return false;
@@ -1035,9 +1017,9 @@ impl Session {
         true
     }
 
-    /// Takes `a`, on the page at `position`, out of what the renderer
-    /// draws of its page until it is let go of (`held` set to `None` and
-    /// the variants made anew). Nothing to do for one the frontend draws.
+    /// Takes `a`, on the page at `position`, out of what the renderer draws of its page until it is
+    /// let go of (`held` set to `None` and the variants made anew). Nothing to do for one the
+    /// frontend draws.
     fn hold(&mut self, position: usize, a: &Arc<Annotation>) {
         let Some(&page) = self.edit.pages().get(position) else {
             return;
@@ -1063,10 +1045,11 @@ impl Session {
         Some((b - a).length())
     }
 
-    /// Where a new text box would go for a click at `p` (viewport
-    /// coordinates): its top left corner there, up to 220 points wide, less
-    /// where the page ends. `None` beside the pages, and on pages that are
-    /// shown turned, where text can't be typed in place.
+    /// Where a new text box would go for a click at `p` (viewport coordinates): its top left corner
+    /// there, up to 220 points wide, less where the page ends.
+    ///
+    /// `None` beside the pages, and on pages that are shown turned, where text can't be typed in
+    /// place.
     pub fn new_text_box_place(
         &self,
         p: ViewPoint,
@@ -1101,10 +1084,10 @@ impl Session {
     }
 
     /// Starts typing into the picked text box: where it is, and its text.
-    /// The renderer stops drawing it until
-    /// [`end_text_edit`](Self::end_text_edit), so the frontend's editor
-    /// stands in its place. `None` if what is picked is no text box that
-    /// can be changed, or its page is shown turned.
+    ///
+    /// The renderer stops drawing it until [`end_text_edit`](Self::end_text_edit), so the
+    /// frontend's editor stands in its place. `None` if what is picked is no text box that can be
+    /// changed, or its page is shown turned.
     pub fn begin_text_edit(&mut self, scheduler: &Scheduler) -> Option<(TextBoxPlace, String)> {
         let (position, _) = self.picked?;
         let (_, a) = self.picked_one()?;
@@ -1134,9 +1117,10 @@ impl Session {
         Some((place, a.contents.clone().unwrap_or_default()))
     }
 
-    /// Ends typing into the picked text box: with `text` it has that now,
-    /// in the size and font `style` (no text deletes it), without it stays
-    /// as it was. Returns whether it changed. Errors as
+    /// Ends typing into the picked text box: with `text` it has that now, in the size and font
+    /// `style` (no text deletes it), without it stays as it was.
+    ///
+    /// Returns whether it changed. Errors as
     /// [`remove_picked_annotation`](Self::remove_picked_annotation).
     pub fn end_text_edit(
         &mut self,
@@ -1163,10 +1147,10 @@ impl Session {
         }
     }
 
-    /// Sets the picked text box in the size and font `style`. Returns
-    /// whether it changed: not if what is picked is no text box that can be
-    /// changed. Errors as
-    /// [`remove_picked_annotation`](Self::remove_picked_annotation).
+    /// Sets the picked text box in the size and font `style`.
+    ///
+    /// Returns whether it changed: not if what is picked is no text box that can be changed. Errors
+    /// as [`remove_picked_annotation`](Self::remove_picked_annotation).
     pub fn restyle_picked_text_box(
         &mut self,
         scheduler: &Scheduler,
@@ -1175,8 +1159,8 @@ impl Session {
         self.change_picked_text_box(scheduler, None, Some(style))
     }
 
-    /// Gives the picked text box another text, another size and font, or
-    /// both, as one edit. A text box left without text is deleted.
+    /// Gives the picked text box another text, another size and font, or both, as one edit. A text
+    /// box left without text is deleted.
     fn change_picked_text_box(
         &mut self,
         scheduler: &Scheduler,
@@ -1208,8 +1192,7 @@ impl Session {
             font: style.1,
         };
         changed.modified = Some(now());
-        // As high as the text needs now, with a new look, and its page a
-        // new copy.
+        // As high as the text needs now, with a new look, and its page a new copy.
         changed.fit_text();
         let ready = self.page_without(id, &a)?;
         let done = self.edit.change_annotation(id, changed);
@@ -1219,10 +1202,11 @@ impl Session {
         Ok(done)
     }
 
-    /// Puts a text box of `text` at `p` (viewport coordinates), in the
-    /// size and font `style` and `color`, and picks it. It is up to 220
-    /// points wide, less where the page ends. Returns whether it did: `p`
-    /// must be on a page, and there must be text.
+    /// Puts a text box of `text` at `p` (viewport coordinates), in the size and font `style` and
+    /// `color`, and picks it.
+    ///
+    /// It is up to 220 points wide, less where the page ends. Returns whether it did: `p` must be
+    /// on a page, and there must be text.
     pub fn add_text_box(
         &mut self,
         scheduler: &Scheduler,
@@ -1252,9 +1236,8 @@ impl Session {
         )
     }
 
-    /// Like [`add_text_box`](Self::add_text_box), by where on which page:
-    /// its top left corner at `at` on the page at `position`, `width`
-    /// points wide.
+    /// Like [`add_text_box`](Self::add_text_box), by where on which page: its top left corner at
+    /// `at` on the page at `position`, `width` points wide.
     #[allow(clippy::too_many_arguments)]
     pub fn add_text_box_on(
         &mut self,
@@ -1281,25 +1264,24 @@ impl Session {
         true
     }
 
-    /// The text of the picked annotation, to be edited: what a text box
-    /// shows, the text of a note, or the comment that goes with any other
-    /// (empty if it has none). `None` if nothing is picked, or its text
-    /// can't be changed here (a text box of another program, whose look
-    /// wouldn't follow).
+    /// The text of the picked annotation, to be edited: what a text box shows, the text of a note,
+    /// or the comment that goes with any other (empty if it has none).
+    ///
+    /// `None` if nothing is picked, or its text can't be changed here (a text box of another
+    /// program, whose look wouldn't follow).
     pub fn picked_text(&mut self) -> Option<String> {
         let (_, a) = self.picked_one()?;
         text_is_editable(&a).then(|| a.contents.clone().unwrap_or_default())
     }
 
-    /// Whether the picked annotation is a text box: its text is what it
-    /// shows.
+    /// Whether the picked annotation is a text box: its text is what it shows.
     pub fn picked_is_text_box(&mut self) -> bool {
         self.picked_one().is_some_and(|(_, a)| a.is_text_box())
     }
 
-    /// Gives the picked annotation the text `text` (see
-    /// [`picked_text`](Self::picked_text)). A text box left without text
-    /// is deleted. Returns whether anything changed. Errors as
+    /// Gives the picked annotation the text `text` (see [`picked_text`](Self::picked_text)).
+    ///
+    /// A text box left without text is deleted. Returns whether anything changed. Errors as
     /// [`remove_picked_annotation`](Self::remove_picked_annotation).
     pub fn set_picked_text(
         &mut self,
@@ -1322,15 +1304,14 @@ impl Session {
         Ok(self.edit.change_annotation(id, changed))
     }
 
-    /// The colour of the picked annotation, if one is picked and has one.
+    /// The color of the picked annotation, if one is picked and has one.
     pub fn picked_color(&mut self) -> Option<Color> {
         self.picked_one()?.1.color
     }
 }
 
-/// Whether the text of `a` can be changed here: not that of a text box of
-/// another program (its look, which shows the text, wouldn't follow), and
-/// not where the file forbids changes.
+/// Whether the text of `a` can be changed here: not that of a text box of another program (its
+/// look, which shows the text, wouldn't follow), and not where the file forbids changes.
 fn text_is_editable(a: &Annotation) -> bool {
     let foreign_text_box = matches!(&a.kind, AnnotKind::Other { subtype } if subtype == "FreeText");
     a.flags.is_editable() && !foreign_text_box
@@ -1388,8 +1369,7 @@ fn on_screen(
                     stroke,
                     opacity,
                 } => (|| {
-                    // How long a point is on screen, from two points one
-                    // apart.
+                    // How long a point is on screen, from two points one apart.
                     let one = path.start + specto_geom::PdfVector::new(1.0, 0.0);
                     let zoom = (at(one)? - at(path.start)?).length();
                     Some(ViewShape::Path {
@@ -1406,9 +1386,8 @@ fn on_screen(
     out
 }
 
-/// `points` without those nearer than `tolerance` to the line between the
-/// ones kept around them (Ramer, Douglas and Peucker's way); the first and
-/// last stay.
+/// `points` without those nearer than `tolerance` to the line between the ones kept around them
+/// (Ramer, Douglas and Peucker's way). The first and last stay.
 fn simplify(points: &[PdfPoint], tolerance: f64) -> Vec<PdfPoint> {
     if points.len() < 3 {
         return points.to_vec();

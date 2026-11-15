@@ -27,7 +27,7 @@ fn letters(n: u32) -> Vec<ViewPage> {
     (0..n).map(|i| page(i, 612.0, 792.0)).collect()
 }
 
-/// 1000 × 800 logical px at scale 1, gap and margin 10.
+/// 1000 by 800 logical pixels at scale 1, gap and margin 10.
 fn viewer(pages: Vec<ViewPage>) -> Viewer {
     let mut v = Viewer::new(
         pages,
@@ -61,7 +61,7 @@ fn fit_width_and_fit_page() {
 #[test]
 fn continuous_scrolling_and_current_page() {
     let mut v = viewer(letters(10));
-    v.set_zoom(0.5, ViewPoint::origin()); // pages 306 × 396 + 10 gap
+    v.set_zoom(0.5, ViewPoint::origin()); // pages of 306 by 396, plus a gap of 10
     assert_eq!(v.current_page(), 0);
     let r0 = v.page_rect(0).unwrap();
     assert!(close(r0.origin.y, 10.0));
@@ -71,7 +71,7 @@ fn continuous_scrolling_and_current_page() {
     assert_eq!(v.current_page(), 3);
     assert!(close(v.page_rect(3).unwrap().origin.y, 10.0));
 
-    // Clamped at the end: content is 10 × 406 + 10 tall.
+    // Clamped at the end: content is 10 times 406, plus 10, tall.
     v.scroll_by(ViewVector::new(0.0, 1e6));
     assert!(close(v.scroll_offset().y, 10.0 * 406.0 + 10.0 - 800.0));
     v.go_to_page(4);
@@ -171,12 +171,12 @@ fn frame_requests_placeholders_first_then_sharp_tiles() {
     v.set_zoom(1.0, ViewPoint::origin());
     let f = v.frame(Instant::now(), |_| false);
     assert!(!f.complete);
-    // Page 0 spans y 10..802; page 1 starts below the 800 px viewport.
+    // Page 0 spans y 10..802, and page 1 starts below the 800-pixel viewport.
     let visible: Vec<usize> = f.pages.iter().map(|p| p.page).collect();
     assert_eq!(visible, vec![0]);
     let pl = placeholder_level(&v.pages()[0].displayed());
-    // The visible page's placeholder comes first, then its sharp tiles at
-    // zoom 1 × scale 2 → level 2 (1224 × 1584 px → 3 × 4 tiles).
+    // The visible page's placeholder comes first, then its sharp tiles at zoom 1 at scale 2, which
+    // is level 2 (1224 by 1584 pixels, or 3 by 4 tiles).
     assert_eq!((f.requests[0].page, level(&f.requests[0])), (0, pl));
     let sharp = f
         .requests
@@ -185,7 +185,7 @@ fn frame_requests_placeholders_first_then_sharp_tiles() {
         .take_while(|k| k.page == 0 && level(k) == Some(2))
         .count();
     assert_eq!(sharp, 12);
-    // Then neighbours' placeholders, then prefetch (page 1's top tiles).
+    // Then neighbors' placeholders, then prefetch (page 1's top tiles).
     let rest = &f.requests[1 + sharp..];
     assert_eq!((rest[0].page, level(&rest[0])), (1, pl));
     assert!(rest.iter().any(|k| k.page == 1 && level(k) == Some(2)));
@@ -213,7 +213,7 @@ fn frame_with_everything_cached_is_complete_and_exact() {
             .filter(|t| level(&t.key) == Some(2))
             .collect();
         assert!(!sharp.is_empty());
-        // Device scale 2 × zoom 1 = level 2 exactly: tiles map 1:1.
+        // Device scale 2 times zoom 1 is level 2 exactly: tiles map one to one.
         assert!(sharp.iter().all(|t| t.exact));
         for t in &sharp {
             assert_eq!(t.dest.origin.x.fract(), 0.0);
@@ -229,8 +229,8 @@ fn frame_with_everything_cached_is_complete_and_exact() {
     }
 }
 
-/// Checks the sharpest layer of every visible page: never upscaled, and
-/// covering the visible part of the page. Returns those layers' scales.
+/// Checks the sharpest layer of every visible page: never upscaled, and covering the visible part
+/// of the page. Returns those layers' scales.
 fn check_coverage(v: &Viewer, f: &crate::Frame, what: &str) -> HashSet<TileScale> {
     let (vw, vh, scale) = (v.viewport().width, v.viewport().height, v.scale_factor());
     let viewport = DeviceRect::new(DevicePoint::origin(), (vw * scale, vh * scale).into());
@@ -279,7 +279,7 @@ fn zooming_uses_levels_and_settled_views_use_exact_tiles() {
         assert_eq!(f.settles_at, Some(t0 + delay), "{what}");
         assert!(!v.is_settled(t0));
 
-        // Settled: exact tiles at the device scale, drawn 1:1.
+        // Settled: exact tiles at the device scale, drawn one to one.
         let later = t0 + delay;
         let f = v.frame(later, all_cached);
         assert!(v.is_settled(later));
@@ -303,7 +303,7 @@ fn zooming_uses_levels_and_settled_views_use_exact_tiles() {
 fn settled_view_requests_exact_tiles_and_falls_back_to_levels() {
     let mut v = viewer(letters(1));
     v.set_viewport(ViewSize::new(1000.0, 800.0), 2.0);
-    v.set_zoom(0.906, ViewPoint::origin()); // device 1.812 → level 2 drawn at 90.6%
+    v.set_zoom(0.906, ViewPoint::origin()); // device scale 1.812, so level 2 drawn at 90.6%
     let t0 = Instant::now();
     v.frame(t0, |_| false);
     let later = t0 + v.settings().settle_delay;
@@ -396,7 +396,7 @@ fn go_to_pdf_position_puts_the_target_at_the_top() {
     // No coordinates: the page top.
     v.go_to_pdf_position(3, None, None);
     assert!(close(v.page_rect(3).unwrap().origin.y, 10.0));
-    // Out-of-page positions are clamped; the last page clamps the scroll.
+    // Out-of-page positions are clamped, and the last page clamps the scroll.
     v.go_to_pdf_position(4, None, Some(-5000.0));
     assert_eq!(v.current_page(), 4);
 }
@@ -404,7 +404,7 @@ fn go_to_pdf_position_puts_the_target_at_the_top() {
 #[test]
 fn go_to_pdf_position_respects_rotation() {
     let mut pages = letters(4);
-    pages[1].rotation = Rotation::Cw90; // displayed 792 × 612, not the last page
+    pages[1].rotation = Rotation::Cw90; // displayed 792 by 612, not the last page
     let mut v = viewer(pages);
     v.set_zoom(1.0, ViewPoint::origin());
     // PDF x = 300 on a page turned clockwise becomes a page-space y of 300.
@@ -442,8 +442,8 @@ fn view_state_round_trips_across_viewers_and_sizes() {
         "{again:?}"
     );
 
-    // Fewer pages now: clamped instead of failing, and the last page is in
-    // view (the scroll is clamped too, so it needn't be at the top).
+    // Fewer pages now: clamped instead of failing, and the last page is in view (the scroll is
+    // clamped too, so it needn't be at the top).
     let mut c = viewer(letters(3));
     c.restore_view_state(&state);
     let last = c.page_rect(2).unwrap();
@@ -487,8 +487,8 @@ fn the_end_of_a_continuous_document_is_its_last_page() {
     assert_eq!(v.current_page(), 8);
 }
 
-/// Letter portrait, letter landscape, and a small page, swiped one at a time
-/// in a 1000 × 800 viewport (margin and gap 10).
+/// Letter portrait, letter landscape, and a small page, swiped one at a time in a 1000 by 800
+/// viewport (margin and gap 10).
 fn swiper() -> Viewer {
     let mut v = viewer(vec![
         page(0, 612.0, 792.0),
@@ -515,7 +515,7 @@ fn swipe_fits_each_page_on_its_own() {
     assert!(close(r1.origin.x, 1000.0 + 10.0 + 10.0), "{r1:?}");
     assert!(close(r1.size.width, 792.0 * z1));
 
-    // Landscape: limited by the width, centred vertically.
+    // Landscape: limited by the width, centered vertically.
     v.go_to_page(1);
     assert_eq!(v.current_page(), 1);
     assert!(close(v.zoom(), z1));
@@ -551,14 +551,13 @@ fn swiping_slides_between_pages_and_snaps() {
     assert!(close(v.page_rect(1).unwrap().origin.x, 1020.0 - 300.0));
     assert_eq!(v.current_page(), 0);
     assert_eq!(v.snap_delta(still), Some(ViewVector::new(-300.0, 0.0)));
-    // The neighbour can be hit while it is partly on screen.
+    // The neighbor can be hit while it is partly on screen.
     assert_eq!(
         v.hit_test(ViewPoint::new(900.0, 400.0)).map(|h| h.0),
         Some(1)
     );
 
-    // The same drag ending in a flick turns the page. Slots are a viewport
-    // wide plus the gap.
+    // The same drag ending in a flick turns the page. Slots are a viewport wide plus the gap.
     let flick = ViewVector::new(400.0, 0.0);
     assert_eq!(v.snap_delta(flick), Some(ViewVector::new(710.0, 0.0)));
     // So does dragging more than half way.
@@ -607,8 +606,8 @@ fn swipe_zoom_pans_within_the_page() {
         close(after.x, anchor.x) && close(after.y, anchor.y),
         "{after:?}"
     );
-    // The zoomed page is larger than the viewport, so it rests anywhere
-    // within its slot. Its neighbours stay fitted.
+    // The zoomed page is larger than the viewport, so it rests anywhere within its slot. Its
+    // neighbors stay fitted.
     assert_eq!(v.snap_delta(ViewVector::zero()), None);
     let z1 = 980.0 / 792.0;
     assert!(close(v.page_rect(1).unwrap().size.width, 980.0));
@@ -622,16 +621,16 @@ fn swipe_zoom_pans_within_the_page() {
         close(r0.max_x(), 1000.0 - 10.0) && close(r0.max_y(), 800.0 - 10.0),
         "{r0:?}"
     );
-    // ... while a drag beyond it starts sliding to the next page, which
-    // comes in fitted and centred, however far down this one was scrolled.
+    // ... while a drag beyond it starts sliding to the next page, which comes in fitted and
+    // centered, however far down this one was scrolled.
     v.scroll_by(ViewVector::new(600.0, 0.0));
     let next = v.page_rect(1).unwrap();
     assert!(close(next.origin.y, (800.0 - 612.0 * z1) / 2.0), "{next:?}");
     let on_screen = next.origin.x;
     let rest = v.snap_delta(ViewVector::zero()).unwrap();
     v.scroll_by(rest);
-    // Arriving turns the page: the view is fitted again, and the page that
-    // slid in is where the slide left it.
+    // Arriving turns the page: the view is fitted again, and the page that slid in is where the
+    // slide left it.
     assert_eq!(v.current_page(), 1);
     assert_eq!(v.zoom_mode(), ZoomMode::FitPage);
     assert!(close(v.zoom(), z1));
@@ -668,8 +667,8 @@ fn swipe_zoom_pans_within_the_page() {
     v.zoom_by(0.01, anchor);
     assert!(close(v.zoom(), fit));
     if let Some(centre) = v.snap_delta(ViewVector::zero()) {
-        // Pinching out around a point off-centre can leave the page
-        // slightly aside; letting go centres it again.
+        // Pinching out around a point off-center can leave the page slightly aside. Letting go
+        // centers it again.
         assert!(centre.x.abs() < 20.0, "{centre:?}");
         v.scroll_by(centre);
     }
@@ -705,8 +704,8 @@ fn swipe_frames_use_each_pages_own_scale_and_prepare_the_neighbours() {
     let (s0, s1, s2) = (scale(&v, 0), scale(&v, 1), scale(&v, 2));
     assert!(s0 != s1 && s1 != s2);
 
-    // At rest only the current page is drawn, but both neighbours' tiles are
-    // requested, each at its own exact scale.
+    // At rest only the current page is drawn, but both neighbors' tiles are requested, each at its
+    // own exact scale.
     let f = v.frame(Instant::now(), |_| false);
     assert_eq!(f.pages.iter().map(|p| p.page).collect::<Vec<_>>(), vec![1]);
     let sharp = |page: u32, s: TileScale| {
@@ -716,12 +715,12 @@ fn swipe_frames_use_each_pages_own_scale_and_prepare_the_neighbours() {
             .count()
     };
     assert!(sharp(1, s1) > 0 && sharp(0, s0) > 0 && sharp(2, s2) > 0);
-    // The visible page's tiles come before the neighbours'.
+    // The visible page's tiles come before the neighbors'.
     let first_neighbour = f.requests.iter().position(|k| k.page != 1).unwrap();
     assert!(f.requests[..first_neighbour].iter().any(|k| k.scale == s1));
 
-    // Turning the page changes the scale, but nothing is zooming: the view
-    // stays settled and draws exact tiles 1:1 right away.
+    // Turning the page changes the scale, but nothing is zooming: the view stays settled and draws
+    // exact tiles one to one right away.
     let now = Instant::now();
     v.frame(now, all_cached);
     v.go_to_page(2);
@@ -753,8 +752,8 @@ fn swipe_frames_use_each_pages_own_scale_and_prepare_the_neighbours() {
     v.zoom_by(1.3, ViewPoint::new(500.0, 400.0));
     let f = v.frame(now, all_cached);
     assert!(f.settles_at.is_some());
-    // Turning the page from a zoomed-in one returns to the fitted view, but
-    // nothing zooms on the page that appears: it is sharp at once.
+    // Turning the page from a zoomed-in one returns to the fitted view, but nothing zooms on the
+    // page that appears: it is sharp at once.
     let later = now + std::time::Duration::from_secs(1);
     assert!(v.frame(later, all_cached).settles_at.is_none());
     v.previous_page();
@@ -782,8 +781,8 @@ fn destinations_in_swipe_mode_stay_on_their_page() {
     assert_eq!(v.snap_delta(ViewVector::zero()), None);
     assert!(close(v.page_rect(1).unwrap().origin.x, 10.0));
 
-    // Zoomed in, a position on the same page is honoured: PDF y 300 of the
-    // 612 pt tall page is 312 pt from its top.
+    // Zoomed in, a position on the same page is honored: PDF y 300 of the 612 pt tall page is 312
+    // pt from its top.
     v.zoom_by(3.0, ViewPoint::new(500.0, 400.0));
     v.go_to_pdf_position(1, Some(50.0), Some(300.0));
     assert_eq!((v.current_page(), v.zoom_mode()), (1, ZoomMode::Fixed));
@@ -830,7 +829,7 @@ fn view_state_round_trips_in_swipe_mode() {
 
 #[test]
 fn swiping_through_two_page_spreads() {
-    // Five letter pages, two side by side, in a wide 1400 × 800 viewport.
+    // Five letter pages, two side by side, in a wide 1400 by 800 viewport.
     let mut v = viewer(letters(5));
     v.set_viewport(ViewSize::new(1400.0, 800.0), 1.0);
     v.set_layout_mode(LayoutMode::TwoPage);
@@ -842,7 +841,7 @@ fn swiping_through_two_page_spreads() {
     assert!(close(v.zoom(), fit));
     let (a, b) = (v.page_rect(0).unwrap(), v.page_rect(1).unwrap());
     assert!(close(b.origin.x - a.max_x(), 10.0) && close(a.origin.y, b.origin.y));
-    // Centred as a pair.
+    // Centered as a pair.
     assert!(close(a.origin.x, 1400.0 - b.max_x()), "{a:?} {b:?}");
     assert_eq!(v.current_page(), 0);
 
@@ -854,14 +853,14 @@ fn swiping_through_two_page_spreads() {
     v.scroll_by(rest);
     assert_eq!(v.current_page(), 2);
     assert_eq!(v.snap_delta(ViewVector::zero()), None);
-    // Both of its pages are drawn, and nothing of the neighbours.
+    // Both of its pages are drawn, and nothing of the neighbors.
     let frame = v.frame(Instant::now(), all_cached);
     assert_eq!(
         frame.pages.iter().map(|p| p.page).collect::<Vec<_>>(),
         vec![2, 3]
     );
 
-    // The last page is alone in its spread and centred.
+    // The last page is alone in its spread and centered.
     v.go_to_page(4);
     assert_eq!(v.current_page(), 4);
     assert_eq!(v.current_spread(), [4]);
@@ -871,8 +870,8 @@ fn swiping_through_two_page_spreads() {
     v.go_to_page(3);
     assert_eq!(v.current_page(), 2);
 
-    // With the cover alone, pairs shift by one: [0] [1 2] [3 4]. The page
-    // the reader was on (2) is now the right-hand one of its spread.
+    // With the cover alone, pairs shift by one: [0] [1 2] [3 4]. The page the reader was on (2) is
+    // now the right-hand one of its spread.
     v.set_cover_alone(true);
     assert_eq!(v.current_page(), 1);
     assert!(v.page_rect(2).is_some_and(|r| r.origin.x > 700.0));
@@ -952,8 +951,8 @@ mod selection {
         assert!(s.is_empty());
         s.extend(&mut pages, TextPos::new(0, 10));
         assert_eq!(s.text(&mut pages), "0 one");
-        // Back past the anchor: the anchor becomes the end. ("ge " in the
-        // page; a selected trailing space isn't copied.)
+        // Back past the anchor: the anchor becomes the end. ("ge " in the page. A selected trailing
+        // space isn't copied.)
         s.extend(&mut pages, TextPos::new(0, 2));
         assert_eq!(s.range(), (TextPos::new(0, 2), TextPos::new(0, 5)));
         assert_eq!(s.text(&mut pages), "ge");
@@ -1053,7 +1052,7 @@ mod search {
         let one = |r: std::ops::Range<usize>| vec![r];
         r.add_page(8, one(0..3));
         r.add_page(1, one(7..9));
-        // The earlier page went in front; the current match stayed.
+        // The earlier page went in front, and the current match stayed.
         let (i, m) = r.current().unwrap();
         assert_eq!((i, m.page), (1, 5));
         assert_eq!(r.len(), 4);

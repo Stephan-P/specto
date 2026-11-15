@@ -1,9 +1,11 @@
 //! The per-frame path, without UniFFI: the same operations as on
-//! [`ViewSession`](crate::ViewSession), addressed by session id and with
-//! results written into a caller-provided byte buffer. `jni.rs` exposes these
-//! to Kotlin, which reads the buffer with a `ByteBuffer` in native byte order.
+//! [`ViewSession`](crate::ViewSession), addressed by session id and with results written into a
+//! caller-provided byte buffer.
 //!
-//! Frame layout (see [`encode_frame`]):
+//! `jni.rs` exposes these to Kotlin, which reads the buffer with a `ByteBuffer` in native byte
+//! order.
+//!
+//! Frame layout (written by `encode_frame`):
 //!
 //! ```text
 //! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged,
@@ -58,13 +60,15 @@
 //!                      annotation, zeros if flag bit 6 isn't set
 //! ```
 //!
-//! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then
-//! `count × { u64 id, u32 width, u32 height }`.
+//! Finished tiles ([`take_finished`]): `u32 count`, `u32 unused`, then `count × { u64 id, u32
+//! width, u32 height }`.
 
 use crate::{FinishedTile, Frame, HighlightKind, Point, Rect, SegmentDraw, ZoomMode, find_session};
 
-/// See `ViewSession::set_viewport`. Here because the app animates its bars,
-/// which resizes the view on every frame. `false` if the session is closed.
+/// See `ViewSession::set_viewport`.
+///
+/// Here because the app animates its bars, which resizes the view on every frame. `false` if the
+/// session is closed.
 pub fn set_viewport(session: u64, width: f64, height: f64, scale: f64) -> bool {
     let Some(session) = find_session(session) else {
         return false;
@@ -102,8 +106,8 @@ pub fn set_thumbnail_range(session: u64, first: u32, count: u32) -> bool {
     true
 }
 
-/// Scrolls like a fling: in paged mode it stops at the edges of the current
-/// page instead of sliding on to the next. `false` if the session is closed.
+/// Scrolls like a fling: in paged mode it stops at the edges of the current page instead of sliding
+/// on to the next. `false` if the session is closed.
 pub fn scroll_in_page_by(session: u64, dx: f64, dy: f64) -> bool {
     let Some(session) = find_session(session) else {
         return false;
@@ -138,9 +142,10 @@ pub fn select_to(session: u64, x: f64, y: f64) -> bool {
     true
 }
 
-/// Plans a frame and writes it to `out`. Returns the number of bytes written.
-/// If `out` is too small, returns minus the size needed; fetch the same frame
-/// with [`last_frame`] and a larger buffer. Returns 0 for a closed session.
+/// Plans a frame and writes it to `out`.
+///
+/// Returns the number of bytes written. If `out` is too small, returns minus the size needed. Fetch
+/// the same frame with [`last_frame`] and a larger buffer. Returns 0 for a closed session.
 pub fn frame(session: u64, out: &mut [u8]) -> i64 {
     let Some(session) = find_session(session) else {
         return 0;
@@ -160,9 +165,10 @@ pub fn last_frame(session: u64, out: &mut [u8]) -> i64 {
     copy_out(&session.lock().encoded, out)
 }
 
-/// Like `ViewSession::take_finished`. Sized so it always fits: at most
-/// `(out.len() - 8) / 16` tiles are announced, and the rest stay queued for
-/// the next call. Returns the number of bytes written (0: closed or no room).
+/// Like `ViewSession::take_finished`.
+///
+/// Sized so it always fits: at most `(out.len() - 8) / 16` tiles are announced, and the rest stay
+/// queued for the next call. Returns the number of bytes written (0: closed or no room).
 pub fn take_finished(session: u64, out: &mut [u8]) -> i64 {
     let Some(session) = find_session(session) else {
         return 0;
@@ -172,8 +178,8 @@ pub fn take_finished(session: u64, out: &mut [u8]) -> i64 {
     }
     let tiles = session.take_finished();
     let mut buf = Vec::with_capacity(8 + tiles.len() * 16);
-    // Anything that doesn't fit is dropped by the next `add_finished` and
-    // simply rendered again; buffers are sized so this doesn't happen.
+    // Anything that doesn't fit is dropped by the next `add_finished` and simply rendered again.
+    // Buffers are sized so this doesn't happen.
     let count = tiles.len().min((out.len() - 8) / 16);
     put_u32(&mut buf, count as u32);
     put_u32(&mut buf, 0);

@@ -5,7 +5,7 @@ use specto_geom::{LayoutPoint, LayoutRect, LayoutSize, PageSize};
 /// How pages are arranged.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LayoutMode {
-    /// One page at a time; other pages are reached by paging.
+    /// One page at a time. Other pages are reached by paging.
     SinglePage,
     /// All pages in one vertical column.
     #[default]
@@ -49,8 +49,8 @@ impl LayoutMode {
 
 /// Groups page indices into spreads.
 ///
-/// With `cover_alone`, the first page stands on its own (like a book cover),
-/// so that even pages end up on the left.
+/// With `cover_alone`, the first page stands on its own (like a book cover), so that even pages end
+/// up on the left.
 pub fn group_spreads(page_count: usize, two_page: bool, cover_alone: bool) -> Vec<Vec<usize>> {
     if !two_page {
         return (0..page_count).map(|i| vec![i]).collect();
@@ -79,8 +79,8 @@ pub(crate) fn spread_points(spread: &[usize], sizes: &[PageSize]) -> (f64, f64) 
 pub(crate) struct LaidSpread {
     pub pages: Vec<usize>,
     pub rect: LayoutRect,
-    /// In a strip ([`layout_strip`]): the cell this spread is centred in, at
-    /// least as large as the viewport. Otherwise the same as `rect`.
+    /// In a strip ([`layout_strip`]): the cell this spread is centered in, at least as large as the
+    /// viewport. Otherwise the same as `rect`.
     pub slot: LayoutRect,
 }
 
@@ -91,7 +91,7 @@ pub(crate) struct Layout {
     pub spreads: Vec<LaidSpread>,
     /// Index into the full spread list of `spreads[0]`.
     pub first_spread: usize,
-    /// Page rectangles; `None` for pages not in this layout (paged modes).
+    /// Page rectangles, or `None` for pages not in this layout (paged modes).
     pub page_rects: Vec<Option<LayoutRect>>,
     pub size: LayoutSize,
 }
@@ -102,11 +102,11 @@ pub(crate) struct LayoutParams<'a> {
     /// Which spreads to include (all for continuous, one for paged).
     pub range: std::ops::Range<usize>,
     pub zoom: f64,
-    /// Gap between spreads and between the pages of a spread, logical px.
+    /// Gap between spreads and between the pages of a spread, logical pixels.
     pub gap: f64,
-    /// Space around the content, logical px.
+    /// Space around the content, logical pixels.
     pub margin: f64,
-    /// Viewport width: narrower content is centred within it.
+    /// Viewport width: narrower content is centered within it.
     pub viewport_width: f64,
 }
 
@@ -132,7 +132,7 @@ pub(crate) fn layout(p: &LayoutParams<'_>) -> Layout {
         let mut x = ((content_width - w) / 2.0).max(p.margin);
         for &i in pages {
             let (pw, ph) = (p.sizes[i].width * p.zoom, p.sizes[i].height * p.zoom);
-            // Pages of different heights are centred vertically within the spread.
+            // Pages of different heights are centered vertically within the spread.
             page_rects[i] = Some(LayoutRect::new(
                 LayoutPoint::new(x, y + (h - ph) / 2.0),
                 LayoutSize::new(pw, ph),
@@ -166,20 +166,20 @@ pub(crate) fn layout(p: &LayoutParams<'_>) -> Layout {
 pub(crate) struct StripParams<'a> {
     pub sizes: &'a [PageSize],
     pub spreads: &'a [Vec<usize>],
-    /// Logical px per point for each spread: every spread has its own zoom,
-    /// so pages of different sizes can each fit the viewport.
+    /// Logical pixels per point for each spread: every spread has its own zoom, so pages of
+    /// different sizes can each fit the viewport.
     pub zooms: &'a [f64],
-    /// Gap between slots and between the pages of a spread, logical px.
+    /// Gap between slots and between the pages of a spread, logical pixels.
     pub gap: f64,
-    /// Space around a spread within its slot, logical px.
+    /// Space around a spread within its slot, logical pixels.
     pub margin: f64,
     pub viewport: (f64, f64),
 }
 
-/// Lays all spreads out side by side for swiping between them. Each spread
-/// is centred in a slot that is at least as large as the viewport (larger
-/// when the spread is zoomed in), so a viewport aligned with a slot shows
-/// that spread and nothing else.
+/// Lays all spreads out side by side for swiping between them.
+///
+/// Each spread is centered in a slot that is at least as large as the viewport (larger when the
+/// spread is zoomed in), so a viewport aligned with a slot shows that spread and nothing else.
 pub(crate) fn layout_strip(p: &StripParams<'_>) -> Layout {
     let (vw, vh) = p.viewport;
     let mut page_rects = vec![None; p.sizes.len()];
@@ -261,14 +261,14 @@ mod tests {
             margin: 20.0,
             viewport: (500.0, 400.0),
         });
-        // Slot 0 is the viewport; the page is centred in it.
+        // Slot 0 is the viewport, and the page is centered in it.
         assert_eq!(
             l.spreads[0].slot,
             LayoutRect::new(LayoutPoint::new(0.0, 0.0), LayoutSize::new(500.0, 400.0))
         );
         let a = l.page_rects[0].unwrap();
         assert_eq!((a.origin.x, a.origin.y), (150.0, 50.0));
-        // Slot 1 starts after a gap and grows with its 1200 × 300 page.
+        // Slot 1 starts after a gap and grows with its 1200 by 300 page.
         let slot = l.spreads[1].slot;
         assert_eq!(
             (slot.origin.x, slot.size.width, slot.size.height),
@@ -297,7 +297,7 @@ mod tests {
             margin: 20.0,
             viewport_width: 800.0,
         });
-        // Spread 0: 306 + 10 + 306 = 622 wide, 396 tall, centred in 800.
+        // Spread 0: 306 + 10 + 306 = 622 wide, 396 tall, centered in 800.
         let a = l.page_rects[0].unwrap();
         let b = l.page_rects[1].unwrap();
         assert_eq!((a.origin.x, a.origin.y), (89.0, 20.0));

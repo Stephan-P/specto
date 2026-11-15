@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::*;
 
-/// `pages` pages of 200×300 pt, each with a red triangle.
+/// `pages` pages of 200 by 300 points, each with a red triangle.
 fn sample_pdf(pages: usize) -> Vec<u8> {
     let content = "1 0 0 rg 0 0 m 200 0 l 200 300 l f";
     let kids: String = (0..pages).map(|i| format!("{} 0 R ", 10 + i)).collect();
@@ -44,8 +44,9 @@ fn open(pages: usize, cache_bytes: u64) -> (Arc<ViewSession>, mpsc::Receiver<()>
     (session, rx)
 }
 
-/// Plays the frontend: copies finished tiles until the view is settled and
-/// sharp. Returns the final frame and all tile ids evicted on the way.
+/// Plays the frontend: copies finished tiles until the view is settled and sharp.
+///
+/// Returns the final frame and all tile ids evicted on the way.
 fn settle(session: &ViewSession, rx: &mpsc::Receiver<()>) -> (Frame, Vec<u64>) {
     let mut evicted = Vec::new();
     loop {
@@ -101,7 +102,7 @@ fn opens_from_a_file_descriptor() {
     assert_eq!(file.read(0, u32::MAX).len() as u64, file.size());
     let (tx, _rx) = mpsc::channel();
     let listener = Arc::new(Listener(Mutex::new(tx)));
-    // The same file serves several attempts (e.g. with passwords).
+    // The same file serves several attempts (with passwords, for instance).
     for _ in 0..2 {
         let session =
             ViewSession::open_file(file.clone(), None, 1 << 20, listener.clone()).unwrap();
@@ -114,7 +115,7 @@ fn opens_from_a_file_descriptor() {
 fn frame_becomes_sharp_and_covers_the_page() {
     let (session, rx) = open(3, 64 << 20);
     assert_eq!(session.page_count(), 3);
-    // 200 dp wide at density 2: fit width → the page is 2 × (200 − 2 × 8) px wide.
+    // 200 dp wide at density 2: at fit width the page is 2 * (200 - 2 * 8) pixels wide.
     session.set_viewport(200.0, 300.0, 2.0);
     let first = session.frame();
     assert!(!first.complete);
@@ -128,8 +129,8 @@ fn frame_becomes_sharp_and_covers_the_page() {
         (16.0, 16.0, 368.0)
     );
     assert!(!page.tiles.is_empty());
-    // Sharp tiles tile the visible part of the page without gaps: their
-    // union spans the page's width.
+    // Sharp tiles tile the visible part of the page without gaps: their union spans the page's
+    // width.
     let right = page
         .tiles
         .iter()
@@ -138,10 +139,10 @@ fn frame_becomes_sharp_and_covers_the_page() {
     assert!((right - (page.rect.x + page.rect.width)).abs() < 1.0);
 }
 
-/// One page like [`sample_pdf`]'s, whose resources also name an image of
-/// 120 megapixels. Nothing draws the image, so the page renders as quickly
-/// as any, but the scheduler goes by what a page could draw and treats it
-/// as expensive.
+/// One page like [`sample_pdf`]'s, whose resources also name an image of 120 megapixels.
+///
+/// Nothing draws the image, so the page renders as quickly as any, but the scheduler goes by what a
+/// page could draw and treats it as expensive.
 fn heavy_pdf() -> Vec<u8> {
     let content = "1 0 0 rg 0 0 m 200 0 l 200 300 l f";
     format!(
@@ -230,8 +231,8 @@ fn settles_to_exact_tiles_after_a_zoom() {
     assert_eq!(covered_exactly(&frame.pages[0]), 1.0);
 }
 
-/// Share of the page's on-screen area covered by 1:1 tiles (which sit on
-/// whole device pixels). The viewport in these tests is 525 × 787.5 px.
+/// Share of the page's on-screen area covered by one to one tiles (which sit on whole device
+/// pixels). The viewport in these tests is 525 by 787.5 pixels.
 fn covered_exactly(page: &PageDraw) -> f32 {
     let visible = |r: &Rect| {
         let w = (r.x + r.width).min(525.0) - r.x.max(0.0);
@@ -306,7 +307,7 @@ fn thumbnails_reuse_placeholders_and_survive_eviction_while_shown() {
         }
     );
 
-    // The grid shows pages 20–25, far from the page view at the top.
+    // The grid shows pages 20 to 25, far from the page view at the top.
     session.set_thumbnail_range(20, 6);
     let first = session.frame();
     assert_eq!((first.thumbnail_first, first.thumbnails.len()), (20, 6));
@@ -324,8 +325,8 @@ fn thumbnails_reuse_placeholders_and_survive_eviction_while_shown() {
     };
     let shown = ready(&session);
 
-    // Scrolling the page view through the document churns the small cache,
-    // but never evicts a thumbnail that is on screen.
+    // Scrolling the page view through the document churns the small cache, but never evicts a
+    // thumbnail that is on screen.
     let mut evicted = Vec::new();
     for page in [5, 12, 28] {
         session.go_to_page(page);
@@ -335,7 +336,7 @@ fn thumbnails_reuse_placeholders_and_survive_eviction_while_shown() {
     assert!(shown.iter().all(|id| !evicted.contains(id)));
     assert_eq!(session.frame().thumbnails, shown);
 
-    // A range past the end is clamped; an empty one reports nothing.
+    // A range past the end is clamped, and an empty one reports nothing.
     session.set_thumbnail_range(28, 10);
     assert_eq!(session.frame().thumbnails.len(), 2);
     session.set_thumbnail_range(0, 0);
@@ -345,7 +346,7 @@ fn thumbnails_reuse_placeholders_and_survive_eviction_while_shown() {
 #[test]
 fn paged_mode_swipes_one_fitted_page_at_a_time() {
     let (session, rx) = open(5, 64 << 20);
-    // 200 × 300 pt pages in a 216 × 316 dp view: fitted, 1 dp per point.
+    // Pages of 200 by 300 points in a view of 216 by 316 dp: fitted, 1 dp per point.
     session.set_viewport(216.0, 316.0, 2.0);
     session.go_to_page(2);
     session.set_view_mode(ViewMode::Paged);
@@ -363,8 +364,8 @@ fn paged_mode_swipes_one_fitted_page_at_a_time() {
     );
     assert_eq!(session.snap_delta(0.0, 0.0), None);
 
-    // Dragging a third of the way and letting go returns to the page; a
-    // flick turns it. Through the per-frame path, as the app does.
+    // Dragging a third of the way and letting go returns to the page, and a flick turns it. Through
+    // the per-frame path, as the app does.
     let id = session.id();
     assert!(hot::scroll_by(id, 72.0, 0.0));
     assert_eq!(session.frame().pages.len(), 2);
@@ -409,8 +410,8 @@ fn paged_mode_swipes_one_fitted_page_at_a_time() {
     );
 }
 
-/// Four 200 × 300 pt pages with an outline (Chapter 1 › Section 1.1,
-/// Chapter 2) and, on page 1, a link to page 3 and a link to a web page.
+/// Four pages of 200 by 300 points with an outline (Chapter 1 with Section 1.1 in it, Chapter 2)
+/// and, on page 1, a link to page 3 and a link to a web page.
 fn linked_pdf() -> Vec<u8> {
     let content = "1 0 0 rg 0 0 m 200 0 l 200 300 l f";
     format!(
@@ -461,7 +462,7 @@ fn outline_and_links() {
     assert_eq!(session.frame().current_page, 1);
     assert_eq!(session.activate_outline(7), Activated::Nothing);
 
-    // The links on page 1: PDF y 200–240 is 60–100 pt from the page's top.
+    // The links on page 1: PDF y 200 to 240 is 60 to 100 points from the page's top.
     session.go_to_page(0);
     assert_eq!(session.tap(108.0, 8.0 + 20.0), Activated::Nothing);
     assert_eq!(
@@ -474,7 +475,7 @@ fn outline_and_links() {
     assert_eq!(session.tap(108.0, 8.0 + 80.0), Activated::Moved);
     assert_eq!(session.frame().current_page, 2);
 
-    // The same in paged mode, where the page is centred and fitted.
+    // The same in paged mode, where the page is centered and fitted.
     session.set_view_mode(ViewMode::Paged);
     session.go_to_page(0);
     assert_eq!(session.tap(108.0, 8.0 + 80.0), Activated::Moved);
@@ -485,9 +486,10 @@ fn outline_and_links() {
     assert_eq!(session.tap(2.0, 150.0), Activated::Nothing);
 }
 
-/// Four pages of 200 × 300 pt reading "Page 1" to "Page 4", numbered i,
-/// ii, 1, 2, with an outline entry for the second and for the fourth. A
-/// well-formed file, cross-reference table and all: saving reads strictly.
+/// Four pages of 200 by 300 points reading "Page 1" to "Page 4", numbered i, ii, 1, 2, with an
+/// outline entry for the second and for the fourth.
+///
+/// A well-formed file, cross-reference table and all: saving reads strictly.
 fn book_pdf() -> Vec<u8> {
     let mut objects: Vec<(usize, String)> = vec![
         (
@@ -605,8 +607,8 @@ fn editing_pages() {
     assert_eq!(sizes(&session)[..2], [(200.0, 300.0), (300.0, 200.0)]);
     assert_eq!(session.undo().map(|e| e.pages), Some(2));
 
-    // Without a page, the others move up; they keep their printed numbers,
-    // and the outline knows where its pages are now.
+    // Without a page, the others move up. They keep their printed numbers, and the outline knows
+    // where its pages are now.
     assert!(session.delete_pages(vec![1]));
     assert_eq!(session.page_count(), 3);
     assert_eq!(session.page_labels().unwrap(), ["i", "1", "2"]);
@@ -679,8 +681,8 @@ fn saving_what_was_edited() {
     let copy_fd = std::fs::File::create(&copy).unwrap().into_raw_fd();
     session.save_to_fd(copy_fd, false).unwrap();
     assert!(session.edit_state().modified);
-    // Unless the copy is put in the document's place: then what it holds
-    // is saved, and an edit made since is not.
+    // Unless the copy is put in the document's place: then what it holds is saved, and an edit made
+    // since is not.
     assert!(session.rotate_pages(vec![0], true));
     session.written_is_saved();
     assert!(session.edit_state().modified);
@@ -767,7 +769,7 @@ fn saving_what_was_edited() {
 
 #[test]
 fn printed_page_numbers() {
-    // Front matter i–ii, then 1, 2, …: the page printed "1" is the third.
+    // Front matter i to ii, then 1, 2 and so on: the page printed "1" is the third.
     let pdf = String::from_utf8(sample_pdf(5)).unwrap().replace(
         "/Type /Catalog",
         "/Type /Catalog /PageLabels << /Nums [0 << /S /r >> 2 << /S /D >>] >>",
@@ -779,8 +781,8 @@ fn printed_page_numbers() {
         session.page_labels(),
         Some(["i", "ii", "1", "2", "3"].map(String::from).to_vec())
     );
-    // Labels win over positions; case doesn't matter; positions still work
-    // where no label says otherwise.
+    // Labels win over positions, and case doesn't matter. Positions still work where no label says
+    // otherwise.
     assert_eq!(session.find_page("ii".into()), Some(1));
     assert_eq!(session.find_page(" II ".into()), Some(1));
     assert_eq!(session.find_page("1".into()), Some(2));
@@ -788,8 +790,7 @@ fn printed_page_numbers() {
     assert_eq!(session.find_page("6".into()), None);
     assert_eq!(session.find_page("x".into()), None);
 
-    // Without labels (or with plain ones) there is nothing to show, and
-    // text is a position.
+    // Without labels (or with plain ones) there is nothing to show, and text is a position.
     let (plain, _rx) = open(5, 1 << 20);
     assert_eq!(plain.page_labels(), None);
     assert_eq!(plain.find_page("3".into()), Some(2));
@@ -846,8 +847,8 @@ fn saved_view_continues_where_the_reader_left_off() {
 
 #[test]
 fn fit_page_or_fit_width() {
-    // Pages of 200×300 pt in a wide view: fitted whole they are 300 high,
-    // fitted to the width three times as large.
+    // Pages of 200 by 300 points in a wide view: fitted whole they are 300 high, fitted to the
+    // width three times as large.
     let (a, _rx) = open(4, 1 << 20);
     a.set_viewport(616.0, 316.0, 2.0);
     a.set_view_mode(ViewMode::Paged);
@@ -887,8 +888,7 @@ fn fit_page_or_fit_width() {
     b.fit();
     assert_eq!(b.frame().zoom, 3.0);
 
-    // Each view mode starts with its own fit; choosing the same mode again
-    // changes nothing.
+    // Each view mode starts with its own fit. Choosing the same mode again changes nothing.
     a.set_view_mode(ViewMode::Paged);
     assert!(a.saved_view().fit_width);
     a.set_view_mode(ViewMode::Continuous);
@@ -902,9 +902,9 @@ fn fit_page_or_fit_width() {
     assert!(a.saved_view().fit_width);
 }
 
-/// Two pages of 200×300 pt with text in Helvetica, 16 pt: "Hello brave
-/// world" (from x 20; "brave" from about 61, "world" from about 105) with
-/// "second line here" below it, and "Other page".
+/// Two pages of 200 by 300 points with text in Helvetica at 16 points: "Hello brave world" (from x
+/// 20, with "brave" from about 61, "world" from about 105) with "second line here" below it, and
+/// "Other page".
 fn text_pdf() -> Vec<u8> {
     let first = "BT /F1 16 Tf 20 250 Td (Hello brave world) Tj 0 -30 Td (second line here) Tj ET";
     let second = "BT /F1 16 Tf 20 250 Td (Other page) Tj ET";
@@ -930,8 +930,8 @@ fn selecting_text() {
     let (tx, _rx) = mpsc::channel();
     let listener = Arc::new(Listener(Mutex::new(tx)));
     let session = ViewSession::open(text_pdf(), None, 1 << 20, listener).unwrap();
-    // Fitted, a page is shown 1:1 with its top-left corner at (8, 8), so
-    // PDF (x, y) is at (8 + x, 8 + 300 - y) in the view.
+    // Fitted, a page is shown one to one with its top-left corner at (8, 8), so PDF (x, y) is at (8
+    // + x, 8 + 300 - y) in the view.
     session.set_viewport(216.0, 316.0, 2.0);
     session.set_view_mode(ViewMode::Paged);
     let at = |x: f64, y: f64| (8.0 + x, 308.0 - y);
@@ -940,7 +940,7 @@ fn selecting_text() {
     assert!(!frame.selection && frame.highlights.is_empty());
     assert_eq!(session.selected_text(), None);
 
-    // A long press away from any text selects nothing; on a word, the word.
+    // A long press away from any text selects nothing. On a word, it selects the word.
     let (x, y) = at(100.0, 100.0);
     assert!(!session.select_word_at(x, y));
     assert!(!session.frame().selection);
@@ -948,8 +948,8 @@ fn selecting_text() {
     assert!(session.select_word_at(x, y));
     assert_eq!(text(&session), "Hello");
 
-    // It is highlighted where the word is, in device pixels (two per
-    // logical one), and both ends are on screen for their handles.
+    // It is highlighted where the word is, in device pixels (two per logical one), and both ends
+    // are on screen for their handles.
     let frame = session.frame();
     assert!(frame.selection);
     let [h] = frame.highlights[..] else {
@@ -967,15 +967,14 @@ fn selecting_text() {
     session.select_to(x, y);
     assert_eq!(text(&session), "Hello brave");
 
-    // Taking the end by its handle moves it character by character, here
-    // on to the next line.
+    // Taking the end by its handle moves it character by character, here on to the next line.
     session.grab_selection(true);
     let (x, y) = at(72.0, 225.0);
     session.select_to(x, y);
     assert_eq!(text(&session), "Hello brave world\nsecond");
     assert_eq!(session.frame().highlights.len(), 2);
 
-    // The start likewise; the end stays.
+    // The start likewise, and the end stays.
     session.grab_selection(false);
     let (x, y) = at(62.0, 255.0);
     session.select_to(x, y);
@@ -997,8 +996,7 @@ fn selecting_text() {
     assert_eq!(hot_frame.selection_start, frame.selection_start);
     assert_eq!(hot_frame.selection_end, frame.selection_end);
 
-    // Everything, across pages; an end on a page that isn't shown has no
-    // place for a handle.
+    // Everything, across pages. An end on a page that isn't shown has no place for a handle.
     session.select_all();
     assert_eq!(
         text(&session),
@@ -1037,9 +1035,8 @@ fn searching() {
         s.frame().highlights.iter().map(|h| h.kind).collect()
     };
 
-    // The first search has the document read in the background; the
-    // listener hears when there is more to show. "page" is only on the
-    // second page, which the view then goes to.
+    // The first search has the document read in the background. The listener hears when there is
+    // more to show. "page" is only on the second page, which the view then goes to.
     session.search("page".into());
     let status = loop {
         let status = session.search_status().unwrap();
@@ -1056,8 +1053,8 @@ fn searching() {
     assert_eq!(session.frame().current_page, 1);
     assert_eq!(kinds(&session), [HighlightKind::CurrentMatch]);
 
-    // From now on searches are answered at once. Case and spacing don't
-    // matter; the view returns to the first page for this one.
+    // From now on searches are answered at once. Case and spacing don't matter. The view returns to
+    // the first page for this one.
     session.search("HELLO   brave".into());
     let status = session.search_status().unwrap();
     assert_eq!((status.matches, status.current), (1, Some(0)));
@@ -1066,12 +1063,12 @@ fn searching() {
     let [h] = frame.highlights[..] else {
         panic!("one match on one line: {:?}", frame.highlights);
     };
-    // "Hello brave" runs from x 20 to about 101 pt: 56 to about 218 px.
+    // "Hello brave" runs from x 20 to about 101 pt: 56 to about 218 pixels.
     assert!((h.start_bottom.x - 56.0).abs() < 4.0, "{h:?}");
     assert!((h.end_bottom.x - 218.0).abs() < 8.0, "{h:?}");
 
-    // Three matches on the first page and one on the second, starting with
-    // the first one on the page being looked at.
+    // Three matches on the first page and one on the second, starting with the first one on the
+    // page being looked at.
     session.search("o".into());
     let status = session.search_status().unwrap();
     assert_eq!((status.matches, status.current), (4, Some(0)));
@@ -1161,15 +1158,15 @@ fn what_a_document_says_about_itself() {
 #[test]
 fn two_pages_side_by_side() {
     let (session, rx) = open(5, 64 << 20);
-    // Wide enough for two 200 × 300 pt pages at 1 dp per point:
-    // 8 + 200 + 8 + 200 + 8 by 8 + 300 + 8.
+    // Wide enough for two pages of 200 by 300 points at 1 dp per point: 8 + 200 + 8 + 200 + 8 by 8
+    // + 300 + 8.
     session.set_viewport(424.0, 316.0, 2.0);
     session.set_view_mode(ViewMode::Paged);
     session.go_to_page(2);
     session.set_spread(true, false);
     let (frame, _) = settle(&session, &rx);
     assert!(frame.two_pages && !frame.cover_alone && frame.paged);
-    // Pages 3 and 4 as a pair, fitted; the reader's page stays on screen.
+    // Pages 3 and 4 as a pair, fitted. The reader's page stays on screen.
     assert_eq!(
         (frame.current_page, frame.zoom, frame.zoom_factor),
         (2, 1.0, 1.0)
@@ -1414,8 +1411,9 @@ fn decode_frame(mut b: &[u8]) -> Frame {
     }
 }
 
-/// A frame with something in every field. The Android app's `ViewFrameTest`
-/// decodes the encoded form of exactly this.
+/// A frame with something in every field.
+///
+/// The Android app's `ViewFrameTest` decodes the encoded form of exactly this.
 fn fixture_frame() -> Frame {
     let rect = |x, y, width, height| Rect {
         x,
@@ -1604,8 +1602,7 @@ fn marking_text() {
     assert!(session.select_word_at(hello.0, hello.1));
     let selected = session.frame().highlights[0];
     assert!(session.mark_selection(Markup::Highlight));
-    // The selection became the highlight: a fill that darkens, where the
-    // word is, in device pixels.
+    // The selection became the highlight: a fill that darkens, where the word is, in device pixels.
     let frame = session.frame();
     assert!(!frame.selection && frame.highlights.is_empty());
     let [shape] = &frame.shapes[..] else {
@@ -1670,8 +1667,8 @@ fn marking_text() {
     let (frame, _) = settle(&saved, &rx);
     assert!(frame.shapes.is_empty());
 
-    // One of the file's own can be deleted too: its page is then rendered
-    // without it, from a copy, and with it again after undo.
+    // One of the file's own can be deleted too: its page is then rendered without it, from a copy,
+    // and with it again after undo.
     assert!(saved.pick_annotation_at(hello.0, hello.1));
     assert!(saved.remove_picked_annotation().unwrap());
     assert!(!saved.pick_annotation_at(hello.0, hello.1));
@@ -1682,10 +1679,11 @@ fn marking_text() {
     assert!(saved.pick_annotation_at(hello.0, hello.1));
 }
 
-/// `fixtures/frame.bin` is what Rust writes for [`fixture_frame`] and what
-/// the Kotlin decoder is tested with, so the two can't drift apart unnoticed.
-/// After a deliberate change to the layout, update `ViewFrame.decode` and
-/// rerun with `SPECTO_UPDATE_FIXTURES=1`.
+/// `fixtures/frame.bin` is what Rust writes for [`fixture_frame`] and what the Kotlin decoder is
+/// tested with, so the two can't drift apart unnoticed.
+///
+/// After a deliberate change to the layout, update `ViewFrame.decode` and rerun with
+/// `SPECTO_UPDATE_FIXTURES=1`.
 #[test]
 #[cfg(target_endian = "little")]
 fn frame_fixture_is_current() {
@@ -1721,8 +1719,8 @@ fn hot_path_matches_the_uniffi_one() {
     let n = hot::frame(id, &mut buf);
     assert!(n > 0);
     let hot_frame = decode_frame(&buf[..n as usize]);
-    // Nothing changed in between, so the UniFFI call plans the same frame
-    // (its eviction list is empty: the hot call already took it).
+    // Nothing changed in between, so the UniFFI call plans the same frame (its eviction list is
+    // empty: the hot call already took it).
     let frame = session.frame();
     assert_eq!(
         format!("{:?}", hot_frame.pages),
@@ -1734,8 +1732,8 @@ fn hot_path_matches_the_uniffi_one() {
     assert_eq!(hot_frame.device_scale, frame.device_scale);
     assert!(!hot_frame.settled && hot_frame.settles_in_ms.is_some());
 
-    // A buffer that is too small reports the size needed; the frame can then
-    // be fetched again without planning a new one.
+    // A buffer that is too small reports the size needed. The frame can then be fetched again
+    // without planning a new one.
     let mut small = [0u8; 16];
     let needed = hot::frame(id, &mut small);
     assert!(needed < -16);

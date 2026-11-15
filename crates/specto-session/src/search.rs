@@ -1,9 +1,8 @@
 //! Searching the document.
 //!
-//! Matching itself is in `specto_text` ([`SearchText`]) and `specto_view`
-//! ([`SearchResults`], the list of matches and the current one). Here is
-//! what goes around it: every page's search text, prepared by a background
-//! thread and kept per file, and the search in progress.
+//! Matching itself is in `specto_text` ([`SearchText`]) and `specto_view` ([`SearchResults`], the
+//! list of matches and the current one). Here is what goes around it: every page's search text,
+//! prepared by a background thread and kept per file, and the search in progress.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -20,8 +19,7 @@ use crate::{FilePage, Session};
 pub(crate) struct Search {
     query: Query,
     results: SearchResults,
-    /// The page the search started from: the first match after it is the
-    /// first one shown.
+    /// The page the search started from: the first match after it is the first one shown.
     start: usize,
 }
 
@@ -34,8 +32,8 @@ pub(crate) struct Indexer {
     done: AtomicBool,
 }
 
-/// What the search indexer hands over: a page of one of the files and its
-/// search text. Pass it to [`Session::indexed`].
+/// What the search indexer hands over: a page of one of the files and its search text. Pass it to
+/// [`Session::indexed`].
 pub struct Indexed {
     page: FilePage,
     text: SearchText,
@@ -61,16 +59,14 @@ impl Session {
             .as_ref()
     }
 
-    /// Starts indexing the document's pages not indexed yet in a background
-    /// thread, from position `from` onwards and then from the start, unless
-    /// that is already running or done; returns whether it started.
+    /// Starts indexing the document's pages not indexed yet in a background thread, from position
+    /// `from` onwards and then from the start, unless that is already running or done. Returns
+    /// whether it started.
     ///
-    /// The thread parses the files for itself and shares nothing with the
-    /// session. It calls `sink` with each page's search text: get that to
-    /// whoever holds the session and pass it to [`indexed`](Self::indexed).
-    /// The thread ends when `sink` returns `false`, when the session is
-    /// dropped, or when the page list changes in a way that needs another
-    /// start (a file was added).
+    /// The thread parses the files for itself and shares nothing with the session. It calls `sink`
+    /// with each page's search text: get that to whoever holds the session and pass it to
+    /// [`indexed`](Self::indexed). The thread ends when `sink` returns `false`, when the session is
+    /// dropped, or when the page list changes in a way that needs another start (a file was added).
     pub fn start_indexing(
         &mut self,
         from: usize,
@@ -152,8 +148,10 @@ impl Session {
         }
     }
 
-    /// Takes in a page from the indexer. Returns whether a search had no
-    /// current match before and has one now (so the view should go there).
+    /// Takes in a page from the indexer.
+    ///
+    /// Returns whether a search had no current match before and has one now (so the view should go
+    /// there).
     pub fn indexed(&mut self, Indexed { page, text }: Indexed) -> bool {
         let Some(slot) = self
             .sources
@@ -189,9 +187,9 @@ impl Session {
             .count()
     }
 
-    /// Searches for `text` in the pages indexed so far (the rest follow as
-    /// they're indexed); an empty `text` ends the search. Returns whether
-    /// there is a current match to go to.
+    /// Searches for `text` in the pages indexed so far (the rest follow as they're indexed).
+    ///
+    /// An empty `text` ends the search. Returns whether there is a current match to go to.
     pub fn search(&mut self, text: &str) -> bool {
         let Some(query) = Query::new(text) else {
             self.search = None;
@@ -208,8 +206,7 @@ impl Session {
         found
     }
 
-    /// The matches of `query` on the pages indexed so far, from page
-    /// `start` on.
+    /// The matches of `query` on the pages indexed so far, from page `start` on.
     fn find_all(&self, query: &Query, start: usize) -> SearchResults {
         let mut results = SearchResults::new();
         for (i, p) in self.edit.pages().iter().enumerate() {
@@ -225,8 +222,7 @@ impl Session {
         self.search = None;
     }
 
-    /// Runs the current search again, after the page list changed: its
-    /// results hold positions.
+    /// Runs the current search again, after the page list changed: its results hold positions.
     pub(crate) fn search_again(&mut self) {
         if let Some(s) = self.search.take() {
             let start = self.viewer.current_page();

@@ -1,12 +1,11 @@
 //! Text selection, shared by the frontends.
 //!
-//! A selection runs between two [`TextPos`]itions, which can be on
-//! different pages, in content order. It grows from an anchor: the point
-//! where a drag started, or the word or line that was double- or
-//! triple-clicked, in which case dragging extends it by whole words or lines.
+//! A selection runs between two [`TextPos`]itions, which can be on different pages, in content
+//! order. It grows from an anchor: the point where a drag started, or the word or line that was
+//! double- or triple-clicked, in which case dragging extends it by whole words or lines.
 //!
-//! Text pages come from the frontend through [`TextPages`], which can
-//! extract them lazily and cache them; the viewer itself holds no text.
+//! Text pages come from the frontend through [`TextPages`], which can extract them lazily and cache
+//! them. The viewer itself holds no text.
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -22,6 +21,7 @@ pub trait TextPages {
 }
 
 /// A position between characters: before character `index` of `page`.
+///
 /// `index` may exceed the page's character count, meaning its end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextPos {
@@ -50,17 +50,18 @@ pub enum Granularity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
     granularity: Granularity,
-    /// What was first selected: an empty range for [`Granularity::Char`],
-    /// otherwise the word or line clicked.
+    /// What was first selected: an empty range for [`Granularity::Char`], otherwise the word or
+    /// line clicked.
     anchor: (TextPos, TextPos),
     start: TextPos,
     end: TextPos,
 }
 
 impl Selection {
-    /// Starts a selection. For [`Granularity::Char`], `at` is a position
-    /// between characters (from [`text_position`]) and the selection starts
-    /// empty; otherwise `at.index` is a character (from [`text_char`]) and
+    /// Starts a selection.
+    ///
+    /// For [`Granularity::Char`], `at` is a position between characters (from [`text_position`])
+    /// and the selection starts empty. Otherwise `at.index` is a character (from [`text_char`]) and
     /// its word or line is selected.
     pub fn new(pages: &mut impl TextPages, at: TextPos, granularity: Granularity) -> Self {
         let anchor = match granularity {
@@ -87,8 +88,8 @@ impl Selection {
         }
     }
 
-    /// Extends the selection from its anchor to `to`, a position between
-    /// characters, by the selection's granularity.
+    /// Extends the selection from its anchor to `to`, a position between characters, by the
+    /// selection's granularity.
     pub fn extend(&mut self, pages: &mut impl TextPages, to: TextPos) {
         let (a0, a1) = self.anchor;
         (self.start, self.end) = match self.granularity {
@@ -141,8 +142,7 @@ impl Selection {
         (start < end).then_some(start..end)
     }
 
-    /// The selected text, for copying: lines separated by newlines, as are
-    /// pages.
+    /// The selected text, for copying: lines separated by newlines, as are pages.
     pub fn text(&self, pages: &mut impl TextPages) -> String {
         if self.is_empty() {
             return String::new();
@@ -162,8 +162,8 @@ impl Selection {
         parts.join("\n")
     }
 
-    /// The highlight for page `i` on screen: one quadrilateral per selected
-    /// line, as four corners in view coordinates.
+    /// The highlight for page `i` on screen: one quadrilateral per selected line, as four corners
+    /// in view coordinates.
     pub fn view_quads(
         &self,
         viewer: &Viewer,
@@ -183,9 +183,8 @@ impl Selection {
     }
 }
 
-/// The highlight for characters `range` of page `page` on screen: one
-/// quadrilateral per line, as four corners in view coordinates. For
-/// selections and search matches.
+/// The highlight for characters `range` of page `page` on screen: one quadrilateral per line, as
+/// four corners in view coordinates. For selections and search matches.
 pub fn text_quads(
     viewer: &Viewer,
     text: &TextPage,
@@ -219,16 +218,15 @@ fn unit(pages: &mut impl TextPages, at: TextPos, g: Granularity) -> (TextPos, Te
     (TextPos::new(at.page, r.start), TextPos::new(at.page, r.end))
 }
 
-/// The position between characters nearest to `p` on the nearest visible
-/// page, for starting or extending a drag.
+/// The position between characters nearest to `p` on the nearest visible page, for starting or
+/// extending a drag.
 pub fn text_position(viewer: &Viewer, pages: &mut impl TextPages, p: ViewPoint) -> Option<TextPos> {
     let (page, pdf) = viewer.nearest_pdf_point(p)?;
     let text = pages.text_page(page)?;
     Some(TextPos::new(page, text.position_at(pdf)))
 }
 
-/// The character under `p`, or else the one nearest to it, for double- and
-/// triple-clicks.
+/// The character under `p`, or else the one nearest to it, for double- and triple-clicks.
 pub fn text_char(viewer: &Viewer, pages: &mut impl TextPages, p: ViewPoint) -> Option<TextPos> {
     let (page, pdf) = viewer.nearest_pdf_point(p)?;
     let text = pages.text_page(page)?;

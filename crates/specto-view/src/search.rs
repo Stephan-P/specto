@@ -1,9 +1,8 @@
 //! Search results, shared by the frontends.
 //!
-//! The frontend matches pages with [`specto_text::SearchText`] (usually in
-//! the background, page by page) and adds them here. [`SearchResults`]
-//! keeps the matches in document order and which one is current, and moves
-//! through them, wrapping around at the ends.
+//! The frontend matches pages with [`specto_text::SearchText`] (usually in the background, page by
+//! page) and adds them here. [`SearchResults`] keeps the matches in document order and which one is
+//! current, and moves through them, wrapping around at the ends.
 
 use std::ops::Range;
 
@@ -27,8 +26,8 @@ impl SearchResults {
         Self::default()
     }
 
-    /// Adds the matches `ranges` (in order) of `page`, which hasn't been
-    /// added before. The current match stays the same.
+    /// Adds the matches `ranges` (in order) of `page`, which hasn't been added before. The current
+    /// match stays the same.
     pub fn add_page(&mut self, page: usize, ranges: Vec<Range<usize>>) {
         if ranges.is_empty() {
             return;
@@ -60,8 +59,8 @@ impl SearchResults {
         Some((i, &self.matches[i]))
     }
 
-    /// Makes the first match on page `page` or later current, or else the
-    /// first match (searching wraps around). Returns the new current match.
+    /// Makes the first match on page `page` or later current, or else the first match (searching
+    /// wraps around). Returns the new current match.
     pub fn select_from(&mut self, page: usize) -> Option<&SearchMatch> {
         if self.matches.is_empty() {
             return None;
