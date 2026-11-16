@@ -96,7 +96,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   ticks a box and chooses a radio button, and a text field is typed into
   where it is, Enter ending it; Tab and Shift+Tab go through the fields,
   Space and Enter tick and choose; a menu lists what it offers, and the
-  arrow keys and Enter choose; undo and redo; text being typed is saved;
+  arrow keys and Enter choose; a password field hides what is typed; on a
+  turned page the text is asked for beside the field; undo and redo; text
+  being typed is saved;
   saved, the values are in the file and shown
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed. A click picks an annotation, Delete deletes it and
@@ -1638,8 +1640,8 @@ def test_typed_text_is_kept(ctx):
 def form_pdf(path):
     """One letter page with a form: a text field "name", a checkbox "agree",
     radio buttons "pick" with the choices "a" and "b", and a menu "country"
-    (Germany, France and Other, held as "de", "fr" and "Other"). A box that
-    is on is green."""
+    (Germany, France and Other, held as "de", "fr" and "Other"), and a
+    password field "pin". A box that is on is green."""
     def look(content):
         return (
             f"<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Length {len(content)} >>\n"
@@ -1653,12 +1655,12 @@ def form_pdf(path):
         ).encode()
 
     write_pdf(path, [
-        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R 6 0 R 7 0 R 12 0 R]"
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R 6 0 R 7 0 R 12 0 R 13 0 R]"
         b" /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>",
         b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >>"
-        b" /Annots [5 0 R 6 0 R 8 0 R 9 0 R 12 0 R] >>",
+        b" /Annots [5 0 R 6 0 R 8 0 R 9 0 R 12 0 R 13 0 R] >>",
         b"<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [100 600 400 624]"
         b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
         button("100 540 120 560", "Yes", "/FT /Btn /T (agree) /V /Off"),
@@ -1669,6 +1671,8 @@ def form_pdf(path):
         look(""),
         b"<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (country)"
         b" /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [100 420 300 444]"
+        b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
+        b"<< /Type /Annot /Subtype /Widget /FT /Tx /Ff 8192 /T (pin) /Rect [100 360 300 384]"
         b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
     ])
 
@@ -1689,7 +1693,7 @@ def test_fill_form(ctx):
     fields = lambda s: dict(map(tuple, s["fields"]))
     typing = lambda s: s["text_editor"]
     check(
-        fields(w.state()) == {"name": "", "agree": "", "pick": "", "country": ""},
+        fields(w.state()) == {"name": "", "agree": "", "pick": "", "country": "", "pin": ""},
         w.state()["fields"],
     )
     # The pointer says what a click does.
@@ -1782,19 +1786,28 @@ def test_fill_form(ctx):
     s = w.wait("the choices gone", lambda s: s["choices"] == [])
     check(fields(s)["country"] == "fr", s["fields"])
     w.wait("the keyboard on the menu", focus("country"))
+    # A password field hides what is typed into it.
+    hidden = lambda s: typing(s) and s.get("typing_hidden")
+    inp.keys(Input.TAB)
+    w.wait("typing into the password field", lambda s: hidden(s) and s["typing"][3] > 1)
+    time.sleep(0.4)
+    inp.type("ab")
+    w.wait("typed", lambda s: s.get("typing_text") == "ab")
     # From the last field round to the first, a text field, which is typed
     # into. Shift+Tab keeps what was typed and goes back.
     inp.keys(Input.TAB)
-    w.wait("typing into the name", lambda s: typing(s) and s.get("typing_text") == "ada")
+    s = w.wait("typing into the name", lambda s: typing(s) and s.get("typing_text") == "ada")
+    check(not s["typing_hidden"] and fields(s)["pin"] == "ab", s)
     time.sleep(0.4)
     inp.type("m")
     w.wait("typed", lambda s: s.get("typing_text") == "adam")
     inp.keys(Input.SHIFT, Input.TAB)
-    s = w.wait("back on the menu", lambda s: not typing(s) and focus("country")(s))
+    s = w.wait("back in the password field", lambda s: hidden(s) and s.get("typing_text") == "ab")
     check(fields(s)["name"] == "adam", s["fields"])
     # Tab from a text field to the next field.
+    time.sleep(0.4)
     inp.keys(Input.TAB)
-    w.wait("typing into the name", typing)
+    w.wait("typing into the name", lambda s: typing(s) and s.get("typing_text") == "adam")
     time.sleep(0.4)
     inp.keys(Input.BACKSPACE)
     w.wait("typed", lambda s: s.get("typing_text") == "ada")
@@ -1819,12 +1832,23 @@ def test_fill_form(ctx):
     w.settled()
     w.maximize()
     s = w.state()
-    check(
-        fields(s) == {"name": "ada l", "agree": "on", "pick": "b", "country": "fr"},
-        s["fields"],
-    )
+    saved = {"name": "ada l", "agree": "on", "pick": "b", "country": "fr", "pin": "ab"}
+    check(fields(s) == saved, s["fields"])
     check(not s["modified"], s)
     check(green(pixel(w, "reopened", *w.screen(0, 110, 550))), "the saved tick isn't shown")
+    # On a page shown turned, a text field asks for its text beside it.
+    inp = ctx.input().attach(w)
+    w.action("rotate-right")
+    w.settled("the page turned", lambda s: s["edit_pages"][0][1] == 90)
+    time.sleep(0.4)
+    inp.click(*w.screen(0, 250, 612))
+    s = w.wait("the editor", typing)
+    check("typing" not in s, "typed into in place on a turned page")
+    time.sleep(0.4)
+    inp.type("x")
+    inp.keys(Input.ENTER)
+    s = w.wait("the name", lambda s: fields(s)["name"] == "ada lx")
+    check(not typing(s) and s["undo"] == "FillField", s)
 
 
 def test_select_words_and_lines(ctx):

@@ -393,7 +393,9 @@ pub(super) enum Tool {
 /// Typing into a text box on the page.
 pub(super) struct Typing {
     /// The text field over the page.
-    pub(super) view: gtk::TextView,
+    pub(super) view: gtk::Widget,
+    /// What kind of text field it is.
+    pub(super) input: TypingInput,
     /// Where the text box is.
     pub(super) place: TextBoxPlace,
     /// The size and font of what is typed, which the markup bar can change meanwhile.
@@ -404,6 +406,29 @@ pub(super) struct Typing {
     pub(super) area: Cell<(i32, i32, i32)>,
 }
 
+/// The text field text is typed into on the page.
+pub(super) enum TypingInput {
+    /// One for text of any number of lines.
+    Lines(gtk::TextView),
+    /// One line that hides what is typed, for a password.
+    Secret(gtk::Text),
+}
+
+impl Typing {
+    /// What was typed.
+    pub(super) fn text(&self) -> String {
+        match &self.input {
+            TypingInput::Lines(view) => {
+                let buffer = view.buffer();
+                buffer
+                    .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                    .to_string()
+            }
+            TypingInput::Secret(entry) => entry.text().to_string(),
+        }
+    }
+}
+
 /// What is typed on the page is for.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum TypingTarget {
@@ -412,11 +437,13 @@ pub(super) enum TypingTarget {
     /// The picked text box.
     Box,
     /// A text field of the form: which, how high it is (in points), whether it takes several
-    /// lines, and where its text stands (0 for left, 1 for centered, 2 for right).
+    /// lines, whether what is typed is hidden, and where its text stands (0 for left, 1 for
+    /// centered, 2 for right).
     Field {
         field: FieldId,
         height: f64,
         multiline: bool,
+        password: bool,
         alignment: u8,
     },
 }
@@ -764,15 +791,23 @@ impl Window {
             return;
         };
         self.0.canvas.queue_draw();
-        let (field, place, height, multiline, alignment, text) = match clicked {
+        let (field, place, height, multiline, password, alignment, text) = match clicked {
             Some(FieldClick::Text {
                 field,
                 place,
                 height,
                 multiline,
+                password,
                 alignment,
                 text,
-            }) => (field, place, height, multiline, alignment, text),
+            }) => (field, place, height, multiline, password, alignment, text),
+            Some(FieldClick::Edit {
+                field,
+                multiline,
+                password,
+                text,
+                corners,
+            }) => return self.edit_field_text(field, multiline, password, &text, corners),
             Some(FieldClick::Choose {
                 field,
                 labels,
@@ -786,6 +821,7 @@ impl Window {
             field,
             height,
             multiline,
+            password,
             alignment,
         };
         self.type_on_page(place, &text, target);
@@ -873,30 +909,48 @@ impl Window {
     pub(super) fn type_on_page(&self, place: TextBoxPlace, text: &str, target: TypingTarget) {
         let inner = &self.0;
         self.finish_typing();
-        let view = gtk::TextView::builder()
-            .wrap_mode(gtk::WrapMode::WordChar)
-            .accepts_tab(false)
-            // Filling what the overlay gives it, which is the text box's place: aligned to a side,
-            // it would be as narrow as a letter.
-            .halign(gtk::Align::Fill)
-            .valign(gtk::Align::Fill)
-            .css_classes(["page-text"])
-            .build();
-        view.buffer().set_text(text);
-        let mut one_line = false;
-        if let TypingTarget::Field {
-            multiline,
-            alignment,
-            ..
-        } = target
-        {
-            one_line = !multiline;
-            view.set_justification(match alignment {
+        let (one_line, secret, alignment) = match target {
+            TypingTarget::Field {
+                multiline,
+                password,
+                alignment,
+                ..
+            } => (!multiline, password && !multiline, alignment),
+            _ => (false, false, 0),
+        };
+        let input = if secret {
+            let entry = gtk::Text::builder()
+                .visibility(false)
+                .input_purpose(gtk::InputPurpose::Password)
+                .xalign([0.0, 0.5, 1.0][usize::from(alignment.min(2))])
+                .halign(gtk::Align::Fill)
+                .valign(gtk::Align::Fill)
+                .css_classes(["page-text", "secret"])
+                .build();
+            entry.set_text(text);
+            TypingInput::Secret(entry)
+        } else {
+            let lines = gtk::TextView::builder()
+                .wrap_mode(gtk::WrapMode::WordChar)
+                .accepts_tab(false)
+                // Filling what the overlay gives it, which is the text box's place: aligned to a
+                // side, it would be as narrow as a letter.
+                .halign(gtk::Align::Fill)
+                .valign(gtk::Align::Fill)
+                .css_classes(["page-text"])
+                .build();
+            lines.buffer().set_text(text);
+            lines.set_justification(match alignment {
                 1 => gtk::Justification::Center,
                 2 => gtk::Justification::Right,
                 _ => gtk::Justification::Left,
             });
-        }
+            TypingInput::Lines(lines)
+        };
+        let view: gtk::Widget = match &input {
+            TypingInput::Lines(lines) => lines.clone().upcast(),
+            TypingInput::Secret(entry) => entry.clone().upcast(),
+        };
         inner.page_overlay.add_overlay(&view);
         let keys = gtk::EventControllerKey::new();
         let weak = Rc::downgrade(inner);
@@ -956,8 +1010,17 @@ impl Window {
             });
         });
         view.add_controller(focus);
+        // The cursor after what is there.
+        match &input {
+            TypingInput::Lines(lines) => {
+                let end = lines.buffer().end_iter();
+                lines.buffer().place_cursor(&end);
+            }
+            TypingInput::Secret(entry) => entry.set_position(-1),
+        }
         inner.typing.replace(Some(Typing {
             view: view.clone(),
+            input,
             style: Cell::new((place.size, place.font)),
             place,
             target,
@@ -967,9 +1030,107 @@ impl Window {
         self.place_typing();
         // The redraw first: the page without the box, if it had it.
         inner.canvas.queue_draw();
-        view.grab_focus();
-        let end = view.buffer().end_iter();
-        view.buffer().place_cursor(&end);
+        match view.downcast_ref::<gtk::Text>() {
+            // Not `grab_focus`, which selects all of it.
+            Some(entry) => {
+                entry.grab_focus_without_selecting();
+            }
+            None => {
+                view.grab_focus();
+            }
+        }
+    }
+
+    /// Asks for the text of the text field `field` in a small editor at the field (its `corners`
+    /// in the page view): on pages shown turned, where it can't be typed into in place. Closing
+    /// it (a click elsewhere, Escape, Enter in a field of one line) keeps the text.
+    fn edit_field_text(
+        &self,
+        field: FieldId,
+        multiline: bool,
+        password: bool,
+        text: &str,
+        corners: [ViewPoint; 4],
+    ) {
+        let inner = &self.0;
+        let (xs, ys) = (corners.map(|c| c.x), corners.map(|c| c.y));
+        let min = |v: [f64; 4]| v.into_iter().fold(f64::INFINITY, f64::min);
+        let max = |v: [f64; 4]| v.into_iter().fold(f64::NEG_INFINITY, f64::max);
+        let area = gdk::Rectangle::new(
+            min(xs) as i32,
+            min(ys) as i32,
+            (max(xs) - min(xs)).ceil() as i32,
+            (max(ys) - min(ys)).ceil() as i32,
+        );
+        let popover = gtk::Popover::new();
+        let mut line = None;
+        // What it holds when it closes.
+        let read: Box<dyn Fn() -> String> = if multiline {
+            let view = gtk::TextView::builder()
+                .wrap_mode(gtk::WrapMode::WordChar)
+                .top_margin(6)
+                .bottom_margin(6)
+                .left_margin(6)
+                .right_margin(6)
+                .build();
+            view.buffer().set_text(text);
+            let scroller = gtk::ScrolledWindow::builder()
+                .child(&view)
+                .width_request(360)
+                .height_request(180)
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .build();
+            popover.set_child(Some(&scroller));
+            let buffer = view.buffer();
+            Box::new(move || {
+                buffer
+                    .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                    .to_string()
+            })
+        } else {
+            let entry = gtk::Entry::builder()
+                .text(text)
+                .visibility(!password)
+                .width_request(280)
+                .build();
+            if password {
+                entry.set_input_purpose(gtk::InputPurpose::Password);
+            }
+            let shown = popover.downgrade();
+            entry.connect_activate(move |_| {
+                if let Some(popover) = shown.upgrade() {
+                    popover.popdown();
+                }
+            });
+            popover.set_child(Some(&entry));
+            line = Some(entry.clone());
+            Box::new(move || entry.text().to_string())
+        };
+        popover.set_parent(&inner.canvas);
+        popover.set_pointing_to(Some(&area));
+        inner.text_editor.replace(Some(popover.clone()));
+        let weak = Rc::downgrade(inner);
+        popover.connect_closed(move |popover| {
+            // The text at once: whatever closed the editor (a save, the window closing) must
+            // find it in the document.
+            if let Some(inner) = weak.upgrade() {
+                let open = inner.text_editor.take().is_some();
+                if open {
+                    let text = read();
+                    Window(inner.clone()).annotate(|d| d.set_field_text(field, &text));
+                }
+                inner.canvas.grab_focus();
+            }
+            let popover = popover.clone();
+            glib::idle_add_local_once(move || popover.unparent());
+        });
+        popover.popup();
+        // To go on typing after what is there: left to itself, the entry selects it all, and the
+        // next key would replace it.
+        if let Some(entry) = line {
+            entry.grab_focus_without_selecting();
+            entry.set_position(-1);
+        }
     }
 
     /// Puts the text field where its text box is on screen now, at the size the text has there:
@@ -987,6 +1148,10 @@ impl Window {
         let (size, font) = typing.style.get();
         let view = &typing.view;
         view.set_visible(true);
+        let lines = match &typing.input {
+            TypingInput::Lines(lines) => Some(lines),
+            TypingInput::Secret(_) => None,
+        };
         // Where the overlay puts it (see `Window::new`): its corner, and its width. Its height is
         // what its text needs at that width.
         typing.area.set((
@@ -1002,8 +1167,10 @@ impl Window {
             specto_annot::TEXT_MARGIN
         };
         let margin = (room * zoom).round() as i32;
-        view.set_left_margin(margin);
-        view.set_right_margin(margin);
+        if let Some(lines) = lines {
+            lines.set_left_margin(margin);
+            lines.set_right_margin(margin);
+        }
         // A line of the field is higher than the letters, half of the rest above them: less of a
         // margin on top makes up for it, so that the text stands where the box will have it.
         let above = match typing.target {
@@ -1015,8 +1182,10 @@ impl Window {
             } => (height - FIELD_LINE * size) / 2.0,
             _ => room - 0.12 * size,
         };
-        view.set_top_margin((above * zoom).max(0.0).round() as i32);
-        view.set_bottom_margin(if field { 0 } else { margin });
+        if let Some(lines) = lines {
+            lines.set_top_margin((above * zoom).max(0.0).round() as i32);
+            lines.set_bottom_margin(if field { 0 } else { margin });
+        }
         let line_height = if field { FIELD_LINE } else { 1.2 };
         let c = place.color;
         let byte = |v: f32| (v * 255.0).round() as u8;
@@ -1027,7 +1196,8 @@ impl Window {
             ".page-text, .page-text text {{ background: none; color: {rgb}; caret-color: {rgb}; \
              font-family: {}; font-weight: {}; font-style: {}; \
              font-size: {:.2}px; line-height: {line_height}; }}\n\
-             .page-text {{ outline: 1px solid @accent_bg_color; outline-offset: 2px; border-radius: 2px; }}\n",
+             .page-text {{ outline: 1px solid @accent_bg_color; outline-offset: 2px; border-radius: 2px; }}\n\
+             .page-text.secret {{ padding: 0 {margin}px; min-height: 0; }}\n",
             font_stack(font.family),
             if font.bold { "bold" } else { "normal" },
             if font.italic { "italic" } else { "normal" },
@@ -1062,10 +1232,7 @@ impl Window {
         let Some(typing) = inner.typing.take() else {
             return;
         };
-        let buffer = typing.view.buffer();
-        let text = buffer
-            .text(&buffer.start_iter(), &buffer.end_iter(), false)
-            .to_string();
+        let text = typing.text();
         inner.page_overlay.remove_overlay(&typing.view);
         // In the size and font it has now, which may have been changed while typing.
         let style = typing.style.get();

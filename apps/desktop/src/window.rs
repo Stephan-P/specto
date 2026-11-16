@@ -553,15 +553,12 @@ impl Window {
             .connect_get_child_position(move |_, widget| {
                 let inner = weak.upgrade()?;
                 let typing = inner.typing.borrow();
-                let typing = typing
-                    .as_ref()
-                    .filter(|t| t.view.upcast_ref::<gtk::Widget>() == widget)?;
+                let typing = typing.as_ref().filter(|t| t.view == *widget)?;
                 let (x, y, width) = typing.area.get();
                 let (_, measured, _, _) = widget.measure(gtk::Orientation::Vertical, width);
                 // At least as high as the box will be for this text: the field is slow to say so
                 // itself after its font has changed.
-                let buffer = typing.view.buffer();
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                let text = typing.text();
                 let (size, font) = typing.style.get();
                 let zoom = f64::from(width) / typing.place.width.max(1.0);
                 let needed = if let TypingTarget::Field { height, .. } = typing.target {

@@ -440,9 +440,8 @@ impl Window {
                     "typing",
                     &format!("[{x}, {y}, {w}, {}, {}]", t.view.width(), t.view.height()),
                 );
-                let buffer = t.view.buffer();
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                json.str("typing_text", &text);
+                json.str("typing_text", &t.text());
+                json.bool("typing_hidden", matches!(t.input, TypingInput::Secret(_)));
             }
             // The rows of the markup list: [page, kind, text] each.
             let rows: Vec<String> = inner

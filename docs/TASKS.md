@@ -235,8 +235,9 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Desktop: checkboxes, radio buttons and typing into text fields
 - [x] Desktop: Tab between fields, Space and Enter on the field in focus
 - [x] Menus and lists to choose one option from
+- [x] Comb fields, hidden passwords, and text fields on turned pages
+- [ ] Typing into a comb field with its letters in their cells while typing.
 - [ ] Lists that take several choices, and menus that take typed text.
-- [ ] Comb fields, and a password field that hides what is typed.
 - [ ] An embedded fallback font for text outside Latin.
 - [ ] Tab order by rows or columns where a page asks for it, a toggle for
   highlighting fields, and resetting a form.

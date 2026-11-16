@@ -17,7 +17,9 @@ const MAIN: SourceId = SourceId(0);
 /// at x 100 to 120, y 500 to 520 whose "Yes" look is a green square, and a radio group "size" of
 /// two buttons ("S" and "L") at y 400 to 420 whose looks are red squares. Below them a menu
 /// "country" at x 100 to 300, y 300 to 320 (Germany, France and Other, held as "de", "fr" and
-/// "Other"), and a list "color" of six colors at y 200 to 260, four of which fit.
+/// "Other"), and a list "color" of six colors at y 200 to 260, four of which fit. At the right, a
+/// comb "code" of four cells at x 440 to 560, y 700 to 730, and a field "side" at x 500 to 530,
+/// y 400 to 600 that is turned a quarter, to be read from the right.
 fn fixture() -> Vec<u8> {
     let mut doc = Document::with_version("1.7");
     let pages = doc.new_object_id();
@@ -104,9 +106,21 @@ fn fixture() -> Vec<u8> {
         "DA" => Object::string_literal("/Helv 12 Tf 0 g"),
         "Opt" => colors.map(Object::string_literal).to_vec(),
     });
+    let code = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "P" => page,
+        "T" => Object::string_literal("code"), "Rect" => rect(440, 700, 560, 730),
+        "Ff" => 1 << 24, "MaxLen" => 4,
+        "DA" => Object::string_literal("/Helv 12 Tf 0 g"),
+    });
+    let side = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "P" => page,
+        "T" => Object::string_literal("side"), "Rect" => rect(500, 400, 530, 600),
+        "DA" => Object::string_literal("/Helv 12 Tf 0 g"),
+        "MK" => dictionary! { "R" => 90 },
+    });
     let mut annots = vec![name.into(), notes.into(), agree.into()];
     annots.extend(buttons.iter().map(|&b| Object::Reference(b)));
-    annots.extend([Object::Reference(country), Object::Reference(color)]);
+    annots.extend([country, color, code, side].map(Object::Reference));
     doc.objects.insert(
         page,
         dictionary! { "Type" => "Page", "Parent" => pages, "Annots" => annots }.into(),
@@ -124,7 +138,7 @@ fn fixture() -> Vec<u8> {
         "AcroForm" => dictionary! {
             "Fields" => vec![
                 name.into(), notes.into(), agree.into(), size.into(), country.into(),
-                color.into(),
+                color.into(), code.into(), side.into(),
             ],
             "DA" => Object::string_literal("/Helv 0 Tf 0 g"),
             "DR" => dictionary! { "Font" => dictionary! { "Helv" => font } },
@@ -212,7 +226,9 @@ fn the_fixture_is_read() {
     let names: Vec<&str> = all.iter().map(|f| f.name.as_str()).collect();
     assert_eq!(
         names,
-        ["name", "notes", "agree", "size", "country", "color"]
+        [
+            "name", "notes", "agree", "size", "country", "color", "code", "side"
+        ]
     );
     // A menu with values that differ from what it shows, and a list.
     let country = field(&all, "country");
@@ -406,6 +422,43 @@ fn filled_in_values_are_saved_and_show() {
             "row {row} is empty"
         );
     }
+
+    // A comb has one letter in the middle of each cell: four cells of 30 points, and an "H" of
+    // 12 points is under 9 wide, so the outer thirds of each cell stay empty. A fifth letter is
+    // left out.
+    let inked = |c: [u8; 3]| c.iter().all(|&v| v < 200);
+    let combed = page(&fill(
+        &original,
+        &[
+            (id("code"), FieldValue::Text("HHHHH".to_owned())),
+            (id("side"), FieldValue::Text("Sideways".to_owned())),
+        ],
+    ));
+    for cell in 0..4 {
+        let x = 440 + 30 * cell;
+        assert!(
+            count(&combed, (x + 9, x + 21), (702, 728), inked) > 5,
+            "cell {cell} is empty"
+        );
+        assert_eq!(
+            count(&combed, (x, x + 8), (702, 728), inked),
+            0,
+            "cell {cell} has something at its left"
+        );
+        assert_eq!(count(&combed, (x + 22, x + 30), (702, 728), inked), 0);
+    }
+    // The turned field has its text along its length: from the bottom up, in a narrow column in
+    // the middle, and as long as a word, not as short as a line is high.
+    let rows: Vec<u32> = (400..600)
+        .filter(|&y| count(&combed, (500, 530), (y, y + 1), inked) > 0)
+        .collect();
+    let (low, high) = (rows[0], *rows.last().unwrap());
+    assert!(
+        low < 410 && (440..470).contains(&high),
+        "from {low} to {high}"
+    );
+    assert_eq!(count(&combed, (500, 506), (400, 600), inked), 0);
+    assert_eq!(count(&combed, (524, 530), (400, 600), inked), 0);
 
     // Emptied and unticked again.
     let cleared = fill(

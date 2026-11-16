@@ -205,6 +205,8 @@ struct TextLook {
     alignment: i64,
     multiline: bool,
     password: bool,
+    /// For a comb field: how many cells of the same width its letters go into, one each.
+    comb: Option<usize>,
 }
 
 impl TextLook {
@@ -286,6 +288,12 @@ impl TextLook {
                 .unwrap_or(0),
             multiline: flags & (1 << 12) != 0,
             password: flags & (1 << 13) != 0,
+            // Only with a length, and not for several lines or passwords.
+            comb: inherited(doc, field, b"MaxLen")
+                .and_then(|m| m.as_i64().ok())
+                .and_then(|m| usize::try_from(m).ok())
+                .filter(|&m| (1..=1000).contains(&m))
+                .filter(|_| flags & (1 << 24) != 0 && flags & ((1 << 12) | (1 << 13)) == 0),
         }
     }
 }
@@ -367,6 +375,24 @@ fn text_appearance(
         .get(b"MK")
         .ok()
         .and_then(|mk| resolve(doc, mk).as_dict().ok());
+    // A widget on a page that is shown turned says by how much it is turned itself, so that it
+    // reads upright there (`/R`, in quarter turns counterclockwise). The look is drawn upright,
+    // as wide as the widget is high if it lies on its side, and turned into place by its matrix.
+    let turn = mk
+        .and_then(|mk| mk.get(b"R").ok())
+        .and_then(|r| number(resolve(doc, r)))
+        .map_or(0, |r| (r as i64).rem_euclid(360));
+    let (w, h) = if turn == 90 || turn == 270 {
+        (h, w)
+    } else {
+        (w, h)
+    };
+    let matrix: Option<[f64; 6]> = match turn {
+        90 => Some([0.0, 1.0, -1.0, 0.0, h, 0.0]),
+        180 => Some([-1.0, 0.0, 0.0, -1.0, w, h]),
+        270 => Some([0.0, -1.0, 1.0, 0.0, 0.0, w]),
+        _ => None,
+    };
     let part = |key: &[u8]| {
         mk.and_then(|mk| mk.get(key).ok())
             .and_then(|c| color(&numbers(doc, c)))
@@ -467,6 +493,36 @@ fn text_appearance(
         .as_bytes(),
     );
     let mut at = (0.0, 0.0);
+    // A comb: each letter in the middle of its cell, and no more letters than cells.
+    let comb = look.comb.filter(|_| matches!(body, Body::Text(_)));
+    let pieces: Vec<(f64, f64, String)> = match comb {
+        Some(cells) => {
+            let cell = w / cells as f64;
+            let line = lines.first().map_or("", String::as_str);
+            line.chars()
+                .take(cells)
+                .enumerate()
+                .map(|(i, c)| {
+                    let letter = c.to_string();
+                    let width = text_width(&letter, size, look.measure);
+                    (i as f64 * cell + (cell - width) / 2.0, first, letter)
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
+    for (x, y, letter) in &pieces {
+        bytes.extend_from_slice(format!("{} {} Td\n(", n(x - at.0), n(y - at.1)).as_bytes());
+        at = (*x, *y);
+        for byte in encode_text(letter) {
+            if matches!(byte, b'(' | b')' | b'\\') {
+                bytes.push(b'\\');
+            }
+            bytes.push(byte);
+        }
+        bytes.extend_from_slice(b") Tj\n");
+    }
+    let lines = if comb.is_some() { Vec::new() } else { lines };
     for (i, line) in lines.iter().enumerate() {
         let width = text_width(line, size, look.measure);
         let x = match look.alignment {
@@ -498,15 +554,17 @@ fn text_appearance(
     });
     let mut fonts = Dictionary::new();
     fonts.set(font_name, font);
-    Some(Stream::new(
-        dictionary! {
-            "Type" => "XObject",
-            "Subtype" => "Form",
-            "BBox" => vec![0.into(), 0.into(), Object::Real(w as f32), Object::Real(h as f32)],
-            "Resources" => dictionary! { "Font" => fonts },
-        },
-        bytes,
-    ))
+    let mut dict = dictionary! {
+        "Type" => "XObject",
+        "Subtype" => "Form",
+        "BBox" => vec![0.into(), 0.into(), Object::Real(w as f32), Object::Real(h as f32)],
+        "Resources" => dictionary! { "Font" => fonts },
+    };
+    if let Some(matrix) = matrix {
+        let numbers: Vec<Object> = matrix.iter().map(|&v| Object::Real(v as f32)).collect();
+        dict.set("Matrix", numbers);
+    }
+    Some(Stream::new(dict, bytes))
 }
 
 /// A number as content streams want it: no exponent, no needless digits.

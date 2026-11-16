@@ -330,6 +330,15 @@ impl Document {
         clicked
     }
 
+    /// Fills text into a text field of the form (see the session's function of this name).
+    pub fn set_field_text(&mut self, field: specto_doc::FieldId, text: &str) -> bool {
+        let changed = self.session.set_field_text(scheduler(), field, text);
+        if changed {
+            self.pages_changed();
+        }
+        changed
+    }
+
     /// Chooses an option of a choice field (see the session's function of this name).
     pub fn choose_option(&mut self, field: specto_doc::FieldId, index: usize) -> bool {
         let changed = self.session.choose_option(scheduler(), field, index);

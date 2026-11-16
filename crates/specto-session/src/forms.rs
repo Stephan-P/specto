@@ -37,15 +37,26 @@ pub enum FieldClick {
         corners: [ViewPoint; 4],
     },
     /// A text field, to be typed into: where it is on screen, how high (in points), whether it
-    /// takes several lines, where its text stands (0 for left, 1 for centered, 2 for right), and
-    /// what it holds.
+    /// takes several lines, whether what is typed is to be hidden, where its text stands (0 for
+    /// left, 1 for centered, 2 for right), and what it holds.
     Text {
         field: FieldId,
         place: TextBoxPlace,
         height: f64,
         multiline: bool,
+        password: bool,
         alignment: u8,
         text: String,
+    },
+    /// A text field on a page that is shown turned, where it can't be typed into in place: its
+    /// corners on screen, to ask for the text beside it. Follow with
+    /// [`set_field_text`](Session::set_field_text).
+    Edit {
+        field: FieldId,
+        multiline: bool,
+        password: bool,
+        text: String,
+        corners: [ViewPoint; 4],
     },
 }
 
@@ -224,14 +235,31 @@ impl Session {
                 self.fill_field(scheduler, field.id, FieldValue::Choice(w.on_state.clone()));
                 Some(FieldClick::Changed)
             }
-            FieldKind::Text { multiline, .. } => {
+            FieldKind::Text {
+                multiline,
+                password,
+                ..
+            } => {
                 let text = match now {
                     Some(FieldValue::Text(t)) => t,
                     _ => String::new(),
                 };
                 let geometry = self.viewer.pages().get(position)?.displayed();
                 if geometry.rotation() != specto_geom::Rotation::None {
-                    return None;
+                    let r = w.rect;
+                    let at = |x, y| self.viewer.pdf_to_view(position, PdfPoint::new(x, y));
+                    return Some(FieldClick::Edit {
+                        field: field.id,
+                        multiline,
+                        password,
+                        text,
+                        corners: [
+                            at(r.min.x, r.min.y)?,
+                            at(r.max.x, r.min.y)?,
+                            at(r.max.x, r.max.y)?,
+                            at(r.min.x, r.max.y)?,
+                        ],
+                    });
                 }
                 let at = PdfPoint::new(w.rect.min.x, w.rect.max.y);
                 let height = w.rect.height();
@@ -258,6 +286,7 @@ impl Session {
                     place,
                     height,
                     multiline,
+                    password,
                     alignment: field.look.alignment,
                     text,
                 })
@@ -340,6 +369,13 @@ impl Session {
             self.sync_variants(scheduler);
         }
         changed
+    }
+
+    /// Fills `text` into the text field `field`, as far as the field takes it. Returns whether
+    /// that changed what it holds.
+    pub fn set_field_text(&mut self, scheduler: &Scheduler, field: FieldId, text: &str) -> bool {
+        let text = self.fitting(field, text);
+        self.fill_field(scheduler, field, FieldValue::Text(text))
     }
 
     /// `text` as the text field `field` takes it: on one line unless the field has several, and no

@@ -164,7 +164,9 @@ too, with the values written into it exactly as saving would. For a checkbox or
 a radio button that selects one of the looks the file has. For a text field the
 write crate makes a new look from the field's font, size, color and alignment.
 A menu gets the same with the chosen option, and a list shows its options with
-the chosen one marked.
+the chosen one marked. A comb field gets each letter in the middle of its cell.
+A widget that says it is turned, as on a landscape page, gets its look turned
+the same way.
 
 A text field is typed into through a text input of the toolkit, placed over the
 widget. Meanwhile the variant shows the field empty. The session says where the
@@ -403,8 +405,8 @@ The Android app is written in Kotlin with Jetpack Compose.
 
 None of this exists yet. The tasks are in [TASKS.md](TASKS.md).
 
-- **More of forms.** Lists with several choices, comb fields, a fallback font
-  for text outside Latin, and forms on Android.
+- **More of forms.** Lists with several choices, a fallback font for text
+  outside Latin, and forms on Android.
 - **Incremental save.** When only annotations or form values changed, append to
   the original file instead of rewriting it. This is faster and keeps existing
   digital signatures valid.

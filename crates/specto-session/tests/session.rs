@@ -1457,6 +1457,24 @@ fn filling_in_a_form() {
     assert_eq!(session.field_focus(), Some(agree));
     session.clear_field_focus();
 
+    // Text set directly, cut to one line. On a page shown turned, a click on the text field asks
+    // for that instead of typing in place.
+    assert!(session.set_field_text(&scheduler, name, "Ada\nL"));
+    assert_eq!(
+        session.field_value(name),
+        Some(FieldValue::Text("Ada L".to_owned()))
+    );
+    assert!(session.set_field_text(&scheduler, name, "Ada"));
+    session.rotate(&[0], Rotation::Cw90);
+    let on_name = at(&session, 0, 100.0, 250.0);
+    assert!(matches!(
+        session.click_field(&scheduler, on_name),
+        Some(FieldClick::Edit { field, multiline: false, password: false, ref text, .. })
+            if field == name && text == "Ada"
+    ));
+    assert!(session.undo(&scheduler).is_some());
+    session.clear_field_focus();
+
     // Nothing to click on the page without fields to fill in: its one is read-only.
     session.viewer.go_to_page(1);
     assert_eq!(

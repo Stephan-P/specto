@@ -449,6 +449,14 @@ or application form.
 - Click a menu and a list of a form: what they offer shows at the field, long
   lists scroll, and what is chosen shows in the field afterwards. In a list
   the chosen row is marked and in view.
+- A password field shows dots while typing and asterisks afterwards.
+- A comb field (boxes for single letters, as for a date or a postal code): after
+  Enter each letter stands in the middle of its box.
+- Turn a page with Rotate Right and click a text field: a small editor opens
+  beside the field, with the cursor after what the field holds. Saved, the
+  text stands in the field the way the field is turned.
+- A form whose pages are turned in the file (a landscape form): filled-in text
+  reads upright, not sideways.
 - Undo and redo go through the fields in order.
 - Save while typing: what was typed is saved.
 - Save, close and open again: every value is there.

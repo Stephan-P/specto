@@ -212,6 +212,11 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - A click on a text field types into it where it is, in the field's font, size
   and color. Enter, Escape or a click elsewhere ends typing and keeps the text.
   In a field of several lines, Enter starts a new line
+- A password field hides what is typed into it, and shows asterisks afterwards
+- A comb field, which has a cell for each letter, puts each letter in the
+  middle of its cell once typing ends
+- On a page that is shown turned, a click on a text field asks for its text
+  in a small editor beside the field
 - A click on a menu or a list of the form shows what it offers, with what it
   holds marked. A click on a row chooses it, and so do the arrow keys and
   Enter. Escape leaves the field as it is
@@ -228,8 +233,7 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   programs show and can go on filling in
 - Thumbnails and prints show what was filled in
 - Not yet: lists that take several choices, typing a choice of one's own into
-  a menu that allows it, comb fields, hiding what is typed into a password
-  field, text outside Latin, the forms of inserted files
+  a menu that allows it, text outside Latin, the forms of inserted files
 
 ## Saving
 
