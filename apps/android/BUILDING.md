@@ -125,8 +125,8 @@ To release, raise `versionCode` and `versionName`, commit, and tag that commit
 with the same version:
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0
+git push origin v1.0
 ```
 
 The workflow stops without publishing anything if the tag and `versionName`

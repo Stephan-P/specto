@@ -112,7 +112,7 @@ class SettingsTest : AppTest() {
         compose.onNodeWithTag(CRASH_LOG_TAG)
             .assertTextContains("number 7 went wrong", substring = true)
             // Which app and device it is from goes with it.
-            .assertTextContains("Specto 0.1.0", substring = true)
+            .assertTextContains("Specto 0.1 (", substring = true)
         compose.onNodeWithText("Delete").performClick()
         waitForText("Nothing went wrong so far")
         assertEquals(false, log.exists())

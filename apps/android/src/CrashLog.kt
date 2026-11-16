@@ -80,7 +80,7 @@ class CrashLog(private val file: File) {
 }
 
 /**
- * Which app this is and what it runs on, to go with a shared log: "Specto 0.1.0 (1), Android 16
+ * Which app this is and what it runs on, to go with a shared log: "Specto 0.1 (1), Android 16
  * (API 36), Google Pixel 9a".
  */
 fun Context.appAndDevice(): String {

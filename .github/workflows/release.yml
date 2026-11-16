@@ -1,7 +1,7 @@
 name: Release
 
 # Builds the Android app for a release and publishes it: push a tag such as
-# v1.0.0 whose version is the `versionName` in apps/android/build.gradle.kts.
+# v1.0 whose version is the `versionName` in apps/android/build.gradle.kts.
 # See apps/android/BUILDING.md ("Publishing a release").
 on:
   push:
