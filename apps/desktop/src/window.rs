@@ -762,6 +762,7 @@ impl Window {
                 inner.canvas.pick_and_show(position, id);
             }
         });
+        markup.widget.add_controller(delete_keys());
         stack.add_titled_with_icon(
             &markup.widget,
             Some("markup"),
@@ -989,7 +990,8 @@ struct Edited {
     go_to: Option<usize>,
 }
 
-/// Delete and Backspace delete pages, on the canvas and in the sidebar.
+/// Delete and Backspace delete pages, on the canvas and the thumbnails, and annotations in the list
+/// of markup.
 ///
 /// Not shortcuts for the whole window, which would take the keys from text fields.
 fn delete_keys() -> gtk::ShortcutController {

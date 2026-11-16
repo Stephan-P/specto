@@ -152,8 +152,28 @@ impl Window {
             .unwrap_or_default()
     }
 
-    /// Delete and Backspace: the annotation that is picked, else pages.
+    /// Delete and Backspace: the annotation that is picked, else pages. In the list of markup, the
+    /// annotation of the marked row, and never pages.
     pub(super) fn delete_pages(&self) {
+        let inner = &self.0;
+        let on_markup = inner
+            .sidebar_stack
+            .borrow()
+            .as_ref()
+            .and_then(|s| s.visible_child_name())
+            .is_some_and(|name| name == "markup");
+        let on_page = gtk::prelude::GtkWindowExt::focus(&inner.window)
+            .is_some_and(|f| f.is_ancestor(&inner.canvas) || f == inner.canvas);
+        let in_list = on_markup && inner.split.shows_sidebar() && !on_page;
+        let row = inner
+            .markup_list
+            .borrow()
+            .as_ref()
+            .filter(|_| in_list)
+            .and_then(MarkupList::selected);
+        if let Some((_, (position, id))) = row {
+            inner.canvas.pick_and_show(position, id);
+        }
         let mut failed = None;
         let mut removed = false;
         // As after an edit to pages: the thumbnail of the page changes too.
@@ -169,6 +189,15 @@ impl Window {
                 "Couldn't delete the annotation: {error}",
                 &[("error", &save_error(e))],
             ));
+        }
+        if in_list {
+            // The next row takes the place of the deleted one.
+            match (removed, row, inner.markup_list.borrow().as_ref()) {
+                (true, Some((index, _)), Some(list)) => list.focus_row(index),
+                (true, ..) => {}
+                (false, ..) => inner.window.error_bell(),
+            }
+            return;
         }
         if removed {
             return;

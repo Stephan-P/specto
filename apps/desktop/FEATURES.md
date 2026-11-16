@@ -201,7 +201,9 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - The Markup page of the sidebar lists all markup of the document, also what
   other programs made: its color, its text (what was marked, a note, a
   comment), what kind it is, and its page. A click on a row picks the
-  annotation and scrolls to it, and picking one on the page marks its row
+  annotation and scrolls to it, and picking one on the page marks its row.
+  Delete and Backspace in the list delete the annotation of the marked row, and
+  never pages
 - Not yet: line width, other fonts than these three, text alignment
 
 ## Forms

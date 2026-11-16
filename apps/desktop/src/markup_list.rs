@@ -126,6 +126,29 @@ impl MarkupList {
         self.select(picked);
     }
 
+    /// The annotation of the marked row, and the row's number.
+    pub fn selected(&self) -> Option<(usize, (usize, AnnotId))> {
+        let index = usize::try_from(self.list.selected_row()?.index()).ok()?;
+        Some((index, self.entries.borrow().get(index)?.at))
+    }
+
+    /// Marks row `index`, or the last one if there are fewer, and gives it the keyboard.
+    pub fn focus_row(&self, index: usize) {
+        let last = self.entries.borrow().len().saturating_sub(1);
+        if let Some(row) = self.list.row_at_index(index.min(last) as i32) {
+            self.list.select_row(Some(&row));
+            row.grab_focus();
+        }
+    }
+
+    /// Where the rows are in `window`: left, top, width and height each (for tests).
+    pub fn row_bounds(&self, window: &impl IsA<gtk::Widget>) -> Vec<[f32; 4]> {
+        (0..self.entries.borrow().len())
+            .filter_map(|i| self.list.row_at_index(i as i32)?.compute_bounds(window))
+            .map(|r| [r.x(), r.y(), r.width(), r.height()])
+            .collect()
+    }
+
     /// Marks the row of `picked`, or none.
     pub fn select(&self, picked: Option<(usize, AnnotId)>) {
         let index = picked.and_then(|at| self.entries.borrow().iter().position(|e| e.at == at));

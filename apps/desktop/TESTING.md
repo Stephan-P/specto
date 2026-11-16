@@ -386,6 +386,10 @@ Saving, printing and other windows:
   long text are cut after three lines and show all of it as a tooltip.
 - Add, change, delete and undo markup with the list open: it follows at once
   and keeps its scroll position.
+- Click a row and press Backspace several times: one annotation goes per
+  press, the next row is marked each time, and no page is ever deleted. The
+  same with the markup bar closed, and after moving through the rows with the
+  arrow keys.
 - LONG with the Markup page open: opening the document and editing stay quick.
 - New Signature, Draw: sign with the mouse and with a touchpad. The line
   follows without lag and looks like handwriting. Clear empties the pad. Save

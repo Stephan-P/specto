@@ -79,7 +79,8 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   both are in the file, and a text box emptied is deleted
 - markup_list: the Markup page of the sidebar lists every annotation with
   its page, kind and text, follows edits, and a row picks its annotation and
-  shows its page. It is filled from the file when a document opens on it
+  shows its page. Backspace in the list deletes the marked row's annotation
+  and never pages. It is filled from the file when a document opens on it
 - signatures: a saved signature, drawn or from a photo, is placed by one
   click, as a drawing or a picture. The picture moves and keeps its
   proportions when resized. Saved, both are in the file, and the picture
@@ -1338,6 +1339,25 @@ def test_markup_list(ctx):
     # Deleted and undone, the list follows.
     inp.keys(Input.DELETE)
     w.wait("one row", lambda s: len(s["markup_list"]) == 1)
+    w.action("undo")
+    s = w.wait("two rows", lambda s: len(s["markup_list"]) == 2)
+    # With the keyboard in the list, Backspace deletes the annotation of the
+    # marked row, then that of the row taking its place, and never pages.
+    x, y, width, height = s["markup_rows"][0]
+    # From a place on the canvas, where the pointer's position is checked.
+    inp.move(s["width"] * 0.75, s["height"] / 2)
+    inp.click(x + width / 2, y + height / 2)
+    w.wait("the highlight picked", lambda s: s["annotation_text"] == "quick brown")
+    inp.keys(Input.BACKSPACE)
+    s = w.wait("one row", lambda s: len(s["markup_list"]) == 1)
+    check(s["undo"] == "Remove Highlight" and s["markup_list"][0][1] == "Rectangle", s)
+    inp.keys(Input.BACKSPACE)
+    w.wait("no row", lambda s: len(s["markup_list"]) == 0)
+    inp.keys(Input.BACKSPACE)
+    time.sleep(0.3)
+    s = w.state()
+    check(len(s["edit_pages"]) == len(TEXT) and s["undo"].startswith("Remove"), s)
+    w.action("undo")
     w.action("undo")
     w.wait("two rows", lambda s: len(s["markup_list"]) == 2)
     # Saved and opened again: the sidebar is on Markup, with what the file

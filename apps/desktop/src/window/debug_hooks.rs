@@ -449,6 +449,17 @@ impl Window {
                 })
                 .collect();
             json.raw("markup_list", &format!("[{}]", rows.join(", ")));
+            // Where its rows are in the window: [left, top, width, height] each.
+            let bounds: Vec<String> = inner
+                .markup_list
+                .borrow()
+                .as_ref()
+                .map(|list| list.row_bounds(&inner.window))
+                .unwrap_or_default()
+                .iter()
+                .map(|[x, y, w, h]| format!("[{x}, {y}, {w}, {h}]"))
+                .collect();
+            json.raw("markup_rows", &format!("[{}]", bounds.join(", ")));
         }
         inner.canvas.with_viewer(|v| {
             json.num("page", v.current_page() as f64)
