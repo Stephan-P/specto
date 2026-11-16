@@ -102,6 +102,38 @@ $ANDROID_HOME/build-tools/<version>/apksigner verify --print-certs specto-releas
 Before a release, raise `versionCode` and `versionName` in `build.gradle.kts`.
 Android takes an update only with a higher code.
 
+## Publishing a release
+
+Pushing a tag that starts with "v" makes CI build the release APK, sign it with
+the release key and attach it to a new release on GitHub, together with its
+SHA-256 checksum. The workflow is `.github/workflows/release.yml`.
+
+CI needs the key once, as secrets of the repository on GitHub (Settings,
+"Secrets and variables", Actions):
+
+- `ANDROID_KEYSTORE`: the key file, encoded as Base64 (see below)
+- `ANDROID_KEYSTORE_PASSWORD`: the password of the file
+- `ANDROID_KEY_ALIAS`: the name of the key in it, such as "specto"
+- `ANDROID_KEY_PASSWORD`: the password of the key
+
+```sh
+# the key file as one line of Base64
+base64 < ~/specto-release.jks | tr -d '\n'
+```
+
+To release, raise `versionCode` and `versionName`, commit, and tag that commit
+with the same version:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow stops without publishing anything if the tag and `versionName`
+differ, if a secret is missing, or if the APK turns out to be signed with a
+debug key. The APK is for arm64-v8a, which every phone and tablet with a 64-bit
+processor runs.
+
 ## Emulators on Intel and AMD machines
 
 The Rust library is built for arm64-v8a, which covers phones and the emulator

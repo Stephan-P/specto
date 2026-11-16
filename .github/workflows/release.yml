@@ -1,0 +1,92 @@
+name: Release
+
+# Builds the Android app for a release and publishes it: push a tag such as
+# v1.0.0 whose version is the `versionName` in apps/android/build.gradle.kts.
+# See apps/android/BUILDING.md ("Publishing a release").
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      # To create the release and attach the APK.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version
+        # The tag and the app must agree on what this release is called.
+        run: |
+          version=$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' apps/android/build.gradle.kts)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME, but versionName is $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Set up the release key
+        # Without the key the build would be signed with a debug key, which
+        # must never be handed out: an update needs the key of the version it
+        # replaces.
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::A secret for the release key is missing (see BUILDING.md)"
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          # A properties file reads a backslash as the start of an escape.
+          escaped() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$(escaped "$STORE_PASSWORD")"
+            echo "keyAlias=$(escaped "$KEY_ALIAS")"
+            echo "keyPassword=$(escaped "$KEY_PASSWORD")"
+          } > apps/android/keystore.properties
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install the NDK
+        # Must match `ndkVersion` in apps/android/build.gradle.kts.
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        working-directory: apps/android
+        run: ./gradlew testDebugUnitTest assembleRelease
+      - name: Check the signature
+        # The APK must verify, and not with a debug key.
+        run: |
+          apk=$(ls apps/android/build/outputs/apk/release/*.apk)
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          "$apksigner" verify --print-certs "$apk" | tee certs.txt
+          if grep -q "Android Debug" certs.txt; then
+            echo "::error::The APK is signed with a debug key"
+            exit 1
+          fi
+          cp "$apk" "specto-$VERSION.apk"
+          sha256sum "specto-$VERSION.apk" > "specto-$VERSION.apk.sha256"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            --title "Specto $VERSION" "specto-$VERSION.apk" "specto-$VERSION.apk.sha256"

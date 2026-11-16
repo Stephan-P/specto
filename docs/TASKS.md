@@ -345,6 +345,7 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] cargo-deny in CI, for security advisories and license compatibility
 - [x] Desktop: large files opened without reading them into memory
 - [x] Android: a crash log, which Settings shows
+- [x] Android: a tag builds, signs and publishes the APK as a GitHub release
 - [ ] Vector printing on the desktop: send the pages themselves instead of
   images, for smaller files when printing to a file and for selectable text.
 - [ ] Encrypted incremental saves, once the incremental save exists. The full
