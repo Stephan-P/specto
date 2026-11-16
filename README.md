@@ -58,12 +58,11 @@ XFA forms, creating digital signatures, JavaScript, OCR, PDF/A conversion.
 
 ## Install
 
-Builds are on the [releases page](https://github.com/xfbs/specto/releases):
+Builds are on the [releases page](https://github.com/xfbs/specto/releases).
+There are builds for Android (the APK, for phones and tablets with a 64-bit ARM
+processor) and Linux (a Flatpak bundle for x86_64 and one for aarch64).
 
-- **Android**: the APK, for phones and tablets with a 64-bit ARM processor
-- **Linux**: a Flatpak bundle for x86_64 and one for aarch64
-
-A Flatpak bundle is installed from a terminal:
+The Flatpak bundle is installed from a terminal:
 
 ```sh
 flatpak install specto-0.1-x86_64.flatpak
@@ -87,7 +86,7 @@ The desktop app can also insert pages from other PDFs and export a selection of
 pages. It has more markup too: freehand drawing, shapes, text boxes, notes and
 signatures.
 
-The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
+The detailed plan is in [Tasks](docs/TASKS.md).
 
 ## Building
 
