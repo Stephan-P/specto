@@ -3,6 +3,7 @@ resolver = "3"
 members = ["crates/*", "tools/*", "apps/desktop"]
 
 [workspace.package]
+# The version of the crates. The apps have their own, in the file VERSION.
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.92" # what hayro 0.9 requires

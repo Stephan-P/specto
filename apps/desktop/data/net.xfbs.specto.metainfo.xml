@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- What software centres (and Flathub) show. The links are also in
+<!-- What software centers (and Flathub) show. The links are also in
      src/main.rs, for the About dialog. packaging/README.md says what to
      change for a release. -->
 <component type="desktop-application">
@@ -28,7 +28,14 @@
       <li>Encrypted documents</li>
       <li>Remembers where you were in each document</li>
     </ul>
-    <p>Editing:</p>
+    <p>Marking up and filling in:</p>
+    <ul>
+      <li>Highlight, underline and strike out text</li>
+      <li>Notes, text boxes, freehand drawings and shapes</li>
+      <li>Sign with a signature drawn or taken from a picture</li>
+      <li>Fill in forms, by pointer or by keyboard</li>
+    </ul>
+    <p>Pages:</p>
     <ul>
       <li>Rotate, delete and reorder pages by dragging thumbnails</li>
       <li>Insert pages from other documents, or drag them between windows</li>
@@ -68,9 +75,9 @@
     </screenshot>
   </screenshots>
   <releases>
-    <release version="0.1.0" date="2026-11-15">
+    <release version="0.1" date="2026-11-15">
       <description>
-        <p>The first release: viewing, search, text selection, page editing and printing.</p>
+        <p>The first release: viewing, search, markup, signatures, forms, page editing and printing.</p>
       </description>
     </release>
   </releases>

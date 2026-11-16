@@ -23,6 +23,12 @@ val releaseSigning: Properties? =
         Properties().apply { file.inputStream().use(::load) }
     }
 
+/**
+ * The version of the apps, a major and a minor number such as 0.1, from the file `VERSION` at
+ * the root of the repository. The desktop app shows the same.
+ */
+val appVersion: String = rootProject.file("../../VERSION").readText().trim()
+
 android {
     namespace = "net.xfbs.specto"
     compileSdk {
@@ -34,8 +40,10 @@ android {
         applicationId = "net.xfbs.specto"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        // Grows with every release: 1 for 0.1, 1002 for 1.2.
+        versionCode =
+            appVersion.split(".").let { (major, minor) -> major.toInt() * 1000 + minor.toInt() }
+        versionName = appVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only package the ABIs we build the Rust library for.
         ndk {

@@ -136,7 +136,8 @@ def run(tmp):
         time.sleep(1)  # until it's the active window
         s = app.state(WIN2)
         check.check(s["view"] == "empty", f"window 2 shows {s['view']!r}")
-        check.check(s["recent"] == [["test.pdf", docs]], f"recent files: {s['recent']}")
+        # The first of them: the installed app has the user's own recent files too.
+        check.check(s["recent"][:1] == [["test.pdf", docs]], f"recent files: {s['recent']}")
         print("ok    the start page names the real folder", flush=True)
 
         # Changed outside while window 2 is active: nothing yet...

@@ -1,33 +1,91 @@
 name: Release
 
-# Builds the Android app for a release and publishes it: push a tag such as
-# v1.0 whose version is the `versionName` in apps/android/build.gradle.kts.
-# See apps/android/BUILDING.md ("Publishing a release").
+# A tag such as v0.1 builds the apps and publishes them as a GitHub release:
+# the Flatpak of the desktop app for both architectures, and the signed APK of
+# the Android app. packaging/README.md says how to make a release, and
+# apps/android/BUILDING.md what the Android build needs.
 on:
   push:
     tags: ["v*"]
-
-env:
-  CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
+  # "Run workflow" in the Actions tab builds the Flatpak bundles without a
+  # release.
+  workflow_dispatch:
 
 jobs:
-  android:
+  version:
+    # The version of the apps, in the file VERSION: a major and a minor number.
+    # A tag must name it, and the metainfo must have a release entry for it.
     runs-on: ubuntu-latest
-    permissions:
-      # To create the release and attach the APK.
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Check the version
-        # The tag and the app must agree on what this release is called.
+        id: version
         run: |
-          version=$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' apps/android/build.gradle.kts)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME, but versionName is $version"
+          version=$(cat VERSION)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+            echo "::error::VERSION must be a major and a minor number, not \"$version\""
             exit 1
           fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME, but VERSION has $version"
+            exit 1
+          fi
+          if ! grep -q "<release version=\"$version\"" apps/desktop/data/net.xfbs.specto.metainfo.xml; then
+            echo "::error::The metainfo has no release entry for $version"
+            exit 1
+          fi
+
+  flatpak:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.variant.runner }}
+    # Flathub's image with flatpak-builder and the GNOME SDK the manifest
+    # names. Privileged, because the build runs in a sandbox of its own.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: List the crates
+        # The build has no network: flatpak-builder downloads the crates of
+        # Cargo.lock beforehand, from this list.
+        run: |
+          command -v python3 > /dev/null || dnf install -y python3
+          python3 packaging/flatpak/cargo-sources.py Cargo.lock packaging/flatpak/cargo-sources.json
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/net.xfbs.specto.yml
+          arch: ${{ matrix.variant.arch }}
+          branch: stable
+          bundle: specto-${{ needs.version.outputs.version }}-${{ matrix.variant.arch }}.flatpak
+          artifact-name: specto-flatpak-${{ matrix.variant.arch }}
+          # Under target, which the manifest leaves out of the sources it
+          # copies from this directory.
+          build-dir: target/flatpak/build
+          repo-dir: target/flatpak/repo
+          state-dir: target/flatpak/state
+
+  android:
+    # Only for a tag: the APK is signed with the release key.
+    if: github.ref_type == 'tag'
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
       - name: Set up the release key
         # Without the key the build would be signed with a debug key, which
         # must never be handed out: an update needs the key of the version it
@@ -84,9 +142,38 @@ jobs:
           fi
           cp "$apk" "specto-$VERSION.apk"
           sha256sum "specto-$VERSION.apk" > "specto-$VERSION.apk.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: specto-android
+          path: |
+            specto-${{ needs.version.outputs.version }}.apk
+            specto-${{ needs.version.outputs.version }}.apk.sha256
+          if-no-files-found: error
+
+  release:
+    # The GitHub release for the tag, with everything that was built and notes
+    # made from the commits since the last one.
+    if: github.ref_type == 'tag'
+    needs: [version, flatpak, android]
+    runs-on: ubuntu-latest
+    permissions:
+      # To create the release and attach the files.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: specto-*
+          merge-multiple: true
+      - name: Checksums of the bundles
+        run: |
+          for bundle in specto-*.flatpak; do
+            sha256sum "$bundle" > "$bundle.sha256"
+          done
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
-            --title "Specto $VERSION" "specto-$VERSION.apk" "specto-$VERSION.apk.sha256"
+            --title "Specto $VERSION" specto-*.flatpak specto-*.apk specto-*.sha256

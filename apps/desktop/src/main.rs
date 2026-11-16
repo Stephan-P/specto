@@ -135,7 +135,8 @@ fn show_about(app: &adw::Application) {
     let dialog = adw::AboutDialog::builder()
         .application_name(APP_NAME)
         .application_icon(APP_ID)
-        .version(env!("CARGO_PKG_VERSION"))
+        // The version of the apps, which the crates' own versions don't follow.
+        .version(include_str!("../../../VERSION").trim())
         .developer_name(gettext("The Specto contributors"))
         .copyright(gettext("© 2026 The Specto contributors"))
         .website(WEBSITE)

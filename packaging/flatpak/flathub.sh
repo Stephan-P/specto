@@ -7,7 +7,7 @@
 #
 # Run it in a checkout of that tag (Cargo.lock must be the tag's), for example:
 #
-#     packaging/flatpak/flathub.sh v0.1.0 "$(git rev-parse v0.1.0^{commit})" ../flathub-specto
+#     packaging/flatpak/flathub.sh v0.1 "$(git rev-parse v0.1^{commit})" ../flathub-specto
 #
 # See packaging/README.md for the rest of publishing.
 set -eu

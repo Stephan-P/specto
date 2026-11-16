@@ -99,14 +99,16 @@ To see which key signed an APK:
 $ANDROID_HOME/build-tools/<version>/apksigner verify --print-certs specto-release.apk
 ```
 
-Before a release, raise `versionCode` and `versionName` in `build.gradle.kts`.
-Android takes an update only with a higher code.
+The version comes from the file `VERSION` at the root of the repository, which
+the desktop app shares. Android takes an update only with a higher version.
 
 ## Publishing a release
 
 Pushing a tag that starts with "v" makes CI build the release APK, sign it with
 the release key and attach it to a new release on GitHub, together with its
-SHA-256 checksum. The workflow is `.github/workflows/release.yml`.
+SHA-256 checksum. The workflow is `.github/workflows/release.yml`, which builds
+the desktop app for the same release. The steps of a release are in
+[packaging/README.md](../../packaging/README.md).
 
 CI needs the key once, as secrets of the repository on GitHub (Settings,
 "Secrets and variables", Actions):
@@ -121,15 +123,7 @@ CI needs the key once, as secrets of the repository on GitHub (Settings,
 base64 < ~/specto-release.jks | tr -d '\n'
 ```
 
-To release, raise `versionCode` and `versionName`, commit, and tag that commit
-with the same version:
-
-```sh
-git tag v1.0
-git push origin v1.0
-```
-
-The workflow stops without publishing anything if the tag and `versionName`
+The workflow stops without publishing anything if the tag and `VERSION`
 differ, if a secret is missing, or if the APK turns out to be signed with a
 debug key. The APK is for arm64-v8a, which every phone and tablet with a 64-bit
 processor runs.
