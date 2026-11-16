@@ -99,7 +99,9 @@ class SearchTest : AppTest() {
         Espresso.closeSoftKeyboard()
         Espresso.pressBack()
         compose.waitUntil(WAIT_MS) {
-            compose.onAllNodes(androidx.compose.ui.test.hasTestTag(SEARCH_FIELD_TAG)).fetchSemanticsNodes().isEmpty()
+            compose.onAllNodes(
+                androidx.compose.ui.test.hasTestTag(SEARCH_FIELD_TAG),
+            ).fetchSemanticsNodes().isEmpty()
         }
         compose.onNodeWithText("4 / 12").assertIsDisplayed()
     }

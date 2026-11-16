@@ -70,7 +70,9 @@ fun PropertiesDialog(state: PdfViewState, name: String, bytes: Long, onDismiss: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+        },
     )
 }
 
@@ -117,7 +119,12 @@ internal fun documentDate(
 ): String = try {
     OffsetDateTime.parse(iso)
         .atZoneSameInstant(zone)
-        .format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale))
+        .format(
+            DateTimeFormatter.ofLocalizedDateTime(
+                FormatStyle.MEDIUM,
+                FormatStyle.SHORT,
+            ).withLocale(locale),
+        )
 } catch (e: DateTimeException) {
     iso
 }
@@ -136,7 +143,12 @@ private val PAPER_SIZES = listOf(
     PaperSize(792f, 1224f, "Tabloid", inches = true),
 )
 
-private class PaperSize(val short: Float, val long: Float, val name: String, val inches: Boolean = false)
+private class PaperSize(
+    val short: Float,
+    val long: Float,
+    val name: String,
+    val inches: Boolean = false,
+)
 
 /** How far a page may be from a paper size and still be called by its name, in points. */
 private const val PAPER_TOLERANCE = 2f
@@ -168,8 +180,14 @@ internal fun pageSizeText(
     }
     val landscape = width > height
     return when {
-        paper != null && landscape -> texts.get(R.string.page_size_named_landscape, size, paper.name)
+        paper != null && landscape -> texts.get(
+            R.string.page_size_named_landscape,
+            size,
+            paper.name,
+        )
+
         paper != null -> texts.get(R.string.page_size_named, size, paper.name)
+
         else -> size
     }
 }

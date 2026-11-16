@@ -62,13 +62,18 @@ class ShareTest : AppTest() {
         val send = sheets.last!!.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         assertEquals(Intent.ACTION_SEND, send.action)
         assertEquals("application/pdf", send.type)
-        assertTrue("may be read by the receiver", send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertTrue(
+            "may be read by the receiver",
+            send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0,
+        )
         val stream = send.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
         assertEquals("content", stream.scheme)
         assertEquals("under its own name", "pages.pdf", stream.lastPathSegment)
         assertEquals(stream, send.clipData!!.getItemAt(0).uri)
 
-        val shared = instrumentation.targetContext.contentResolver.openInputStream(stream)!!.use { it.readBytes() }
+        val shared = instrumentation.targetContext.contentResolver.openInputStream(stream)!!.use {
+            it.readBytes()
+        }
         val original = instrumentation.context.assets.open("pages.pdf").use { it.readBytes() }
         assertArrayEquals(original, shared)
         // Still reading afterwards.
@@ -103,7 +108,9 @@ class ShareTest : AppTest() {
         val send = sheets.last!!.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         val stream = send.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
         assertEquals("under its own name", "pages.pdf", stream.lastPathSegment)
-        val shared = instrumentation.targetContext.contentResolver.openInputStream(stream)!!.use { it.readBytes() }
+        val shared = instrumentation.targetContext.contentResolver.openInputStream(stream)!!.use {
+            it.readBytes()
+        }
         val original = instrumentation.context.assets.open("pages.pdf").use { it.readBytes() }
         assertEquals("a PDF", "%PDF-", String(shared, 0, 5))
         assertTrue("not the file as opened", !shared.contentEquals(original))

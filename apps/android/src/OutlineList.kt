@@ -35,16 +35,17 @@ import uniffi.specto_ffi.OutlineEntry
  * The indices of the [entries] to show, given the indices of the [expanded] ones: an entry is shown
  * unless one of its ancestors is collapsed.
  */
-internal fun visibleOutlineRows(entries: List<OutlineEntry>, expanded: Set<Int>): List<Int> = buildList {
-    var hiddenBelow = Int.MAX_VALUE
-    for ((i, entry) in entries.withIndex()) {
-        val depth = entry.depth.toInt()
-        if (depth > hiddenBelow) continue
-        hiddenBelow = Int.MAX_VALUE
-        add(i)
-        if (entry.hasChildren && i !in expanded) hiddenBelow = depth
+internal fun visibleOutlineRows(entries: List<OutlineEntry>, expanded: Set<Int>): List<Int> =
+    buildList {
+        var hiddenBelow = Int.MAX_VALUE
+        for ((i, entry) in entries.withIndex()) {
+            val depth = entry.depth.toInt()
+            if (depth > hiddenBelow) continue
+            hiddenBelow = Int.MAX_VALUE
+            add(i)
+            if (entry.hasChildren && i !in expanded) hiddenBelow = depth
+        }
     }
-}
 
 /** Outlines up to this size start fully expanded. Longer ones show their top level. */
 private const val EXPAND_ALL_UP_TO = 40
@@ -59,8 +60,11 @@ fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier =
     val entries = state.outline
     var expanded by remember(state) {
         mutableStateOf(
-            if (entries.size <= EXPAND_ALL_UP_TO) entries.indices.filter { entries[it].hasChildren }.toSet()
-            else emptySet(),
+            if (entries.size <= EXPAND_ALL_UP_TO) {
+                entries.indices.filter { entries[it].hasChildren }.toSet()
+            } else {
+                emptySet()
+            },
         )
     }
     val visible = remember(entries, expanded) { visibleOutlineRows(entries, expanded) }
@@ -86,15 +90,21 @@ fun OutlineList(state: PdfViewState, onPick: (Int) -> Unit, modifier: Modifier =
                     val open = i in expanded
                     IconButton(onClick = { expanded = if (open) expanded - i else expanded + i }) {
                         Icon(
-                            if (open) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = stringResource(if (open) R.string.collapse else R.string.expand),
+                            if (open) {
+                                Icons.Filled.KeyboardArrowDown
+                            } else {
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight
+                            },
+                            contentDescription = stringResource(
+                                if (open) R.string.collapse else R.string.expand,
+                            ),
                         )
                     }
                 } else {
                     Box(Modifier.size(48.dp))
                 }
-                val colour =
-                    if (i == here) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                val scheme = MaterialTheme.colorScheme
+                val colour = if (i == here) scheme.primary else scheme.onSurface
                 Text(
                     entry.title,
                     Modifier.weight(1f).padding(vertical = 8.dp),

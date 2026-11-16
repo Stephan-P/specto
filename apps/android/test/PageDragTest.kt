@@ -13,7 +13,10 @@ class PageDragTest {
      */
     private val grid: Map<Int, Rect> = (3..8).associateWith { page ->
         val (column, row) = (page - 3) % 3 to (page - 3) / 3
-        Rect(Offset(10f + column * 120f, 10f + row * 170f), androidx.compose.ui.geometry.Size(100f, 150f))
+        Rect(
+            Offset(10f + column * 120f, 10f + row * 170f),
+            androidx.compose.ui.geometry.Size(100f, 150f),
+        )
     }
 
     /** The same pages one below the other. */
@@ -21,8 +24,10 @@ class PageDragTest {
         Rect(Offset(50f, 10f + (page - 3) * 170f), androidx.compose.ui.geometry.Size(100f, 150f))
     }
 
-    private fun inGrid(x: Float, y: Float) = pageDrop(Offset(x, y), grid, oneColumn = false)?.position
-    private fun inColumn(x: Float, y: Float) = pageDrop(Offset(x, y), column, oneColumn = true)?.position
+    private fun inGrid(x: Float, y: Float) =
+        pageDrop(Offset(x, y), grid, oneColumn = false)?.position
+    private fun inColumn(x: Float, y: Float) =
+        pageDrop(Offset(x, y), column, oneColumn = true)?.position
 
     @Test
     fun besideTheNearestThumbnailOnTheSideOfItsMiddle() {
@@ -43,8 +48,14 @@ class PageDragTest {
         // one of the first row.
         assertEquals(6, inGrid(0f, 250f))
         assertEquals(6, inGrid(345f, 80f))
-        assertEquals(PageDrop(5, before = false), pageDrop(Offset(345f, 80f), grid, oneColumn = false))
-        assertEquals(PageDrop(6, before = true), pageDrop(Offset(0f, 250f), grid, oneColumn = false))
+        assertEquals(
+            PageDrop(5, before = false),
+            pageDrop(Offset(345f, 80f), grid, oneColumn = false),
+        )
+        assertEquals(
+            PageDrop(6, before = true),
+            pageDrop(Offset(0f, 250f), grid, oneColumn = false),
+        )
     }
 
     @Test

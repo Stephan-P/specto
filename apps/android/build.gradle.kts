@@ -18,9 +18,10 @@ val rustAbis = providers.gradleProperty("specto.abis").map { it.split(',').map(S
  * Where the release key is and how to open it: `keystore.properties` next to
  * `settings.gradle.kts`, which is never committed. Null without that file.
  */
-val releaseSigning: Properties? = rootProject.file("keystore.properties").takeIf { it.isFile }?.let { file ->
-    Properties().apply { file.inputStream().use(::load) }
-}
+val releaseSigning: Properties? =
+    rootProject.file("keystore.properties").takeIf { it.isFile }?.let { file ->
+        Properties().apply { file.inputStream().use(::load) }
+    }
 
 android {
     namespace = "net.xfbs.specto"
@@ -60,13 +61,17 @@ android {
             // Without a key of its own, a release is signed with the debug
             // key: good for measuring performance and for trying the app as
             // users get it, not for distributing it.
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            signingConfig =
+                signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             // R8 removes what the app doesn't use (most of Compose and the
             // icon set) and shortens names, and proguard-rules.pro says what it
             // must leave alone.
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
@@ -107,7 +112,12 @@ android {
     }
 }
 
+/** The formatter's own class path, apart from the app's. */
+val ktlint: Configuration by configurations.creating
+
 dependencies {
+    ktlint(libs.ktlint)
+
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
@@ -129,6 +139,31 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
 }
 
+// --- Kotlin style -------------------------------------------------------------
+//
+// ktlint checks and formats the Kotlin sources and this build script, by the
+// rules in .editorconfig. `ktlintCheck` reports what is off, and `ktlintFormat`
+// fixes what it can.
+
+val kotlinSources = listOf("src/**/*.kt", "test/**/*.kt", "test-ui/**/*.kt", "*.kts")
+
+fun JavaExec.ktlint(vararg options: String) {
+    group = "verification"
+    classpath = ktlint
+    mainClass = "com.pinterest.ktlint.Main"
+    args(*options, *kotlinSources.toTypedArray())
+}
+
+tasks.register<JavaExec>("ktlintCheck") {
+    description = "Checks the style of the Kotlin code."
+    ktlint()
+}
+
+tasks.register<JavaExec>("ktlintFormat") {
+    description = "Formats the Kotlin code."
+    ktlint("--format")
+}
+
 // --- Rust -------------------------------------------------------------------
 //
 // `cargoNdkBuild` cross-compiles crates/specto-ffi into jniLibs, and
@@ -144,7 +179,9 @@ fun cargoBinDir(): String =
 
 abstract class CargoTask : DefaultTask() {
     @get:Inject abstract val execOps: ExecOperations
+
     @get:Internal abstract val workspaceDir: DirectoryProperty
+
     @get:Internal abstract val cargoBin: Property<String>
 
     protected fun cargo(vararg args: String, env: Map<String, String> = emptyMap()) {
@@ -160,8 +197,11 @@ abstract class CargoTask : DefaultTask() {
 
 abstract class CargoNdkBuild : CargoTask() {
     @get:Input abstract val abis: ListProperty<String>
+
     @get:Input abstract val minSdk: Property<Int>
+
     @get:Internal abstract val ndkDir: DirectoryProperty
+
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
     @TaskAction
@@ -177,6 +217,7 @@ abstract class CargoNdkBuild : CargoTask() {
 
 abstract class UniffiBindgen : CargoTask() {
     @get:InputDirectory abstract val jniLibs: DirectoryProperty
+
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
     @TaskAction
@@ -211,7 +252,10 @@ val uniffiBindgen = tasks.register<UniffiBindgen>("uniffiBindgen") {
 
 androidComponents {
     onVariants { variant ->
-        variant.sources.jniLibs?.addGeneratedSourceDirectory(cargoNdkBuild, CargoNdkBuild::outputDir)
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(
+            cargoNdkBuild,
+            CargoNdkBuild::outputDir,
+        )
         variant.sources.kotlin?.addGeneratedSourceDirectory(uniffiBindgen, UniffiBindgen::outputDir)
     }
 }

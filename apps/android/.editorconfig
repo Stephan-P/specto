@@ -1,0 +1,17 @@
+# The style of the Kotlin code, which ktlint checks (see build.gradle.kts).
+root = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+insert_final_newline = true
+ktlint_code_style = android_studio
+# Composable functions are named like the classes they stand for.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+# Every item of a list that runs over several lines ends with a comma.
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+# Off, because it breaks a line at the first operator it finds, which is rarely the place a
+# reader would choose. Lines that are too long are broken by hand.
+ktlint_standard_binary-expression-wrapping = disabled

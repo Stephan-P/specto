@@ -26,10 +26,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import uniffi.specto_ffi.Markup
 import uniffi.specto_ffi.Activated
 import uniffi.specto_ffi.DocumentInfo
 import uniffi.specto_ffi.EditState
+import uniffi.specto_ffi.Markup
 import uniffi.specto_ffi.OutlineEntry
 import uniffi.specto_ffi.PageSize
 import uniffi.specto_ffi.PdfFile
@@ -135,7 +135,8 @@ class PdfViewState(
      * Width divided by height of [page] as displayed, or that of a sheet of paper for a page that
      * isn't there any more.
      */
-    fun pageAspect(page: Int): Float = pageSizes.getOrNull(page)?.let { it.width / it.height } ?: 0.707f
+    fun pageAspect(page: Int): Float =
+        pageSizes.getOrNull(page)?.let { it.width / it.height } ?: 0.707f
 
     /** What the document says about itself: title, author, dates and so on. */
     fun info(): DocumentInfo = session.info()
@@ -293,7 +294,9 @@ class PdfViewState(
     fun movePages(pages: Collection<Int>, to: Int) {
         if (closed) return
         val first = session.movePages(pages.map { it.toUInt() }, to.toUInt())?.toInt() ?: return
-        if (selectedPages.isNotEmpty()) selectedPages = (first until first + pages.toSet().size).toSet()
+        if (selectedPages.isNotEmpty()) {
+            selectedPages = (first until first + pages.toSet().size).toSet()
+        }
         pagesChanged()
     }
 
@@ -580,7 +583,10 @@ class PdfViewState(
             stopMotion()
             motion = scope.launch {
                 var done = 0f
-                animate(0f, 1f, animationSpec = tween(SLIDE_MS, easing = LinearOutSlowInEasing)) { t, _ ->
+                animate(0f, 1f, animationSpec = tween(SLIDE_MS, easing = LinearOutSlowInEasing)) {
+                        t,
+                        _,
+                    ->
                     Native.scrollInPageBy(sessionId, 0.0, (distance * (t - done)).toDouble())
                     done = t
                     refresh()
@@ -690,7 +696,14 @@ class PdfViewState(
 
     /** A pinch step: zoom and pan together, planning only one frame. */
     fun transformBy(zoom: Float, anchor: Offset, pan: Offset) {
-        if (zoom != 1f) Native.zoomBy(sessionId, zoom.toDouble(), anchor.x.toDouble(), anchor.y.toDouble())
+        if (zoom != 1f) {
+            Native.zoomBy(
+                sessionId,
+                zoom.toDouble(),
+                anchor.x.toDouble(),
+                anchor.y.toDouble(),
+            )
+        }
         if (pan != Offset.Zero) Native.scrollBy(sessionId, pan.x.toDouble(), pan.y.toDouble())
         refresh()
     }
@@ -723,11 +736,19 @@ class PdfViewState(
      * view left between two pages slides on to one of them (a flick turns the page). Otherwise the
      * scrolling carries on and slows down, within the page when paged.
      */
-    fun release(scope: CoroutineScope, velocityPx: Offset, density: Float, decay: DecayAnimationSpec<Offset>) {
+    fun release(
+        scope: CoroutineScope,
+        velocityPx: Offset,
+        density: Float,
+        decay: DecayAnimationSpec<Offset>,
+    ) {
         stopMotion()
         val current = frame ?: return
         if (current.paged) {
-            val snap = session.snapDelta((velocityPx.x / density).toDouble(), (velocityPx.y / density).toDouble())
+            val snap = session.snapDelta(
+                (velocityPx.x / density).toDouble(),
+                (velocityPx.y / density).toDouble(),
+            )
             if (snap != null) {
                 motion = scope.launch { slideBy(Offset(snap.x.toFloat(), snap.y.toFloat())) }
                 return

@@ -94,10 +94,11 @@ jobs:
           if-no-files-found: ignore
 
   android:
-    # Builds the Android app (which cross-compiles the Rust library and
-    # generates its Kotlin bindings) and runs the Kotlin unit tests. The
-    # release build is built too: its code shrinking (R8) fails on classes
-    # it can't account for, which the debug build never shows.
+    # Checks the style of the Kotlin code, builds the Android app (which
+    # cross-compiles the Rust library and generates its Kotlin bindings) and
+    # runs the Kotlin unit tests. The release build is built too: its code
+    # shrinking (R8) fails on classes it can't account for, which the debug
+    # build never shows.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +121,9 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Kotlin style
+        working-directory: apps/android
+        run: ./gradlew ktlintCheck
       - name: Build and unit tests
         working-directory: apps/android
         run: ./gradlew assembleDebug testDebugUnitTest assembleRelease

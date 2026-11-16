@@ -71,7 +71,8 @@ abstract class AppTest {
                 } catch (failure: Throwable) {
                     val elsewhere = focusElsewhere ?: throw failure
                     throw AssertionError(
-                        "The app's window did not have the focus when this test ended ($elsewhere). " +
+                        "The app's window did not have the focus when this test ended " +
+                            "($elsewhere). " +
                             "The test failed with: ${failure.message?.lineSequence()?.firstOrNull()}",
                         failure,
                     )
@@ -86,7 +87,10 @@ abstract class AppTest {
 
     /** Whether the window is wide enough for the sidebar layout. */
     protected val wide: Boolean
-        get() = instrumentation.targetContext.resources.configuration.screenWidthDp >= WIDE_WINDOW_DP
+        get() {
+            val width = instrumentation.targetContext.resources.configuration.screenWidthDp
+            return width >= WIDE_WINDOW_DP
+        }
 
     protected val page get() = compose.onNodeWithTag(PAGE_VIEW_TAG)
 
@@ -141,7 +145,9 @@ abstract class AppTest {
     private fun focusedWindow(): String = try {
         val output = instrumentation.uiAutomation.executeShellCommand("dumpsys window displays")
         ParcelFileDescriptor.AutoCloseInputStream(output).bufferedReader().useLines { lines ->
-            lines.filter { "mCurrentFocus=" in it || "mFocusedApp=" in it }.joinToString(", ") { it.trim() }
+            lines.filter {
+                "mCurrentFocus=" in it || "mFocusedApp=" in it
+            }.joinToString(", ") { it.trim() }
         }.ifEmpty { "the system did not say which window had it" }
     } catch (e: Exception) {
         "asking the system which window had it failed: $e"
@@ -194,11 +200,15 @@ abstract class AppTest {
     }
 
     protected fun waitForText(text: String) {
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     protected fun waitUntilGone(text: String) {
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()
+        }
     }
 
     protected companion object {
@@ -242,7 +252,9 @@ abstract class AppTest {
             var chosen = false
             instrumentation.runOnMainSync {
                 val menu = floatingMenu?.menu ?: return@runOnMainSync
-                val entry = (0 until menu.size()).map(menu::getItem).firstOrNull { it.title.toString() == item }
+                val entry = (0 until menu.size()).map(menu::getItem).firstOrNull {
+                    it.title.toString() == item
+                }
                 checkNotNull(entry) { "the text menu has no \"$item\"" }
                 chosen = menu.performIdentifierAction(entry.itemId, 0)
             }
@@ -260,7 +272,8 @@ abstract class AppTest {
     }
 
     /** The item of an open view menu called [item], if it is the one ticked. */
-    protected fun chosen(item: String) = compose.onNode(hasText(item) and hasContentDescription("Chosen"))
+    protected fun chosen(item: String) =
+        compose.onNode(hasText(item) and hasContentDescription("Chosen"))
 
     /** "Go to page" with [text] typed into its field, whose label names the [range]. */
     protected fun goTo(text: String, range: String) {

@@ -237,7 +237,9 @@ class ReaderTest : AppTest() {
         waitForText("3 / 12")
         compose.onNodeWithTag(SIDEBAR_TAG).assertIsDisplayed()
         compose.onNodeWithContentDescription("Contents and pages").performClick()
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty()
+        }
         compose.waitForIdle()
         assertTrue(page.fetchSemanticsNode().size.width > pageWidth)
         compose.onNodeWithText("3 / 12").assertIsDisplayed()
@@ -248,7 +250,9 @@ class ReaderTest : AppTest() {
         assumeTrue("needs a window of at least $WIDE_WINDOW_DP dp", wide)
         openPages()
         compose.onNodeWithContentDescription("Contents and pages").performClick()
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithTag(SIDEBAR_TAG).fetchSemanticsNodes().isEmpty()
+        }
         reopen("pages.pdf")
         waitForText("1 / 12")
         compose.waitForIdle()

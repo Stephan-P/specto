@@ -42,6 +42,12 @@
 ## Kotlin comments
 
 - Wrap code and comments at 100 columns.
+- Format with ktlint after a change. Run it from `apps/android`:
+
+  ```sh
+  ./gradlew ktlintFormat
+  ```
+
 - KDoc (`/** ... */`) on declarations, `//` inside functions.
 - KDoc: a one-sentence summary, a blank ` *` line, then the detail. A KDoc that
   fits on one line stays on one line.

@@ -61,7 +61,9 @@ class CrashLog(private val file: File) {
             uniffi.specto_ffi.logPanicsTo(file.path)
         } catch (e: Throwable) {
             // The library didn't load. The app won't get far, so say why.
-            runCatching { file.appendText(crashEntry(Instant.now(), Thread.currentThread().name, e)) }
+            runCatching {
+                file.appendText(crashEntry(Instant.now(), Thread.currentThread().name, e))
+            }
         }
     }
 

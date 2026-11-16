@@ -104,7 +104,9 @@ class SettingsTest : AppTest() {
         waitForText("1 / 12")
 
         // As the Rust library records a panic.
-        log.writeText("--- 2026-11-15T12:00:00Z Rust panic\nthread 'render': number 7 went wrong\nat src/lib.rs:1:2\n\n")
+        log.writeText(
+            "--- 2026-11-15T12:00:00Z Rust panic\nthread 'render': number 7 went wrong\nat src/lib.rs:1:2\n\n",
+        )
         menu("Settings")
         compose.onNodeWithText("Last entry", substring = true).assertIsDisplayed().performClick()
         compose.onNodeWithTag(CRASH_LOG_TAG)

@@ -2,8 +2,8 @@ package net.xfbs.specto
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.graphics.Paint
 import android.graphics.BlendMode
+import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
@@ -113,7 +113,6 @@ private const val CLIPBOARD_MAX_CHARS = 300_000
  */
 internal const val SHARE_MAX_CHARS = 100_000
 
-/** What the search found, as on the desktop: yellow, and orange for the match being looked at. */
 /** How thick the box around a picked annotation is drawn. */
 private val PICKED_OUTLINE = 2.dp
 
@@ -216,7 +215,16 @@ fun PdfView(
     refocus: Any? = null,
 ) {
     Box(modifier) {
-        PageCanvas(state, Modifier.fillMaxSize(), onExternalLink, onTap, onSearch, onSave, onPrint, refocus)
+        PageCanvas(
+            state,
+            Modifier.fillMaxSize(),
+            onExternalLink,
+            onTap,
+            onSearch,
+            onSave,
+            onPrint,
+            refocus,
+        )
         BusyPages(state)
     }
 }
@@ -249,7 +257,9 @@ private fun PageCanvas(
     val view = LocalView.current
     val menu = remember(view) { TextMenu(view) }
     // Pages are white whatever the theme: take the darker of the two accents.
-    val accent = MaterialTheme.colorScheme.run { if (primary.luminance() > 0.5f) inversePrimary else primary }
+    val accent = MaterialTheme.colorScheme.run {
+        if (primary.luminance() > 0.5f) inversePrimary else primary
+    }
     val handleRadius = HANDLE_RADIUS.value * density
     // One path per kind of highlight, in the order of `ViewFrame.HIGHLIGHT_*`.
     val highlights = remember { List(3) { Path() } }
@@ -267,7 +277,9 @@ private fun PageCanvas(
             if (text == null) return@launch
             val copied = text.length <= CLIPBOARD_MAX_CHARS && try {
                 context.getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.clip_label), text))
+                    .setPrimaryClip(
+                        ClipData.newPlainText(context.getString(R.string.clip_label), text),
+                    )
                 true
             } catch (e: RuntimeException) {
                 // Still too large for the system to pass around.
@@ -311,7 +323,9 @@ private fun PageCanvas(
         } catch (e: PdfException.Save) {
             // One of the file's own, on a page that can't be written anew.
             Toast.makeText(
-                context, context.getString(R.string.could_not_delete_annotation, e.reason), Toast.LENGTH_LONG,
+                context,
+                context.getString(R.string.could_not_delete_annotation, e.reason),
+                Toast.LENGTH_LONG,
             ).show()
         }
     }
@@ -377,7 +391,9 @@ private fun PageCanvas(
                 TextMenu.Item(context.getString(R.string.copy), ::copy),
                 TextMenu.Item(context.getString(R.string.share), ::share),
                 TextMenu.Item(context.getString(R.string.underline)) { mark(Markup.UNDERLINE) },
-                TextMenu.Item(context.getString(R.string.strike_through)) { mark(Markup.STRIKE_OUT) },
+                TextMenu.Item(context.getString(R.string.strike_through)) {
+                    mark(Markup.STRIKE_OUT)
+                },
                 TextMenu.Item(context.getString(R.string.select_all)) { state.selectAll() },
             )
         } else {
@@ -397,7 +413,8 @@ private fun PageCanvas(
             if (frame.pageCount == 0) return@LaunchedEffect
             Log.d(
                 "specto",
-                "settled: device scale ${frame.deviceScale}, canvas origin (${origin.x}, ${origin.y}) px, " +
+                "settled: device scale ${frame.deviceScale}, " +
+                    "canvas origin (${origin.x}, ${origin.y}) px, " +
                     "page ${frame.page(0) + 1} at (${frame.pageLeft(0)}, ${frame.pageTop(0)}) " +
                     "${frame.pageWidth(0)}x${frame.pageHeight(0)}",
             )
@@ -413,7 +430,16 @@ private fun PageCanvas(
             .clipToBounds()
             .focusRequester(focus)
             .focusable()
-            .onKeyEvent { it.type == KeyEventType.KeyDown && state.handleKey(scope, it, ::copy, onSearch, onSave, onPrint) }
+            .onKeyEvent {
+                it.type == KeyEventType.KeyDown && state.handleKey(
+                    scope,
+                    it,
+                    ::copy,
+                    onSearch,
+                    onSave,
+                    onPrint,
+                )
+            }
             .onGloballyPositioned {
                 origin = it.positionInWindow()
                 originInRoot = it.positionInRoot()
@@ -443,7 +469,9 @@ private fun PageCanvas(
                             when (val hit = state.tap(it / density)) {
                                 Activated.Nothing ->
                                     if (!state.pickAnnotation(it / density) && !hadPicked) onTap()
+
                                 Activated.Moved -> state.clearPickedAnnotation()
+
                                 is Activated.Uri -> onExternalLink(hit.uri)
                             }
                         }
@@ -591,7 +619,11 @@ private fun PageCanvas(
                 path.close()
             }
             drawPath(highlights[ViewFrame.HIGHLIGHT_MATCH], MATCH_COLOUR, alpha = 0.4f)
-            drawPath(highlights[ViewFrame.HIGHLIGHT_CURRENT_MATCH], CURRENT_MATCH_COLOUR, alpha = 0.55f)
+            drawPath(
+                highlights[ViewFrame.HIGHLIGHT_CURRENT_MATCH],
+                CURRENT_MATCH_COLOUR,
+                alpha = 0.55f,
+            )
             drawPath(highlights[ViewFrame.HIGHLIGHT_SELECTION], accent, alpha = 0.3f)
         }
         f.selectionStart?.let { drawHandle(it, end = false, handleRadius, accent) }
@@ -607,6 +639,7 @@ internal class ShapePainter {
     private val path = android.graphics.Path()
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+
     // The layer of highlights is multiplied with the page under it. Before Android 10 there is no
     // such blend that leaves the page alone where the layer is empty (PorterDuff's MULTIPLY
     // blackens it), so there the darker of the two colors is taken: the same on white paper and
@@ -653,9 +686,12 @@ internal class ShapePainter {
         for (s in shapes.segments(i)) {
             if (shapes.segmentIsCurve(s)) {
                 path.cubicTo(
-                    shapes.segmentX(s, 0), shapes.segmentY(s, 0),
-                    shapes.segmentX(s, 1), shapes.segmentY(s, 1),
-                    shapes.segmentX(s, 2), shapes.segmentY(s, 2),
+                    shapes.segmentX(s, 0),
+                    shapes.segmentY(s, 0),
+                    shapes.segmentX(s, 1),
+                    shapes.segmentY(s, 1),
+                    shapes.segmentX(s, 2),
+                    shapes.segmentY(s, 2),
                 )
             } else {
                 path.lineTo(shapes.segmentX(s, 0), shapes.segmentY(s, 0))

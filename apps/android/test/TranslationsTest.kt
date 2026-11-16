@@ -17,14 +17,22 @@ import org.w3c.dom.Element
 class TranslationsTest {
     /** A file's texts by name, with a plural's forms as "name/one", "name/other". */
     private fun texts(file: File): Map<String, String> {
-        val root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).documentElement
+        val root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(
+            file,
+        ).documentElement
         val children = root.childNodes
         val texts = mutableMapOf<String, String>()
         for (i in 0 until children.length) {
             val element = children.item(i) as? Element ?: continue
             val name = element.getAttribute("name")
             when (element.tagName) {
-                "string" -> if (element.getAttribute("translatable") != "false") texts[name] = element.textContent
+                "string" -> if (element.getAttribute(
+                        "translatable",
+                    ) != "false"
+                ) {
+                    texts[name] = element.textContent
+                }
+
                 "plurals" -> {
                     val items = element.getElementsByTagName("item")
                     for (j in 0 until items.length) {

@@ -41,7 +41,11 @@ suspend fun Context.printDocument(state: PdfViewState, name: String) {
     val landscape = state.pageSizes.firstOrNull()?.let { it.width > it.height } == true
     val attributes = PrintAttributes.Builder()
         .setMediaSize(
-            if (landscape) PrintAttributes.MediaSize.UNKNOWN_LANDSCAPE else PrintAttributes.MediaSize.UNKNOWN_PORTRAIT,
+            if (landscape) {
+                PrintAttributes.MediaSize.UNKNOWN_LANDSCAPE
+            } else {
+                PrintAttributes.MediaSize.UNKNOWN_PORTRAIT
+            },
         )
         .build()
     getSystemService(PrintManager::class.java)

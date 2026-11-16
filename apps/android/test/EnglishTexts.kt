@@ -12,11 +12,15 @@ object EnglishTexts : Texts {
     /** The texts by name. Gradle runs unit tests in the project's directory. */
     private val byName: Map<String, String> = run {
         val file = File("res/values/strings.xml")
-        val strings = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).getElementsByTagName("string")
+        val strings = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(
+            file,
+        ).getElementsByTagName("string")
         (0 until strings.length).associate { i ->
             val string = strings.item(i)
             // What Android's own reading of the file does to a text.
-            string.attributes.getNamedItem("name").nodeValue to string.textContent.replace("\\'", "'")
+            string.attributes.getNamedItem(
+                "name",
+            ).nodeValue to string.textContent.replace("\\'", "'")
         }
     }
 

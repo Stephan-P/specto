@@ -26,7 +26,12 @@ class TextMenu(private val view: View) {
     private val callback = object : ActionMode.Callback2() {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
             for ((index, item) in items.withIndex()) {
-                menu.add(Menu.NONE, index, index, item.title).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                menu.add(
+                    Menu.NONE,
+                    index,
+                    index,
+                    item.title,
+                ).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
             }
             return true
         }
@@ -44,7 +49,8 @@ class TextMenu(private val view: View) {
             if (this@TextMenu.mode === mode) this@TextMenu.mode = null
         }
 
-        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) = outRect.set(beside)
+        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) =
+            outRect.set(beside)
     }
 
     /**

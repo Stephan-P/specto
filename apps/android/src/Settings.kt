@@ -86,11 +86,16 @@ fun SettingsScreen(settings: AppSettings, crashLog: CrashLog, onBack: () -> Unit
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                        )
                     }
                 },
                 title = { Text(stringResource(R.string.menu_settings)) },
-                windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+                windowInsets = WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                ),
             )
         },
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -99,7 +104,9 @@ fun SettingsScreen(settings: AppSettings, crashLog: CrashLog, onBack: () -> Unit
             Setting(
                 stringResource(R.string.setting_keep_screen_on),
                 pluralStringResource(
-                    R.plurals.setting_keep_screen_on_detail, KEEP_SCREEN_ON_MINUTES, KEEP_SCREEN_ON_MINUTES,
+                    R.plurals.setting_keep_screen_on_detail,
+                    KEEP_SCREEN_ON_MINUTES,
+                    KEEP_SCREEN_ON_MINUTES,
                 ),
                 settings.keepScreenOn,
             ) { settings.keepScreenOn = it }
@@ -115,7 +122,12 @@ fun SettingsScreen(settings: AppSettings, crashLog: CrashLog, onBack: () -> Unit
                 if (recorded.isBlank()) {
                     stringResource(R.string.crash_log_empty)
                 } else {
-                    stringResource(R.string.crash_log_detail, last?.let { documentDate(it.toString()) } ?: "")
+                    stringResource(
+                        R.string.crash_log_detail,
+                        last?.let {
+                            documentDate(it.toString())
+                        } ?: "",
+                    )
                 },
                 enabled = recorded.isNotBlank(),
             ) { showCrashLog = true }

@@ -66,14 +66,21 @@ fun SearchBar(state: PdfViewState, onClose: () -> Unit) {
     val status = state.searchStatus
     val found = (status?.matches ?: 0u) > 0u
     TopAppBar(
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+        windowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+        ),
         navigationIcon = {
             IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.close_search))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.close_search),
+                )
             }
         },
         title = {
-            val style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
+            val style = MaterialTheme.typography.bodyLarge.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             BasicTextField(
                 value = query,
                 onValueChange = {
@@ -89,8 +96,12 @@ fun SearchBar(state: PdfViewState, onClose: () -> Unit) {
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
-                            Key.Enter, Key.NumPadEnter -> state.searchStep(forward = !event.isShiftPressed)
+                            Key.Enter, Key.NumPadEnter -> state.searchStep(
+                                forward = !event.isShiftPressed,
+                            )
+
                             Key.Escape -> onClose()
+
                             else -> return@onPreviewKeyEvent false
                         }
                         true
@@ -103,7 +114,11 @@ fun SearchBar(state: PdfViewState, onClose: () -> Unit) {
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                 decorationBox = { field ->
                     if (query.isEmpty()) {
-                        Text(stringResource(R.string.search), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            stringResource(R.string.search),
+                            style = style,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     field()
                 },
@@ -118,10 +133,16 @@ fun SearchBar(state: PdfViewState, onClose: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
             IconButton(onClick = { state.searchStep(forward = false) }, enabled = found) {
-                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.previous_match))
+                Icon(
+                    Icons.Filled.KeyboardArrowUp,
+                    contentDescription = stringResource(R.string.previous_match),
+                )
             }
             IconButton(onClick = { state.searchStep(forward = true) }, enabled = found) {
-                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.next_match))
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = stringResource(R.string.next_match),
+                )
             }
         },
     )
@@ -140,7 +161,9 @@ internal fun searchSummary(status: SearchStatus?, texts: Texts): String {
             (status.current ?: 0u).toInt() + 1,
             status.matches.toInt(),
         )
+
         searching -> texts.get(R.string.search_running)
+
         else -> texts.get(R.string.no_matches)
     }
 }

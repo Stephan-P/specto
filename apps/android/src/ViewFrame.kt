@@ -111,7 +111,14 @@ class ViewFrame private constructor(
         for (h in highlightKinds.indices) {
             if (highlightKinds[h] != HIGHLIGHT_SELECTION) continue
             val b = bounds
-                ?: floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE).also { bounds = it }
+                ?: floatArrayOf(
+                    Float.MAX_VALUE,
+                    Float.MAX_VALUE,
+                    -Float.MAX_VALUE,
+                    -Float.MAX_VALUE,
+                ).also {
+                    bounds = it
+                }
             for (i in 8 * h until 8 * h + 8 step 2) {
                 b[0] = minOf(b[0], highlights[i])
                 b[1] = minOf(b[1], highlights[i + 1])
@@ -132,11 +139,10 @@ class ViewFrame private constructor(
     fun thumbnailSlot(page: Int): Int = page - thumbnailFirst
 
     /** Whether [other] reports the same thumbnails for the same pages, with the same shapes. */
-    fun sameThumbnailsAs(other: ViewFrame?): Boolean =
-        other != null &&
-            thumbnailFirst == other.thumbnailFirst &&
-            thumbnails.contentEquals(other.thumbnails) &&
-            thumbnailShapes.sameAs(other.thumbnailShapes)
+    fun sameThumbnailsAs(other: ViewFrame?): Boolean = other != null &&
+        thumbnailFirst == other.thumbnailFirst &&
+        thumbnails.contentEquals(other.thumbnails) &&
+        thumbnailShapes.sameAs(other.thumbnailShapes)
 
     /** Zero-based page index of the [i]th visible page. */
     fun page(i: Int): Int = pageIndex[i]
@@ -365,12 +371,11 @@ class FrameShapes private constructor(
     fun segmentY(s: Int, point: Int): Float = points[6 * s + 2 * point + 1]
 
     /** Whether [other] holds the same shapes. */
-    fun sameAs(other: FrameShapes): Boolean =
-        heads.contentEquals(other.heads) &&
-            widths.contentEquals(other.widths) &&
-            starts.contentEquals(other.starts) &&
-            curved.contentEquals(other.curved) &&
-            points.contentEquals(other.points)
+    fun sameAs(other: FrameShapes): Boolean = heads.contentEquals(other.heads) &&
+        widths.contentEquals(other.widths) &&
+        starts.contentEquals(other.starts) &&
+        curved.contentEquals(other.curved) &&
+        points.contentEquals(other.points)
 
     companion object {
         private const val SEGMENT_BYTES = 32

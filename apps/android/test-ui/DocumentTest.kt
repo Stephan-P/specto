@@ -39,11 +39,25 @@ class DocumentTest : AppTest() {
         open("book.pdf", shows = firstPage)
         menu("Properties")
         waitForText("The Specto handbook")
-        for (value in listOf("Ada Lovelace", "make-fixtures.py", "14", "210 × 297 mm (A4)", "1.7")) {
+        for (value in listOf(
+            "Ada Lovelace",
+            "make-fixtures.py",
+            "14",
+            "210 × 297 mm (A4)",
+            "1.7",
+        )) {
             compose.onNodeWithText(value).assertIsDisplayed()
         }
         // ("Pages" is listed too, but that is also the name of a tab in the sidebar.)
-        for (label in listOf("File name", "Title", "Author", "Created with", "Created", "Page size", "File size")) {
+        for (label in listOf(
+            "File name",
+            "Title",
+            "Author",
+            "Created with",
+            "Created",
+            "Page size",
+            "File size",
+        )) {
             compose.onNodeWithText(label).assertIsDisplayed()
         }
         // What the document doesn't state isn't listed.

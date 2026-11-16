@@ -29,9 +29,13 @@ class SlowPageTest : AppTest() {
         // It is in the middle of the page and lets touches through: a tap there hides the bars like
         // a tap anywhere else, and another one brings them back.
         page.performTouchInput { click(center) }
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isEmpty()
+        }
         page.performTouchInput { click(center) }
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isNotEmpty()
+        }
         // Drawn piece by piece, and an emulator in CI takes its time over each.
         compose.waitUntil(SHARP_MS) { spinners().fetchSemanticsNodes().isEmpty() }
 

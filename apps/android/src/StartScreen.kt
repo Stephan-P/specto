@@ -84,11 +84,16 @@ fun StartScreen(
 @Composable
 private fun DocumentStore.Entry.summary(): String {
     val ago = DateUtils.getRelativeTimeSpanString(
-        opened, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
+        opened,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS,
     ).toString()
     val page = view?.page?.toInt()?.plus(1) ?: return ago
     val where =
-        if (pageCount > 0) stringResource(R.string.recent_page_of, page, pageCount)
-        else stringResource(R.string.recent_page, page)
+        if (pageCount > 0) {
+            stringResource(R.string.recent_page_of, page, pageCount)
+        } else {
+            stringResource(R.string.recent_page, page)
+        }
     return stringResource(R.string.recent_summary, where, ago)
 }

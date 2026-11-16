@@ -73,15 +73,23 @@ internal fun redoLabel(step: EditStep): Int = when (step.kind) {
 fun SelectionBar(state: PdfViewState) {
     val picked = state.selectedPages
     TopAppBar(
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+        windowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+        ),
         navigationIcon = {
             IconButton(onClick = { state.selectedPages = emptySet() }) {
-                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.clear_selection))
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.clear_selection),
+                )
             }
         },
         title = {
             // "3 selected": short, to fit a phone's top bar next to its buttons.
-            Text(pluralStringResource(R.plurals.pages_selected, picked.size, picked.size), maxLines = 1)
+            Text(
+                pluralStringResource(R.plurals.pages_selected, picked.size, picked.size),
+                maxLines = 1,
+            )
         },
         actions = {
             IconButton(onClick = { state.rotatePages(picked, clockwise = false) }) {
@@ -91,8 +99,13 @@ fun SelectionBar(state: PdfViewState) {
                 Icon(rotateRightIcon, contentDescription = stringResource(R.string.rotate_right))
             }
             // A document keeps at least one page.
-            IconButton(onClick = { state.deletePages(picked) }, enabled = picked.size < state.pageCount) {
-                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete_pages))
+            IconButton(onClick = {
+                state.deletePages(picked)
+            }, enabled = picked.size < state.pageCount) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = stringResource(R.string.delete_pages),
+                )
             }
             var menu by remember { mutableStateOf(false) }
             IconButton(onClick = { menu = true }) {
@@ -131,7 +144,11 @@ fun UnsavedChangesDialog(
         onDismissRequest = onCancel,
         title = { Text(stringResource(R.string.unsaved_title)) },
         text = { Text(stringResource(R.string.unsaved_text, name)) },
-        confirmButton = { TextButton(onClick = onSave) { Text(stringResource(if (saveAs) R.string.save_as else R.string.save)) } },
+        confirmButton = {
+            TextButton(onClick = onSave) {
+                Text(stringResource(if (saveAs) R.string.save_as else R.string.save))
+            }
+        },
         dismissButton = {
             TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
             TextButton(onClick = onDiscard) { Text(stringResource(R.string.discard)) }
@@ -175,7 +192,9 @@ suspend fun Context.writeEdited(state: PdfViewState, name: String): File {
 
 /** Copies [file] to [destination], replacing what is there. Throws if that fails. */
 suspend fun Context.copyTo(file: File, destination: Uri) = withContext(Dispatchers.IO) {
-    checkNotNull(contentResolver.openOutputStream(destination, "wt")) { "cannot write to $destination" }.use { out ->
+    checkNotNull(contentResolver.openOutputStream(destination, "wt")) {
+        "cannot write to $destination"
+    }.use { out ->
         file.inputStream().use { it.copyTo(out) }
     }
 }
@@ -205,7 +224,11 @@ private fun rotateIcon(name: String, clockwise: Boolean): ImageVector {
     // Drawn for clockwise and mirrored for the other way.
     fun x(x: Float) = if (clockwise) x else 24f - x
     return ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
-        path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round) {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+        ) {
             moveTo(x(19f), 13f)
             arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = clockwise, x(12f), 6f)
         }

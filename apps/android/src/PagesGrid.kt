@@ -140,7 +140,10 @@ fun PageThumbnail(
                 if (bitmap != null && !bitmap.isRecycled) {
                     drawIntoCanvas {
                         it.nativeCanvas.drawBitmap(
-                            bitmap, null, RectF(0f, 0f, size.width, size.height), thumbnailPaint,
+                            bitmap,
+                            null,
+                            RectF(0f, 0f, size.width, size.height),
+                            thumbnailPaint,
                         )
                     }
                 }
@@ -213,8 +216,14 @@ fun PagesGrid(
     LaunchedEffect(state, grid) {
         snapshotFlow {
             val visible = grid.layoutInfo.visibleItemsInfo
-            if (visible.isEmpty()) 0 to 0 else visible.first().index to visible.size + THUMBNAIL_PREFETCH
-        }.distinctUntilChanged().collect { (first, count) -> state.showThumbnails(owner, first, count) }
+            if (visible.isEmpty()) {
+                0 to 0
+            } else {
+                visible.first().index to visible.size + THUMBNAIL_PREFETCH
+            }
+        }.distinctUntilChanged().collect { (first, count) ->
+            state.showThumbnails(owner, first, count)
+        }
     }
     DisposableEffect(state) {
         onDispose { state.hideThumbnails(owner) }
@@ -284,12 +293,16 @@ fun PagesGrid(
                             change.consume()
                             if (!change.pressed) break
                             val to = change.position
-                            if ((to - held.position).getDistance() > viewConfiguration.touchSlop) moved = true
+                            val far = (to - held.position).getDistance()
+                            if (far > viewConfiguration.touchSlop) moved = true
                             if (moved) drag.pointer = to + origin
                         }
                         val target = drag.drop(oneColumn = beside)
                         when {
-                            moved -> target?.let { state.movePages(state.selectedPages, it.position) }
+                            moved -> target?.let {
+                                state.movePages(state.selectedPages, it.position)
+                            }
+
                             // A long press on a picked page lets go of it.
                             wasPicked -> state.togglePage(page)
                         }
@@ -302,15 +315,29 @@ fun PagesGrid(
                 drawContent()
                 // The mark where dragged pages would go: a bar beside the thumbnail they would come
                 // before or after.
-                val cell = drop?.let { drag.cells[it.cell] }?.translate(-origin) ?: return@drawWithContent
+                val cell = drop?.let {
+                    drag.cells[it.cell]
+                }?.translate(-origin) ?: return@drawWithContent
                 val gap = DROP_MARK_GAP.toPx()
                 val width = DROP_MARK_WIDTH.toPx()
                 if (beside) {
                     val y = if (drop.before) cell.top - gap else cell.bottom + gap
-                    drawLine(accent, Offset(cell.left, y), Offset(cell.right, y), width, StrokeCap.Round)
+                    drawLine(
+                        accent,
+                        Offset(cell.left, y),
+                        Offset(cell.right, y),
+                        width,
+                        StrokeCap.Round,
+                    )
                 } else {
                     val x = if (drop.before) cell.left - gap else cell.right + gap
-                    drawLine(accent, Offset(x, cell.top), Offset(x, cell.bottom), width, StrokeCap.Round)
+                    drawLine(
+                        accent,
+                        Offset(x, cell.top),
+                        Offset(x, cell.bottom),
+                        width,
+                        StrokeCap.Round,
+                    )
                 }
             },
     ) {
@@ -320,7 +347,14 @@ fun PagesGrid(
             modifier = Modifier.fillMaxSize().testTag(PAGES_GRID_TAG),
             // One column would make thumbnails as wide as the sidebar: keep them at a size where a
             // few fit above each other.
-            contentPadding = if (beside) PaddingValues(horizontal = 72.dp, vertical = 16.dp) else PaddingValues(16.dp),
+            contentPadding = if (beside) {
+                PaddingValues(
+                    horizontal = 72.dp,
+                    vertical = 16.dp,
+                )
+            } else {
+                PaddingValues(16.dp)
+            },
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -345,14 +379,20 @@ fun PagesGrid(
                         .alpha(if (dragging && page in picked) 0.4f else 1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(CELL_ASPECT), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.fillMaxWidth().aspectRatio(CELL_ASPECT),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         val aspect = state.pageAspect(page)
                         PageThumbnail(
                             state,
                             page,
                             selected = page == current,
                             Modifier
-                                .aspectRatio(aspect, matchHeightConstraintsFirst = aspect < CELL_ASPECT)
+                                .aspectRatio(
+                                    aspect,
+                                    matchHeightConstraintsFirst = aspect < CELL_ASPECT,
+                                )
                                 .fillMaxSize(),
                             picked = page in picked,
                         )
@@ -361,7 +401,11 @@ fun PagesGrid(
                         state.pageLabel(page),
                         Modifier.padding(top = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (page == current) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                        color = if (page == current) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            Color.Unspecified
+                        },
                         maxLines = 1,
                     )
                 }
@@ -373,10 +417,13 @@ fun PagesGrid(
                 pluralStringResource(R.plurals.pages_dragged, picked.size, picked.size),
                 Modifier
                     .layout { measurable, constraints ->
-                        val badge = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        val badge = measurable.measure(
+                            constraints.copy(minWidth = 0, minHeight = 0),
+                        )
                         layout(constraints.maxWidth, constraints.maxHeight) {
                             val x = (pointer.x - origin.x - badge.width / 2f).roundToInt()
-                            val y = (pointer.y - origin.y - DRAG_BADGE_LIFT.toPx() - badge.height).roundToInt()
+                            val lift = DRAG_BADGE_LIFT.toPx() + badge.height
+                            val y = (pointer.y - origin.y - lift).roundToInt()
                             badge.place(
                                 x.coerceIn(0, maxOf(constraints.maxWidth - badge.width, 0)),
                                 y.coerceAtLeast(0),

@@ -75,14 +75,29 @@ class DocumentStore(private val file: File) {
         if (uri != null) {
             for (i in entries.indices) {
                 val e = entries[i]
-                if (e.uri == uri) entries[i] = Entry(e.key, e.name, null, e.opened, e.pageCount, e.view, e.sidebar)
+                if (e.uri == uri) {
+                    entries[i] = Entry(
+                        e.key,
+                        e.name,
+                        null,
+                        e.opened,
+                        e.pageCount,
+                        e.view,
+                        e.sidebar,
+                    )
+                }
             }
         }
         entries.add(
             0,
             Entry(
-                key, name, uri ?: known?.uri, System.currentTimeMillis(), pageCount,
-                known?.view, known?.sidebar ?: true,
+                key,
+                name,
+                uri ?: known?.uri,
+                System.currentTimeMillis(),
+                pageCount,
+                known?.view,
+                known?.sidebar ?: true,
             ),
         )
         while (entries.size > MAX_DOCUMENTS) entries.removeAt(entries.lastIndex)
@@ -138,13 +153,18 @@ class DocumentStore(private val file: File) {
             val digest = MessageDigest.getInstance("SHA-256")
             digest.update(size.toString().toByteArray())
             digest.update(read(0, minOf(FINGERPRINT_SPAN.toLong(), size).toInt()))
-            if (size > FINGERPRINT_SPAN) digest.update(read(size - FINGERPRINT_SPAN, FINGERPRINT_SPAN))
+            if (size > FINGERPRINT_SPAN) {
+                digest.update(
+                    read(size - FINGERPRINT_SPAN, FINGERPRINT_SPAN),
+                )
+            }
             return digest.digest().take(16).joinToString("") { "%02x".format(it) }
         }
 
         /** The same for a file held in memory. */
-        fun fingerprint(pdf: ByteArray): String =
-            fingerprint(pdf.size.toLong()) { offset, length -> pdf.copyOfRange(offset.toInt(), offset.toInt() + length) }
+        fun fingerprint(pdf: ByteArray): String = fingerprint(pdf.size.toLong()) { offset, length ->
+            pdf.copyOfRange(offset.toInt(), offset.toInt() + length)
+        }
     }
 }
 

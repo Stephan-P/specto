@@ -137,7 +137,8 @@ class MainActivity : ComponentActivity() {
     private var pageKeys: ((forward: Boolean) -> Unit)? = null
 
     private val main = Handler(Looper.getMainLooper())
-    private val letScreenTurnOff = Runnable { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    private val letScreenTurnOff =
+        Runnable { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -257,7 +258,9 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val colours = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+
         dark -> darkColorScheme()
+
         else -> lightColorScheme()
     }
     MaterialTheme(colorScheme = colours, content = content)
@@ -328,8 +331,10 @@ private sealed interface Loaded {
         var key: String = key
         var bytes: Long by mutableStateOf(bytes)
     }
+
     /** Keeps the [file], so that trying a password doesn't read it again. */
-    class Locked(val file: PdfFile, val name: String, val uri: Uri, val wrongPassword: Boolean) : Loaded
+    class Locked(val file: PdfFile, val name: String, val uri: Uri, val wrongPassword: Boolean) :
+        Loaded
     class Failed(val message: String) : Loaded
 }
 
@@ -345,7 +350,8 @@ private fun Context.canReopen(uri: Uri): Boolean {
     try {
         // To write as well, where that was offered: for "Save".
         contentResolver.takePersistableUriPermission(
-            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
         )
         return true
     } catch (e: SecurityException) {
@@ -377,9 +383,11 @@ private fun Context.releaseUnused(store: DocumentStore) {
     val keep = store.reopenable()
     for (permission in contentResolver.persistedUriPermissions) {
         if (permission.uri.toString() !in keep) {
-            val write = if (permission.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0
+            val write =
+                if (permission.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0
             contentResolver.releasePersistableUriPermission(
-                permission.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or write,
+                permission.uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or write,
             )
         }
     }
@@ -393,7 +401,8 @@ private fun Context.releaseUnused(store: DocumentStore) {
  * can't be read.
  */
 private fun Context.pdfFile(uri: Uri): PdfFile {
-    val descriptor = checkNotNull(contentResolver.openFileDescriptor(uri, "r")) { "cannot open $uri" }
+    val descriptor =
+        checkNotNull(contentResolver.openFileDescriptor(uri, "r")) { "cannot open $uri" }
     // Rust takes the descriptor over and closes it.
     return PdfFile.fromFd(descriptor.detachFd())
 }
@@ -415,7 +424,9 @@ private suspend fun Context.open(
         val cacheBytes = tileCacheBytes()
         val size = file.size().toLong()
         val key = withContext(Dispatchers.Default) {
-            DocumentStore.fingerprint(size) { offset, length -> file.read(offset.toULong(), length.toUInt()) }
+            DocumentStore.fingerprint(size) { offset, length ->
+                file.read(offset.toULong(), length.toUInt())
+            }
         }
         val known = store.find(key)
         val wide = resources.configuration.screenWidthDp >= WIDE_WINDOW_DP
@@ -564,7 +575,14 @@ private fun App(
                 }
                 // The saved file is a new document to the store: it starts out where this one is.
                 val key = withContext(Dispatchers.IO) { written.fingerprint() }
-                store.opened(key, context.displayName(uri), uri.toString().takeIf { context.canReopen(uri) }, pages)
+                store.opened(
+                    key,
+                    context.displayName(uri),
+                    uri.toString().takeIf {
+                        context.canReopen(uri)
+                    },
+                    pages,
+                )
                 store.saveView(key, view, sidebar)
                 withContext(Dispatchers.IO) { written.delete() }
                 if (then != null) {
@@ -577,7 +595,11 @@ private fun App(
                 throw e
             } catch (e: Exception) {
                 val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
-                Toast.makeText(context, context.getString(R.string.could_not_save, reason), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.could_not_save, reason),
+                    Toast.LENGTH_LONG,
+                ).show()
             } finally {
                 saving = false
             }
@@ -596,7 +618,11 @@ private fun App(
                 throw e
             } catch (e: Exception) {
                 val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
-                Toast.makeText(context, context.getString(R.string.could_not_print, reason), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.could_not_print, reason),
+                    Toast.LENGTH_LONG,
+                ).show()
             } finally {
                 preparingToPrint = false
             }
@@ -604,11 +630,14 @@ private fun App(
     }
 
     // "Save as": the system asks where.
-    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val then = afterSaving
-        afterSaving = null
-        if (uri != null) saveTo(uri, then)
-    }
+    val saver =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/pdf"),
+        ) { uri ->
+            val then = afterSaving
+            afterSaving = null
+            if (uri != null) saveTo(uri, then)
+        }
     fun saveAs(name: String, then: (() -> Unit)? = null) {
         afterSaving = then
         saver.launch(name)
@@ -642,7 +671,14 @@ private fun App(
                     written.delete()
                     result
                 }
-                store.opened(key, open.name, uri.toString().takeIf { context.canReopen(uri) }, open.state.pageCount)
+                store.opened(
+                    key,
+                    open.name,
+                    uri.toString().takeIf {
+                        context.canReopen(uri)
+                    },
+                    open.state.pageCount,
+                )
                 store.saveView(key, open.state.savedView(), open.state.sidebarOpen)
                 open.key = key
                 open.bytes = size
@@ -651,7 +687,11 @@ private fun App(
                 throw e
             } catch (e: Exception) {
                 val reason = (e as? PdfException.Save)?.reason ?: e.message ?: e.toString()
-                Toast.makeText(context, context.getString(R.string.could_not_save, reason), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.could_not_save, reason),
+                    Toast.LENGTH_LONG,
+                ).show()
             } finally {
                 saving = false
             }
@@ -680,10 +720,15 @@ private fun App(
     StatusBar(hidden = immersive)
 
     // The sidebar shows the same thumbnails, so the strip would only repeat them.
-    val hasStrip = ready != null && !overlay && !immersive && !sidebarShown && ready.state.pageCount > 1
+    val hasStrip =
+        ready != null && !overlay && !immersive && !sidebarShown && ready.state.pageCount > 1
     // The document whose strip is showing, kept while the strip slides out.
     var stripState by remember { mutableStateOf<PdfViewState?>(null) }
-    if (hasStrip) stripState = ready?.state else if (ready == null) stripState = null
+    if (hasStrip) {
+        stripState = ready?.state
+    } else if (ready == null) {
+        stripState = null
+    }
 
     if (showSettings) {
         // In place of everything else, while the document stays open underneath.
@@ -719,166 +764,198 @@ private fun App(
                 visible = !immersive,
                 enter = expandVertically(tween(BARS_MS), expandFrom = Alignment.Bottom),
                 exit = shrinkVertically(tween(BARS_MS), shrinkTowards = Alignment.Bottom),
-            ) { if (picking && ready != null) {
-                SelectionBar(ready.state)
-            } else if (searching && ready != null) SearchBar(ready.state, onClose = ::closeSearch) else TopAppBar(
-                windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
-                navigationIcon = {
-                    if (ready != null) {
-                        IconButton(
-                            onClick = {
-                                if (wide) ready.state.sidebarOpen = !ready.state.sidebarOpen else showPages = !showPages
-                            },
-                        ) {
-                            if (overlay) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_to_document))
-                            } else {
-                                Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.contents_and_pages))
-                            }
-                        }
-                    }
-                },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            ready?.name ?: stringResource(R.string.app_name),
-                            Modifier.weight(1f, fill = false),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (ready?.state?.editState?.modified == true) {
-                            // Changed, and not saved anywhere yet.
-                            Text(
-                                stringResource(R.string.edited),
-                                Modifier.padding(start = 8.dp),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    if (ready != null && !overlay) {
-                        IconButton(onClick = { searching = true }) {
-                            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
-                        }
-                        // How this document is shown. Everything else is in the overflow menu.
-                        ViewMenu(ready.state, wide)
-                    }
-                    var menu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.menu_open)) },
-                            onClick = {
-                                menu = false
-                                pick()
-                            },
-                        )
-                        if (ready != null && document != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_share)) },
-                                onClick = {
-                                    menu = false
-                                    scope.launch {
-                                        try {
-                                            if (ready.state.editState.modified) {
-                                                // What the reader sees, not what is on disk.
-                                                context.shareEdited(ready.state, ready.name)
-                                            } else {
-                                                context.shareDocument(document, ready.name)
-                                            }
-                                        } catch (e: CancellationException) {
-                                            throw e
-                                        } catch (e: Exception) {
-                                            // Moved or deleted since it was opened.
-                                            Toast.makeText(context, R.string.could_not_share, Toast.LENGTH_LONG).show()
+            ) {
+                if (picking && ready != null) {
+                    SelectionBar(ready.state)
+                } else if (searching && ready != null) {
+                    SearchBar(ready.state, onClose = ::closeSearch)
+                } else {
+                    TopAppBar(
+                        windowInsets = WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                        ),
+                        navigationIcon = {
+                            if (ready != null) {
+                                IconButton(
+                                    onClick = {
+                                        if (wide) {
+                                            ready.state.sidebarOpen = !ready.state.sidebarOpen
+                                        } else {
+                                            showPages = !showPages
                                         }
+                                    },
+                                ) {
+                                    if (overlay) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = stringResource(
+                                                R.string.back_to_document,
+                                            ),
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Filled.Menu,
+                                            contentDescription = stringResource(
+                                                R.string.contents_and_pages,
+                                            ),
+                                        )
                                     }
-                                },
-                            )
-                        }
-                        if (ready != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_print)) },
-                                onClick = {
-                                    menu = false
-                                    print()
-                                },
-                            )
-                            if (canSave && ready.state.editState.modified) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.save)) },
-                                    onClick = {
-                                        menu = false
-                                        save()
-                                    },
+                                }
+                            }
+                        },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    ready?.name ?: stringResource(R.string.app_name),
+                                    Modifier.weight(1f, fill = false),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (ready?.state?.editState?.modified == true) {
+                                    // Changed, and not saved anywhere yet.
+                                    Text(
+                                        stringResource(R.string.edited),
+                                        Modifier.padding(start = 8.dp),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
+                            if (ready != null && !overlay) {
+                                IconButton(onClick = { searching = true }) {
+                                    Icon(
+                                        Icons.Filled.Search,
+                                        contentDescription = stringResource(R.string.search),
+                                    )
+                                }
+                                // How this document is shown. Everything else is in the overflow menu.
+                                ViewMenu(ready.state, wide)
+                            }
+                            var menu by remember { mutableStateOf(false) }
+                            IconButton(onClick = { menu = true }) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.more),
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.save_as)) },
-                                onClick = {
-                                    menu = false
-                                    saveAs(ready.name)
-                                },
-                            )
-                            val edits = ready.state.editState
-                            edits.undo?.let { step ->
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(undoLabel(step))) },
+                                    text = { Text(stringResource(R.string.menu_open)) },
                                     onClick = {
                                         menu = false
-                                        ready.state.undo()
+                                        pick()
                                     },
                                 )
-                            }
-                            edits.redo?.let { step ->
+                                if (ready != null && document != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.menu_share)) },
+                                        onClick = {
+                                            menu = false
+                                            scope.launch {
+                                                try {
+                                                    if (ready.state.editState.modified) {
+                                                        // What the reader sees, not what is on disk.
+                                                        context.shareEdited(ready.state, ready.name)
+                                                    } else {
+                                                        context.shareDocument(document, ready.name)
+                                                    }
+                                                } catch (e: CancellationException) {
+                                                    throw e
+                                                } catch (e: Exception) {
+                                                    // Moved or deleted since it was opened.
+                                                    Toast.makeText(
+                                                        context,
+                                                        R.string.could_not_share,
+                                                        Toast.LENGTH_LONG,
+                                                    ).show()
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                                if (ready != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.menu_print)) },
+                                        onClick = {
+                                            menu = false
+                                            print()
+                                        },
+                                    )
+                                    if (canSave && ready.state.editState.modified) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.save)) },
+                                            onClick = {
+                                                menu = false
+                                                save()
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.save_as)) },
+                                        onClick = {
+                                            menu = false
+                                            saveAs(ready.name)
+                                        },
+                                    )
+                                    val edits = ready.state.editState
+                                    edits.undo?.let { step ->
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(undoLabel(step))) },
+                                            onClick = {
+                                                menu = false
+                                                ready.state.undo()
+                                            },
+                                        )
+                                    }
+                                    edits.redo?.let { step ->
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(redoLabel(step))) },
+                                            onClick = {
+                                                menu = false
+                                                ready.state.redo()
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.menu_go_to_page)) },
+                                        onClick = {
+                                            menu = false
+                                            showGoTo = true
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.menu_properties)) },
+                                        onClick = {
+                                            menu = false
+                                            showProperties = true
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(redoLabel(step))) },
+                                    text = { Text(stringResource(R.string.menu_settings)) },
                                     onClick = {
                                         menu = false
-                                        ready.state.redo()
+                                        showSettings = true
                                     },
                                 )
+                                if (document != null) {
+                                    // Back to the start screen and its recent documents.
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.menu_close)) },
+                                        onClick = {
+                                            menu = false
+                                            leaveFor(null)
+                                        },
+                                    )
+                                }
                             }
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_go_to_page)) },
-                                onClick = {
-                                    menu = false
-                                    showGoTo = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_properties)) },
-                                onClick = {
-                                    menu = false
-                                    showProperties = true
-                                },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.menu_settings)) },
-                            onClick = {
-                                menu = false
-                                showSettings = true
-                            },
-                        )
-                        if (document != null) {
-                            // Back to the start screen and its recent documents.
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_close)) },
-                                onClick = {
-                                    menu = false
-                                    leaveFor(null)
-                                },
-                            )
-                        }
-                    }
-                },
-            ) }
+                        },
+                    )
+                }
+            }
         },
     ) { insets ->
         Box(
@@ -896,30 +973,49 @@ private fun App(
                     onRecent = { entry -> entry.uri?.let { onDocument(Uri.parse(it)) } },
                     modifier = safe,
                 )
+
                 Loaded.Loading -> CircularProgressIndicator(safe)
+
                 is Loaded.Failed -> Message(
-                    stringResource(R.string.could_not_open), l.message, stringResource(R.string.open_another), pick, safe,
+                    stringResource(R.string.could_not_open),
+                    l.message,
+                    stringResource(R.string.open_another),
+                    pick,
+                    safe,
                 )
+
                 is Loaded.Locked -> {
                     Message(
-                        stringResource(R.string.password_protected, l.name), "",
-                        stringResource(R.string.open_another), pick, safe,
+                        stringResource(R.string.password_protected, l.name),
+                        "",
+                        stringResource(R.string.open_another),
+                        pick,
+                        safe,
                     )
                     // A fresh dialog for every attempt, so a wrong password doesn't stay in the
                     // field.
-                    key(l) { PasswordDialog(
-                        name = l.name,
-                        wrongPassword = l.wrongPassword,
-                        onDismiss = {
-                            l.file.close()
-                            show(Loaded.Failed(context.getString(R.string.password_needed, l.name)))
-                        },
-                        onPassword = { password ->
-                            loaded = Loaded.Loading
-                            scope.launch { show(context.open(l.file, l.name, l.uri, password, store)) }
-                        },
-                    ) }
+                    key(l) {
+                        PasswordDialog(
+                            name = l.name,
+                            wrongPassword = l.wrongPassword,
+                            onDismiss = {
+                                l.file.close()
+                                show(
+                                    Loaded.Failed(
+                                        context.getString(R.string.password_needed, l.name),
+                                    ),
+                                )
+                            },
+                            onPassword = { password ->
+                                loaded = Loaded.Loading
+                                scope.launch {
+                                    show(context.open(l.file, l.name, l.uri, password, store))
+                                }
+                            },
+                        )
+                    }
                 }
+
                 is Loaded.Ready -> {
                     val navigator: @Composable (Modifier, WindowInsetsSides, Boolean) -> Unit =
                         { modifier, insets, closeAfterwards ->
@@ -945,21 +1041,30 @@ private fun App(
                         }
                     if (overlay) {
                         navigator(Modifier.fillMaxSize(), besideAndBelow, true)
-                    } else Row(Modifier.fillMaxSize()) {
-                        // The sidebar takes its width as it slides, so the page area resizes
-                        // smoothly, as with the bars.
-                        AnimatedVisibility(
-                            visible = sidebarShown,
-                            enter = expandHorizontally(tween(BARS_MS), expandFrom = Alignment.End),
-                            exit = shrinkHorizontally(tween(BARS_MS), shrinkTowards = Alignment.End),
-                        ) {
-                            navigator(
-                                Modifier.width(SIDEBAR_WIDTH).fillMaxHeight().testTag(SIDEBAR_TAG),
-                                WindowInsetsSides.Start + WindowInsetsSides.Bottom,
-                                false,
-                            )
-                        }
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                    } else {
+                        Row(Modifier.fillMaxSize()) {
+                            // The sidebar takes its width as it slides, so the page area resizes
+                            // smoothly, as with the bars.
+                            AnimatedVisibility(
+                                visible = sidebarShown,
+                                enter = expandHorizontally(
+                                    tween(BARS_MS),
+                                    expandFrom = Alignment.End,
+                                ),
+                                exit = shrinkHorizontally(
+                                    tween(BARS_MS),
+                                    shrinkTowards = Alignment.End,
+                                ),
+                            ) {
+                                navigator(
+                                    Modifier.width(
+                                        SIDEBAR_WIDTH,
+                                    ).fillMaxHeight().testTag(SIDEBAR_TAG),
+                                    WindowInsetsSides.Start + WindowInsetsSides.Bottom,
+                                    false,
+                                )
+                            }
+                            Box(Modifier.weight(1f).fillMaxHeight()) {
                                 PdfView(
                                     l.state,
                                     // The tag is how UI tests find the page area.
@@ -967,14 +1072,26 @@ private fun App(
                                     onExternalLink = { externalLink = it },
                                     // While searching, a tap puts the keyboard away instead of the
                                     // bars.
-                                    onTap = { if (searching) focusManager.clearFocus() else fullScreen = !fullScreen },
+                                    onTap = {
+                                        if (searching) {
+                                            focusManager.clearFocus()
+                                        } else {
+                                            fullScreen = !fullScreen
+                                        }
+                                    },
                                     onSearch = {
                                         // The search field is part of the bars.
                                         fullScreen = false
                                         searching = true
                                     },
                                     onSave = {
-                                        if (canSave && l.state.editState.modified) save() else saveAs(l.name)
+                                        if (canSave && l.state.editState.modified) {
+                                            save()
+                                        } else {
+                                            saveAs(
+                                                l.name,
+                                            )
+                                        }
                                     },
                                     onPrint = ::print,
                                     refocus = searchesClosed,
@@ -998,13 +1115,20 @@ private fun App(
                                         .align(Alignment.BottomCenter)
                                         // Above the strip if there is one, else above the
                                         // navigation bar.
-                                        .then(if (hasStrip) Modifier else Modifier.navigationBarsPadding())
+                                        .then(
+                                            if (hasStrip) {
+                                                Modifier
+                                            } else {
+                                                Modifier.navigationBarsPadding()
+                                            },
+                                        )
                                         .padding(12.dp),
                                     enter = fadeIn(),
                                     exit = fadeOut(),
                                 ) {
                                     PageIndicator(l.state)
                                 }
+                            }
                         }
                     }
                 }
@@ -1029,7 +1153,13 @@ private fun App(
                 saveAs = !canSave,
                 onSave = {
                     leaving = null
-                    if (canSave) save { onDocument(asked.to) } else saveAs(ready.name) { onDocument(asked.to) }
+                    if (canSave) {
+                        save {
+                            onDocument(asked.to)
+                        }
+                    } else {
+                        saveAs(ready.name) { onDocument(asked.to) }
+                    }
                 },
                 onDiscard = {
                     leaving = null
@@ -1046,7 +1176,9 @@ private fun App(
     }
 
     if (showProperties && ready != null) {
-        PropertiesDialog(ready.state, ready.name, ready.bytes, onDismiss = { showProperties = false })
+        PropertiesDialog(ready.state, ready.name, ready.bytes, onDismiss = {
+            showProperties = false
+        })
     }
 
     if (showGoTo && ready != null) {
@@ -1075,7 +1207,8 @@ private fun StatusBar(hidden: Boolean) {
         val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
         val bars = WindowCompat.getInsetsController(window, view)
         if (hidden) {
-            bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             bars.hide(WindowInsetsCompat.Type.statusBars())
         } else {
             bars.show(WindowInsetsCompat.Type.statusBars())
@@ -1165,7 +1298,13 @@ private fun ExternalLinkDialog(link: String, onDismiss: () -> Unit) {
     val openable = uri.scheme?.lowercase() in OPENABLE_SCHEMES
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(if (openable) R.string.link_open_title else R.string.link_blocked_title)) },
+        title = {
+            Text(
+                stringResource(
+                    if (openable) R.string.link_open_title else R.string.link_blocked_title,
+                ),
+            )
+        },
         text = { Text(link, maxLines = 6, overflow = TextOverflow.Ellipsis) },
         confirmButton = {
             if (openable) {
@@ -1218,7 +1357,10 @@ private fun PasswordDialog(
                         null
                     },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                    ),
                     keyboardActions = KeyboardActions(onDone = { onPassword(password) }),
                 )
             }
@@ -1226,7 +1368,9 @@ private fun PasswordDialog(
         confirmButton = {
             TextButton(onClick = { onPassword(password) }) { Text(stringResource(R.string.open)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
     )
 }
 
@@ -1245,10 +1389,24 @@ private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (
                 value = text,
                 // Printed page numbers can be anything ("iv", "A-3"). Plain ones are digits.
                 onValueChange = { new ->
-                    text = if (state.hasPageLabels) new.take(20) else new.filter(Char::isDigit).take(9)
+                    text = if (state.hasPageLabels) {
+                        new.take(
+                            20,
+                        )
+                    } else {
+                        new.filter(Char::isDigit).take(9)
+                    }
                 },
                 modifier = Modifier.focusRequester(focus),
-                label = { Text(stringResource(R.string.go_to_label, state.pageLabel(0), state.pageLabel(last))) },
+                label = {
+                    Text(
+                        stringResource(
+                            R.string.go_to_label,
+                            state.pageLabel(0),
+                            state.pageLabel(last),
+                        ),
+                    )
+                },
                 supportingText = if (state.hasPageLabels) {
                     {
                         // A typed number may be a printed number or a position.
@@ -1266,16 +1424,21 @@ private fun GoToPageDialog(state: PdfViewState, onDismiss: () -> Unit, onPage: (
                 singleLine = true,
                 isError = text.isNotBlank() && page == null,
                 keyboardOptions = KeyboardOptions(
-                    keyboardType = if (state.hasPageLabels) KeyboardType.Ascii else KeyboardType.Number,
+                    keyboardType =
+                        if (state.hasPageLabels) KeyboardType.Ascii else KeyboardType.Number,
                     imeAction = ImeAction.Go,
                 ),
                 keyboardActions = KeyboardActions(onGo = { page?.let(onPage) }),
             )
         },
         confirmButton = {
-            TextButton(onClick = { page?.let(onPage) }, enabled = page != null) { Text(stringResource(R.string.go)) }
+            TextButton(onClick = {
+                page?.let(onPage)
+            }, enabled = page != null) { Text(stringResource(R.string.go)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
     )
 }
 
@@ -1295,8 +1458,11 @@ private fun PageIndicator(state: PdfViewState, modifier: Modifier = Modifier) {
         Text(
             if (state.hasPageLabels) {
                 val labels =
-                    if (last > current) "${state.pageLabel(current)}–${state.pageLabel(last)}"
-                    else state.pageLabel(current)
+                    if (last > current) {
+                        "${state.pageLabel(current)}–${state.pageLabel(last)}"
+                    } else {
+                        state.pageLabel(current)
+                    }
                 "$labels ($positions / ${state.pageCount})"
             } else {
                 "$positions / ${state.pageCount}"

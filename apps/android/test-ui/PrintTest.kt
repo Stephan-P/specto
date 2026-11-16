@@ -37,7 +37,11 @@ class PrintTest : AppTest() {
         val copy = File(target.cacheDir, "printing/$name")
         assertTrue("the copy for the print service is there", copy.isFile)
         // Throws for a document that wants a password.
-        return PdfRenderer(ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)).use { it.pageCount }
+        return PdfRenderer(
+            ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY),
+        ).use {
+            it.pageCount
+        }
     }
 
     /** Leaves the system's print dialog with Back, and waits for the app to be back. */

@@ -85,7 +85,9 @@ private fun Context.copyForSharing(document: Uri, name: String): File {
     dir.deleteRecursively()
     dir.mkdirs()
     val copy = File(dir, sharedFileName(name))
-    checkNotNull(contentResolver.openInputStream(document)) { "cannot open $document" }.use { input ->
+    checkNotNull(contentResolver.openInputStream(document)) {
+        "cannot open $document"
+    }.use { input ->
         copy.outputStream().use { input.copyTo(it) }
     }
     return copy

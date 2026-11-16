@@ -40,7 +40,8 @@ class MarkupTest : AppTest() {
         compose.waitUntil(WAIT_MS) { says("Annotation selected") == picked }
 
     /** A point on the heading's line, [x] points from the page's left edge. */
-    private fun androidx.compose.ui.test.TouchInjectionScope.heading(x: Float) = pagePoint(x, fromTop = 62f)
+    private fun androidx.compose.ui.test.TouchInjectionScope.heading(x: Float) =
+        pagePoint(x, fromTop = 62f)
 
     /** Selects "Page" in the heading and marks it with [item] of the text menu. */
     private fun mark(item: String) {

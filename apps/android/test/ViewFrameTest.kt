@@ -17,7 +17,9 @@ import org.junit.Test
  */
 class ViewFrameTest {
     private val frame: ViewFrame = run {
-        val bytes = checkNotNull(javaClass.getResourceAsStream("/frame.bin")) { "fixture missing" }.readBytes()
+        val bytes = checkNotNull(javaClass.getResourceAsStream("/frame.bin")) {
+            "fixture missing"
+        }.readBytes()
         ViewFrame.decode(ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN), bytes.size)
     }
 
@@ -155,7 +157,11 @@ class ViewFrameTest {
         assertTrue(frame.sameThumbnailsAs(frame))
 
         // The highlight is picked.
-        assertArrayEquals(floatArrayOf(98f, 202f, 302f, 202f, 302f, 168.5f, 98f, 168.5f), frame.picked, 0f)
+        assertArrayEquals(
+            floatArrayOf(98f, 202f, 302f, 202f, 302f, 168.5f, 98f, 168.5f),
+            frame.picked,
+            0f,
+        )
         assertArrayEquals(floatArrayOf(98f, 168.5f, 302f, 202f), frame.pickedBounds(), 0f)
     }
 

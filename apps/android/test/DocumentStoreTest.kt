@@ -16,7 +16,12 @@ class DocumentStoreTest {
 
     private val file: File by lazy { File(folder.root, "documents.json") }
     private val view = SavedView(
-        page = 3u, pageOffset = 0.25, paged = false, zoom = 1.5, twoPages = true, coverAlone = true,
+        page = 3u,
+        pageOffset = 0.25,
+        paged = false,
+        zoom = 1.5,
+        twoPages = true,
+        coverAlone = true,
         fitWidth = false,
     )
 
@@ -173,11 +178,31 @@ class DocumentStoreTest {
         val a = ByteArray(300_000) { (it % 251).toByte() }
         assertEquals(DocumentStore.fingerprint(a), DocumentStore.fingerprint(a.copyOf()))
         // Different at the start, at the end, or in length.
-        assertNotEquals(DocumentStore.fingerprint(a), DocumentStore.fingerprint(a.copyOf().also { it[0] = 9 }))
-        assertNotEquals(DocumentStore.fingerprint(a), DocumentStore.fingerprint(a.copyOf().also { it[it.lastIndex] = 9 }))
-        assertNotEquals(DocumentStore.fingerprint(a), DocumentStore.fingerprint(a.copyOf(a.size + 1)))
+        assertNotEquals(
+            DocumentStore.fingerprint(a),
+            DocumentStore.fingerprint(
+                a.copyOf().also {
+                    it[0] = 9
+                },
+            ),
+        )
+        assertNotEquals(
+            DocumentStore.fingerprint(a),
+            DocumentStore.fingerprint(
+                a.copyOf().also {
+                    it[it.lastIndex] = 9
+                },
+            ),
+        )
+        assertNotEquals(
+            DocumentStore.fingerprint(a),
+            DocumentStore.fingerprint(a.copyOf(a.size + 1)),
+        )
         // Small files work too.
-        assertNotEquals(DocumentStore.fingerprint(byteArrayOf(1, 2)), DocumentStore.fingerprint(byteArrayOf(1, 3)))
+        assertNotEquals(
+            DocumentStore.fingerprint(byteArrayOf(1, 2)),
+            DocumentStore.fingerprint(byteArrayOf(1, 3)),
+        )
         assertEquals(32, DocumentStore.fingerprint(ByteArray(0)).length)
     }
 

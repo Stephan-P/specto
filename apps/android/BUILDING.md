@@ -136,6 +136,20 @@ Set the serial when a phone is plugged in as well, because a UI test run
 installs and then removes the app on its target. What the tests cover, and what
 is checked by hand, is in [TESTING.md](TESTING.md).
 
+## Code style
+
+ktlint formats the Kotlin code and the build script, by the rules in
+`.editorconfig`: lines of at most 100 columns and a comma after the last item
+of a list that runs over several lines. CI fails on code that isn't formatted.
+
+```sh
+# format everything, and report what can't be fixed automatically
+./gradlew ktlintFormat
+
+# only check
+./gradlew ktlintCheck
+```
+
 ## When something is off
 
 - After the Rust library or its bindings were renamed or removed, clean the

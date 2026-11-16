@@ -289,6 +289,7 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Settings screen
 - [x] Setting: keep the screen on while reading
 - [x] Setting: volume keys turn pages
+- [x] ktlint formats the Kotlin code and checks it in CI
 - [ ] Pages of other files through the FFI, when the app gets a way to ask for
   them.
 - [ ] Find out what Preview does with the zoom when turning a page while zoomed
@@ -310,10 +311,6 @@ point to [DECISIONS.md](DECISIONS.md).
 - [ ] Markup tools with stylus support: pressure, palm rejection, and scrolling
   with a finger while the pen draws.
 - [ ] Forms, with a native text field overlay and input methods.
-- [ ] A formatter for the Kotlin code (ktlint or ktfmt), checked in CI, with a
-  limit of 100 columns. About 190 lines of code are longer than that today.
-  Composable functions are capitalized, which ktlint's naming rule has to be
-  told about.
 - [ ] F-Droid: check that the Gradle dependencies are all free software, make
   the build reproducible, and write the metadata.
 - [ ] Back after a jump: the system's Back returns to where a link or outline

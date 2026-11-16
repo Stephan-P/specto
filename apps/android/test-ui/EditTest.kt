@@ -58,7 +58,10 @@ class EditTest : AppTest() {
             if (intent.action != Intent.ACTION_CREATE_DOCUMENT) return null
             asked++
             suggested = intent.getStringExtra(Intent.EXTRA_TITLE)
-            return Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.fromFile(target)))
+            return Instrumentation.ActivityResult(
+                Activity.RESULT_OK,
+                Intent().setData(Uri.fromFile(target)),
+            )
         }
     }
 
@@ -94,7 +97,8 @@ class EditTest : AppTest() {
         compose.waitForIdle()
     }
 
-    private fun shown(text: String): Boolean = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    private fun shown(text: String): Boolean =
+        compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
     /** Turns page 2, so that there is something unsaved. */
     private fun edit() {
@@ -178,14 +182,18 @@ class EditTest : AppTest() {
         waitUntilGone("Edited")
         page.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Y) } }
         waitForText("Edited")
-        page.performKeyInput { withKeyDown(Key.CtrlLeft) { withKeyDown(Key.ShiftLeft) { pressKey(Key.Z) } } }
+        page.performKeyInput {
+            withKeyDown(Key.CtrlLeft) { withKeyDown(Key.ShiftLeft) { pressKey(Key.Z) } }
+        }
         waitForText("1 / 11")
     }
 
     /** Where the thumbnail labeled [label] is in the page grid. */
     private fun cell(label: String): Rect {
         val grid = compose.onNodeWithTag(PAGES_GRID_TAG).fetchSemanticsNode().boundsInRoot
-        return compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.translate(-grid.topLeft)
+        return compose.onNodeWithText(
+            label,
+        ).fetchSemanticsNode().boundsInRoot.translate(-grid.topLeft)
     }
 
     /** The labels given, in the order their thumbnails are in: row by row, or down the sidebar. */
@@ -200,7 +208,14 @@ class EditTest : AppTest() {
         val start = cell(from).center
         val target = cell(behind)
         // Behind is to the right in the grid, and below in the sidebar's single column.
-        val end = if (wide) Offset(target.center.x, target.bottom - 4f) else Offset(target.right - 4f, target.center.y)
+        val end = if (wide) {
+            Offset(
+                target.center.x,
+                target.bottom - 4f,
+            )
+        } else {
+            Offset(target.right - 4f, target.center.y)
+        }
         compose.onNodeWithTag(PAGES_GRID_TAG).performTouchInput {
             down(start)
             advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
@@ -258,7 +273,11 @@ class EditTest : AppTest() {
         // The saved document takes this one's place, where the reader was.
         waitForText("edited.pdf")
         waitForText("2 / 11")
-        assertEquals("asked once, suggesting the document's name", 1 to "pages.pdf", dialogs.asked to dialogs.suggested)
+        assertEquals(
+            "asked once, suggesting the document's name",
+            1 to "pages.pdf",
+            dialogs.asked to dialogs.suggested,
+        )
         assertTrue("written", saved.length() > 1000)
         // It is a document of its own: nothing unsaved, nothing to undo.
         assertTrue(!shown("Edited"))

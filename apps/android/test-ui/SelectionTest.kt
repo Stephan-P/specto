@@ -49,11 +49,15 @@ class SelectionTest : AppTest() {
     private fun isSelected(): Boolean =
         compose.onAllNodes(hasStateDescription("Text selected")).fetchSemanticsNodes().isNotEmpty()
 
-    private fun waitForSelection(present: Boolean = true) = compose.waitUntil(WAIT_MS) { isSelected() == present }
+    private fun waitForSelection(present: Boolean = true) = compose.waitUntil(WAIT_MS) {
+        isSelected() == present
+    }
 
     private fun copied(): String {
         var text = ""
-        instrumentation.runOnMainSync { text = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty() }
+        instrumentation.runOnMainSync {
+            text = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+        }
         return text
     }
 
@@ -67,7 +71,8 @@ class SelectionTest : AppTest() {
     }
 
     /** A point on the heading's line, [x] points from the page's left edge. */
-    private fun androidx.compose.ui.test.TouchInjectionScope.heading(x: Float) = pagePoint(x, fromTop = 62f)
+    private fun androidx.compose.ui.test.TouchInjectionScope.heading(x: Float) =
+        pagePoint(x, fromTop = 62f)
 
     @Test
     fun aLongPressSelectsAWord() {
