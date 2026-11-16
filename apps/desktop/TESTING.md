@@ -200,10 +200,13 @@ Selecting thumbnails:
 
 Deleting:
 
-- LONG: Delete on page 3 removes it and shows the next page, and the menu says
-  "Undo Delete Page". Select three thumbnails and press Backspace: all three
-  go, and the menu says "Undo Delete 3 Pages". With every thumbnail selected,
-  Delete only beeps.
+- LONG: click the thumbnail of page 3 and press Delete. The page goes, the
+  next one shows, and the menu says "Undo Delete Page". Select three thumbnails
+  and press Backspace: all three go, and the menu says "Undo Delete 3 Pages".
+  With every thumbnail selected, Delete only beeps.
+- Click on the page and press Delete and Backspace: no page is deleted, and
+  Backspace scrolls back. Delete Pages in the main menu deletes the current
+  page.
 - Typing in the page entry or the search field, Delete and Backspace edit the
   text and delete no pages.
 - LONG with pages deleted, saved and reopened: the pages are gone. Contents

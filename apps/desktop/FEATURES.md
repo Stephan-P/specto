@@ -97,10 +97,10 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - Rotate Left and Rotate Right (*Primary*+Left and *Primary*+Right, or the main
   menu) turn the pages selected in the sidebar if there are several, otherwise
   the current page, or both pages of a two-page spread
-- Delete Pages (Delete or Backspace on the document or in the sidebar, or the
-  main menu) deletes the pages selected in the sidebar if there are several,
-  otherwise the current page. The last page can't be deleted. In text fields
-  the keys edit the text
+- Delete Pages (the main menu, or Delete or Backspace on the thumbnails)
+  deletes the pages selected in the sidebar if there are several, otherwise the
+  current page. The last page can't be deleted. On the page view the keys
+  delete no pages, so that a key hit by mistake costs nothing
 - Dragging thumbnails moves pages, and dragging a selected thumbnail moves all
   the selected pages. A line between thumbnails shows where they'll go, and the
   sidebar scrolls when dragging near its top or bottom. The moved pages stay

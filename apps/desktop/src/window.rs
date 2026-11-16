@@ -119,7 +119,6 @@ pub struct Inner {
 impl Window {
     pub fn new(app: &adw::Application) -> Self {
         let canvas = Canvas::new();
-        canvas.add_controller(delete_keys());
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&canvas)
             .hexpand(true)
@@ -220,11 +219,7 @@ impl Window {
             let m = gio::Menu::new();
             m.append(Some(&gettext("Rotate Left")), Some("win.rotate-left"));
             m.append(Some(&gettext("Rotate Right")), Some("win.rotate-right"));
-            let delete =
-                gio::MenuItem::new(Some(&gettext("Delete Pages")), Some("win.delete-pages"));
-            // Shown only: the keys work through `delete_keys`.
-            delete.set_attribute_value("accel", Some(&"Delete".to_variant()));
-            m.append_item(&delete);
+            m.append(Some(&gettext("Delete Pages")), Some("win.delete-pages"));
             m
         });
         main_menu.append_section(None, &{
@@ -990,10 +985,11 @@ struct Edited {
     go_to: Option<usize>,
 }
 
-/// Delete and Backspace delete pages, on the canvas and the thumbnails, and annotations in the list
-/// of markup.
+/// Delete and Backspace delete pages on the thumbnails, and annotations in the list of markup.
 ///
-/// Not shortcuts for the whole window, which would take the keys from text fields.
+/// Not shortcuts for the whole window, which would take the keys from text fields. Not on the
+/// page view either, where a key hit by mistake would delete a page: there they delete the picked
+/// annotation only (see the canvas).
 fn delete_keys() -> gtk::ShortcutController {
     let keys = gtk::ShortcutController::new();
     keys.add_shortcut(gtk::Shortcut::new(

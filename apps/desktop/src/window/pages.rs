@@ -152,10 +152,14 @@ impl Window {
             .unwrap_or_default()
     }
 
-    /// Delete and Backspace: the annotation that is picked, else pages. In the list of markup, the
-    /// annotation of the marked row, and never pages.
+    /// Delete Pages of the menu, and Delete and Backspace where they delete: the annotation that is
+    /// picked, else pages. In the list of markup, the annotation of the marked row, and never
+    /// pages. On the thumbnails, pages whatever is picked.
     pub(super) fn delete_pages(&self) {
         let inner = &self.0;
+        let on_thumbnails = (inner.sidebar.borrow().as_ref())
+            .zip(gtk::prelude::GtkWindowExt::focus(&inner.window))
+            .is_some_and(|(s, f)| f.is_ancestor(&s.widget) || f == s.widget);
         let on_markup = inner
             .sidebar_stack
             .borrow()
@@ -178,6 +182,9 @@ impl Window {
         let mut removed = false;
         // As after an edit to pages: the thumbnail of the page changes too.
         self.edit(|d| {
+            if on_thumbnails {
+                return None;
+            }
             match d.remove_picked_annotation() {
                 Ok(r) => removed = r,
                 Err(e) => failed = Some(e),

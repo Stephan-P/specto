@@ -39,9 +39,10 @@ Tests (run some by naming them, such as `zoom layouts`):
 - thumbnail_selection: clicking a thumbnail goes to its page. Shift+click
   and Ctrl+click select several, which stay selected while the view moves
   and are what Rotate turns. Ctrl+A in the sidebar selects every page
-- delete_pages: Delete on the document deletes the current page, Backspace
-  in the sidebar the selected ones. Not in the page entry. Never the last
-  page. Undo brings them back
+- delete_pages: Delete and Backspace on the document delete no page
+  (Backspace scrolls back). In the sidebar they delete the selected pages,
+  or the current one. Not in the page entry. Never the last page. Undo
+  brings them back
 - move_pages: thumbnails dropped (through a test hook) on the lower or
   upper half of another go after or before it. The view stays on the page
   it showed. A drop in place does nothing
@@ -2114,9 +2115,21 @@ def test_delete_pages(ctx):
     inp = ctx.input().attach(w)
     w.action("debug-go-to", gvariant_str(LABELS[2]))
     w.settled("page 3", lambda s: s["page"] == 2)
-    # The document has the focus: Delete deletes the current page, and the
-    # next one takes its place.
-    w.wait("the canvas focused", lambda s: s["focus"] == "SpectoCanvas")
+    # The document has the focus: Delete and Backspace delete no page, and
+    # Backspace scrolls back.
+    s = w.wait("the canvas focused", lambda s: s["focus"] == "SpectoCanvas")
+    top = s["pages"][0][6]
+    inp.keys(Input.DELETE)
+    inp.keys(Input.BACKSPACE)
+    s = w.wait("scrolled back", lambda s: s["pages"] and s["pages"][0][6] != top)
+    time.sleep(0.3)
+    check(len(w.state()["edit_pages"]) == PAGES and s["undo"] == "", s)
+    w.action("debug-go-to", gvariant_str(LABELS[2]))
+    w.settled("page 3", lambda s: s["page"] == 2)
+    # In the sidebar, Delete deletes the current page, and the next one
+    # takes its place.
+    click_thumbnail(w, inp, 2)
+    selected_thumbnails(w, [2])
     inp.keys(Input.DELETE)
     s = w.wait("page 3 deleted", lambda s: len(s["edit_pages"]) == PAGES - 1)
     check(file_pages(s) == [0, 1] + list(range(3, PAGES)), s["edit_pages"])

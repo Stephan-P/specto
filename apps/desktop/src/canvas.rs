@@ -1206,6 +1206,18 @@ impl Canvas {
                 }
                 return glib::Propagation::Stop;
             }
+            // Delete and Backspace delete a picked annotation, and never pages: those go from the
+            // thumbnails, or by the menu.
+            let picked =
+                (c.imp().document.borrow().as_ref()).is_some_and(|d| d.borrow().picked.is_some());
+            if matches!(
+                key,
+                gdk::Key::Delete | gdk::Key::KP_Delete | gdk::Key::BackSpace
+            ) && picked
+            {
+                let _ = c.activate_action("win.delete-pages", None);
+                return glib::Propagation::Stop;
+            }
             if key == gdk::Key::Escape && c.is_drafting() {
                 c.draft(|d| d.cancel_draft());
                 return glib::Propagation::Stop;
