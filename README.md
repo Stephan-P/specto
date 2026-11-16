@@ -105,23 +105,23 @@ command-line tool, for development, is described in
 - [`packaging/`](packaging/README.md): installable packages of the desktop app
   (Flatpak)
 - [`corpus/`](corpus/README.md): fetches the test corpus
-- `docs/`: see below
+- `docs/`: project-wide documentation
 
 ## Documentation
 
-- [crates/README.md](crates/README.md): what each crate does, and how they
+- [Crates](crates/README.md): what each crate does, and how they
   depend on each other
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): data model, rendering
+- [Architecture](docs/ARCHITECTURE.md): data model, rendering
   pipeline, how the apps plug in
-- [docs/DECISIONS.md](docs/DECISIONS.md): technology choices, the alternatives
+- [Decisions](docs/DECISIONS.md): technology choices, the alternatives
   considered, and open questions
-- [docs/TASKS.md](docs/TASKS.md): the task list, by milestone
-- [apps/desktop/FEATURES.md](apps/desktop/FEATURES.md) and
-  [apps/android/FEATURES.md](apps/android/FEATURES.md): what each app does
-- [apps/desktop/TESTING.md](apps/desktop/TESTING.md) and
-  [apps/android/TESTING.md](apps/android/TESTING.md): testing each app, by hand
+- [Tasks](docs/TASKS.md): the task list, by milestone
+- [Specto Desktop Features](apps/desktop/FEATURES.md) and
+  [Specto Android Features](apps/android/FEATURES.md): what each app does
+- [Specto Desktop Testing](apps/desktop/TESTING.md) and
+  [Specto Android Testing](apps/android/TESTING.md): testing each app, by hand
   and automated
-- [corpus/README.md](corpus/README.md): the test corpus and regression runs
+- [Corpus](corpus/README.md): the test corpus and regression runs
 
 ## Similar projects
 
