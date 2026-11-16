@@ -192,8 +192,8 @@ What this means for Specto:
   this, and hayro decrypts for viewing.
 - Honoring permission flags is policy, because the file is readable without the
   owner password. We will honor them by default, like Preview, and a setting
-  will turn that off, as Evince and Okular allow too. Whether honoring should be the
-  default at all is open.
+  will turn that off, as Evince and Okular allow too. Whether honoring should be
+  the default at all is open.
 
 **Outcome:** opening with a password, and saving with the encryption kept, are
 implemented. The password dialog, the permission flags and their setting are

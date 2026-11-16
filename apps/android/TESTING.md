@@ -142,7 +142,8 @@ These need a document with real text.
 
 - Highlight a word: it is yellow and the text under it is as dark as before.
   Nothing else on the page changes color. On Android 9 and older the yellow
-  is blended a little differently; black text on white paper looks the same.
+  is blended a little differently, but black text on white paper looks the
+  same.
 - Highlight two selections that overlap: where they overlap is no darker than
   the rest.
 - Mark a selection that runs over several lines, and in continuous scrolling

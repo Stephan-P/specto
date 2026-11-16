@@ -297,7 +297,7 @@ mod tests {
         // Kept in order, the same ranges as the file's.
         let same = PageLabels::of_pages((0..11).map(|p| (Some(&book), p))).unwrap();
         assert_eq!(same.ranges(), book.ranges());
-        // Nothing labelled: no labels.
+        // Nothing labeled: no labels.
         assert!(PageLabels::of_pages([(None, 0), (None, 1)]).is_none());
         // Prefix-only labels continue whatever the number.
         let covers = PageLabels::from_pages(&[

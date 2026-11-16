@@ -1275,9 +1275,9 @@ fn assemble(mut objects: Vec<(usize, String)>) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// Two pages of 200 × 300 with a form on the first: a text field "name" at x 20–180,
-/// y 240–260, and a checkbox "agree" at 20–40, 180–200. The second page has a read-only text
-/// field.
+/// Two pages of 200 by 300 with a form on the first: a text field "name" at x 20 to 180, y 240
+/// to 260, and a checkbox "agree" at x 20 to 40, y 180 to 200. The second page has a read-only
+/// text field.
 fn form() -> Vec<u8> {
     let stream = |dict: &str, content: &str| {
         format!(

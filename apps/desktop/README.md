@@ -35,12 +35,15 @@ The main features are below, and the full list is in
 - **Markup**: highlighting, underlining and striking through text, freehand
   drawing, shapes, text boxes, notes and signatures, saved as standard
   annotations
+- **Forms**: ticking checkboxes, choosing radio buttons, typing into text
+  fields, and choosing from menus and lists, saved as standard form values
 - **Printing**: with the system's print dialog
 - **Encryption**: opens password-protected PDFs, and keeps them protected when
   saving
 - **History**: recent files, and remembering where you were in each file
 
-Coming next: filling in forms.
+Coming next: the remaining kinds of form fields, such as lists that take
+several choices.
 
 ## Implementation
 

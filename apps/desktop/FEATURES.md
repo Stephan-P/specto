@@ -144,8 +144,8 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - Freehand strokes are smoothed. A click with the pen makes a dot, and a click
   with a shape tool draws nothing
 - Each tool has its own color, changed with the color button while the tool
-  is pressed in. The button shows the color in use. The highlighter starts in yellow, and the lines and the drawing
-  tools in red
+  is pressed in. The button shows the color in use. The highlighter starts in
+  yellow, and the lines and the drawing tools in red
 - Text tool: a click on the page puts a text field there, and what is typed
   becomes a text box, in the font and size the bar is set to (Helvetica of 12
   points to begin with). The text appears as it will

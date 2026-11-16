@@ -59,7 +59,8 @@ shows on the pages.
 ## specto-doc
 
 The document being edited: its list of pages, the changes made to its
-annotations and what was filled into its form, with undo and redo. The files it came from are never modified.
+annotations and what was filled into its form, with undo and redo. The files it
+came from are never modified.
 
 ## specto-view
 
