@@ -241,11 +241,10 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Menus that take typed text, and lists that take several choices
 - [x] Comb fields with their letters in their cells while typing
 - [x] Tab order by rows or columns, highlighting fields, and resetting a form
+- [x] Android: typed menu choices, lists of several, highlighting and resetting
 - [ ] An embedded fallback font for text outside Latin.
 - [ ] Android: typing into a text field on the page instead of in a dialog,
   and a way from one field to the next from the keyboard.
-- [ ] Android: lists that take several choices, typing a choice of one's own
-  into a menu that has options, highlighting fields, and resetting a form.
 - [ ] Forms of inserted files. Only the form of the opened file is kept.
 - [ ] Saving filled forms incrementally, and an optional flattened export.
 

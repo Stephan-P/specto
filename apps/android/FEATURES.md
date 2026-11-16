@@ -177,6 +177,15 @@ edits, they change nothing in a file until the document is saved.
   the dialog counts them
 - A tap on a menu or a list of the form shows what it offers, with what it
   holds marked. A tap on a row chooses it
+- A menu that takes text of one's own has a line to type it above its
+  options. Done fills it in
+- A list that takes several choices has a tick for each row. Done fills in
+  the ticked ones
+- Highlight form fields (the overflow menu) tints every field that can be
+  filled in, until it is chosen again. The menu shows a tick while it is on
+- Reset form (the overflow menu) sets every field back to what the form has
+  for it at first, as one edit ("Undo reset form")
+- Both are in the menu only for a document with a form to fill in
 - A box is drawn around the field while its dialog is open
 - Read-only fields are left alone
 - Where a field lies on a link, a tap follows the link. Where a mark lies on a
@@ -186,8 +195,7 @@ edits, they change nothing in a file until the document is saved.
   saved, shared and printed with the document
 - The thumbnails show what was filled in
 - Not yet: typing on the page itself, moving from field to field with the
-  keyboard, lists that take several choices, typing a choice of one's own into
-  a menu that allows it, text outside Latin
+  keyboard, text outside Latin
 
 ## Editing pages
 

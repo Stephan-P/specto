@@ -129,6 +129,8 @@ pub enum EditKind {
     ChangeAnnotation,
     /// A field of the form was filled in. `pages` is then 1.
     FillField,
+    /// The fields of the form were set back to what they hold at first. `pages` is then 1.
+    ResetForm,
 }
 
 /// An edit that can be undone or redone.
@@ -150,8 +152,8 @@ impl From<specto_doc::Edit> for EditStep {
             Edit::AddAnnotation(_) => (EditKind::AddAnnotation, 1),
             Edit::RemoveAnnotation(_) => (EditKind::RemoveAnnotation, 1),
             Edit::ChangeAnnotation(_) => (EditKind::ChangeAnnotation, 1),
-            // A form isn't reset through this interface.
-            Edit::FillField | Edit::ResetForm => (EditKind::FillField, 1),
+            Edit::FillField => (EditKind::FillField, 1),
+            Edit::ResetForm => (EditKind::ResetForm, 1),
         };
         Self {
             kind,
@@ -342,8 +344,20 @@ pub enum FieldTap {
         field: u64,
         label: Option<String>,
         options: Vec<String>,
+        /// For a menu that also takes text of one's own: what it shows now. Follow with
+        /// [`ViewSession::set_field_text`] for text that was typed.
+        typed: Option<String>,
         /// Which of the options it holds, if any of them.
         chosen: Option<u32>,
+    },
+    /// A list that takes several choices, to choose any of `options` from. Follow with
+    /// [`ViewSession::choose_options`].
+    ChooseSeveral {
+        field: u64,
+        label: Option<String>,
+        options: Vec<String>,
+        /// Which of the options it holds, in the order of the list.
+        chosen: Vec<u32>,
     },
 }
 
@@ -466,7 +480,8 @@ pub struct Frame {
     /// visible page.
     pub selection_start: Option<SelectionEdge>,
     pub selection_end: Option<SelectionEdge>,
-    /// The annotations to draw over the visible pages, in order, under the highlights.
+    /// The annotations to draw over the visible pages, in order, under the highlights. With
+    /// [`ViewSession::set_highlight_fields`], a tint over each field that can be filled in too.
     pub shapes: Vec<ShapeDraw>,
     /// The four corners of the box around the annotation that is picked
     /// ([`ViewSession::pick_annotation_at`]), or around the field of the form that is being filled
@@ -513,7 +528,12 @@ struct State {
     /// The state of the pages last written as a copy on the side (see `ViewSession::save_to_fd`),
     /// which may yet become the saved one.
     written: Option<specto_doc::Version>,
+    /// Whether frames tint the fields of the form that can be filled in.
+    highlight_fields: bool,
 }
+
+/// What fields are tinted with (0xAARRGGBB).
+const FIELD_TINT: u32 = 0x2E35_84E4;
 
 /// How many pages' text is kept (the least recently used go first). A page takes about 100 bytes
 /// per character.
@@ -607,6 +627,7 @@ impl Shared {
             tiles,
             thumbnails,
             fit,
+            highlight_fields,
             ..
         } = state;
         tiles.begin_frame();
@@ -662,6 +683,30 @@ impl Shared {
         for (slot, page) in planned.pages.iter().enumerate() {
             let overlay = session.overlay(page.page);
             shapes.extend(overlay.iter().map(|s| shape_draw(slot as u32, s, px)));
+        }
+        // A tint over the fields that can be filled in, on top of those.
+        if *highlight_fields {
+            let positions: Vec<usize> = planned.pages.iter().map(|p| p.page).collect();
+            for (position, corners) in session.field_outlines(&positions) {
+                let Some(slot) = positions.iter().position(|p| *p == position) else {
+                    continue;
+                };
+                let [start, rest @ ..] = corners.map(|p| Point {
+                    x: (p.x * px) as f32,
+                    y: (p.y * px) as f32,
+                });
+                shapes.push(ShapeDraw {
+                    page: slot as u32,
+                    fill: Some(FIELD_TINT),
+                    multiply: false,
+                    stroke: None,
+                    stroke_width: 0.0,
+                    round: false,
+                    closed: true,
+                    start,
+                    segments: rest.map(|to| SegmentDraw::Line { to }).to_vec(),
+                });
+            }
         }
         // The same over the thumbnails, each in units of its own page's width.
         let mut thumbnail_shapes = Vec::new();
@@ -1099,6 +1144,7 @@ impl ViewSession {
                 // Sessions start out scrolling.
                 fit: default_fit(false),
                 written: None,
+                highlight_fields: false,
             }),
             outline,
         });
@@ -1307,20 +1353,28 @@ impl ViewSession {
                 max_length: None,
                 text,
             },
-            // A list that takes several choices isn't filled in through this interface.
-            FieldClick::ChooseSeveral { .. } => {
-                session.clear_field_focus();
-                return FieldTap::Nothing;
-            }
+            FieldClick::ChooseSeveral {
+                field,
+                labels,
+                chosen,
+                ..
+            } => FieldTap::ChooseSeveral {
+                field: field_number(field),
+                label: label(field),
+                options: labels,
+                chosen: chosen.iter().map(|&i| i as u32).collect(),
+            },
             FieldClick::Choose {
                 field,
                 labels,
                 chosen,
+                typed,
                 ..
             } => FieldTap::Choose {
                 field: field_number(field),
                 label: label(field),
                 options: labels,
+                typed,
                 chosen: chosen.map(|i| i as u32),
             },
         };
@@ -1332,8 +1386,8 @@ impl ViewSession {
         tap
     }
 
-    /// Fills `text` into the text field `field`, as far as the field takes it. Returns whether
-    /// that changed what it holds.
+    /// Fills `text` into the text field `field`, as far as the field takes it, or into a menu that
+    /// takes text of one's own. Returns whether that changed what it holds.
     pub fn set_field_text(&self, field: u64, text: String) -> bool {
         let mut state = self.shared.lock();
         (state.session).set_field_text(&self.shared.scheduler, field_id(field), &text)
@@ -1344,6 +1398,32 @@ impl ViewSession {
     pub fn choose_option(&self, field: u64, index: u32) -> bool {
         let mut state = self.shared.lock();
         (state.session).choose_option(&self.shared.scheduler, field_id(field), index as usize)
+    }
+
+    /// Chooses the options `chosen` of `field`, a list that takes several, and no others. Returns
+    /// whether that changed what it holds.
+    pub fn choose_options(&self, field: u64, chosen: Vec<u32>) -> bool {
+        let chosen: Vec<usize> = chosen.iter().map(|&i| i as usize).collect();
+        let mut state = self.shared.lock();
+        (state.session).choose_options(&self.shared.scheduler, field_id(field), &chosen)
+    }
+
+    /// Whether the document has a form with a field that can be filled in.
+    pub fn has_form(&self) -> bool {
+        self.shared.lock().session.has_form()
+    }
+
+    /// Sets every field that can be filled in back to what it holds at first, as one edit.
+    /// Returns whether that changed anything.
+    pub fn reset_form(&self) -> bool {
+        let mut state = self.shared.lock();
+        state.session.reset_form(&self.shared.scheduler)
+    }
+
+    /// Whether frames tint every field that can be filled in ([`Frame::shapes`]), to show where
+    /// they are. Off at first.
+    pub fn set_highlight_fields(&self, on: bool) {
+        self.shared.lock().highlight_fields = on;
     }
 
     /// The field that [`tap_field`](Self::tap_field) asked about is done with, filled in or not:

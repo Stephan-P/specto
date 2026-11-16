@@ -54,6 +54,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -916,6 +917,34 @@ private fun App(
                                             onClick = {
                                                 menu = false
                                                 ready.state.redo()
+                                            },
+                                        )
+                                    }
+                                    if (ready.state.hasForm) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    stringResource(R.string.menu_highlight_fields),
+                                                )
+                                            },
+                                            // Ticked while they are.
+                                            trailingIcon = {
+                                                if (ready.state.highlightFields) {
+                                                    Icon(Icons.Filled.Check, null)
+                                                }
+                                            },
+                                            onClick = {
+                                                menu = false
+                                                ready.state.toggleHighlightFields()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(stringResource(R.string.menu_reset_form))
+                                            },
+                                            onClick = {
+                                                menu = false
+                                                ready.state.resetForm()
                                             },
                                         )
                                     }

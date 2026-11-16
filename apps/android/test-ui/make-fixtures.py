@@ -21,7 +21,11 @@ form.pdf   2 pages with a form on the first: a text field "name", which the
            "code" of at most 4 characters at x 150 to 250, y 650 to 672, a
            checkbox "agree" at x 150 to 170, y 610 to 630, and a menu
            "country" at x 150 to 350, y 570 to 592, which offers Germany,
-           France and Other and holds Germany.
+           France and Other and holds Germany, a menu "color" at x 150 to 350,
+           y 530 to 552, which offers Red and Green and takes text of one's
+           own, and a list "days" at x 150 to 350, y 450 to 510, which offers
+           Mon, Tue and Wed and takes several of them. Reset, "name" holds
+           "Nobody".
 """
 
 import hashlib
@@ -291,7 +295,7 @@ def locked_pdf(count=3, user_password=b"secret", owner_password=b"owner"):
 def form_pdf():
     objects = dict(FONTS)
     objects[1] = (
-        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [20 0 R 21 0 R 22 0 R 25 0 R] "
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [20 0 R 21 0 R 22 0 R 25 0 R 26 0 R 27 0 R] "
         b"/DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>"
     )
     objects[2] = b"<< /Type /Pages /Kids [10 0 R 12 0 R] /Count 2 >>"
@@ -304,6 +308,8 @@ def form_pdf():
         "Code": (150, 650, 250, 672),
         "Agree": (150, 610, 170, 630),
         "Country": (150, 570, 350, 592),
+        "Color": (150, 530, 350, 552),
+        "Days": (150, 450, 350, 510),
     }
     # Each field has its name beside it and a frame around it.
     content = heading(1, 2) + "0.5 G 1 w\n"
@@ -311,7 +317,7 @@ def form_pdf():
         content += f"BT /F2 12 Tf 62 {y0 + 6} Td ({label}) Tj ET\n"
         content += f"{x0} {y0} {x1 - x0} {y1 - y0} re S\n"
     for p in (1, 2):
-        annots = "/Annots [20 0 R 21 0 R 22 0 R 25 0 R]" if p == 1 else ""
+        annots = "/Annots [20 0 R 21 0 R 22 0 R 25 0 R 26 0 R 27 0 R]" if p == 1 else ""
         objects[page_id(p)] = (
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
             f"/Contents {page_id(p) + 1} 0 R {RESOURCES} {annots} >>"
@@ -334,7 +340,7 @@ def form_pdf():
             + b"endstream"
         )
 
-    objects[20] = widget("Tx", "name", fields["Name"], "/TU (Your name)")
+    objects[20] = widget("Tx", "name", fields["Name"], "/TU (Your name) /DV (Nobody)")
     objects[21] = widget("Tx", "code", fields["Code"], "/MaxLen 4")
     objects[22] = widget(
         "Btn",
@@ -350,6 +356,8 @@ def form_pdf():
         fields["Country"],
         "/Ff 131072 /V (de) /Opt [[(de) (Germany)] [(fr) (France)] (Other)]",
     )
+    objects[26] = widget("Ch", "color", fields["Color"], "/Ff 393216 /Opt [(Red) (Green)]")
+    objects[27] = widget("Ch", "days", fields["Days"], "/Ff 2097152 /Opt [(Mon) (Tue) (Wed)]")
     write("form.pdf", objects)
 
 

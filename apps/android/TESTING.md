@@ -172,6 +172,14 @@ Use a PDF with a form, such as a tax or application form.
 - Tap a field of several lines: Enter starts a new line in the dialog.
 - Tap a menu: its options, with the current one marked. Choose another: the
   page shows it.
+- Tap a menu that takes typed text: type a value of your own and choose
+  Done. The page shows it. Tap a list that takes several choices: tick two
+  rows and choose Done. Both are marked on the page.
+- Choose Highlight form fields in the overflow menu: every field that can be
+  filled in has a light blue tint, which stays on the fields while scrolling
+  and zooming. Choose it again: the tint goes.
+- Choose Reset form: every field is as the form starts out, and one Undo
+  brings everything back.
 - Undo takes back one field at a time. The thumbnails follow.
 - Save, then open the file in another PDF program: the values are there, and
   can be changed there.

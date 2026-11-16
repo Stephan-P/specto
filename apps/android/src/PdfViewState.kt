@@ -421,9 +421,10 @@ class PdfViewState(
 
     /**
      * The field that a tap asked to fill in: a text field to type into ([FieldTap.Text]), or a menu
-     * or list to choose from ([FieldTap.Choose]). Null if none is.
+     * or list to choose from ([FieldTap.Choose], [FieldTap.ChooseSeveral]). Null if none is.
      *
-     * A frame has the box around it. Follow with [setFieldText], [chooseOption] or [endField].
+     * A frame has the box around it. Follow with [setFieldText], [chooseOption], [chooseOptions] or
+     * [endField].
      */
     var askedField: FieldTap? by mutableStateOf(null)
         private set
@@ -448,10 +449,26 @@ class PdfViewState(
         return true
     }
 
-    /** Fills [text] into the text field that was asked about, as far as the field takes it. */
+    /**
+     * Fills [text] into the text field that was asked about, as far as the field takes it, or into
+     * the menu that was asked about and takes text of one's own.
+     */
     fun setFieldText(text: String) {
-        val asked = askedField as? FieldTap.Text
-        if (!closed && asked != null) session.setFieldText(asked.field, text)
+        val field = when (val asked = askedField) {
+            is FieldTap.Text -> asked.field
+            is FieldTap.Choose -> asked.field
+            else -> null
+        }
+        if (!closed && field != null) session.setFieldText(field, text)
+        endField()
+    }
+
+    /** Chooses the options [chosen] of the list that was asked about, and no others. */
+    fun chooseOptions(chosen: Set<Int>) {
+        val asked = askedField as? FieldTap.ChooseSeveral
+        if (!closed && asked != null) {
+            session.chooseOptions(asked.field, chosen.sorted().map { it.toUInt() })
+        }
         endField()
     }
 
@@ -467,6 +484,28 @@ class PdfViewState(
         askedField = null
         if (closed) return
         session.endField()
+        editState = session.editState()
+        refresh()
+    }
+
+    /** Whether the document has a form with a field that can be filled in. */
+    val hasForm: Boolean by lazy { session.hasForm() }
+
+    /** Whether every field that can be filled in is tinted, to show where they are. */
+    var highlightFields: Boolean by mutableStateOf(false)
+        private set
+
+    /** Tints the fields that can be filled in, or stops doing so. */
+    fun toggleHighlightFields() {
+        if (closed) return
+        highlightFields = !highlightFields
+        session.setHighlightFields(highlightFields)
+        refresh()
+    }
+
+    /** Sets every field back to what the form has for it at first, as one edit. */
+    fun resetForm() {
+        if (closed || !session.resetForm()) return
         editState = session.editState()
         refresh()
     }

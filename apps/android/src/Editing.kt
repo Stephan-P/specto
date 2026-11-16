@@ -51,6 +51,7 @@ internal fun undoLabel(step: EditStep): Int = when (step.kind) {
     EditKind.REMOVE_ANNOTATION -> R.string.undo_remove_annotation
     EditKind.CHANGE_ANNOTATION -> R.string.undo_change_annotation
     EditKind.FILL_FIELD -> R.string.undo_fill_field
+    EditKind.RESET_FORM -> R.string.undo_reset_form
 }
 
 /** The menu item that does [step] again, such as "Redo rotate". */
@@ -64,6 +65,7 @@ internal fun redoLabel(step: EditStep): Int = when (step.kind) {
     EditKind.REMOVE_ANNOTATION -> R.string.redo_remove_annotation
     EditKind.CHANGE_ANNOTATION -> R.string.redo_change_annotation
     EditKind.FILL_FIELD -> R.string.redo_fill_field
+    EditKind.RESET_FORM -> R.string.redo_reset_form
 }
 
 /**

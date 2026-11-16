@@ -4,6 +4,8 @@ import androidx.compose.ui.test.TouchInjectionScope
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.click
@@ -35,6 +37,8 @@ class FormTest : AppTest() {
     private fun TouchInjectionScope.code() = pagePoint(200f, fromTop = 181f)
     private fun TouchInjectionScope.agree() = pagePoint(160f, fromTop = 222f)
     private fun TouchInjectionScope.country() = pagePoint(250f, fromTop = 261f)
+    private fun TouchInjectionScope.color() = pagePoint(250f, fromTop = 301f)
+    private fun TouchInjectionScope.days() = pagePoint(250f, fromTop = 362f)
 
     private val field get() = compose.onNodeWithTag(FIELD_TEXT_TAG)
 
@@ -104,5 +108,75 @@ class FormTest : AppTest() {
         waitUntilGone("Choose")
         menu("Undo fill in field")
         assertEdited(false)
+    }
+
+    @Test
+    fun aMenuTakesTextOfOnesOwn() {
+        openForm()
+        page.performTouchInput { click(color()) }
+        waitForText("Or type your own")
+        compose.onNodeWithText("Red").assertIsNotSelected()
+        field.performTextInput("Teal")
+        compose.onNodeWithText("Done").performClick()
+        waitForText("Edited")
+
+        // It holds that now, and still offers its own.
+        page.performTouchInput { click(color()) }
+        waitForText("Or type your own")
+        field.assertTextContains("Teal")
+        compose.onNodeWithText("Green").performClick()
+        waitUntilGone("Or type your own")
+        page.performTouchInput { click(color()) }
+        waitForText("Or type your own")
+        field.assertTextContains("Green")
+    }
+
+    @Test
+    fun aListTakesSeveralChoices() {
+        openForm()
+        page.performTouchInput { click(days()) }
+        waitForText("Choose")
+        compose.onNodeWithText("Mon").assertIsOff().performClick()
+        compose.onNodeWithText("Wed").performClick()
+        compose.onNodeWithText("Done").performClick()
+        waitForText("Edited")
+
+        page.performTouchInput { click(days()) }
+        waitForText("Choose")
+        compose.onNodeWithText("Mon").assertIsOn()
+        compose.onNodeWithText("Tue").assertIsOff()
+        compose.onNodeWithText("Wed").assertIsOn()
+        compose.onNodeWithText("Cancel").performClick()
+    }
+
+    @Test
+    fun theFormIsResetAndItsFieldsHighlighted() {
+        openForm()
+        page.performTouchInput { click(agree()) }
+        waitForText("Edited")
+        // Everything goes back to what the form starts with, as one step.
+        menu("Reset form")
+        menu("Undo reset form")
+        menu("Undo fill in field")
+        assertEdited(false)
+        menu("Redo fill in field")
+        menu("Redo reset form")
+        page.performTouchInput { click(name()) }
+        waitForText("Your name")
+        field.assertTextContains("Nobody")
+        compose.onNodeWithText("Cancel").performClick()
+
+        // Highlighting is no edit, and the menu says whether it is on.
+        menu("Highlight form fields")
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithText("Highlight form fields").assertIsDisplayed()
+    }
+
+    @Test
+    fun aDocumentWithoutAFormOffersNothingForOne() {
+        open("pages.pdf", shows = "1 / 12")
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithText("Go to page").assertIsDisplayed()
+        compose.onAllNodesWithText("Reset form").assertCountEquals(0)
     }
 }

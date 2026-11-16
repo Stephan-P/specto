@@ -566,7 +566,9 @@ fn assemble(mut objects: Vec<(usize, String)>) -> Vec<u8> {
 
 /// A page of 200 by 300 points with a form: a text field "name" of at most 10 characters, which
 /// the form calls "Your name", at x 20 to 180, y 240 to 260, a checkbox "agree" at x 20 to 40, y
-/// 180 to 200, and a menu "country" at x 20 to 180, y 120 to 140, which holds "de".
+/// 180 to 200, a menu "country" at x 20 to 180, y 120 to 140, which holds "de", a menu "color"
+/// that takes text of one's own at y 80 to 100, and a list "days" that takes several choices at y
+/// 20 to 60. Reset, "name" holds "Nobody".
 fn form_pdf() -> Vec<u8> {
     let stream = |content: &str| {
         format!(
@@ -578,7 +580,7 @@ fn form_pdf() -> Vec<u8> {
     assemble(vec![
         (
             1,
-            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R 7 0 R 10 0 R] \
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R 7 0 R 10 0 R 11 0 R 12 0 R] \
              /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>"
                 .into(),
         ),
@@ -594,11 +596,11 @@ fn form_pdf() -> Vec<u8> {
         ),
         (
             4,
-            "<< /Type /Page /Parent 2 0 R /Annots [6 0 R 7 0 R 10 0 R] >>".into(),
+            "<< /Type /Page /Parent 2 0 R /Annots [6 0 R 7 0 R 10 0 R 11 0 R 12 0 R] >>".into(),
         ),
         (
             6,
-            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /TU (Your name) /MaxLen 10 \
+            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /TU (Your name) /MaxLen 10 /DV (Nobody) \
              /Rect [20 240 180 260] /P 4 0 R >>"
                 .into(),
         ),
@@ -616,6 +618,18 @@ fn form_pdf() -> Vec<u8> {
              /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [20 120 180 140] /P 4 0 R >>"
                 .into(),
         ),
+        (
+            11,
+            "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 393216 /T (color) \
+             /Opt [(Red) (Green)] /Rect [20 80 180 100] /P 4 0 R >>"
+                .into(),
+        ),
+        (
+            12,
+            "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 2097152 /T (days) \
+             /Opt [(Mon) (Tue) (Wed)] /Rect [20 20 180 60] /P 4 0 R >>"
+                .into(),
+        ),
     ])
 }
 
@@ -630,7 +644,7 @@ fn filling_in_a_form() {
     let tap = |x: f64, y: f64| session.tap_field(8.0 + x, 308.0 - y);
 
     // Blank paper is no field.
-    assert_eq!(tap(100.0, 50.0), FieldTap::Nothing);
+    assert_eq!(tap(100.0, 220.0), FieldTap::Nothing);
     assert!(!session.edit_state().modified);
 
     // A tap ticks the box, and that is all there is to it: nothing is outlined.
@@ -681,12 +695,13 @@ fn filling_in_a_form() {
         field,
         label,
         options,
+        typed,
         chosen,
     } = tap(100.0, 130.0)
     else {
         panic!("a menu is there");
     };
-    assert_eq!((label, chosen), (None, Some(0)));
+    assert_eq!((label, typed, chosen), (None, None, Some(0)));
     assert_eq!(options, ["Germany", "France", "Other"]);
     assert!(session.choose_option(field, 1));
     assert!(!session.choose_option(field, 1));
@@ -698,8 +713,52 @@ fn filling_in_a_form() {
     assert_eq!(chosen, Some(1));
     session.end_field();
 
+    // A menu that takes text of one's own says what it shows, and holds what is typed.
+    let FieldTap::Choose { field, typed, .. } = tap(100.0, 90.0) else {
+        panic!("a menu is there");
+    };
+    assert_eq!(typed.as_deref(), Some(""));
+    assert!(session.set_field_text(field, "Teal".into()));
+    session.end_field();
+    let FieldTap::Choose { typed, chosen, .. } = tap(100.0, 90.0) else {
+        panic!("a menu is there");
+    };
+    assert_eq!((typed.as_deref(), chosen), (Some("Teal"), None));
+    session.end_field();
+
+    // A list that takes several holds any of what it offers.
+    let FieldTap::ChooseSeveral {
+        field,
+        options,
+        chosen,
+        ..
+    } = tap(100.0, 40.0)
+    else {
+        panic!("a list is there");
+    };
+    assert_eq!(options, ["Mon", "Tue", "Wed"]);
+    assert!(chosen.is_empty());
+    assert!(session.choose_options(field, vec![2, 0]));
+    assert!(!session.choose_options(field, vec![0, 2]));
+    session.end_field();
+    let FieldTap::ChooseSeveral { chosen, .. } = tap(100.0, 40.0) else {
+        panic!("a list is there");
+    };
+    assert_eq!(chosen, [0, 2]);
+    session.end_field();
+
+    // On request, every field that can be filled in is tinted.
+    assert!(session.has_form());
+    assert!(session.frame().shapes.is_empty());
+    session.set_highlight_fields(true);
+    let shapes = session.frame().shapes;
+    assert_eq!(shapes.len(), 5);
+    assert!(shapes.iter().all(|s| s.fill.is_some() && s.closed));
+    session.set_highlight_fields(false);
+    assert!(session.frame().shapes.is_empty());
+
     // Each was an edit, taken back one by one.
-    for _ in 0..3 {
+    for _ in 0..5 {
         assert_eq!(session.undo().unwrap().kind, EditKind::FillField);
     }
     assert!(!session.edit_state().modified);
@@ -707,6 +766,16 @@ fn filling_in_a_form() {
         panic!("a text field is there");
     };
     assert_eq!(text, "");
+    session.end_field();
+
+    // Resetting sets every field back as one edit: the name has a text to start from.
+    assert!(session.reset_form());
+    assert_eq!(session.edit_state().undo.unwrap().kind, EditKind::ResetForm);
+    let FieldTap::Text { text, .. } = tap(100.0, 250.0) else {
+        panic!("a text field is there");
+    };
+    assert_eq!(text, "Nobody");
+    assert!(!session.reset_form());
 }
 
 #[test]

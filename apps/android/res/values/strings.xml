@@ -37,6 +37,8 @@
     <string name="menu_print">Print</string>
     <string name="menu_go_to_page">Go to page</string>
     <string name="menu_properties">Properties</string>
+    <string name="menu_highlight_fields">Highlight form fields</string>
+    <string name="menu_reset_form">Reset form</string>
     <string name="menu_settings">Settings</string>
     <!-- Closes the document and returns to the start screen. -->
     <string name="menu_close">Close</string>
@@ -48,6 +50,7 @@
     <string name="undo_remove_annotation">Undo delete annotation</string>
     <string name="undo_change_annotation">Undo change annotation</string>
     <string name="undo_fill_field">Undo fill in field</string>
+    <string name="undo_reset_form">Undo reset form</string>
     <string name="redo_rotate">Redo rotate</string>
     <string name="redo_delete">Redo delete</string>
     <string name="redo_move">Redo move</string>
@@ -56,6 +59,7 @@
     <string name="redo_remove_annotation">Redo delete annotation</string>
     <string name="redo_change_annotation">Redo change annotation</string>
     <string name="redo_fill_field">Redo fill in field</string>
+    <string name="redo_reset_form">Redo reset form</string>
 
     <!-- The start screen. -->
     <string name="open_pdf">Open PDF</string>
@@ -128,6 +132,8 @@
     <string name="field_text_title">Fill in field</string>
     <string name="field_choice_title">Choose</string>
     <string name="field_done">Done</string>
+    <!-- The line of a menu of a form that takes text of one\'s own instead of one of its options. -->
+    <string name="field_own_text">Or type your own</string>
     <!-- How many characters a field holds of how many it takes, such as 3 / 10. -->
     <string name="field_length">%1$d / %2$d</string>
     <string name="copy">Copy</string>

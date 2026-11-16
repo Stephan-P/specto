@@ -1,14 +1,17 @@
 package net.xfbs.specto
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -43,14 +46,20 @@ private const val FIELD_LINES = 6
 
 /**
  * Asks for what goes into the field of the form that was tapped ([PdfViewState.askedField]): the
- * text of a text field, or one of the options of a menu or a list. Shows nothing while no field is
- * asked about.
+ * text of a text field, or what to choose of the options of a menu or a list. Shows nothing while no
+ * field is asked about.
  */
 @Composable
 fun FieldDialog(state: PdfViewState) {
     when (val asked = state.askedField) {
         is FieldTap.Text -> FieldTextDialog(asked, state::setFieldText, state::endField)
-        is FieldTap.Choose -> FieldChoiceDialog(asked, state::chooseOption, state::endField)
+
+        is FieldTap.Choose ->
+            FieldChoiceDialog(asked, state::chooseOption, state::setFieldText, state::endField)
+
+        is FieldTap.ChooseSeveral ->
+            FieldSeveralDialog(asked, state::chooseOptions, state::endField)
+
         else -> {}
     }
 }
@@ -119,41 +128,114 @@ private fun FieldTextDialog(
 /**
  * Shows what the menu or list [asked] offers, with what it holds marked.
  *
- * A tap on a row hands its index to [onChoose]. [onDismiss] leaves the field as it is.
+ * A tap on a row hands its index to [onChoose]. A menu that takes text of one's own has a line to
+ * type it above the rows, and "Done" hands that text to [onTyped]. [onDismiss] leaves the field as
+ * it is.
  */
 @Composable
 private fun FieldChoiceDialog(
     asked: FieldTap.Choose,
     onChoose: (Int) -> Unit,
+    onTyped: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val chosen = asked.chosen?.toInt()
     // A long list starts where the chosen row is.
     val rows = rememberLazyListState(initialFirstVisibleItemIndex = chosen ?: 0)
+    val typed = asked.typed
+    var own by remember(asked) { mutableStateOf(typed.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(asked.label ?: stringResource(R.string.field_choice_title)) },
         text = {
-            LazyColumn(state = rows) {
+            Column {
+                if (typed != null) {
+                    OutlinedTextField(
+                        value = own,
+                        onValueChange = { own = it },
+                        modifier = Modifier.fillMaxWidth().testTag(FIELD_TEXT_TAG),
+                        label = { Text(stringResource(R.string.field_own_text)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { onTyped(own) }),
+                    )
+                }
+                LazyColumn(state = rows) {
+                    items(asked.options.size) { index ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = index == chosen,
+                                    role = Role.RadioButton,
+                                    onClick = { onChoose(index) },
+                                )
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = index == chosen, onClick = null)
+                            Text(asked.options[index], Modifier.padding(start = 16.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (typed != null) {
+                TextButton(onClick = { onTyped(own) }) {
+                    Text(stringResource(R.string.field_done))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+/**
+ * Shows what the list [asked] offers, which takes several choices, with a tick on each row it
+ * holds.
+ *
+ * A tap on a row ticks or unticks it. "Done" hands the ticked rows to [onDone]. [onDismiss] leaves
+ * the field as it is.
+ */
+@Composable
+private fun FieldSeveralDialog(
+    asked: FieldTap.ChooseSeveral,
+    onDone: (Set<Int>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var chosen by remember(asked) { mutableStateOf(asked.chosen.map { it.toInt() }.toSet()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(asked.label ?: stringResource(R.string.field_choice_title)) },
+        text = {
+            LazyColumn {
                 items(asked.options.size) { index ->
+                    val ticked = index in chosen
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .selectable(
-                                selected = index == chosen,
-                                role = Role.RadioButton,
-                                onClick = { onChoose(index) },
+                            .toggleable(
+                                value = ticked,
+                                role = Role.Checkbox,
+                                onValueChange = {
+                                    chosen = if (it) chosen + index else chosen - index
+                                },
                             )
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RadioButton(selected = index == chosen, onClick = null)
+                        Checkbox(checked = ticked, onCheckedChange = null)
                         Text(asked.options[index], Modifier.padding(start = 16.dp))
                     }
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            TextButton(onClick = { onDone(chosen) }) { Text(stringResource(R.string.field_done)) }
+        },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },

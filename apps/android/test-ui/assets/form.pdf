@@ -1,6 +1,6 @@
 %PDF-1.7
 1 0 obj
-<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [20 0 R 21 0 R 22 0 R 25 0 R] /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>
+<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [20 0 R 21 0 R 22 0 R 25 0 R 26 0 R 27 0 R] /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>
 endobj
 2 0 obj
 << /Type /Pages /Kids [10 0 R 12 0 R] /Count 2 >>
@@ -15,10 +15,10 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>
 endobj
 10 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 11 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Annots [20 0 R 21 0 R 22 0 R 25 0 R] >>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 11 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Annots [20 0 R 21 0 R 22 0 R 25 0 R 26 0 R 27 0 R] >>
 endobj
 11 0 obj
-<< /Length 341 >>
+<< /Length 454 >>
 stream
 0.15 0.35 0.75 rg 50 760 495 40 re f
 1 1 1 rg BT /F1 22 Tf 62 772 Td (Page 1 of 2) Tj ET
@@ -32,6 +32,10 @@ BT /F2 12 Tf 62 616 Td (Agree) Tj ET
 150 610 20 20 re S
 BT /F2 12 Tf 62 576 Td (Country) Tj ET
 150 570 200 22 re S
+BT /F2 12 Tf 62 536 Td (Color) Tj ET
+150 530 200 22 re S
+BT /F2 12 Tf 62 456 Td (Days) Tj ET
+150 450 200 60 re S
 endstream
 endobj
 12 0 obj
@@ -88,7 +92,7 @@ ET
 endstream
 endobj
 20 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [150 690 450 712] /P 10 0 R /F 4 /TU (Your name) >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [150 690 450 712] /P 10 0 R /F 4 /TU (Your name) /DV (Nobody) >>
 endobj
 21 0 obj
 << /Type /Annot /Subtype /Widget /FT /Tx /T (code) /Rect [150 650 250 672] /P 10 0 R /F 4 /MaxLen 4 >>
@@ -110,36 +114,44 @@ endobj
 25 0 obj
 << /Type /Annot /Subtype /Widget /FT /Ch /T (country) /Rect [150 570 350 592] /P 10 0 R /F 4 /Ff 131072 /V (de) /Opt [[(de) (Germany)] [(fr) (France)] (Other)] >>
 endobj
+26 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Ch /T (color) /Rect [150 530 350 552] /P 10 0 R /F 4 /Ff 393216 /Opt [(Red) (Green)] >>
+endobj
+27 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Ch /T (days) /Rect [150 450 350 510] /P 10 0 R /F 4 /Ff 2097152 /Opt [(Mon) (Tue) (Wed)] >>
+endobj
 xref
-0 26
+0 28
 0000000000 65535 f 
 0000000009 00000 n 
-0000000167 00000 n 
-0000000232 00000 n 
+0000000181 00000 n 
+0000000246 00000 n 
 0000000000 65535 f 
-0000000329 00000 n 
-0000000404 00000 n 
-0000000000 65535 f 
-0000000000 65535 f 
-0000000000 65535 f 
-0000000476 00000 n 
-0000000652 00000 n 
-0000001044 00000 n 
-0000001183 00000 n 
+0000000343 00000 n 
+0000000418 00000 n 
 0000000000 65535 f 
 0000000000 65535 f 
+0000000000 65535 f 
+0000000490 00000 n 
+0000000680 00000 n 
+0000001185 00000 n 
+0000001324 00000 n 
 0000000000 65535 f 
 0000000000 65535 f 
 0000000000 65535 f 
 0000000000 65535 f 
-0000004771 00000 n 
-0000004896 00000 n 
-0000005015 00000 n 
-0000005186 00000 n 
-0000005326 00000 n 
-0000005423 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000004912 00000 n 
+0000005050 00000 n 
+0000005169 00000 n 
+0000005340 00000 n 
+0000005480 00000 n 
+0000005577 00000 n 
+0000005756 00000 n 
+0000005898 00000 n 
 trailer
-<< /Size 26 /Root 1 0 R  >>
+<< /Size 28 /Root 1 0 R  >>
 startxref
-5602
+6044
 %%EOF
