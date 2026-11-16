@@ -1653,7 +1653,8 @@ def green(c):
 def test_fill_form(ctx):
     path = os.path.join(ctx.home, "form.pdf")
     form_pdf(path)
-    w = ctx.app([path]).window()
+    app = ctx.app([path])
+    w = app.window()
     w.settled()
     w.maximize()
     inp = ctx.input().attach(w)
@@ -1723,6 +1724,7 @@ def test_fill_form(ctx):
     w.action("save")
     s = w.wait("the save", lambda s: not s["modified"] and not s["saving"])
     check(not typing(s) and fields(s)["name"] == "ada l", s)
+    app.quit()
     w = ctx.app([path]).window()
     w.settled()
     w.maximize()
@@ -2210,8 +2212,12 @@ def test_pages_between_windows(ctx):
     app = ctx.app([ctx.pages, path])
     one, two = app.window(1), app.window(2)
     one.wait("the document", lambda s: s["view"] == "document")
-    # The second window is on top, so it draws (see two_windows).
-    s = two.settled()
+    # Its thumbnails, not its render: only the window on top is sure to draw
+    # (see two_windows), and which one that is isn't sure either.
+    s = two.wait(
+        "the second document",
+        lambda s: s["view"] == "document" and any(t[0] == 0 for t in s["thumbnails"]),
+    )
     one.action("debug-go-to", gvariant_str(LABELS[2]))
     one.wait("page 3", lambda s: s["page"] == 2)
     one.action("rotate-right")
