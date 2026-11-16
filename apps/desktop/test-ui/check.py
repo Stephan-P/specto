@@ -94,7 +94,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   clicked meanwhile, also from the size field, and before pages are inserted
 - fill_form: on a form, the pointer shows what can be filled in; a click
   ticks a box and chooses a radio button, and a text field is typed into
-  where it is, Enter ending it; undo and redo; text being typed is saved;
+  where it is, Enter ending it; Tab and Shift+Tab go through the fields,
+  Space and Enter tick and choose; a menu lists what it offers, and the
+  arrow keys and Enter choose; undo and redo; text being typed is saved;
   saved, the values are in the file and shown
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed. A click picks an annotation, Delete deletes it and
@@ -373,7 +375,7 @@ class Input:
     # don't depend on the keyboard layout.
     ESCAPE, CONTROL, SHIFT, ENTER, KEY_A, KEY_C, KEY_F = 1, 29, 42, 28, 30, 46, 33
     LEFT, RIGHT, KEY_Z = 105, 106, 44
-    BACKSPACE, DELETE = 14, 111
+    BACKSPACE, DELETE, TAB, SPACE, DOWN = 14, 111, 15, 57, 108
     # Key codes for typing, on a US layout (mutter's default).
     TYPING = {
         **{c: 16 + i for i, c in enumerate("qwertyuiop")},
@@ -1635,8 +1637,9 @@ def test_typed_text_is_kept(ctx):
 
 def form_pdf(path):
     """One letter page with a form: a text field "name", a checkbox "agree",
-    and radio buttons "pick" with the choices "a" and "b". A box that is on
-    is green."""
+    radio buttons "pick" with the choices "a" and "b", and a menu "country"
+    (Germany, France and Other, held as "de", "fr" and "Other"). A box that
+    is on is green."""
     def look(content):
         return (
             f"<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Length {len(content)} >>\n"
@@ -1650,12 +1653,12 @@ def form_pdf(path):
         ).encode()
 
     write_pdf(path, [
-        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R 6 0 R 7 0 R]"
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R 6 0 R 7 0 R 12 0 R]"
         b" /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>",
         b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >>"
-        b" /Annots [5 0 R 6 0 R 8 0 R 9 0 R] >>",
+        b" /Annots [5 0 R 6 0 R 8 0 R 9 0 R 12 0 R] >>",
         b"<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [100 600 400 624]"
         b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
         button("100 540 120 560", "Yes", "/FT /Btn /T (agree) /V /Off"),
@@ -1664,6 +1667,9 @@ def form_pdf(path):
         button("140 480 160 500", "b", "/Parent 7 0 R"),
         look("0 0.8 0 rg 0 0 20 20 re f"),
         look(""),
+        b"<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (country)"
+        b" /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [100 420 300 444]"
+        b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
     ])
 
 
@@ -1682,7 +1688,10 @@ def test_fill_form(ctx):
     at = lambda x, y: w.screen(0, x, y)
     fields = lambda s: dict(map(tuple, s["fields"]))
     typing = lambda s: s["text_editor"]
-    check(fields(w.state()) == {"name": "", "agree": "", "pick": ""}, w.state()["fields"])
+    check(
+        fields(w.state()) == {"name": "", "agree": "", "pick": "", "country": ""},
+        w.state()["fields"],
+    )
     # The pointer says what a click does.
     inp.move(*at(250, 612))
     w.wait("the cursor over the text field", lambda s: s["cursor"] == "text")
@@ -1735,6 +1744,66 @@ def test_fill_form(ctx):
     w.wait("the name undone", lambda s: fields(s)["name"] == "")
     w.action("redo")
     w.wait("the name again", lambda s: fields(s)["name"] == "ada")
+    # The keyboard is on the field clicked last. Tab goes to the next one,
+    # and Space ticks it.
+    focus = lambda name: lambda s: s["field_focus"] == name and s["focus"] == "SpectoCanvas"
+    w.wait("the keyboard on the name", focus("name"))
+    inp.keys(Input.TAB)
+    s = w.wait("the keyboard on the box", focus("agree"))
+    check(not typing(s), s)
+    inp.keys(Input.SPACE)
+    w.wait("unticked by Space", lambda s: fields(s)["agree"] == "")
+    inp.keys(Input.SPACE)
+    w.wait("ticked by Space", lambda s: fields(s)["agree"] == "on")
+    inp.keys(Input.TAB)
+    w.wait("the keyboard on the first button", focus("pick"))
+    inp.keys(Input.SPACE)
+    w.wait("a chosen by Space", lambda s: fields(s)["pick"] == "a")
+    inp.keys(Input.TAB)
+    inp.keys(Input.ENTER)
+    w.wait("b chosen by Enter", lambda s: fields(s)["pick"] == "b")
+    # The menu: Space shows what it offers, and the arrow keys and Enter
+    # choose.
+    inp.keys(Input.TAB)
+    s = w.wait("the keyboard on the menu", focus("country"))
+    check(s["choices"] == [], s["choices"])
+    inp.keys(Input.SPACE)
+    w.wait("the choices", lambda s: s["choices"] == ["Germany", "France", "Other"])
+    time.sleep(0.4)
+    inp.keys(Input.DOWN)
+    inp.keys(Input.ENTER)
+    s = w.wait("France chosen", lambda s: fields(s)["country"] == "fr")
+    w.wait("the choices gone", lambda s: s["choices"] == [] and focus("country")(s))
+    # A click shows them too, and Escape leaves the field as it is.
+    inp.click(*at(200, 432))
+    w.wait("the choices", lambda s: s["choices"] != [])
+    time.sleep(0.4)
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the choices gone", lambda s: s["choices"] == [])
+    check(fields(s)["country"] == "fr", s["fields"])
+    w.wait("the keyboard on the menu", focus("country"))
+    # From the last field round to the first, a text field, which is typed
+    # into. Shift+Tab keeps what was typed and goes back.
+    inp.keys(Input.TAB)
+    w.wait("typing into the name", lambda s: typing(s) and s.get("typing_text") == "ada")
+    time.sleep(0.4)
+    inp.type("m")
+    w.wait("typed", lambda s: s.get("typing_text") == "adam")
+    inp.keys(Input.SHIFT, Input.TAB)
+    s = w.wait("back on the menu", lambda s: not typing(s) and focus("country")(s))
+    check(fields(s)["name"] == "adam", s["fields"])
+    # Tab from a text field to the next field.
+    inp.keys(Input.TAB)
+    w.wait("typing into the name", typing)
+    time.sleep(0.4)
+    inp.keys(Input.BACKSPACE)
+    w.wait("typed", lambda s: s.get("typing_text") == "ada")
+    inp.keys(Input.TAB)
+    s = w.wait("on the box", lambda s: not typing(s) and focus("agree")(s))
+    check(fields(s)["name"] == "ada", s["fields"])
+    # Escape lets go of the form, and Tab is the toolkit's again.
+    inp.keys(Input.ESCAPE)
+    w.wait("no field has the keyboard", lambda s: s["field_focus"] == "")
     # Typed on, and saved while typing.
     inp.click(*at(250, 612))
     w.wait("typing", typing)
@@ -1750,7 +1819,10 @@ def test_fill_form(ctx):
     w.settled()
     w.maximize()
     s = w.state()
-    check(fields(s) == {"name": "ada l", "agree": "on", "pick": "b"}, s["fields"])
+    check(
+        fields(s) == {"name": "ada l", "agree": "on", "pick": "b", "country": "fr"},
+        s["fields"],
+    )
     check(not s["modified"], s)
     check(green(pixel(w, "reopened", *w.screen(0, 110, 550))), "the saved tick isn't shown")
 

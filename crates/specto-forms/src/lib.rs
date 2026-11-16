@@ -37,8 +37,17 @@ pub enum FieldKind {
     Checkbox,
     /// One of several to choose. Each widget is one of the choices.
     Radio,
-    /// A list or a menu to choose from. Read, but not filled in here yet.
-    Choice,
+    /// A list or a menu to choose from.
+    Choice {
+        /// What there is to choose from.
+        options: Vec<ChoiceOption>,
+        /// A list that shows several of its options at once, not a menu that drops down.
+        list: bool,
+        /// Text of one's own can be typed in instead of choosing.
+        editable: bool,
+        /// More than one can be chosen. Such fields are read, but not filled in here.
+        multiple: bool,
+    },
     /// A button to press, which fills nothing in.
     Button,
     /// A place for a digital signature.
@@ -47,10 +56,19 @@ pub enum FieldKind {
     Other,
 }
 
+/// One of the things a choice field offers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChoiceOption {
+    /// What the field holds when this is chosen.
+    pub value: String,
+    /// What the user sees.
+    pub label: String,
+}
+
 /// What a field holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldValue {
-    /// The text of a text field.
+    /// The text of a text field, or the value of the option chosen in a choice field.
     Text(String),
     /// Whether a checkbox is ticked.
     Check(bool),
@@ -63,6 +81,9 @@ pub enum FieldValue {
 pub struct Widget {
     /// The page of the file it is on, from 0.
     pub page: usize,
+    /// Where it is in the page's list of annotations, from 0: the order the Tab key goes through
+    /// the fields of a page in.
+    pub order: usize,
     /// The area it takes up on the page.
     pub rect: PdfBox,
     /// The number and generation of its annotation's object. For a field with a single widget
@@ -118,13 +139,16 @@ pub struct Field {
 }
 
 impl Field {
-    /// Whether the field can be filled in here: a text field or a checkbox or radio group that
-    /// the form lets be changed.
+    /// Whether the field can be filled in here: a text field, a checkbox, a radio group or a
+    /// choice of one among some, that the form lets be changed.
     pub fn is_fillable(&self) -> bool {
-        !self.read_only
-            && matches!(
-                self.kind,
-                FieldKind::Text { .. } | FieldKind::Checkbox | FieldKind::Radio
-            )
+        let known = match &self.kind {
+            FieldKind::Text { .. } | FieldKind::Checkbox | FieldKind::Radio => true,
+            FieldKind::Choice {
+                options, multiple, ..
+            } => !multiple && !options.is_empty(),
+            _ => false,
+        };
+        known && !self.read_only
     }
 }

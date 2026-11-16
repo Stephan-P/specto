@@ -7,6 +7,9 @@
 //! A field shows through its widgets' appearances, which the renderer draws with the page. So a
 //! page with a widget of a field that was filled in is rendered from a copy of the page with the
 //! value in it, as pages with changed annotations are (see `annots`).
+//!
+//! One field can have the keyboard: the one last clicked or moved to with Tab. The frontend shows
+//! which, and passes on the keys: Tab for the next one, Space to tick it or to type into it.
 
 use std::sync::Arc;
 
@@ -23,6 +26,16 @@ use crate::{FilePage, MAIN, Session, TextBoxPlace};
 pub enum FieldClick {
     /// A box was ticked or unticked, or a radio button chosen.
     Changed,
+    /// The keyboard is on a box or a button now, and nothing else changed.
+    Focused,
+    /// A choice field, to choose from: what it offers, which of that it holds, and its corners
+    /// on screen. Follow with [`choose_option`](Session::choose_option).
+    Choose {
+        field: FieldId,
+        labels: Vec<String>,
+        chosen: Option<usize>,
+        corners: [ViewPoint; 4],
+    },
     /// A text field, to be typed into: where it is on screen, how high (in points), whether it
     /// takes several lines, where its text stands (0 for left, 1 for centered, 2 for right), and
     /// what it holds.
@@ -92,10 +105,113 @@ impl Session {
 
     /// A click at `p` (viewport coordinates) on a field: ticks or unticks a checkbox, chooses a
     /// radio button, or says where a text field is, to type into it (follow with
-    /// [`begin_field_text`](Self::begin_field_text)). `None` if no field that can be filled in is
-    /// there.
+    /// [`begin_field_text`](Self::begin_field_text)). The field has the keyboard from then on.
+    /// `None` if no field that can be filled in is there.
     pub fn click_field(&mut self, scheduler: &Scheduler, p: ViewPoint) -> Option<FieldClick> {
         let (field, widget, position) = self.field_under(p)?;
+        self.field_focus = Some((field.id, widget));
+        self.press(scheduler, &field, widget, position)
+    }
+
+    /// The field that has the keyboard.
+    pub fn field_focus(&self) -> Option<FieldId> {
+        self.field_focus.map(|(field, _)| field)
+    }
+
+    /// Takes the keyboard off the form. Returns whether a field had it.
+    pub fn clear_field_focus(&mut self) -> bool {
+        self.field_focus.take().is_some()
+    }
+
+    /// Where the fields that can be filled in are, in the order Tab goes through them: by page as
+    /// the document has them now, and on a page as the file lists them. Each with the position of
+    /// its page.
+    fn field_stops(&mut self) -> Vec<(FieldId, usize, usize)> {
+        let fields = self.form_fields();
+        let mut stops: Vec<(usize, usize, FieldId, usize)> = fields
+            .iter()
+            .filter(|f| f.is_fillable())
+            .flat_map(|f| f.widgets.iter().enumerate().map(move |(i, w)| (f.id, i, w)))
+            .filter(|(_, _, w)| !w.hidden)
+            .filter_map(|(id, i, w)| Some((self.position_of(MAIN, w.page)?, w.order, id, i)))
+            .collect();
+        stops.sort_unstable();
+        stops
+            .into_iter()
+            .map(|(position, _, id, i)| (id, i, position))
+            .collect()
+    }
+
+    /// Moves the keyboard to the next field (the one before, if not `forward`), from the last to
+    /// the first and the other way, and scrolls to it. Without a field that has the keyboard, to
+    /// the first or the last. A text field is to be typed into, as after a click. `None` if the
+    /// document has no field that can be filled in.
+    pub fn tab_field(&mut self, scheduler: &Scheduler, forward: bool) -> Option<FieldClick> {
+        let stops = self.field_stops();
+        let count = stops.len();
+        let at = self
+            .field_focus
+            .and_then(|(field, widget)| stops.iter().position(|s| (s.0, s.1) == (field, widget)));
+        let next = match (at, forward) {
+            (Some(at), true) => (at + 1) % count.max(1),
+            (Some(at), false) => (at + count - 1) % count.max(1),
+            (None, true) => 0,
+            (None, false) => count.saturating_sub(1),
+        };
+        let (id, widget, position) = *stops.get(next)?;
+        let fields = self.form_fields();
+        let field = fields.iter().find(|f| f.id == id)?.clone();
+        self.field_focus = Some((id, widget));
+        self.viewer.reveal(position, field.widgets[widget].rect);
+        match field.kind {
+            FieldKind::Text { .. } => self.press(scheduler, &field, widget, position),
+            _ => Some(FieldClick::Focused),
+        }
+    }
+
+    /// Space or Enter on the field that has the keyboard: as a click on it.
+    pub fn press_focused_field(&mut self, scheduler: &Scheduler) -> Option<FieldClick> {
+        let (id, widget) = self.field_focus?;
+        let (_, _, position) = *self
+            .field_stops()
+            .iter()
+            .find(|s| (s.0, s.1) == (id, widget))?;
+        let fields = self.form_fields();
+        let field = fields.iter().find(|f| f.id == id)?.clone();
+        self.press(scheduler, &field, widget, position)
+    }
+
+    /// The corners of the field that has the keyboard, on screen, and the position of its page.
+    /// Not while it is typed into: the frontend's text field shows where it is then.
+    pub fn focused_field_outline(&mut self) -> Option<(usize, [ViewPoint; 4])> {
+        let (id, widget) = self.field_focus?;
+        if self.typing_field == Some(id) {
+            return None;
+        }
+        let fields = self.form_fields();
+        let w = fields.iter().find(|f| f.id == id)?.widgets.get(widget)?;
+        let position = self.position_of(MAIN, w.page)?;
+        let r = w.rect;
+        let at = |x, y| self.viewer.pdf_to_view(position, PdfPoint::new(x, y));
+        Some((
+            position,
+            [
+                at(r.min.x, r.min.y)?,
+                at(r.max.x, r.min.y)?,
+                at(r.max.x, r.max.y)?,
+                at(r.min.x, r.max.y)?,
+            ],
+        ))
+    }
+
+    /// What a click on widget `widget` of `field`, on the page at `position`, does.
+    fn press(
+        &mut self,
+        scheduler: &Scheduler,
+        field: &Field,
+        widget: usize,
+        position: usize,
+    ) -> Option<FieldClick> {
         let now = self.field_value(field.id);
         let w = &field.widgets[widget];
         match field.kind {
@@ -146,7 +262,42 @@ impl Session {
                     text,
                 })
             }
+            FieldKind::Choice { ref options, .. } => {
+                let held = match now {
+                    Some(FieldValue::Text(t)) => t,
+                    _ => String::new(),
+                };
+                let r = w.rect;
+                let at = |x, y| self.viewer.pdf_to_view(position, PdfPoint::new(x, y));
+                Some(FieldClick::Choose {
+                    field: field.id,
+                    labels: options.iter().map(|o| o.label.clone()).collect(),
+                    chosen: options.iter().position(|o| o.value == held),
+                    corners: [
+                        at(r.min.x, r.min.y)?,
+                        at(r.max.x, r.min.y)?,
+                        at(r.max.x, r.max.y)?,
+                        at(r.min.x, r.max.y)?,
+                    ],
+                })
+            }
             _ => None,
+        }
+    }
+
+    /// Chooses option `index` of the choice field `field`. Returns whether that changed what it
+    /// holds.
+    pub fn choose_option(&mut self, scheduler: &Scheduler, field: FieldId, index: usize) -> bool {
+        let fields = self.form_fields();
+        let value = fields.iter().find(|f| f.id == field).and_then(|f| {
+            let FieldKind::Choice { options, .. } = &f.kind else {
+                return None;
+            };
+            Some(options.get(index)?.value.clone())
+        });
+        match value {
+            Some(value) => self.fill_field(scheduler, field, FieldValue::Text(value)),
+            None => false,
         }
     }
 

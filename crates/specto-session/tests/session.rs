@@ -1415,6 +1415,48 @@ fn filling_in_a_form() {
     );
     assert!(!session.end_field_text(&scheduler, Some("Stray")));
 
+    // Tab goes through the fields that can be filled in, in the order of the page, and round.
+    // The keyboard is on the name, which was clicked last.
+    assert_eq!(session.field_focus(), Some(name));
+    assert_eq!(
+        session.focused_field_outline().map(|(page, _)| page),
+        Some(0)
+    );
+    assert_eq!(
+        session.tab_field(&scheduler, true),
+        Some(FieldClick::Focused)
+    );
+    assert_eq!(session.field_focus(), Some(agree));
+    // Space unticks the box, and ticks it again.
+    assert_eq!(
+        session.press_focused_field(&scheduler),
+        Some(FieldClick::Changed)
+    );
+    assert_eq!(session.field_value(agree), Some(FieldValue::Check(false)));
+    assert_eq!(
+        session.press_focused_field(&scheduler),
+        Some(FieldClick::Changed)
+    );
+    // On to the first again, which is typed into, and back.
+    assert!(matches!(
+        session.tab_field(&scheduler, true),
+        Some(FieldClick::Text { field, .. }) if field == name
+    ));
+    assert_eq!(
+        session.tab_field(&scheduler, false),
+        Some(FieldClick::Focused)
+    );
+    assert_eq!(session.field_focus(), Some(agree));
+    assert!(session.clear_field_focus() && !session.clear_field_focus());
+    assert_eq!(session.press_focused_field(&scheduler), None);
+    // Without a field that has the keyboard, Tab starts at the first and Shift+Tab at the last.
+    assert_eq!(
+        session.tab_field(&scheduler, false),
+        Some(FieldClick::Focused)
+    );
+    assert_eq!(session.field_focus(), Some(agree));
+    session.clear_field_focus();
+
     // Nothing to click on the page without fields to fill in: its one is read-only.
     session.viewer.go_to_page(1);
     assert_eq!(
@@ -1433,6 +1475,100 @@ fn filling_in_a_form() {
     assert_eq!(fields[0].value, Some(FieldValue::Text("Ada".to_owned())));
     assert_eq!(fields[1].value, Some(FieldValue::Check(true)));
     assert!(!saved.edit().is_modified());
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}
+
+#[test]
+fn choosing_in_a_form() {
+    use specto_doc::FieldValue;
+    use specto_session::{FieldClick, FieldHover};
+
+    // A page of 200 by 300 with a menu "country" at x 20 to 180, y 240 to 260.
+    let objects = vec![
+        (
+            1,
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] \
+             /DA (/Helv 0 Tf 0 g) >> >>"
+                .to_owned(),
+        ),
+        (
+            2,
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 200 300] \
+             /Resources << >> >>"
+                .to_owned(),
+        ),
+        (
+            3,
+            "<< /Type /Page /Parent 2 0 R /Annots [4 0 R] >>".to_owned(),
+        ),
+        (
+            4,
+            "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (country) /V (de) \
+             /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [20 240 180 260] /P 3 0 R >>"
+                .to_owned(),
+        ),
+    ];
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, assemble(objects));
+    let file = session.viewer.pages()[0].doc;
+    let country = session.form_fields()[0].id;
+    let on_menu = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(100.0, 250.0))
+        .unwrap();
+    assert_eq!(session.field_hover(on_menu), Some(FieldHover::Button));
+
+    // A click says what there is to choose from, and what is chosen.
+    let Some(FieldClick::Choose {
+        field,
+        labels,
+        chosen,
+        corners,
+    }) = session.click_field(&scheduler, on_menu)
+    else {
+        panic!("a menu is there");
+    };
+    assert_eq!((field, chosen), (country, Some(0)));
+    assert_eq!(labels, ["Germany", "France", "Other"]);
+    let low = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(20.0, 240.0))
+        .unwrap();
+    assert!((corners[0] - low).length() < 1e-9);
+    assert!(!session.edit().is_modified());
+
+    // Choosing what it holds changes nothing, and another is filled in.
+    assert!(!session.choose_option(&scheduler, country, 0));
+    assert!(!session.choose_option(&scheduler, country, 7));
+    assert!(session.choose_option(&scheduler, country, 1));
+    assert_eq!(
+        session.field_value(country),
+        Some(FieldValue::Text("fr".to_owned()))
+    );
+    assert_ne!(session.viewer.pages()[0].doc, file);
+    // Space on it asks again, with the new one chosen.
+    assert!(matches!(
+        session.press_focused_field(&scheduler),
+        Some(FieldClick::Choose {
+            chosen: Some(1),
+            ..
+        })
+    ));
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(
+        session.field_value(country),
+        Some(FieldValue::Text("de".to_owned()))
+    );
+    assert_eq!(session.viewer.pages()[0].doc, file);
+    assert!(session.redo(&scheduler).is_some());
+
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    assert_eq!(
+        saved.form_fields()[0].value,
+        Some(FieldValue::Text("fr".to_owned()))
+    );
     saved.close(&scheduler);
     session.close(&scheduler);
 }

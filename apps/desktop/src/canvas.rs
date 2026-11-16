@@ -24,6 +24,7 @@ const AUTOSCROLL_EDGE: f64 = 24.0;
 /// Handles a clicked link's URI (the window decides whether to open it). Called with where the page
 /// was clicked.
 type PlaceHandler = Box<dyn Fn(f64, f64)>;
+type FieldKeyHandler = Box<dyn Fn(FieldKey)>;
 type UriHandler = Box<dyn Fn(&str)>;
 
 mod imp {
@@ -60,6 +61,7 @@ mod imp {
         pub on_place: RefCell<Option<PlaceHandler>>,
         pub on_edit_text: RefCell<Option<Box<dyn Fn()>>>,
         pub on_fill: RefCell<Option<PlaceHandler>>,
+        pub on_field_key: RefCell<Option<FieldKeyHandler>>,
         /// Called with a link's URI. The window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links, "text" over text.
@@ -103,6 +105,7 @@ mod imp {
                 on_place: RefCell::default(),
                 on_edit_text: RefCell::default(),
                 on_fill: RefCell::default(),
+                on_field_key: RefCell::default(),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -215,6 +218,7 @@ mod imp {
                 });
             }
             obj.draw_picked(snapshot, d, &frame.pages, scale);
+            obj.draw_field_focus(snapshot, d, &frame.pages, scale);
             obj.draw_matches(snapshot, d, &frame.pages, scale);
             obj.draw_selection(snapshot, d, &frame.pages, scale);
             // A spinner over expensive pages (huge images, or renders that already took > 500 ms)
@@ -240,6 +244,17 @@ mod imp {
             }
         }
     }
+}
+
+/// A key for the form field that has the keyboard.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldKey {
+    /// Tab: to the next field.
+    Next,
+    /// Shift+Tab: to the one before.
+    Previous,
+    /// Space or Enter: ticks the field, or types into it.
+    Press,
 }
 
 glib::wrapper! {
@@ -328,6 +343,11 @@ impl Canvas {
     /// `f` is called with where a form field that can be filled in was clicked.
     pub fn connect_fill(&self, f: impl Fn(f64, f64) + 'static) {
         self.imp().on_fill.replace(Some(Box::new(f)));
+    }
+
+    /// `f` is called with a key for the form field that has the keyboard.
+    pub fn connect_field_key(&self, f: impl Fn(FieldKey) + 'static) {
+        self.imp().on_field_key.replace(Some(Box::new(f)));
     }
 
     /// What kind of form field is at `(x, y)`, if one that can be filled in is.
@@ -513,6 +533,37 @@ impl Canvas {
             fill_quads(snapshot, &quads, &colour);
             snapshot.pop();
         }
+    }
+
+    /// A frame around the form field that has the keyboard.
+    fn draw_field_focus(
+        &self,
+        snapshot: &gtk::Snapshot,
+        d: &mut crate::document::Document,
+        pages: &[specto_view::PageDraw],
+        scale: f64,
+    ) {
+        let Some((position, corners)) = d.focused_field_outline() else {
+            return;
+        };
+        let Some(page) = pages.iter().find(|p| p.page == position) else {
+            return;
+        };
+        let (xs, ys) = (corners.map(|c| c.x as f32), corners.map(|c| c.y as f32));
+        let min = |v: [f32; 4]| v.into_iter().fold(f32::INFINITY, f32::min);
+        let max = |v: [f32; 4]| v.into_iter().fold(f32::NEG_INFINITY, f32::max);
+        let frame = graphene::Rect::new(
+            min(xs) - 2.0,
+            min(ys) - 2.0,
+            max(xs) - min(xs) + 4.0,
+            max(ys) - min(ys) + 4.0,
+        );
+        let builder = gsk::PathBuilder::new();
+        builder.add_rounded_rect(&gsk::RoundedRect::from_rect(frame, 2.0));
+        let accent = adw::StyleManager::default().accent_color_rgba();
+        snapshot.push_clip(&logical(page.rect, scale));
+        snapshot.append_stroke(&builder.to_path(), &gsk::Stroke::new(2.0), &accent);
+        snapshot.pop();
     }
 
     /// A frame around the annotation that is picked.
@@ -957,6 +1008,14 @@ impl Canvas {
             let Some(c) = this.upgrade() else { return };
             c.grab_focus();
             c.imp().presses.set(n_press);
+            // A press elsewhere takes the keyboard off the form.
+            if c.field_at(x, y).is_none() {
+                let had = (c.imp().document.borrow().as_ref())
+                    .is_some_and(|d| d.borrow_mut().clear_field_focus());
+                if had {
+                    c.queue_draw();
+                }
+            }
             // With a drawing tool, the drag gesture has the pointer.
             if c.imp().draw_tool.get().is_some() {
                 return;
@@ -1205,6 +1264,35 @@ impl Canvas {
                     cb();
                 }
                 return glib::Propagation::Stop;
+            }
+            // With the keyboard on a form field: Tab goes to the next one (Shift+Tab to the one
+            // before), Space and Enter tick it or type into it, Escape lets go of it.
+            let on_field = (c.imp().document.borrow().as_ref())
+                .is_some_and(|d| d.borrow().field_focus().is_some());
+            if on_field {
+                let back = state.contains(gdk::ModifierType::SHIFT_MASK);
+                let field_key = match key {
+                    gdk::Key::ISO_Left_Tab => Some(FieldKey::Previous),
+                    gdk::Key::Tab | gdk::Key::KP_Tab if back => Some(FieldKey::Previous),
+                    gdk::Key::Tab | gdk::Key::KP_Tab => Some(FieldKey::Next),
+                    gdk::Key::space | gdk::Key::Return | gdk::Key::KP_Enter => {
+                        Some(FieldKey::Press)
+                    }
+                    _ => None,
+                };
+                if let Some(field_key) = field_key {
+                    if let Some(cb) = c.imp().on_field_key.borrow().as_ref() {
+                        cb(field_key);
+                    }
+                    return glib::Propagation::Stop;
+                }
+                if key == gdk::Key::Escape {
+                    if let Some(d) = c.imp().document.borrow().as_ref() {
+                        d.borrow_mut().clear_field_focus();
+                    }
+                    c.queue_draw();
+                    return glib::Propagation::Stop;
+                }
             }
             // Delete and Backspace delete a picked annotation, and never pages: those go from the
             // thumbnails, or by the menu.

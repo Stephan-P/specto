@@ -440,6 +440,15 @@ or application form.
   same size, with no jump. Check a centered or right-aligned field and a field
   of several lines too.
 - Zoom and scroll while typing: the text field stays on its place.
+- Fill in a whole form without the pointer after the first click: Tab and
+  Shift+Tab go through the fields in a sensible order, over page breaks too,
+  the view follows, and a frame shows where the keyboard is. Space ticks boxes
+  and chooses radio buttons. Tab out of a text field keeps what was typed.
+- Escape lets go of the form: Tab then moves through the window's controls as
+  usual.
+- Click a menu and a list of a form: what they offer shows at the field, long
+  lists scroll, and what is chosen shows in the field afterwards. In a list
+  the chosen row is marked and in view.
 - Undo and redo go through the fields in order.
 - Save while typing: what was typed is saved.
 - Save, close and open again: every value is there.

@@ -233,10 +233,13 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] The forms crate: the field tree, inheritance, widgets by page, flags
 - [x] Filled-in values in the edit document, with undo, and saved with new looks
 - [x] Desktop: checkboxes, radio buttons and typing into text fields
-- [ ] Combo and list boxes.
+- [x] Desktop: Tab between fields, Space and Enter on the field in focus
+- [x] Menus and lists to choose one option from
+- [ ] Lists that take several choices, and menus that take typed text.
 - [ ] Comb fields, and a password field that hides what is typed.
 - [ ] An embedded fallback font for text outside Latin.
-- [ ] Tab order, a toggle for highlighting fields, and resetting a form.
+- [ ] Tab order by rows or columns where a page asks for it, a toggle for
+  highlighting fields, and resetting a form.
 - [ ] Forms of inserted files. Only the form of the opened file is kept.
 - [ ] Saving filled forms incrementally, and an optional flattened export.
 

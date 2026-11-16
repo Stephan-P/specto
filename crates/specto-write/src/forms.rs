@@ -4,7 +4,8 @@
 //! checkbox or radio button gets the state it is in now (`/AS`, one of the looks the file has for
 //! it), and each widget of a text field gets a new appearance stream with the text in it, set as
 //! the field asks (its font, size, color and alignment), over the background and border the
-//! widget says it has.
+//! widget says it has. A choice field gets the same with what was chosen: a menu shows it alone, a
+//! list shows it marked among the others.
 
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream, dictionary};
 use specto_annot::{Color, FontFamily, TextFont, encode_text, text_width, wrap};
@@ -53,9 +54,32 @@ pub(crate) fn apply(
             }
             FieldValue::Text(text) => {
                 set(doc, field, "V", text_string(text));
-                let look = TextLook::of(doc, field);
+                let mut look = TextLook::of(doc, field);
+                let choice = Choice::of(doc, field, text);
+                if choice.is_some() {
+                    // The numbers of what is chosen, which no longer hold. Readers go by `/V`.
+                    if let Ok(dict) = doc.get_dictionary_mut(field) {
+                        dict.remove(b"I");
+                    }
+                    look.multiline = false;
+                    look.password = false;
+                }
+                let body = match &choice {
+                    Some(Choice {
+                        list: true,
+                        labels,
+                        chosen,
+                    }) => Body::List {
+                        labels,
+                        chosen: *chosen,
+                    },
+                    Some(Choice { labels, chosen, .. }) => {
+                        Body::Text(chosen.map_or(text.as_str(), |i| labels[i].as_str()))
+                    }
+                    None => Body::Text(text),
+                };
                 for &w in &widgets {
-                    let Some(stream) = text_appearance(doc, w, text, &look) else {
+                    let Some(stream) = text_appearance(doc, w, &body, &look) else {
                         continue;
                     };
                     let id = doc.add_object(stream);
@@ -266,11 +290,70 @@ impl TextLook {
     }
 }
 
-/// The appearance of a text field's widget with `text` in it.
+/// What a choice field offers, and what of it is chosen.
+struct Choice {
+    /// A list that shows several options at once, not a menu.
+    list: bool,
+    /// What the user sees for each option.
+    labels: Vec<String>,
+    /// Which option is chosen, if the value is one of them.
+    chosen: Option<usize>,
+}
+
+impl Choice {
+    /// The choice field `field` holding `value`, or `None` if it is a field of another kind.
+    fn of(doc: &Document, field: ObjectId, value: &str) -> Option<Self> {
+        let kind = inherited(doc, field, b"FT")?;
+        if kind.as_name().ok()? != b"Ch" {
+            return None;
+        }
+        let flags = inherited(doc, field, b"Ff")
+            .and_then(|f| f.as_i64().ok())
+            .unwrap_or(0);
+        let string = |o: &Object| match resolve(doc, o) {
+            Object::String(bytes, _) => Some(specto_source::decode_text(bytes)),
+            _ => None,
+        };
+        let options: Vec<(String, String)> = inherited(doc, field, b"Opt")
+            .as_ref()
+            .and_then(|opt| opt.as_array().ok())
+            .map(|opt| {
+                opt.iter()
+                    .filter_map(|entry| match resolve(doc, entry) {
+                        Object::Array(pair) => {
+                            let value = string(pair.first()?)?;
+                            let label = pair.get(1).and_then(string);
+                            Some((value.clone(), label.unwrap_or(value)))
+                        }
+                        other => string(other).map(|v| (v.clone(), v)),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            list: flags & (1 << 17) == 0,
+            chosen: options.iter().position(|(v, _)| v == value),
+            labels: options.into_iter().map(|(_, label)| label).collect(),
+        })
+    }
+}
+
+/// What a widget's appearance shows.
+enum Body<'a> {
+    /// Text, as a text field or a menu has it.
+    Text(&'a str),
+    /// The options of a list, with the chosen one marked.
+    List {
+        labels: &'a [String],
+        chosen: Option<usize>,
+    },
+}
+
+/// The appearance of a text or choice field's widget showing `body`.
 fn text_appearance(
     doc: &Document,
     widget: ObjectId,
-    text: &str,
+    body: &Body<'_>,
     look: &TextLook,
 ) -> Option<Stream> {
     let dict = doc.get_dictionary(widget).ok()?;
@@ -319,11 +402,6 @@ fn text_appearance(
     // The text, inside the border with a little room.
     let pad = border_width.max(1.0) + 1.0;
     let inside = (w - 2.0 * pad).max(1.0);
-    let shown: String = if look.password {
-        "*".repeat(text.chars().count())
-    } else {
-        text.to_owned()
-    };
     let size = if look.size > 0.0 {
         look.size
     } else if look.multiline {
@@ -331,17 +409,43 @@ fn text_appearance(
     } else {
         ((h - 2.0 * pad) / 1.15).clamp(4.0, 12.0)
     };
-    let lines = if look.multiline {
-        wrap(&shown, size, inside, look.measure)
-    } else {
-        vec![shown.replace(['\n', '\r'], " ")]
-    };
     // Helvetica's proportions, near enough for where a line sits.
     let (ascent, descent, leading) = (0.718 * size, 0.207 * size, 1.15 * size);
-    let first = if look.multiline {
-        h - pad - ascent
-    } else {
-        (h - ascent - descent) / 2.0 + descent
+    let mut marked = String::new();
+    let (lines, first) = match body {
+        Body::Text(text) => {
+            let shown: String = if look.password {
+                "*".repeat(text.chars().count())
+            } else {
+                (*text).to_owned()
+            };
+            if look.multiline {
+                (wrap(&shown, size, inside, look.measure), h - pad - ascent)
+            } else {
+                (
+                    vec![shown.replace(['\n', '\r'], " ")],
+                    (h - ascent - descent) / 2.0 + descent,
+                )
+            }
+        }
+        Body::List { labels, chosen } => {
+            // As many rows as fit, from the top, or from further down so that the chosen one
+            // shows.
+            let rows = (((h - 2.0 * pad) / leading).floor() as usize).max(1);
+            let from = chosen.map_or(0, |c| (c + 1).saturating_sub(rows));
+            if let Some(row) = chosen.map(|c| c - from) {
+                marked = format!(
+                    "0.6 0.75 0.85 rg\n{} {} {} {} re\nf\n",
+                    n(pad),
+                    n(h - pad - (row + 1) as f64 * leading),
+                    n(inside),
+                    n(leading),
+                );
+            }
+            let lines = labels.iter().skip(from).take(rows).cloned().collect();
+            let above = (leading - ascent - descent) / 2.0;
+            (lines, h - pad - above - ascent)
+        }
     };
     let font_name = if look.font.is_some() && !look.font_name.is_empty() {
         look.font_name.as_str()
@@ -351,7 +455,7 @@ fn text_appearance(
     let mut bytes = content.into_bytes();
     bytes.extend_from_slice(
         format!(
-            "/Tx BMC\nq\n{} {} {} {} re\nW n\nBT\n/{} {} Tf\n{} rg\n",
+            "/Tx BMC\nq\n{} {} {} {} re\nW n\n{marked}BT\n/{} {} Tf\n{} rg\n",
             n(pad),
             n(pad),
             n(inside),

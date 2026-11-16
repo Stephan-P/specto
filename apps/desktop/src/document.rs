@@ -315,6 +315,30 @@ impl Document {
         clicked
     }
 
+    /// Tab or Shift+Tab on the form (see the session's function of this name).
+    pub fn tab_field(&mut self, forward: bool) -> Option<specto_session::FieldClick> {
+        self.session.tab_field(scheduler(), forward)
+    }
+
+    /// Space or Enter on the field that has the keyboard (see the session's function of this
+    /// name).
+    pub fn press_focused_field(&mut self) -> Option<specto_session::FieldClick> {
+        let clicked = self.session.press_focused_field(scheduler());
+        if clicked == Some(specto_session::FieldClick::Changed) {
+            self.pages_changed();
+        }
+        clicked
+    }
+
+    /// Chooses an option of a choice field (see the session's function of this name).
+    pub fn choose_option(&mut self, field: specto_doc::FieldId, index: usize) -> bool {
+        let changed = self.session.choose_option(scheduler(), field, index);
+        if changed {
+            self.pages_changed();
+        }
+        changed
+    }
+
     /// Starts typing into a text field of the form (see the session's function of this name).
     pub fn begin_field_text(&mut self, field: specto_doc::FieldId) {
         self.session.begin_field_text(scheduler(), field);

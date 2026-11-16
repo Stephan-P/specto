@@ -9,7 +9,7 @@ use specto_source::hayro_syntax::object::{
 };
 use specto_source::{SourceDocument, decode_text};
 
-use crate::{Field, FieldId, FieldKind, FieldValue, TextLook, Widget};
+use crate::{ChoiceOption, Field, FieldId, FieldKind, FieldValue, TextLook, Widget};
 
 /// Fields beyond this many are ignored, and so are levels of the tree beyond `MAX_DEPTH`: a guard
 /// against huge or cyclic trees in broken files.
@@ -23,6 +23,12 @@ const MULTILINE: u32 = 1 << 12;
 const PASSWORD: u32 = 1 << 13;
 const RADIO: u32 = 1 << 15;
 const PUSH_BUTTON: u32 = 1 << 16;
+const COMBO: u32 = 1 << 17;
+const EDIT: u32 = 1 << 18;
+const MULTI_SELECT: u32 = 1 << 21;
+
+/// Options of a choice field beyond this many are ignored.
+const MAX_OPTIONS: usize = 10_000;
 
 /// What a field takes from those above it in the tree.
 #[derive(Clone, Default)]
@@ -79,15 +85,16 @@ fn children<'a>(array: &Array<'a>) -> Vec<(Dict<'a>, FieldId)> {
 }
 
 /// Which page each annotation object is on, and where in that page's `/Annots`.
-fn widget_pages(source: &SourceDocument) -> HashMap<ObjectIdentifier, usize> {
+fn widget_pages(source: &SourceDocument) -> HashMap<ObjectIdentifier, (usize, usize)> {
     let mut map = HashMap::new();
     for (page, p) in source.pdf().pages().iter().enumerate() {
         let Some(annots) = p.raw().get::<Array<'_>>(b"Annots") else {
             continue;
         };
-        for entry in annots.raw_iter().take(MAX_FIELDS) {
+        for (order, entry) in annots.raw_iter().take(MAX_FIELDS).enumerate() {
             if let MaybeRef::Ref(r) = entry {
-                map.entry(ObjectIdentifier::from(r)).or_insert(page);
+                map.entry(ObjectIdentifier::from(r))
+                    .or_insert((page, order));
             }
         }
     }
@@ -109,7 +116,7 @@ fn walk(
     id: FieldId,
     above: &Inherited,
     depth: usize,
-    pages: &HashMap<ObjectIdentifier, usize>,
+    pages: &HashMap<ObjectIdentifier, (usize, usize)>,
     seen: &mut HashSet<FieldId>,
     out: &mut Vec<Field>,
 ) {
@@ -161,7 +168,12 @@ fn walk(
         b"Btn" if flags & PUSH_BUTTON != 0 => FieldKind::Button,
         b"Btn" if flags & RADIO != 0 => FieldKind::Radio,
         b"Btn" => FieldKind::Checkbox,
-        b"Ch" => FieldKind::Choice,
+        b"Ch" => FieldKind::Choice {
+            options: options(node),
+            list: flags & COMBO == 0,
+            editable: flags & COMBO != 0 && flags & EDIT != 0,
+            multiple: flags & MULTI_SELECT != 0,
+        },
         b"Sig" => FieldKind::Signature,
         _ => FieldKind::Other,
     };
@@ -183,6 +195,10 @@ fn walk(
         FieldKind::Text { .. } => Some(FieldValue::Text(text(node, b"V").unwrap_or_default())),
         FieldKind::Checkbox => Some(FieldValue::Check(state.is_some())),
         FieldKind::Radio => Some(FieldValue::Choice(state)),
+        // Several chosen at once are an array, which isn't read.
+        FieldKind::Choice {
+            multiple: false, ..
+        } => Some(FieldValue::Text(text(node, b"V").unwrap_or_default())),
         _ => None,
     };
     out.push(Field {
@@ -198,11 +214,43 @@ fn walk(
     });
 }
 
+/// What a choice field offers (`/Opt`): each a text, or a value and what to show for it.
+fn options(node: &Dict<'_>) -> Vec<ChoiceOption> {
+    let Some(opt) = node.get::<Array<'_>>(b"Opt") else {
+        return Vec::new();
+    };
+    let string = |o: Object<'_>| match o {
+        Object::String(s) => Some(decode_text(s.as_bytes())),
+        _ => None,
+    };
+    opt.iter::<Object<'_>>()
+        .take(MAX_OPTIONS)
+        .filter_map(|entry| match entry {
+            Object::Array(pair) => {
+                let mut parts = pair.iter::<Object<'_>>();
+                let value = string(parts.next()?)?;
+                let label = parts
+                    .next()
+                    .and_then(string)
+                    .unwrap_or_else(|| value.clone());
+                Some(ChoiceOption { value, label })
+            }
+            other => {
+                let value = string(other)?;
+                Some(ChoiceOption {
+                    label: value.clone(),
+                    value,
+                })
+            }
+        })
+        .collect()
+}
+
 /// The widget in `dict`, if it has an area and is on a page.
 fn widget(
     dict: &Dict<'_>,
     id: FieldId,
-    pages: &HashMap<ObjectIdentifier, usize>,
+    pages: &HashMap<ObjectIdentifier, (usize, usize)>,
 ) -> Option<Widget> {
     let numbers: Vec<f64> = dict
         .get::<Array<'_>>(b"Rect")?
@@ -212,7 +260,7 @@ fn widget(
     let [x0, y0, x1, y1] = numbers[..] else {
         return None;
     };
-    let page = *pages.get(&ObjectIdentifier::new(id.0, i32::from(id.1)))?;
+    let (page, order) = *pages.get(&ObjectIdentifier::new(id.0, i32::from(id.1)))?;
     // What its states are called: those it has a look for, other than "Off".
     let on_state = dict
         .get::<Dict<'_>>(b"AP")
@@ -226,6 +274,7 @@ fn widget(
     let flags = dict.get::<u32>(b"F").unwrap_or(0);
     Some(Widget {
         page,
+        order,
         rect: PdfBox::new(
             PdfPoint::new(x0.min(x1), y0.min(y1)),
             PdfPoint::new(x0.max(x1), y0.max(y1)),

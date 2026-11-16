@@ -12,10 +12,12 @@ use specto_write::{AnnotChanges, Source, write_filled};
 
 const MAIN: SourceId = SourceId(0);
 
-/// A page of 600 × 800 with a form: a text field "name" at x 100–400, y 700–730 (white on a
-/// pale blue background, with a border), a multiline one "notes" below it, a checkbox "agree"
-/// at 100–120, 500–520 whose "Yes" look is a green square, and a radio group "size" of two
-/// buttons ("S" and "L") at y 400–420 whose looks are red squares.
+/// A page of 600 by 800 with a form: a text field "name" at x 100 to 400, y 700 to 730 (white on
+/// a pale blue background, with a border), a multiline one "notes" below it, a checkbox "agree"
+/// at x 100 to 120, y 500 to 520 whose "Yes" look is a green square, and a radio group "size" of
+/// two buttons ("S" and "L") at y 400 to 420 whose looks are red squares. Below them a menu
+/// "country" at x 100 to 300, y 300 to 320 (Germany, France and Other, held as "de", "fr" and
+/// "Other"), and a list "color" of six colors at y 200 to 260, four of which fit.
 fn fixture() -> Vec<u8> {
     let mut doc = Document::with_version("1.7");
     let pages = doc.new_object_id();
@@ -83,8 +85,28 @@ fn fixture() -> Vec<u8> {
         }
         .into(),
     );
+    let pair = |value: &str, label: &str| {
+        Object::Array(vec![
+            Object::string_literal(value),
+            Object::string_literal(label),
+        ])
+    };
+    let country = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Ch", "P" => page,
+        "T" => Object::string_literal("country"), "Rect" => rect(100, 300, 300, 320),
+        "Ff" => 1 << 17, "V" => Object::string_literal("de"), "I" => vec![0.into()],
+        "Opt" => vec![pair("de", "Germany"), pair("fr", "France"), Object::string_literal("Other")],
+    });
+    let colors = ["Red", "Green", "Blue", "Cyan", "Magenta", "Yellow"];
+    let color = doc.add_object(dictionary! {
+        "Type" => "Annot", "Subtype" => "Widget", "FT" => "Ch", "P" => page,
+        "T" => Object::string_literal("color"), "Rect" => rect(100, 200, 300, 260),
+        "DA" => Object::string_literal("/Helv 12 Tf 0 g"),
+        "Opt" => colors.map(Object::string_literal).to_vec(),
+    });
     let mut annots = vec![name.into(), notes.into(), agree.into()];
     annots.extend(buttons.iter().map(|&b| Object::Reference(b)));
+    annots.extend([Object::Reference(country), Object::Reference(color)]);
     doc.objects.insert(
         page,
         dictionary! { "Type" => "Page", "Parent" => pages, "Annots" => annots }.into(),
@@ -100,7 +122,10 @@ fn fixture() -> Vec<u8> {
     let catalog = doc.add_object(dictionary! {
         "Type" => "Catalog", "Pages" => pages,
         "AcroForm" => dictionary! {
-            "Fields" => vec![name.into(), notes.into(), agree.into(), size.into()],
+            "Fields" => vec![
+                name.into(), notes.into(), agree.into(), size.into(), country.into(),
+                color.into(),
+            ],
             "DA" => Object::string_literal("/Helv 0 Tf 0 g"),
             "DR" => dictionary! { "Font" => dictionary! { "Helv" => font } },
         },
@@ -185,7 +210,38 @@ fn qpdf_check(data: &[u8]) {
 fn the_fixture_is_read() {
     let all = read(&fixture());
     let names: Vec<&str> = all.iter().map(|f| f.name.as_str()).collect();
-    assert_eq!(names, ["name", "notes", "agree", "size"]);
+    assert_eq!(
+        names,
+        ["name", "notes", "agree", "size", "country", "color"]
+    );
+    // A menu with values that differ from what it shows, and a list.
+    let country = field(&all, "country");
+    let FieldKind::Choice {
+        options,
+        list: false,
+        editable: false,
+        multiple: false,
+    } = &country.kind
+    else {
+        panic!("a menu: {:?}", country.kind);
+    };
+    let shown: Vec<(&str, &str)> = options
+        .iter()
+        .map(|o| (o.value.as_str(), o.label.as_str()))
+        .collect();
+    assert_eq!(
+        shown,
+        [("de", "Germany"), ("fr", "France"), ("Other", "Other")]
+    );
+    assert_eq!(country.value, Some(FieldValue::Text("de".to_owned())));
+    assert!(matches!(
+        &field(&all, "color").kind,
+        FieldKind::Choice { options, list: true, .. } if options.len() == 6
+    ));
+    assert_eq!(
+        field(&all, "color").value,
+        Some(FieldValue::Text(String::new()))
+    );
     assert!(matches!(
         field(&all, "name").kind,
         FieldKind::Text {
@@ -308,6 +364,48 @@ fn filled_in_values_are_saved_and_show() {
     // The box ticked, and the other radio button chosen.
     assert!(green(pixel(&after, 110, 510)));
     assert!(!red(pixel(&after, 110, 410)) && red(pixel(&after, 160, 410)));
+
+    // A menu shows what was chosen, by what it is called, and a list marks it, scrolled so far
+    // that it shows: the last of six is in the fourth row.
+    let marked = |c: [u8; 3]| c[0].abs_diff(153) < 6 && c[1].abs_diff(191) < 6 && c[2] > 205;
+    assert_eq!(count(&after, (102, 298), (302, 318), dark), 0);
+    let chosen = fill(
+        &original,
+        &[
+            (id("country"), FieldValue::Text("fr".to_owned())),
+            (id("color"), FieldValue::Text("Yellow".to_owned())),
+        ],
+    );
+    let now = read(&chosen);
+    assert_eq!(
+        field(&now, "country").value,
+        Some(FieldValue::Text("fr".to_owned()))
+    );
+    assert_eq!(
+        field(&now, "color").value,
+        Some(FieldValue::Text("Yellow".to_owned()))
+    );
+    let shown = page(&chosen);
+    let in_menu = count(&shown, (102, 298), (302, 318), dark);
+    assert!(in_menu > 40, "nothing in the menu: {in_menu}");
+    assert_eq!(
+        count(&shown, (150, 298), (302, 318), dark),
+        0,
+        "more than \"France\" in the menu"
+    );
+    assert!(
+        marked(pixel(&shown, 290, 210)),
+        "{:?}",
+        pixel(&shown, 290, 210)
+    );
+    assert!(!marked(pixel(&shown, 290, 225)) && !marked(pixel(&shown, 290, 250)));
+    for row in 0..4 {
+        let y = 204 + 14 * row;
+        assert!(
+            count(&shown, (102, 200), (y, y + 10), dark) > 10,
+            "row {row} is empty"
+        );
+    }
 
     // Emptied and unticked again.
     let cleared = fill(

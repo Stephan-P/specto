@@ -732,24 +732,54 @@ impl Window {
     /// or unticked, a radio button chosen, a text field typed into.
     pub(super) fn fill_at(&self, x: f64, y: f64) {
         self.finish_text_entry();
-        let Some(doc) = self.0.document.borrow().clone() else {
-            return;
-        };
         let mut clicked = None;
         self.annotate(|d| {
             clicked = d.click_field(ViewPoint::new(x, y));
             clicked == Some(FieldClick::Changed)
         });
-        let Some(FieldClick::Text {
-            field,
-            place,
-            height,
-            multiline,
-            alignment,
-            text,
-        }) = clicked
-        else {
+        self.enter_field(clicked);
+    }
+
+    /// A key for the form field that has the keyboard: Tab and Shift+Tab move to the next field
+    /// and the one before, Space and Enter do what a click does.
+    pub(super) fn field_key(&self, key: FieldKey) {
+        self.finish_text_entry();
+        let mut clicked = None;
+        self.annotate(|d| {
+            clicked = match key {
+                FieldKey::Next => d.tab_field(true),
+                FieldKey::Previous => d.tab_field(false),
+                FieldKey::Press => d.press_focused_field(),
+            };
+            clicked == Some(FieldClick::Changed)
+        });
+        // The view may have moved to show the field, and the frame is on another one.
+        self.0.canvas.update_viewer(|_| {});
+        self.enter_field(clicked);
+    }
+
+    /// After a click or a key on a form field: a text field is typed into.
+    fn enter_field(&self, clicked: Option<FieldClick>) {
+        let Some(doc) = self.0.document.borrow().clone() else {
             return;
+        };
+        self.0.canvas.queue_draw();
+        let (field, place, height, multiline, alignment, text) = match clicked {
+            Some(FieldClick::Text {
+                field,
+                place,
+                height,
+                multiline,
+                alignment,
+                text,
+            }) => (field, place, height, multiline, alignment, text),
+            Some(FieldClick::Choose {
+                field,
+                labels,
+                chosen,
+                corners,
+            }) => return self.choose_from(field, labels, chosen, corners),
+            _ => return,
         };
         doc.borrow_mut().begin_field_text(field);
         let target = TypingTarget::Field {
@@ -759,6 +789,82 @@ impl Window {
             alignment,
         };
         self.type_on_page(place, &text, target);
+    }
+
+    /// Shows what the choice field `field` offers, in a list at the field (its `corners` in the
+    /// page view), with the option it holds marked. A click on a row, or Enter, chooses it.
+    fn choose_from(
+        &self,
+        field: FieldId,
+        labels: Vec<String>,
+        chosen: Option<usize>,
+        corners: [ViewPoint; 4],
+    ) {
+        let inner = &self.0;
+        let list = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::Browse)
+            .build();
+        for label in &labels {
+            let text = gtk::Label::builder()
+                .label(label)
+                .xalign(0.0)
+                .margin_start(6)
+                .margin_end(6)
+                .build();
+            list.append(&text);
+        }
+        let (xs, ys) = (corners.map(|c| c.x), corners.map(|c| c.y));
+        let min = |v: [f64; 4]| v.into_iter().fold(f64::INFINITY, f64::min);
+        let max = |v: [f64; 4]| v.into_iter().fold(f64::NEG_INFINITY, f64::max);
+        let area = gdk::Rectangle::new(
+            min(xs) as i32,
+            min(ys) as i32,
+            (max(xs) - min(xs)).ceil() as i32,
+            (max(ys) - min(ys)).ceil() as i32,
+        );
+        let scroller = gtk::ScrolledWindow::builder()
+            .child(&list)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .propagate_natural_width(true)
+            .max_content_height(320)
+            .min_content_width(area.width().clamp(120, 480))
+            .build();
+        let popover = gtk::Popover::builder()
+            .child(&scroller)
+            .position(gtk::PositionType::Bottom)
+            .build();
+        popover.add_css_class("menu");
+        popover.set_parent(&inner.canvas);
+        popover.set_pointing_to(Some(&area));
+        let weak = Rc::downgrade(inner);
+        let shown = popover.downgrade();
+        list.connect_row_activated(move |_, row| {
+            let (Some(inner), Ok(index)) = (weak.upgrade(), usize::try_from(row.index())) else {
+                return;
+            };
+            if let Some(popover) = shown.upgrade() {
+                popover.popdown();
+            }
+            Window(inner).annotate(|d| d.choose_option(field, index));
+        });
+        let weak = Rc::downgrade(inner);
+        popover.connect_closed(move |popover| {
+            if let Some(inner) = weak.upgrade() {
+                inner.choices.take();
+                inner.canvas.grab_focus();
+            }
+            // Later: the popover is still closing, and is taken off the page view once it has.
+            let popover = popover.clone();
+            glib::idle_add_local_once(move || popover.unparent());
+        });
+        inner.choices.replace(Some((popover.clone(), labels)));
+        popover.popup();
+        // The keyboard on what is chosen, or on the first: the arrow keys go from there.
+        if let Some(row) = list.row_at_index(chosen.unwrap_or(0) as i32) {
+            list.select_row(Some(&row));
+            row.grab_focus();
+        }
     }
 
     /// Puts a text field over the page where a text box is (or is to be), or a text field of the
@@ -794,17 +900,33 @@ impl Window {
         inner.page_overlay.add_overlay(&view);
         let keys = gtk::EventControllerKey::new();
         let weak = Rc::downgrade(inner);
-        keys.connect_key_pressed(move |_, key, _, _| {
+        keys.connect_key_pressed(move |_, key, _, state| {
             // Enter ends a field of one line, as Escape does.
             let enter = matches!(
                 key,
                 gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter
             );
-            if key != gdk::Key::Escape && !(one_line && enter) {
+            // Tab leaves a field of the form for the next one, and Shift+Tab for the one before.
+            let tab = match key {
+                _ if !target.is_field() => None,
+                gdk::Key::ISO_Left_Tab => Some(FieldKey::Previous),
+                gdk::Key::Tab | gdk::Key::KP_Tab
+                    if state.contains(gdk::ModifierType::SHIFT_MASK) =>
+                {
+                    Some(FieldKey::Previous)
+                }
+                gdk::Key::Tab | gdk::Key::KP_Tab => Some(FieldKey::Next),
+                _ => None,
+            };
+            if key != gdk::Key::Escape && !(one_line && enter) && tab.is_none() {
                 return glib::Propagation::Proceed;
             }
             if let Some(inner) = weak.upgrade() {
-                Window(inner).finish_typing();
+                let window = Window(inner);
+                window.finish_typing();
+                if let Some(tab) = tab {
+                    window.field_key(tab);
+                }
             }
             glib::Propagation::Stop
         });
@@ -813,10 +935,17 @@ impl Window {
         // on its way.)
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(inner);
+        let left = view.downgrade();
         focus.connect_leave(move |_| {
-            let weak = weak.clone();
+            let (weak, left) = (weak.clone(), left.clone());
             glib::idle_add_local_once(move || {
                 let Some(inner) = weak.upgrade() else { return };
+                // Only if this field is still the one typed into: Tab has moved on to another by
+                // now, which must not end with this one.
+                let current = inner.typing.borrow().as_ref().map(|t| t.view.clone());
+                if current.is_none() || current != left.upgrade() {
+                    return;
+                }
                 // Not for the controls that set the text's size and font: those act on what is
                 // being typed.
                 let on_controls = gtk::prelude::GtkWindowExt::focus(&inner.window)

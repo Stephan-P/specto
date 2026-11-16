@@ -406,6 +406,19 @@ impl Window {
                 })
                 .collect();
             json.raw("fields", &format!("[{}]", fields.join(", ")));
+            // The name of the field that has the keyboard.
+            let focus = d.field_focus();
+            let fields = d.form_fields();
+            let name = fields
+                .iter()
+                .find(|f| Some(f.id) == focus)
+                .map(|f| f.name.as_str());
+            json.str("field_focus", name.unwrap_or_default());
+            // What the list of a choice field offers, while it shows.
+            let choices: Vec<String> = (inner.choices.borrow().iter())
+                .flat_map(|(_, labels)| labels.iter().map(|l| debug::quote(l)))
+                .collect();
+            json.raw("choices", &format!("[{}]", choices.join(", ")));
         }
         // The annotations of the current page (the file's and new ones), and whether one is picked.
         if let Some(doc) = inner.document.borrow().clone() {

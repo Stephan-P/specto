@@ -12,7 +12,7 @@ use specto_render::{OpenError, PdfData};
 use specto_session::{DraftKind, FieldClick, TextBoxPlace};
 use specto_view::{LayoutMode, Viewer, ZoomMode};
 
-use crate::canvas::Canvas;
+use crate::canvas::{Canvas, FieldKey};
 use crate::debug;
 use crate::document::{Document, Indexed, MAIN, PageBundle, SaveJob, SharedDocument};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
@@ -88,6 +88,8 @@ pub struct Inner {
     typing: RefCell<Option<Typing>>,
     /// The editor for an annotation's text, while it is open.
     text_editor: RefCell<Option<gtk::Popover>>,
+    /// The list to choose from for a choice field of the form, while it shows, and what it lists.
+    choices: RefCell<Option<(gtk::Popover, Vec<String>)>>,
     /// The color of each tool of the markup bar (in the order of `TOOLS`), by name (see
     /// `markup_colors`).
     tool_colors: Cell<[&'static str; TOOLS.len()]>,
@@ -434,6 +436,7 @@ impl Window {
             placing: RefCell::default(),
             typing: RefCell::default(),
             text_editor: RefCell::default(),
+            choices: RefCell::default(),
             tool_colors: Cell::new([
                 "yellow", "red", "red", "red", "red", "red", "red", "black", "yellow",
             ]),
@@ -582,6 +585,12 @@ impl Window {
         this.0.canvas.connect_fill(move |x, y| {
             if let Some(inner) = weak.upgrade() {
                 Window(inner).fill_at(x, y);
+            }
+        });
+        let weak = Rc::downgrade(&this.0);
+        this.0.canvas.connect_field_key(move |key| {
+            if let Some(inner) = weak.upgrade() {
+                Window(inner).field_key(key);
             }
         });
         let weak = Rc::downgrade(&this.0);

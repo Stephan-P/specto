@@ -150,8 +150,8 @@ finds the same object there before touching it.
 The forms crate reads the form of a file (AcroForm only): each field with its
 kind, value and flags, and its widgets with their page and rectangle.
 Attributes a field inherits from its parents are resolved while reading. Text
-fields, checkboxes and radio buttons can be filled in. Other kinds are read and
-shown as the file draws them.
+fields, checkboxes, radio buttons, and menus and lists with one choice can be
+filled in. Other kinds are read and shown as the file draws them.
 
 Like annotations, the edit document holds only what differs from the file: a
 value per field that was filled in, kept per undo step. A field set back to
@@ -163,10 +163,16 @@ with the page. So a page with a filled-in field is rendered from a page variant
 too, with the values written into it exactly as saving would. For a checkbox or
 a radio button that selects one of the looks the file has. For a text field the
 write crate makes a new look from the field's font, size, color and alignment.
+A menu gets the same with the chosen option, and a list shows its options with
+the chosen one marked.
 
 A text field is typed into through a text input of the toolkit, placed over the
 widget. Meanwhile the variant shows the field empty. The session says where the
 input goes and in which font and size, and takes the text when typing ends.
+
+The session also keeps which field has the keyboard, and the order Tab goes
+through the fields in: by page, and on a page as its annotation array lists
+them. The frontend passes the keys on and draws a frame around the field.
 
 ## Rendering pipeline
 
@@ -397,8 +403,8 @@ The Android app is written in Kotlin with Jetpack Compose.
 
 None of this exists yet. The tasks are in [TASKS.md](TASKS.md).
 
-- **More of forms.** Combo and list boxes, comb fields, a fallback font for
-  text outside Latin, tab order, and forms on Android.
+- **More of forms.** Lists with several choices, comb fields, a fallback font
+  for text outside Latin, and forms on Android.
 - **Incremental save.** When only annotations or form values changed, append to
   the original file instead of rewriting it. This is faster and keeps existing
   digital signatures valid.

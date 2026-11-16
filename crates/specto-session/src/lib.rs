@@ -144,6 +144,8 @@ pub struct Session {
     form: Option<Arc<[specto_forms::Field]>>,
     /// The text field of the form that is being typed into, if any: shown empty meanwhile.
     typing_field: Option<specto_doc::FieldId>,
+    /// The field the keyboard is on, and which of its widgets: see `forms`.
+    field_focus: Option<(specto_doc::FieldId, usize)>,
     /// The text box that is being typed into, if any: the position of its page, and which it
     /// is. What is typed goes to this one, whatever is picked by then.
     typing_into: Option<(usize, AnnotId)>,
@@ -186,6 +188,7 @@ impl Session {
             held: None,
             form: None,
             typing_field: None,
+            field_focus: None,
             typing_into: None,
             picked: None,
             indexer: None,
