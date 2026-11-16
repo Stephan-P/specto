@@ -49,31 +49,44 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.variant.runner }}
-    # Flathub's image with flatpak-builder and the GNOME SDK the manifest
-    # names. Privileged, because the build runs in a sandbox of its own.
+    # Not Flathub's image with the SDK in it: flatpak-builder updates the SDK
+    # first, which fails for one that is part of the image ("Invalid
+    # cross-device link"). So the SDK is fetched anew each time, into a
+    # directory outside the image. Privileged, because the build runs in a
+    # sandbox of its own.
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      image: fedora:44
       options: --privileged
+    env:
+      BUNDLE: specto-${{ needs.version.outputs.version }}-${{ matrix.variant.arch }}.flatpak
     steps:
+      - name: Install system dependencies
+        run: |
+          dnf install -y git flatpak flatpak-builder python3
       - uses: actions/checkout@v4
       - name: List the crates
         # The build has no network: flatpak-builder downloads the crates of
         # Cargo.lock beforehand, from this list.
+        run: python3 packaging/flatpak/cargo-sources.py Cargo.lock packaging/flatpak/cargo-sources.json
+      - name: Build
+        # Under target, which the manifest leaves out of the sources it copies
+        # from this directory. No FUSE in the container.
         run: |
-          command -v python3 > /dev/null || dnf install -y python3
-          python3 packaging/flatpak/cargo-sources.py Cargo.lock packaging/flatpak/cargo-sources.json
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak-builder --user --install-deps-from=flathub --force-clean \
+            --disable-rofiles-fuse --default-branch=stable \
+            --repo=target/flatpak/repo --state-dir=target/flatpak/state \
+            target/flatpak/build packaging/flatpak/net.xfbs.specto.yml
+      - name: Bundle
+        # One file to install, which says where the runtime comes from.
+        run: |
+          flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            target/flatpak/repo "$BUNDLE" net.xfbs.specto stable
+      - uses: actions/upload-artifact@v4
         with:
-          manifest-path: packaging/flatpak/net.xfbs.specto.yml
-          arch: ${{ matrix.variant.arch }}
-          branch: stable
-          bundle: specto-${{ needs.version.outputs.version }}-${{ matrix.variant.arch }}.flatpak
-          artifact-name: specto-flatpak-${{ matrix.variant.arch }}
-          # Under target, which the manifest leaves out of the sources it
-          # copies from this directory.
-          build-dir: target/flatpak/build
-          repo-dir: target/flatpak/repo
-          state-dir: target/flatpak/state
+          name: specto-flatpak-${{ matrix.variant.arch }}
+          path: ${{ env.BUNDLE }}
+          if-no-files-found: error
 
   android:
     needs: version
