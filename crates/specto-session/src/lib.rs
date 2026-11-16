@@ -175,7 +175,7 @@ impl Session {
         let sources = vec![source];
         let variants = HashMap::new();
         let pages = view_pages(&edit, &sources, &variants);
-        Ok(Self {
+        let mut session = Self {
             sources,
             labels,
             edit,
@@ -193,7 +193,12 @@ impl Session {
             picked: None,
             indexer: None,
             search: None,
-        })
+        };
+        // Fields whose values the file leaves to the reader to show get their looks now.
+        if session.form_fields().iter().any(|f| f.unshown) {
+            session.sync_variants(scheduler);
+        }
+        Ok(session)
     }
 
     /// Opens another file to insert pages from.

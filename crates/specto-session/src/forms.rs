@@ -403,21 +403,25 @@ impl Session {
     }
 
     /// What the form's fields with a widget on page `page` of `source` hold other than in the
-    /// file: what a copy of the page must be written with. A field being typed into counts as
-    /// empty.
+    /// file, or hold in the file without showing it: what a copy of the page must be written
+    /// with. A field being typed into counts as empty.
     pub(crate) fn page_form(&mut self, (source, page): FilePage) -> Vec<(FieldId, FieldValue)> {
         if source != MAIN {
             return Vec::new();
         }
+        let fields = self.form_fields();
         let mut values = self.edit.form_values();
+        for field in fields.iter().filter(|f| f.unshown) {
+            if let Some(value) = &field.value
+                && values.iter().all(|(id, _)| *id != field.id)
+            {
+                values.push((field.id, value.clone()));
+            }
+        }
         if let Some(typing) = self.typing_field {
             values.retain(|(id, _)| *id != typing);
             values.push((typing, FieldValue::Text(String::new())));
         }
-        if values.is_empty() {
-            return values;
-        }
-        let fields = self.form_fields();
         values.retain(|(id, _)| {
             fields
                 .iter()
@@ -428,17 +432,15 @@ impl Session {
         values
     }
 
-    /// The pages of the main file that show a field holding something other than in the file.
+    /// The pages of the main file that show a field holding something other than in the file, or
+    /// one whose value the file doesn't show.
     pub(crate) fn pages_with_filled_fields(&mut self) -> Vec<FilePage> {
         let mut ids: Vec<FieldId> = self.edit.form_values().iter().map(|(id, _)| *id).collect();
         ids.extend(self.typing_field);
-        if ids.is_empty() {
-            return Vec::new();
-        }
         let fields = self.form_fields();
         let mut pages: Vec<FilePage> = fields
             .iter()
-            .filter(|f| ids.contains(&f.id))
+            .filter(|f| f.unshown || ids.contains(&f.id))
             .flat_map(|f| f.widgets.iter().map(|w| (MAIN, w.page as u32)))
             .collect();
         pages.sort_unstable();

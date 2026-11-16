@@ -134,6 +134,9 @@ pub struct Field {
     pub required: bool,
     /// What it holds in the file. `None` for kinds without a value here.
     pub value: Option<FieldValue>,
+    /// The file has text for it that its widgets don't show: the form leaves that to the reader,
+    /// and a widget's look in the file has no text. Its looks are to be made from `value`.
+    pub unshown: bool,
     pub look: TextLook,
     pub widgets: Vec<Widget>,
 }

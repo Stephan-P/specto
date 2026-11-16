@@ -449,6 +449,9 @@ or application form.
 - Click a menu and a list of a form: what they offer shows at the field, long
   lists scroll, and what is chosen shows in the field afterwards. In a list
   the chosen row is marked and in view.
+- Open `corpus/files/pdfjs/test/pdfs/bug1883609.pdf`: the gender menu shows
+  "Man" and the color menu "Red" right away. Choose another and then the first
+  again: it shows again.
 - A password field shows dots while typing and asterisks afterwards.
 - A comb field (boxes for single letters, as for a date or a postal code): after
   Enter each letter stands in the middle of its box.

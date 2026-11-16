@@ -220,6 +220,8 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - A click on a menu or a list of the form shows what it offers, with what it
   holds marked. A click on a row chooses it, and so do the arrow keys and
   Enter. Escape leaves the field as it is
+- A field whose text the file holds but leaves to the reader to draw shows
+  that text
 - The pointer shows what can be filled in: an I-beam over text fields, a hand
   over boxes, buttons, menus and lists. Read-only fields are left alone
 - The field clicked last has the keyboard, shown by a frame. Tab moves to the

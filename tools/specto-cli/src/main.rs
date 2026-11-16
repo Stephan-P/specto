@@ -189,12 +189,13 @@ fn info(
                 .map(|w| format!("p{}", w.page + 1))
                 .collect();
             println!(
-                "field {:?} {:?}{}{} = {:?} on {}",
+                "field {:?} {:?}{}{} = {:?}{} on {}",
                 f.name,
                 f.kind,
                 if f.read_only { " read-only" } else { "" },
                 if f.required { " required" } else { "" },
                 f.value,
+                if f.unshown { " not shown" } else { "" },
                 places.join(" "),
             );
         }

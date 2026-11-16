@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use specto_annot::Color;
 use specto_geom::{PdfBox, PdfPoint};
 use specto_source::hayro_syntax::object::{
-    Array, Dict, MaybeRef, Name, Object, ObjectIdentifier, String as PdfString,
+    Array, Dict, MaybeRef, Name, Object, ObjectIdentifier, Stream, String as PdfString,
 };
 use specto_source::{SourceDocument, decode_text};
 
@@ -38,6 +38,8 @@ struct Inherited {
     flags: Option<u32>,
     look: Option<String>,
     alignment: Option<u8>,
+    /// The form leaves showing what its fields hold to the reader (`/NeedAppearances`).
+    unshown: bool,
 }
 
 /// The fields of `source`'s form, in the order of the file's field tree. Empty if it has no form.
@@ -55,6 +57,7 @@ pub fn fields(source: &SourceDocument) -> Vec<Field> {
     let top = Inherited {
         look: text(&form, b"DA"),
         alignment: form.get::<u32>(b"Q").map(|q| q.min(2) as u8),
+        unshown: form.get::<bool>(b"NeedAppearances").unwrap_or(false),
         ..Default::default()
     };
     let mut out = Vec::new();
@@ -140,6 +143,7 @@ fn walk(
             .get::<u32>(b"Q")
             .map(|q| q.min(2) as u8)
             .or(above.alignment),
+        unshown: above.unshown,
     };
     let kids = node
         .get::<Array<'_>>(b"Kids")
@@ -183,7 +187,8 @@ fn walk(
         .filter_map(|(k, kid_id)| widget(k, *kid_id, pages))
         .collect();
     // Without kids, the field is its own widget.
-    if widgets.is_empty() && (is_widget(node) || node.contains_key(b"Rect")) {
+    let own = widgets.is_empty() && (is_widget(node) || node.contains_key(b"Rect"));
+    if own {
         widgets.extend(widget(node, id, pages));
     }
     // What it holds: the name of the state that is on, for buttons, and text for text fields.
@@ -201,6 +206,13 @@ fn walk(
         } => Some(FieldValue::Text(text(node, b"V").unwrap_or_default())),
         _ => None,
     };
+    let unshown = here.unshown
+        && matches!(&value, Some(FieldValue::Text(t)) if !t.is_empty())
+        && if own {
+            !shows_text(node)
+        } else {
+            widget_kids.iter().any(|(k, _)| !shows_text(k))
+        };
     out.push(Field {
         id,
         name: here.name.clone(),
@@ -209,6 +221,7 @@ fn walk(
         read_only: flags & READ_ONLY != 0,
         required: flags & REQUIRED != 0,
         value,
+        unshown,
         look: text_look(here.look.as_deref(), here.alignment),
         widgets,
     });
@@ -247,6 +260,22 @@ fn options(node: &Dict<'_>) -> Vec<ChoiceOption> {
 }
 
 /// The widget in `dict`, if it has an area and is on a page.
+/// Whether the look a widget has in the file (`/AP /N`) has text in it.
+fn shows_text(widget: &Dict<'_>) -> bool {
+    let Some(content) = widget
+        .get::<Dict<'_>>(b"AP")
+        .and_then(|ap| ap.get::<Stream<'_>>(b"N"))
+        .and_then(|look| look.decoded().ok())
+    else {
+        return false;
+    };
+    // An operator that shows text: `Tj`, `TJ`, `'` or `"`, after a string or an array.
+    content.windows(3).any(|w| {
+        matches!(w[0], b')' | b'>' | b']' | b' ' | b'\n' | b'\r')
+            && (matches!(&w[1..], b"Tj" | b"TJ") || matches!(w[1], b'\'' | b'"'))
+    })
+}
+
 fn widget(
     dict: &Dict<'_>,
     id: FieldId,

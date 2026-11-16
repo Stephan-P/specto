@@ -164,15 +164,15 @@ msgstr ""
 msgid "Show Sidebar"
 msgstr ""
 
-#: src/main.rs:250 src/window.rs:732
+#: src/main.rs:250 src/window.rs:729
 msgid "Thumbnails"
 msgstr ""
 
-#: src/main.rs:251 src/window.rs:757
+#: src/main.rs:251 src/window.rs:754
 msgid "Contents"
 msgstr ""
 
-#: src/main.rs:252 src/window.rs:773 src/window/markup.rs:200
+#: src/main.rs:252 src/window.rs:770 src/window/markup.rs:200
 msgid "Markup"
 msgstr ""
 
@@ -432,19 +432,19 @@ msgstr ""
 msgid "Search ({shortcut})"
 msgstr ""
 
-#: src/window.rs:876
+#: src/window.rs:873
 #, rust-format
 msgid "Links of this kind aren't opened: {address}"
 msgstr ""
 
-#: src/window.rs:885
+#: src/window.rs:882
 #, rust-format
 msgid "Couldn't open link: {error}"
 msgstr ""
 
 #. Translators: a keyboard shortcut as tooltips show it, the
 #. Control key with another.
-#: src/window.rs:936
+#: src/window.rs:933
 #, rust-format
 msgid "Ctrl+{key}"
 msgstr ""
@@ -680,28 +680,28 @@ msgstr ""
 msgid "Black"
 msgstr ""
 
-#: src/window/markup.rs:504
+#: src/window/markup.rs:531
 msgid "Select the text to mark first"
 msgstr ""
 
-#: src/window/markup.rs:550
+#: src/window/markup.rs:577
 msgid "Place this signature: click where it goes"
 msgstr ""
 
-#: src/window/markup.rs:562
+#: src/window/markup.rs:589
 msgid "Delete this signature"
 msgstr ""
 
-#: src/window/markup.rs:578
+#: src/window/markup.rs:605
 msgid "New Signature…"
 msgstr ""
 
-#: src/window/markup.rs:607
+#: src/window/markup.rs:634
 msgid "Click where the signature goes"
 msgstr ""
 
-#: src/window/markup.rs:1097 src/window/markup.rs:1124
-#: src/window/markup.rs:1217 src/window/markup.rs:1270
+#: src/window/markup.rs:1264 src/window/markup.rs:1291
+#: src/window/markup.rs:1384 src/window/markup.rs:1437
 #, rust-format
 msgid "Couldn't change the annotation: {error}"
 msgstr ""

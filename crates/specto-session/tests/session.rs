@@ -1497,18 +1497,16 @@ fn filling_in_a_form() {
     session.close(&scheduler);
 }
 
-#[test]
-fn choosing_in_a_form() {
-    use specto_doc::FieldValue;
-    use specto_session::{FieldClick, FieldHover};
-
-    // A page of 200 by 300 with a menu "country" at x 20 to 180, y 240 to 260.
+/// A page of 200 by 300 with a menu "country" at x 20 to 180, y 240 to 260, which holds "de"
+/// without a look for it. `form` goes into the form's dictionary.
+fn menu(form: &str) -> Vec<u8> {
     let objects = vec![
         (
             1,
-            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] \
-             /DA (/Helv 0 Tf 0 g) >> >>"
-                .to_owned(),
+            format!(
+                "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R] \
+             /DA (/Helv 0 Tf 0 g) {form} >> >>"
+            ),
         ),
         (
             2,
@@ -1527,8 +1525,16 @@ fn choosing_in_a_form() {
                 .to_owned(),
         ),
     ];
+    assemble(objects)
+}
+
+#[test]
+fn choosing_in_a_form() {
+    use specto_doc::FieldValue;
+    use specto_session::{FieldClick, FieldHover};
+
     let scheduler = Scheduler::new(1, || {});
-    let mut session = open(&scheduler, assemble(objects));
+    let mut session = open(&scheduler, menu(""));
     let file = session.viewer.pages()[0].doc;
     let country = session.form_fields()[0].id;
     let on_menu = session
@@ -1588,5 +1594,37 @@ fn choosing_in_a_form() {
         Some(FieldValue::Text("fr".to_owned()))
     );
     saved.close(&scheduler);
+    session.close(&scheduler);
+}
+
+#[test]
+fn a_form_that_leaves_looks_to_the_reader() {
+    use specto_doc::FieldValue;
+
+    let scheduler = Scheduler::new(1, || {});
+    let mut plain = open(&scheduler, menu(""));
+    assert!(!plain.form_fields()[0].unshown);
+    plain.close(&scheduler);
+
+    // What the menu holds has no look in the file, so the page is shown from a copy with one.
+    let mut session = open(&scheduler, menu("/NeedAppearances true"));
+    let country = session.form_fields()[0].id;
+    assert!(session.form_fields()[0].unshown);
+    let shown = session.viewer.pages()[0].doc;
+    assert!(!session.edit().is_modified());
+
+    // Choosing something else and then what the file has again makes a new copy each time: the
+    // page never goes back to the file's own, which is what a form with looks does.
+    assert!(!session.choose_option(&scheduler, country, 0));
+    assert!(session.choose_option(&scheduler, country, 1));
+    let other = session.viewer.pages()[0].doc;
+    assert_ne!(other, shown);
+    assert!(session.choose_option(&scheduler, country, 0));
+    assert_eq!(
+        session.field_value(country),
+        Some(FieldValue::Text("de".to_owned()))
+    );
+    let again = session.viewer.pages()[0].doc;
+    assert!(again != shown && again != other);
     session.close(&scheduler);
 }

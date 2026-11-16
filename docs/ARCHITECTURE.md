@@ -168,6 +168,11 @@ the chosen one marked. A comb field gets each letter in the middle of its cell.
 A widget that says it is turned, as on a landscape page, gets its look turned
 the same way.
 
+Some files hold text for a field without a look that shows it, and ask the
+reader to make one (`/NeedAppearances`). The forms crate marks such a field,
+and the session shows its pages from a variant from the start, with the looks
+made from the values of the file.
+
 A text field is typed into through a text input of the toolkit, placed over the
 widget. Meanwhile the variant shows the field empty. The session says where the
 input goes and in which font and size, and takes the text when typing ends.
