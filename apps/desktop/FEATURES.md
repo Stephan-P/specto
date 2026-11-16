@@ -213,29 +213,37 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   and color. Enter, Escape or a click elsewhere ends typing and keeps the text.
   In a field of several lines, Enter starts a new line
 - A password field hides what is typed into it, and shows asterisks afterwards
-- A comb field, which has a cell for each letter, puts each letter in the
-  middle of its cell once typing ends
+- A comb field, which has a cell for each letter, has each letter in the
+  middle of its cell, while typing too, and takes no more letters than cells
 - On a page that is shown turned, a click on a text field asks for its text
   in a small editor beside the field
 - A click on a menu or a list of the form shows what it offers, with what it
   holds marked. A click on a row chooses it, and so do the arrow keys and
   Enter. Escape leaves the field as it is
+- A menu that takes a choice of one's own has a line to type it above its
+  options. Enter or a click elsewhere keeps what was typed
+- A list that takes several choices has a tick for each row. Space or a click
+  ticks a row, and what is ticked is chosen when the list closes
 - A field whose text the file holds but leaves to the reader to draw shows
   that text
 - The pointer shows what can be filled in: an I-beam over text fields, a hand
   over boxes, buttons, menus and lists. Read-only fields are left alone
 - The field clicked last has the keyboard, shown by a frame. Tab moves to the
-  next field and Shift+Tab to the one before, in the order of the form, round
-  from the last to the first, and the view follows. Space or Enter ticks a
+  next field and Shift+Tab to the one before, in the order of the form (by
+  rows or columns where a page asks for that), round from the last to the
+  first, and the view follows. Space or Enter ticks a
   box, chooses a button, shows what a menu offers, or starts typing. Escape,
   or a click elsewhere, lets go of the form
+- Highlight Form Fields (the main menu) tints every field that can be filled
+  in
+- Reset Form (the main menu) sets every field back to what the form has for
+  it at first, which is empty for most, as one step to undo
 - Filling in is undone and redone like other edits, and counts as a change to
   save
 - Saved as standard form values with a new look for each field, which other
   programs show and can go on filling in
 - Thumbnails and prints show what was filled in
-- Not yet: lists that take several choices, typing a choice of one's own into
-  a menu that allows it, text outside Latin, the forms of inserted files
+- Not yet: text outside Latin, the forms of inserted files
 
 ## Saving
 

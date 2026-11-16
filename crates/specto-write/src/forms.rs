@@ -52,10 +52,54 @@ pub(crate) fn apply(
                 let name = chosen.unwrap_or_else(|| b"Off".to_vec());
                 set(doc, field, "V", Object::Name(name));
             }
+            FieldValue::Several(values) => {
+                let Some(choice) = Choice::of(doc, field, values) else {
+                    continue;
+                };
+                // One is a text, more are an array of them, and none is no value.
+                let held = match values.as_slice() {
+                    [] => None,
+                    [one] => Some(text_string(one)),
+                    all => Some(Object::Array(all.iter().map(|v| text_string(v)).collect())),
+                };
+                let numbers = choice.chosen.iter().map(|&i| Object::Integer(i as i64));
+                let numbers = Object::Array(numbers.collect());
+                if let Ok(dict) = doc.get_dictionary_mut(field) {
+                    match held {
+                        Some(held) => dict.set("V", held),
+                        None => {
+                            dict.remove(b"V");
+                        }
+                    }
+                    dict.set("I", numbers);
+                }
+                let mut look = TextLook::of(doc, field);
+                look.multiline = false;
+                look.password = false;
+                let shown: Vec<&str> = (choice.chosen.iter())
+                    .map(|&i| choice.labels[i].as_str())
+                    .collect();
+                let shown = shown.join(", ");
+                let body = if choice.list {
+                    Body::List {
+                        labels: &choice.labels,
+                        chosen: &choice.chosen,
+                    }
+                } else {
+                    Body::Text(&shown)
+                };
+                for &w in &widgets {
+                    let Some(stream) = text_appearance(doc, w, &body, &look) else {
+                        continue;
+                    };
+                    let id = doc.add_object(stream);
+                    set(doc, w, "AP", dictionary! { "N" => id }.into());
+                }
+            }
             FieldValue::Text(text) => {
                 set(doc, field, "V", text_string(text));
                 let mut look = TextLook::of(doc, field);
-                let choice = Choice::of(doc, field, text);
+                let choice = Choice::of(doc, field, std::slice::from_ref(text));
                 if choice.is_some() {
                     // The numbers of what is chosen, which no longer hold. Readers go by `/V`.
                     if let Ok(dict) = doc.get_dictionary_mut(field) {
@@ -69,13 +113,12 @@ pub(crate) fn apply(
                         list: true,
                         labels,
                         chosen,
-                    }) => Body::List {
-                        labels,
-                        chosen: *chosen,
-                    },
-                    Some(Choice { labels, chosen, .. }) => {
-                        Body::Text(chosen.map_or(text.as_str(), |i| labels[i].as_str()))
-                    }
+                    }) => Body::List { labels, chosen },
+                    Some(Choice { labels, chosen, .. }) => Body::Text(
+                        chosen
+                            .first()
+                            .map_or(text.as_str(), |&i| labels[i].as_str()),
+                    ),
                     None => Body::Text(text),
                 };
                 for &w in &widgets {
@@ -304,13 +347,13 @@ struct Choice {
     list: bool,
     /// What the user sees for each option.
     labels: Vec<String>,
-    /// Which option is chosen, if the value is one of them.
-    chosen: Option<usize>,
+    /// Which options are chosen: those the values name, in the order of the list.
+    chosen: Vec<usize>,
 }
 
 impl Choice {
-    /// The choice field `field` holding `value`, or `None` if it is a field of another kind.
-    fn of(doc: &Document, field: ObjectId, value: &str) -> Option<Self> {
+    /// The choice field `field` holding `values`, or `None` if it is a field of another kind.
+    fn of(doc: &Document, field: ObjectId, values: &[String]) -> Option<Self> {
         let kind = inherited(doc, field, b"FT")?;
         if kind.as_name().ok()? != b"Ch" {
             return None;
@@ -340,7 +383,9 @@ impl Choice {
             .unwrap_or_default();
         Some(Self {
             list: flags & (1 << 17) == 0,
-            chosen: options.iter().position(|(v, _)| v == value),
+            chosen: (0..options.len())
+                .filter(|&i| values.contains(&options[i].0))
+                .collect(),
             labels: options.into_iter().map(|(_, label)| label).collect(),
         })
     }
@@ -350,10 +395,10 @@ impl Choice {
 enum Body<'a> {
     /// Text, as a text field or a menu has it.
     Text(&'a str),
-    /// The options of a list, with the chosen one marked.
+    /// The options of a list, with the chosen ones marked.
     List {
         labels: &'a [String],
-        chosen: Option<usize>,
+        chosen: &'a [usize],
     },
 }
 
@@ -455,18 +500,20 @@ fn text_appearance(
             }
         }
         Body::List { labels, chosen } => {
-            // As many rows as fit, from the top, or from further down so that the chosen one
-            // shows.
+            // As many rows as fit, from the top, or from further down so that the first chosen
+            // one shows.
             let rows = (((h - 2.0 * pad) / leading).floor() as usize).max(1);
-            let from = chosen.map_or(0, |c| (c + 1).saturating_sub(rows));
-            if let Some(row) = chosen.map(|c| c - from) {
-                marked = format!(
-                    "0.6 0.75 0.85 rg\n{} {} {} {} re\nf\n",
-                    n(pad),
-                    n(h - pad - (row + 1) as f64 * leading),
-                    n(inside),
-                    n(leading),
-                );
+            let from = chosen.first().map_or(0, |c| (c + 1).saturating_sub(rows));
+            for row in chosen.iter().filter_map(|c| c.checked_sub(from)) {
+                if row < rows {
+                    marked.push_str(&format!(
+                        "0.6 0.75 0.85 rg\n{} {} {} {} re\nf\n",
+                        n(pad),
+                        n(h - pad - (row + 1) as f64 * leading),
+                        n(inside),
+                        n(leading),
+                    ));
+                }
             }
             let lines = labels.iter().skip(from).take(rows).cloned().collect();
             let above = (leading - ascent - descent) / 2.0;

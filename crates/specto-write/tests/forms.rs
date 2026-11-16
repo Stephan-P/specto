@@ -272,6 +272,18 @@ fn the_fixture_is_read() {
             ..
         }
     ));
+    assert!(matches!(
+        field(&all, "code").kind,
+        FieldKind::Text {
+            comb: true,
+            max_length: Some(4),
+            ..
+        }
+    ));
+    assert!(matches!(
+        field(&all, "name").kind,
+        FieldKind::Text { comb: false, .. }
+    ));
     assert_eq!(field(&all, "notes").look.size, 10.0);
     assert_eq!(field(&all, "notes").look.alignment, 2);
     assert_eq!(
@@ -478,4 +490,47 @@ fn filled_in_values_are_saved_and_show() {
     assert_eq!(field(&now, "size").value, Some(FieldValue::Choice(None)));
     // A field that isn't in the file is passed over.
     fill(&original, &[(FieldId(9999, 0), FieldValue::Check(true))]);
+}
+
+#[test]
+fn several_choices_of_a_list_are_saved_and_show() {
+    // The list of colors, taking several: the first four of six show.
+    let mut doc = Document::load_mem(&fixture()).unwrap();
+    for object in doc.objects.values_mut() {
+        if let Ok(dict) = object.as_dict_mut()
+            && dict.get(b"T").and_then(Object::as_str).ok() == Some(b"color")
+        {
+            dict.set("Ff", 1 << 21);
+        }
+    }
+    let mut original = Vec::new();
+    doc.save_to(&mut original).unwrap();
+    let all = read(&original);
+    let color = field(&all, "color");
+    assert!(color.is_fillable());
+    assert_eq!(color.value, Some(FieldValue::Several(Vec::new())));
+
+    let several =
+        |values: &[&str]| FieldValue::Several(values.iter().map(|v| (*v).to_owned()).collect());
+    let chosen = fill(&original, &[(color.id, several(&["Green", "Cyan"]))]);
+    assert_eq!(
+        field(&read(&chosen), "color").value,
+        Some(several(&["Green", "Cyan"]))
+    );
+    // The second and the fourth row are marked.
+    let marked = |c: [u8; 3]| c[0].abs_diff(153) < 6 && c[1].abs_diff(191) < 6 && c[2] > 205;
+    let shown = page(&chosen);
+    let rows = [250, 237, 223, 209].map(|y| marked(pixel(&shown, 290, y)));
+    assert_eq!(rows, [false, true, false, true]);
+
+    // One is held as a text, and none as nothing.
+    let one = fill(&chosen, &[(color.id, several(&["Blue"]))]);
+    assert_eq!(field(&read(&one), "color").value, Some(several(&["Blue"])));
+    let shown = page(&one);
+    let rows = [250, 237, 223, 209].map(|y| marked(pixel(&shown, 290, y)));
+    assert_eq!(rows, [false, false, true, false]);
+    let none = fill(&one, &[(color.id, several(&[]))]);
+    assert_eq!(field(&read(&none), "color").value, Some(several(&[])));
+    let shown = page(&none);
+    assert_eq!(count(&shown, (102, 298), (202, 258), marked), 0);
 }

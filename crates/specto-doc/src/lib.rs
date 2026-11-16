@@ -71,6 +71,8 @@ pub enum Edit {
     },
     /// A field of the form was filled in, or what it held was changed.
     FillField,
+    /// The fields of the form were set back to what they hold at first.
+    ResetForm,
     AddAnnotation(AnnotType),
     RemoveAnnotation(AnnotType),
     ChangeAnnotation(AnnotType),
@@ -85,6 +87,7 @@ impl Edit {
                 | Self::RemoveAnnotation(_)
                 | Self::ChangeAnnotation(_)
                 | Self::FillField
+                | Self::ResetForm
         )
     }
 }
@@ -314,6 +317,30 @@ impl EditDoc {
             form.remove(&field);
         } else {
             form.insert(field, value);
+        }
+        true
+    }
+
+    /// Fills each of `fields` with its second value, as one edit. The third is what the file has
+    /// for the field (see [`fill_field`](Self::fill_field)). Returns whether that changed
+    /// anything.
+    pub fn reset_form(&mut self, fields: Vec<(FieldId, FieldValue, Option<FieldValue>)>) -> bool {
+        let changes =
+            |form: &BTreeMap<FieldId, FieldValue>,
+             (field, value, in_file): &(FieldId, FieldValue, Option<FieldValue>)| {
+                form.get(field).or(in_file.as_ref()) != Some(value)
+            };
+        if !fields.iter().any(|f| changes(&self.form, f)) {
+            return false;
+        }
+        self.record(Edit::ResetForm);
+        let form = Arc::make_mut(&mut self.form);
+        for (field, value, in_file) in fields {
+            if in_file.as_ref() == Some(&value) {
+                form.remove(&field);
+            } else {
+                form.insert(field, value);
+            }
         }
         true
     }

@@ -100,6 +100,15 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   turned page the text is asked for beside the field; undo and redo; text
   being typed is saved;
   saved, the values are in the file and shown
+- fill_form_comb: a comb field's letters stand in the middle of their cells
+  while typing, as they do afterwards, and it takes no more than it has
+  cells
+- fill_form_choices: a menu that takes text of one's own has a line to type
+  it, Enter keeps it and Escape drops it, the arrow keys go on to the
+  options, and a save keeps what is being typed; a list that takes several
+  has a tick for each row, and what is ticked is chosen when it closes;
+  Highlight Form Fields tints the fields, and Reset Form empties them in
+  one step; saved, the values are in the file
 - mark_text: Highlight and Underline mark the selected text (and say so
   when there is none) and are printed. A click picks an annotation, Delete deletes it and
   not the page, Escape lets go. Undo. Saved, they're in the file and shown.
@@ -1849,6 +1858,185 @@ def test_fill_form(ctx):
     inp.keys(Input.ENTER)
     s = w.wait("the name", lambda s: fields(s)["name"] == "ada lx")
     check(not typing(s) and s["undo"] == "FillField", s)
+
+
+def choices_pdf(path):
+    """One letter page with a form: a menu "city" (Berlin and Paris) that
+    takes text of one's own too, and a list "langs" (English, French and
+    Greek, held as "en", "fr" and "el") that takes several."""
+    write_pdf(path, [
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R 6 0 R]"
+        b" /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>",
+        b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >>"
+        b" /Annots [5 0 R 6 0 R] >>",
+        b"<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 393216 /T (city)"
+        b" /Opt [(Berlin) (Paris)] /Rect [100 600 300 624] /P 4 0 R /MK << /BC [0 0 0] >> >>",
+        b"<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 2097152 /T (langs) /V (fr)"
+        b" /Opt [[(en) (English)] [(fr) (French)] [(el) (Greek)]] /Rect [100 500 300 560]"
+        b" /P 4 0 R /MK << /BC [0 0 0] >> >>",
+    ])
+
+
+def test_fill_form_choices(ctx):
+    path = os.path.join(ctx.home, "choices.pdf")
+    choices_pdf(path)
+    app = ctx.app([path])
+    w = app.window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    at = lambda x, y: w.screen(0, x, y)
+    fields = lambda s: dict(map(tuple, s["fields"]))
+    shown = lambda s: s["choices"] == ["Berlin", "Paris"]
+    gone = lambda s: s["choices"] == [] and s["focus"] == "SpectoCanvas"
+    # Highlight Form Fields tints what can be filled in.
+    plain = pixel(w, "plain", *at(280, 612))
+    w.action("highlight-fields")
+    w.settled()
+    tinted = pixel(w, "tinted", *at(280, 612))
+    check(plain == (255, 255, 255) and tinted[2] > tinted[0] > 150, (plain, tinted))
+    w.action("highlight-fields")
+    w.settled()
+    check(pixel(w, "plain-again", *at(280, 612)) == plain, "the tint stays")
+    # A menu that takes text of one's own has a line to type it, and Enter
+    # keeps what was typed.
+    inp.click(*at(200, 612))
+    s = w.wait("the choices", lambda s: shown(s) and s.get("choice_typed") == "")
+    time.sleep(0.4)
+    inp.type("rome")
+    w.wait("typed", lambda s: s.get("choice_typed") == "rome")
+    inp.keys(Input.ENTER)
+    s = w.wait("the city", lambda s: fields(s)["city"] == "rome")
+    check(gone(s) and s["undo"] == "FillField", s)
+    # It shows what the field holds, to go on from. Escape drops what was
+    # typed.
+    inp.keys(Input.SPACE)
+    w.wait("the choices", lambda s: shown(s) and s.get("choice_typed") == "rome")
+    time.sleep(0.4)
+    inp.type("x")
+    w.wait("typed", lambda s: s.get("choice_typed") == "romex")
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the choices gone", gone)
+    check(fields(s)["city"] == "rome", s["fields"])
+    # From the line, the arrow keys go to the options.
+    inp.keys(Input.SPACE)
+    w.wait("the choices", shown)
+    time.sleep(0.4)
+    inp.keys(Input.DOWN)
+    inp.keys(Input.DOWN)
+    inp.keys(Input.ENTER)
+    w.wait("Paris chosen", lambda s: fields(s)["city"] == "Paris" and gone(s))
+    # A save keeps what is being typed.
+    inp.keys(Input.SPACE)
+    w.wait("the choices", lambda s: shown(s) and s.get("choice_typed") == "Paris")
+    time.sleep(0.4)
+    inp.type("s")
+    w.wait("typed", lambda s: s.get("choice_typed") == "Pariss")
+    w.action("save")
+    s = w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    check(fields(s)["city"] == "Pariss" and s["choices"] == [], s)
+    # A list that takes several has a tick for each row. Space ticks, and
+    # what is ticked is chosen when the list closes.
+    check(fields(s)["langs"] == "fr", s["fields"])
+    langs = lambda ticked: lambda s: (
+        s["choices"] == ["English", "French", "Greek"] and s.get("choices_ticked") == ticked
+    )
+    inp.click(*at(200, 530))
+    w.wait("the list", langs([1]))
+    time.sleep(0.4)
+    inp.keys(Input.DOWN)
+    inp.keys(Input.SPACE)
+    s = w.wait("Greek ticked", langs([1, 2]))
+    check(fields(s)["langs"] == "fr", s["fields"])
+    # A click elsewhere closes it: beside the page view, which doesn't see
+    # the pointer while the list shows.
+    inp.click(130, 900)
+    s = w.wait("French and Greek", lambda s: fields(s)["langs"] == "fr,el")
+    check(gone(s) and s["undo"] == "FillField", s)
+    # Escape leaves the field as it is.
+    inp.click(*at(200, 530))
+    w.wait("the list", langs([1, 2]))
+    time.sleep(0.4)
+    inp.keys(Input.SPACE)
+    w.wait("French unticked", langs([2]))
+    inp.keys(Input.ESCAPE)
+    s = w.wait("the list gone", gone)
+    check(fields(s)["langs"] == "fr,el", s["fields"])
+    # Reset Form empties every field in one step.
+    w.action("reset-form")
+    s = w.wait("the form reset", lambda s: fields(s) == {"city": "", "langs": ""})
+    check(s["undo"] == "ResetForm", s)
+    w.action("undo")
+    w.wait("as before", lambda s: fields(s) == {"city": "Pariss", "langs": "fr,el"})
+    w.action("save")
+    w.wait("the save", lambda s: not s["modified"] and not s["saving"])
+    app.quit()
+    w = ctx.app([path]).window()
+    w.settled()
+    check(fields(w.state()) == {"city": "Pariss", "langs": "fr,el"}, w.state()["fields"])
+
+
+def test_fill_form_comb(ctx):
+    # One letter page with a comb field "code" of four cells of 60 points.
+    path = os.path.join(ctx.home, "comb.pdf")
+    write_pdf(path, [
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R]"
+        b" /DA (/Helv 12 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>",
+        b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >>"
+        b" /Annots [5 0 R] >>",
+        b"<< /Type /Annot /Subtype /Widget /FT /Tx /Ff 16777216 /MaxLen 4 /T (code)"
+        b" /Rect [100 600 340 630] /P 4 0 R >>",
+    ])
+    w = ctx.app([path]).window()
+    w.settled()
+    w.maximize()
+    inp = ctx.input().attach(w)
+    fields = lambda s: dict(map(tuple, s["fields"]))
+
+    def letters(name):
+        """Where the ink of each of the first three cells is, sideways: its
+        middle, in points from the left of the cell."""
+        width, _, pixels = read_ppm(w.screenshot(name))
+        out = []
+        for cell in range(3):
+            (x0, y0), (x1, y1) = w.screen(0, 100 + 60 * cell, 628), w.screen(0, 160 + 60 * cell, 602)
+            columns = [
+                x for x in range(round(x0 * ctx.scale) + 2, round(x1 * ctx.scale) - 2)
+                if any(
+                    max(pixels[(y * width + x) * 3:(y * width + x) * 3 + 3]) < 110
+                    for y in range(round(y0 * ctx.scale), round(y1 * ctx.scale))
+                )
+            ]
+            check(columns, f"{name}: nothing in cell {cell}")
+            middle = (columns[0] + columns[-1]) / 2 - x0 * ctx.scale
+            out.append(middle / ((x1 - x0) * ctx.scale) * 60)
+        return out
+
+    # While typing, each letter stands in the middle of its cell, as it
+    # does afterwards, and no more letters are taken than there are cells.
+    inp.click(*w.screen(0, 220, 615))
+    w.wait("typing", lambda s: s["text_editor"] and s["typing"][3] > 1)
+    time.sleep(0.4)
+    inp.type("wi1xy")
+    w.wait("typed", lambda s: s.get("typing_text") == "wi1x")
+    inp.keys(Input.BACKSPACE)
+    w.wait("typed", lambda s: s.get("typing_text") == "wi1")
+    inp.park()
+    w.settled()
+    typed = letters("typing")
+    inp.keys(Input.ENTER)
+    w.wait("the code", lambda s: fields(s)["code"] == "wi1" and not s["text_editor"])
+    w.settled()
+    saved = letters("typed")
+    for cell, (a, b) in enumerate(zip(typed, saved)):
+        check(abs(b - 30) < 1.5, f"cell {cell}: saved at {b}")
+        # Not the last letter typed: the cursor stands beside it.
+        if cell < 2:
+            check(abs(a - b) < 1.5, f"cell {cell}: typed at {a}, saved at {b}")
 
 
 def test_select_words_and_lines(ctx):

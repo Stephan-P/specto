@@ -29,22 +29,35 @@ pub enum FieldClick {
     /// The keyboard is on a box or a button now, and nothing else changed.
     Focused,
     /// A choice field, to choose from: what it offers, which of that it holds, and its corners
-    /// on screen. Follow with [`choose_option`](Session::choose_option).
+    /// on screen. Follow with [`choose_option`](Session::choose_option). One that also takes
+    /// text of one's own says what it holds in `typed`, to follow with
+    /// [`set_field_text`](Session::set_field_text).
     Choose {
         field: FieldId,
         labels: Vec<String>,
         chosen: Option<usize>,
+        typed: Option<String>,
+        corners: [ViewPoint; 4],
+    },
+    /// A list that takes several choices: what it offers, which of that it holds, and its
+    /// corners on screen. Follow with [`choose_options`](Session::choose_options).
+    ChooseSeveral {
+        field: FieldId,
+        labels: Vec<String>,
+        chosen: Vec<usize>,
         corners: [ViewPoint; 4],
     },
     /// A text field, to be typed into: where it is on screen, how high (in points), whether it
-    /// takes several lines, whether what is typed is to be hidden, where its text stands (0 for
-    /// left, 1 for centered, 2 for right), and what it holds.
+    /// takes several lines, whether what is typed is to be hidden, how many cells of the same
+    /// width its letters go into if it is a comb, where its text stands (0 for left, 1 for
+    /// centered, 2 for right), and what it holds.
     Text {
         field: FieldId,
         place: TextBoxPlace,
         height: f64,
         multiline: bool,
         password: bool,
+        comb: Option<usize>,
         alignment: u8,
         text: String,
     },
@@ -238,7 +251,8 @@ impl Session {
             FieldKind::Text {
                 multiline,
                 password,
-                ..
+                max_length,
+                comb,
             } => {
                 let text = match now {
                     Some(FieldValue::Text(t)) => t,
@@ -287,21 +301,57 @@ impl Session {
                     height,
                     multiline,
                     password,
+                    comb: max_length.filter(|_| comb).map(|cells| cells as usize),
                     alignment: field.look.alignment,
                     text,
                 })
             }
-            FieldKind::Choice { ref options, .. } => {
+            FieldKind::Choice {
+                ref options,
+                multiple: true,
+                ..
+            } => {
+                let held = match now {
+                    Some(FieldValue::Several(all)) => all,
+                    _ => Vec::new(),
+                };
+                let r = w.rect;
+                let at = |x, y| self.viewer.pdf_to_view(position, PdfPoint::new(x, y));
+                Some(FieldClick::ChooseSeveral {
+                    field: field.id,
+                    labels: options.iter().map(|o| o.label.clone()).collect(),
+                    chosen: (0..options.len())
+                        .filter(|&i| held.contains(&options[i].value))
+                        .collect(),
+                    corners: [
+                        at(r.min.x, r.min.y)?,
+                        at(r.max.x, r.min.y)?,
+                        at(r.max.x, r.max.y)?,
+                        at(r.min.x, r.max.y)?,
+                    ],
+                })
+            }
+            FieldKind::Choice {
+                ref options,
+                editable,
+                ..
+            } => {
                 let held = match now {
                     Some(FieldValue::Text(t)) => t,
                     _ => String::new(),
                 };
                 let r = w.rect;
                 let at = |x, y| self.viewer.pdf_to_view(position, PdfPoint::new(x, y));
+                let chosen = options.iter().position(|o| o.value == held);
                 Some(FieldClick::Choose {
                     field: field.id,
                     labels: options.iter().map(|o| o.label.clone()).collect(),
-                    chosen: options.iter().position(|o| o.value == held),
+                    chosen,
+                    // Shown as the option's label, where it is one.
+                    typed: editable.then(|| match chosen {
+                        Some(i) => options[i].label.clone(),
+                        None => held,
+                    }),
                     corners: [
                         at(r.min.x, r.min.y)?,
                         at(r.max.x, r.min.y)?,
@@ -319,13 +369,47 @@ impl Session {
     pub fn choose_option(&mut self, scheduler: &Scheduler, field: FieldId, index: usize) -> bool {
         let fields = self.form_fields();
         let value = fields.iter().find(|f| f.id == field).and_then(|f| {
-            let FieldKind::Choice { options, .. } = &f.kind else {
+            let FieldKind::Choice {
+                options,
+                multiple: false,
+                ..
+            } = &f.kind
+            else {
                 return None;
             };
             Some(options.get(index)?.value.clone())
         });
         match value {
             Some(value) => self.fill_field(scheduler, field, FieldValue::Text(value)),
+            None => false,
+        }
+    }
+
+    /// Chooses the options `chosen` of `field`, a list that takes several, and no others.
+    /// Returns whether that changed what it holds.
+    pub fn choose_options(
+        &mut self,
+        scheduler: &Scheduler,
+        field: FieldId,
+        chosen: &[usize],
+    ) -> bool {
+        let fields = self.form_fields();
+        let values = fields.iter().find(|f| f.id == field).and_then(|f| {
+            let FieldKind::Choice {
+                options,
+                multiple: true,
+                ..
+            } = &f.kind
+            else {
+                return None;
+            };
+            let values = (0..options.len())
+                .filter(|i| chosen.contains(i))
+                .map(|i| options[i].value.clone());
+            Some(values.collect())
+        });
+        match values {
+            Some(values) => self.fill_field(scheduler, field, FieldValue::Several(values)),
             None => false,
         }
     }
@@ -337,6 +421,59 @@ impl Session {
             return false;
         };
         let changed = self.edit.fill_field(field, value, in_file.value.as_ref());
+        if changed {
+            self.sync_variants(scheduler);
+        }
+        changed
+    }
+
+    /// The corners on screen of every field that can be filled in on the pages at `positions`,
+    /// each with the position of its page: for the frontend to mark them.
+    pub fn field_outlines(&mut self, positions: &[usize]) -> Vec<(usize, [ViewPoint; 4])> {
+        let fields = self.form_fields();
+        let widgets = fields
+            .iter()
+            .filter(|f| f.is_fillable())
+            .flat_map(|f| f.widgets.iter())
+            .filter(|w| !w.hidden);
+        let mut out = Vec::new();
+        for w in widgets {
+            let Some(position) = self.position_of(MAIN, w.page) else {
+                continue;
+            };
+            if !positions.contains(&position) {
+                continue;
+            }
+            let r = w.rect;
+            let at = |x, y| self.viewer.pdf_to_view(position, PdfPoint::new(x, y));
+            let corners = [
+                at(r.min.x, r.min.y),
+                at(r.max.x, r.min.y),
+                at(r.max.x, r.max.y),
+                at(r.min.x, r.max.y),
+            ];
+            if let [Some(a), Some(b), Some(c), Some(d)] = corners {
+                out.push((position, [a, b, c, d]));
+            }
+        }
+        out
+    }
+
+    /// Whether the document has a form with a field that can be filled in.
+    pub fn has_form(&mut self) -> bool {
+        self.form_fields().iter().any(Field::is_fillable)
+    }
+
+    /// Sets every field that can be filled in back to what it holds at first, as one edit.
+    /// Returns whether that changed anything.
+    pub fn reset_form(&mut self, scheduler: &Scheduler) -> bool {
+        let fields = self.form_fields();
+        let values = fields
+            .iter()
+            .filter(|f| f.is_fillable())
+            .filter_map(|f| Some((f.id, f.default.clone()?, f.value.clone())))
+            .collect();
+        let changed = self.edit.reset_form(values);
         if changed {
             self.sync_variants(scheduler);
         }
@@ -371,10 +508,27 @@ impl Session {
         changed
     }
 
-    /// Fills `text` into the text field `field`, as far as the field takes it. Returns whether
-    /// that changed what it holds.
+    /// Fills `text` into the text field `field`, as far as the field takes it, or into a menu
+    /// that takes text of one's own. There, text that is what an option shows chooses that
+    /// option. Returns whether that changed what the field holds.
     pub fn set_field_text(&mut self, scheduler: &Scheduler, field: FieldId, text: &str) -> bool {
-        let text = self.fitting(field, text);
+        let fields = self.form_fields();
+        let text = match fields.iter().find(|f| f.id == field).map(|f| &f.kind) {
+            Some(FieldKind::Choice {
+                options,
+                editable: true,
+                multiple: false,
+                ..
+            }) => {
+                let line = text.split(['\n', '\r']).collect::<Vec<_>>().join(" ");
+                match options.iter().find(|o| o.label == line) {
+                    Some(option) => option.value.clone(),
+                    None => line,
+                }
+            }
+            Some(FieldKind::Text { .. }) => self.fitting(field, text),
+            _ => return false,
+        };
         self.fill_field(scheduler, field, FieldValue::Text(text))
     }
 

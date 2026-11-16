@@ -150,7 +150,8 @@ impl From<specto_doc::Edit> for EditStep {
             Edit::AddAnnotation(_) => (EditKind::AddAnnotation, 1),
             Edit::RemoveAnnotation(_) => (EditKind::RemoveAnnotation, 1),
             Edit::ChangeAnnotation(_) => (EditKind::ChangeAnnotation, 1),
-            Edit::FillField => (EditKind::FillField, 1),
+            // A form isn't reset through this interface.
+            Edit::FillField | Edit::ResetForm => (EditKind::FillField, 1),
         };
         Self {
             kind,
@@ -1292,6 +1293,25 @@ impl ViewSession {
                 }),
                 text,
             },
+            // A menu that offers nothing and takes text of one's own is asked for as text.
+            FieldClick::Choose {
+                field,
+                labels,
+                typed: Some(text),
+                ..
+            } if labels.is_empty() => FieldTap::Text {
+                field: field_number(field),
+                label: label(field),
+                multiline: false,
+                password: false,
+                max_length: None,
+                text,
+            },
+            // A list that takes several choices isn't filled in through this interface.
+            FieldClick::ChooseSeveral { .. } => {
+                session.clear_field_focus();
+                return FieldTap::Nothing;
+            }
             FieldClick::Choose {
                 field,
                 labels,

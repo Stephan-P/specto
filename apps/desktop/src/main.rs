@@ -275,6 +275,10 @@ fn menubar() -> gio::Menu {
             (&gettext("Underline"), "win.underline"),
             (&gettext("Strikethrough"), "win.strike-out"),
         ]),
+        section(&[
+            (&gettext("Highlight Form Fields"), "win.highlight-fields"),
+            (&gettext("Reset Form"), "win.reset-form"),
+        ]),
     ]);
 
     let bar = gio::Menu::new();

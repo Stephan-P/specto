@@ -150,8 +150,9 @@ finds the same object there before touching it.
 The forms crate reads the form of a file (AcroForm only): each field with its
 kind, value and flags, and its widgets with their page and rectangle.
 Attributes a field inherits from its parents are resolved while reading. Text
-fields, checkboxes, radio buttons, and menus and lists with one choice can be
-filled in. Other kinds are read and shown as the file draws them.
+fields, checkboxes, radio buttons, menus and lists can be filled in. Other
+kinds are read and shown as the file draws them. A field also says what it
+holds at first, which is what resetting the form sets it to, as one edit.
 
 Like annotations, the edit document holds only what differs from the file: a
 value per field that was filled in, kept per undo step. A field set back to
@@ -163,10 +164,10 @@ with the page. So a page with a filled-in field is rendered from a page variant
 too, with the values written into it exactly as saving would. For a checkbox or
 a radio button that selects one of the looks the file has. For a text field the
 write crate makes a new look from the field's font, size, color and alignment.
-A menu gets the same with the chosen option, and a list shows its options with
-the chosen one marked. A comb field gets each letter in the middle of its cell.
-A widget that says it is turned, as on a landscape page, gets its look turned
-the same way.
+A menu gets the same with the chosen option or the text typed for it, and a
+list shows its options with the chosen ones marked. A comb field gets each
+letter in the middle of its cell. A widget that says it is turned, as on a
+landscape page, gets its look turned the same way.
 
 Some files hold text for a field without a look that shows it, and ask the
 reader to make one (`/NeedAppearances`). The forms crate marks such a field,
@@ -175,11 +176,14 @@ made from the values of the file.
 
 A text field is typed into through a text input of the toolkit, placed over the
 widget. Meanwhile the variant shows the field empty. The session says where the
-input goes and in which font and size, and takes the text when typing ends.
+input goes and in which font and size, and takes the text when typing ends. For
+a comb field the frontend gives each letter the room that makes it as wide as
+a cell, so that it stands where the saved look has it.
 
 The session also keeps which field has the keyboard, and the order Tab goes
 through the fields in: by page, and on a page as its annotation array lists
-them. The frontend passes the keys on and draws a frame around the field.
+them, or by rows or columns of their places if the page asks for that
+(`/Tabs`). The frontend passes the keys on and draws a frame around the field.
 
 ## Rendering pipeline
 
@@ -410,9 +414,9 @@ The Android app is written in Kotlin with Jetpack Compose.
 
 None of this exists yet. The tasks are in [TASKS.md](TASKS.md).
 
-- **More of forms.** Lists with several choices, a fallback font for text
-  outside Latin, and typing on the page on Android, where a dialog asks for a
-  field's text today.
+- **More of forms.** A fallback font for text outside Latin and the forms of
+  inserted files. On Android, lists with several choices and typing on the
+  page, where a dialog asks for a field's text today.
 - **Incremental save.** When only annotations or form values changed, append to
   the original file instead of rewriting it. This is faster and keeps existing
   digital signatures valid.

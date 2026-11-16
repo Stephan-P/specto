@@ -400,6 +400,7 @@ impl Window {
                         Some(specto_doc::FieldValue::Text(text)) => text,
                         Some(specto_doc::FieldValue::Check(true)) => "on".to_owned(),
                         Some(specto_doc::FieldValue::Choice(Some(choice))) => choice,
+                        Some(specto_doc::FieldValue::Several(all)) => all.join(","),
                         _ => String::new(),
                     };
                     format!("[{}, {}]", debug::quote(&f.name), debug::quote(&value))
@@ -416,9 +417,21 @@ impl Window {
             json.str("field_focus", name.unwrap_or_default());
             // What the list of a choice field offers, while it shows.
             let choices: Vec<String> = (inner.choices.borrow().iter())
-                .flat_map(|(_, labels)| labels.iter().map(|l| debug::quote(l)))
+                .flat_map(|c| c.labels.iter().map(|l| debug::quote(l)))
                 .collect();
             json.raw("choices", &format!("[{}]", choices.join(", ")));
+            if let Some(choices) = inner.choices.borrow().as_ref() {
+                // What stands in the line to type a choice of one's own.
+                if let Some(entry) = &choices.entry {
+                    json.str("choice_typed", &entry.text());
+                }
+                // Which rows of a list that takes several are ticked.
+                let ticked: Vec<String> = (choices.ticks.iter().enumerate())
+                    .filter(|(_, tick)| tick.is_active())
+                    .map(|(i, _)| i.to_string())
+                    .collect();
+                json.raw("choices_ticked", &format!("[{}]", ticked.join(", ")));
+            }
         }
         // The annotations of the current page (the file's and new ones), and whether one is picked.
         if let Some(doc) = inner.document.borrow().clone() {

@@ -1498,8 +1498,8 @@ fn filling_in_a_form() {
 }
 
 /// A page of 200 by 300 with a menu "country" at x 20 to 180, y 240 to 260, which holds "de"
-/// without a look for it. `form` goes into the form's dictionary.
-fn menu(form: &str) -> Vec<u8> {
+/// without a look for it. `form` goes into the form's dictionary, and `flags` are the field's.
+fn menu(form: &str, flags: u32) -> Vec<u8> {
     let objects = vec![
         (
             1,
@@ -1520,9 +1520,11 @@ fn menu(form: &str) -> Vec<u8> {
         ),
         (
             4,
-            "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (country) /V (de) \
-             /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [20 240 180 260] /P 3 0 R >>"
-                .to_owned(),
+            format!(
+                "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff {flags} /T (country) /V (de) \
+                 /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [20 240 180 260] \
+                 /P 3 0 R >>"
+            ),
         ),
     ];
     assemble(objects)
@@ -1534,7 +1536,7 @@ fn choosing_in_a_form() {
     use specto_session::{FieldClick, FieldHover};
 
     let scheduler = Scheduler::new(1, || {});
-    let mut session = open(&scheduler, menu(""));
+    let mut session = open(&scheduler, menu("", 1 << 17));
     let file = session.viewer.pages()[0].doc;
     let country = session.form_fields()[0].id;
     let on_menu = session
@@ -1548,6 +1550,7 @@ fn choosing_in_a_form() {
         field,
         labels,
         chosen,
+        typed,
         corners,
     }) = session.click_field(&scheduler, on_menu)
     else {
@@ -1555,6 +1558,9 @@ fn choosing_in_a_form() {
     };
     assert_eq!((field, chosen), (country, Some(0)));
     assert_eq!(labels, ["Germany", "France", "Other"]);
+    // It takes no text of one's own.
+    assert_eq!(typed, None);
+    assert!(!session.set_field_text(&scheduler, country, "Peru"));
     let low = session
         .viewer
         .pdf_to_view(0, PdfPoint::new(20.0, 240.0))
@@ -1602,12 +1608,12 @@ fn a_form_that_leaves_looks_to_the_reader() {
     use specto_doc::FieldValue;
 
     let scheduler = Scheduler::new(1, || {});
-    let mut plain = open(&scheduler, menu(""));
+    let mut plain = open(&scheduler, menu("", 1 << 17));
     assert!(!plain.form_fields()[0].unshown);
     plain.close(&scheduler);
 
     // What the menu holds has no look in the file, so the page is shown from a copy with one.
-    let mut session = open(&scheduler, menu("/NeedAppearances true"));
+    let mut session = open(&scheduler, menu("/NeedAppearances true", 1 << 17));
     let country = session.form_fields()[0].id;
     assert!(session.form_fields()[0].unshown);
     let shown = session.viewer.pages()[0].doc;
@@ -1627,4 +1633,206 @@ fn a_form_that_leaves_looks_to_the_reader() {
     let again = session.viewer.pages()[0].doc;
     assert!(again != shown && again != other);
     session.close(&scheduler);
+}
+
+#[test]
+fn typing_a_choice_of_ones_own() {
+    use specto_doc::FieldValue;
+    use specto_session::FieldClick;
+
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, menu("", 1 << 17 | 1 << 18));
+    let country = session.form_fields()[0].id;
+    let on_menu = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(100.0, 250.0))
+        .unwrap();
+    // What it holds is said as the option shows it.
+    let typed = |session: &mut Session| match session.click_field(&scheduler, on_menu) {
+        Some(FieldClick::Choose { chosen, typed, .. }) => (chosen, typed),
+        _ => panic!("a menu is there"),
+    };
+    assert_eq!(typed(&mut session), (Some(0), Some("Germany".to_owned())));
+
+    // Text of one's own is held as it is, on one line.
+    assert!(session.set_field_text(&scheduler, country, "Peru\nSouth"));
+    assert_eq!(
+        session.field_value(country),
+        Some(FieldValue::Text("Peru South".to_owned()))
+    );
+    assert_eq!(typed(&mut session), (None, Some("Peru South".to_owned())));
+    // What an option shows chooses that option.
+    assert!(session.set_field_text(&scheduler, country, "France"));
+    assert_eq!(
+        session.field_value(country),
+        Some(FieldValue::Text("fr".to_owned()))
+    );
+    assert!(session.set_field_text(&scheduler, country, "Peru"));
+
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    assert_eq!(
+        saved.form_fields()[0].value,
+        Some(FieldValue::Text("Peru".to_owned()))
+    );
+    saved.close(&scheduler);
+    session.close(&scheduler);
+}
+
+#[test]
+fn choosing_several_in_a_list() {
+    use specto_doc::FieldValue;
+    use specto_session::FieldClick;
+
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, menu("", 1 << 21));
+    let country = session.form_fields()[0].id;
+    let on_list = session
+        .viewer
+        .pdf_to_view(0, PdfPoint::new(100.0, 250.0))
+        .unwrap();
+    let chosen = |session: &mut Session| match session.click_field(&scheduler, on_list) {
+        Some(FieldClick::ChooseSeveral { labels, chosen, .. }) => {
+            assert_eq!(labels, ["Germany", "France", "Other"]);
+            chosen
+        }
+        other => panic!("a list of several is there: {other:?}"),
+    };
+    let several =
+        |values: &[&str]| FieldValue::Several(values.iter().map(|v| (*v).to_owned()).collect());
+    assert_eq!(chosen(&mut session), [0]);
+
+    // It isn't chosen from as a menu is, and holds what is chosen in the order of the list.
+    assert!(!session.choose_option(&scheduler, country, 1));
+    assert!(!session.choose_options(&scheduler, country, &[0]));
+    assert!(session.choose_options(&scheduler, country, &[2, 0, 7]));
+    assert_eq!(
+        session.field_value(country),
+        Some(several(&["de", "Other"]))
+    );
+    assert_eq!(chosen(&mut session), [0, 2]);
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(session.field_value(country), Some(several(&["de"])));
+    assert!(session.redo(&scheduler).is_some());
+
+    let written = session.save_job().write().unwrap();
+    let mut saved = open(&scheduler, written);
+    assert_eq!(
+        saved.form_fields()[0].value,
+        Some(several(&["de", "Other"]))
+    );
+    saved.close(&scheduler);
+    assert!(session.choose_options(&scheduler, country, &[]));
+    assert_eq!(session.field_value(country), Some(several(&[])));
+    session.close(&scheduler);
+}
+
+#[test]
+fn tab_goes_by_rows_or_columns_where_a_page_asks() {
+    // Four text fields in two rows and two columns, listed from the bottom right backwards. The
+    // right one of the top row stands a little lower than the left one.
+    let form = |tabs: &str| {
+        let field = |name: &str, x: u32, y: u32| {
+            format!(
+                "<< /Type /Annot /Subtype /Widget /FT /Tx /T ({name}) \
+                 /Rect [{x} {y} {} {}] /P 3 0 R >>",
+                x + 60,
+                y + 20
+            )
+        };
+        assemble(vec![
+            (
+                1,
+                "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [4 0 R 5 0 R 6 0 R 7 0 R] \
+                 /DA (/Helv 0 Tf 0 g) >> >>"
+                    .to_owned(),
+            ),
+            (
+                2,
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 200 300] \
+                 /Resources << >> >>"
+                    .to_owned(),
+            ),
+            (
+                3,
+                format!("<< /Type /Page /Parent 2 0 R /Annots [7 0 R 6 0 R 5 0 R 4 0 R] {tabs} >>"),
+            ),
+            (4, field("top left", 20, 240)),
+            (5, field("top right", 110, 235)),
+            (6, field("bottom left", 20, 100)),
+            (7, field("bottom right", 110, 100)),
+        ])
+    };
+    let scheduler = Scheduler::new(1, || {});
+    let order = |tabs: &str| {
+        let mut session = open(&scheduler, form(tabs));
+        let fields = session.form_fields();
+        let mut names = Vec::new();
+        for _ in 0..4 {
+            session.tab_field(&scheduler, true);
+            let at = session.field_focus();
+            names.push(
+                fields
+                    .iter()
+                    .find(|f| Some(f.id) == at)
+                    .unwrap()
+                    .name
+                    .clone(),
+            );
+            session.end_field_text(&scheduler, None);
+        }
+        session.close(&scheduler);
+        names
+    };
+    assert_eq!(
+        order(""),
+        ["bottom right", "bottom left", "top right", "top left"]
+    );
+    assert_eq!(
+        order("/Tabs /R"),
+        ["top left", "top right", "bottom left", "bottom right"]
+    );
+    assert_eq!(
+        order("/Tabs /C"),
+        ["top left", "bottom left", "top right", "bottom right"]
+    );
+}
+
+#[test]
+fn resetting_a_form() {
+    use specto_doc::{Edit, FieldValue};
+
+    let scheduler = Scheduler::new(1, || {});
+    let mut session = open(&scheduler, form());
+    assert!(session.has_form());
+    let fields = session.form_fields();
+    // As the file has it, a reset changes what the file holds other than at first.
+    let before: Vec<_> = fields.iter().map(|f| session.field_value(f.id)).collect();
+    let name = fields[0].id;
+    assert!(session.set_field_text(&scheduler, name, "Ada"));
+    assert!(session.reset_form(&scheduler));
+    assert_eq!(session.edit().undo_edit(), Some(Edit::ResetForm));
+    for field in fields.iter().filter(|f| f.is_fillable()) {
+        assert_eq!(session.field_value(field.id), field.default.clone());
+    }
+    assert_eq!(
+        session.field_value(name),
+        Some(FieldValue::Text(String::new()))
+    );
+    assert!(!session.reset_form(&scheduler));
+    // One step back is the form as it was filled in, and one more as it was opened.
+    assert!(session.undo(&scheduler).is_some());
+    assert_eq!(
+        session.field_value(name),
+        Some(FieldValue::Text("Ada".to_owned()))
+    );
+    assert!(session.undo(&scheduler).is_some());
+    let after: Vec<_> = fields.iter().map(|f| session.field_value(f.id)).collect();
+    assert_eq!(before, after);
+    session.close(&scheduler);
+
+    let mut plain = open(&scheduler, book(1, "plain"));
+    assert!(!plain.has_form());
+    assert!(!plain.reset_form(&scheduler));
+    plain.close(&scheduler);
 }

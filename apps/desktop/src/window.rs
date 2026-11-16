@@ -88,8 +88,8 @@ pub struct Inner {
     typing: RefCell<Option<Typing>>,
     /// The editor for an annotation's text, while it is open.
     text_editor: RefCell<Option<gtk::Popover>>,
-    /// The list to choose from for a choice field of the form, while it shows, and what it lists.
-    choices: RefCell<Option<(gtk::Popover, Vec<String>)>>,
+    /// The list to choose from for a choice field of the form, while it shows.
+    choices: RefCell<Option<Choices>>,
     /// The color of each tool of the markup bar (in the order of `TOOLS`), by name (see
     /// `markup_colors`).
     tool_colors: Cell<[&'static str; TOOLS.len()]>,
@@ -230,6 +230,15 @@ impl Window {
                 Some(&gettext("Insert Pages from File…")),
                 Some("win.insert-file"),
             );
+            m
+        });
+        main_menu.append_section(None, &{
+            let m = gio::Menu::new();
+            m.append(
+                Some(&gettext("Highlight Form Fields")),
+                Some("win.highlight-fields"),
+            );
+            m.append(Some(&gettext("Reset Form")), Some("win.reset-form"));
             m
         });
         main_menu.append_section(None, &{

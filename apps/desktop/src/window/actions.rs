@@ -39,6 +39,9 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "print",
 ];
 
+/// Actions that need a document with a form that can be filled in.
+const FORM_ACTIONS: &[&str] = &["reset-form", "highlight-fields"];
+
 impl Window {
     /// Activates `action` on the focused text field, if one has the focus.
     pub(super) fn forward_to_entry(&self, action: &str) -> bool {
@@ -121,6 +124,19 @@ impl Window {
                 .and_downcast::<gio::SimpleAction>()
             {
                 a.set_enabled(enabled);
+            }
+        }
+        // Those for a form only where there is one.
+        let form = enabled
+            && (self.0.document.borrow().as_ref()).is_some_and(|d| d.borrow_mut().has_form());
+        for name in FORM_ACTIONS {
+            if let Some(a) = self
+                .0
+                .window
+                .lookup_action(name)
+                .and_downcast::<gio::SimpleAction>()
+            {
+                a.set_enabled(form);
             }
         }
         if enabled {
@@ -388,6 +404,29 @@ impl Window {
                     .unwrap_or(false);
                 action.set_state(&on.to_variant());
                 inner.canvas.update_viewer(|v| v.set_cover_alone(on));
+            })
+            .build()]);
+
+        let weak = Rc::downgrade(&self.0);
+        window.add_action_entries([gio::ActionEntry::builder("highlight-fields")
+            .state(false.to_variant())
+            .activate(move |_, action, _| {
+                let Some(inner) = weak.upgrade() else { return };
+                let on = !action
+                    .state()
+                    .and_then(|s| s.get::<bool>())
+                    .unwrap_or(false);
+                action.set_state(&on.to_variant());
+                inner.canvas.set_highlight_fields(on);
+            })
+            .build()]);
+        let weak = Rc::downgrade(&self.0);
+        window.add_action_entries([gio::ActionEntry::builder("reset-form")
+            .activate(move |_, _, _| {
+                let Some(inner) = weak.upgrade() else { return };
+                let window = Window(inner);
+                window.finish_text_entry();
+                window.annotate(|d| d.reset_form());
             })
             .build()]);
 

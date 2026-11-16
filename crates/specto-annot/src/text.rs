@@ -3,8 +3,6 @@
 //!
 //! That limits them to the characters of Windows' Latin code page for now.
 //!
-//! That limits them to the characters of Windows' Latin code page for now.
-//!
 //! The same line breaks are used wherever a text box is measured or written, so its text sits the
 //! same on screen and in the file.
 

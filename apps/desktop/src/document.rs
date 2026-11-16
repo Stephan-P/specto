@@ -339,6 +339,24 @@ impl Document {
         changed
     }
 
+    /// Sets the form back to what it holds at first (see the session's function of this name).
+    pub fn reset_form(&mut self) -> bool {
+        let changed = self.session.reset_form(scheduler());
+        if changed {
+            self.pages_changed();
+        }
+        changed
+    }
+
+    /// Chooses options of a list that takes several (see the session's function of this name).
+    pub fn choose_options(&mut self, field: specto_doc::FieldId, chosen: &[usize]) -> bool {
+        let changed = self.session.choose_options(scheduler(), field, chosen);
+        if changed {
+            self.pages_changed();
+        }
+        changed
+    }
+
     /// Chooses an option of a choice field (see the session's function of this name).
     pub fn choose_option(&mut self, field: specto_doc::FieldId, index: usize) -> bool {
         let changed = self.session.choose_option(scheduler(), field, index);

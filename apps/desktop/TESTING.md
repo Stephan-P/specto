@@ -452,9 +452,24 @@ or application form.
 - Open `corpus/files/pdfjs/test/pdfs/bug1883609.pdf`: the gender menu shows
   "Man" and the color menu "Red" right away. Choose another and then the first
   again: it shows again.
+- A menu that takes text of one's own (the country field of the file above):
+  the list has a line to type above the options. Type a country and press
+  Enter: it shows in the field. Open it again: what was typed stands in the
+  line, and choosing an option replaces it.
+- A list that takes several choices: tick rows by click and by Space, click
+  elsewhere, and the list on the page marks every ticked row. Escape leaves
+  it as it was.
 - A password field shows dots while typing and asterisks afterwards.
-- A comb field (boxes for single letters, as for a date or a postal code): after
-  Enter each letter stands in the middle of its box.
+- A comb field (boxes for single letters, as for a date or a postal code):
+  each letter stands in the middle of its box while typing, with narrow and
+  wide letters too, and doesn't move on Enter. Zoom while typing: the letters
+  stay in their boxes.
+- A form whose page asks for a tab order by rows: Tab goes along each row
+  from the left, then to the row below.
+- Highlight Form Fields in the main menu tints the fields that can be filled
+  in, in light and dark style, and not the read-only ones. Reset Form empties
+  the form, and one undo brings everything back. Both are grayed out for a
+  file without a form.
 - Turn a page with Rotate Right and click a text field: a small editor opens
   beside the field, with the cursor after what the field holds. Saved, the
   text stands in the field the way the field is turned.

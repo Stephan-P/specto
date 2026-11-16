@@ -62,6 +62,8 @@ mod imp {
         pub on_edit_text: RefCell<Option<Box<dyn Fn()>>>,
         pub on_fill: RefCell<Option<PlaceHandler>>,
         pub on_field_key: RefCell<Option<FieldKeyHandler>>,
+        /// Whether the fields of the form that can be filled in are marked.
+        pub highlight_fields: Cell<bool>,
         /// Called with a link's URI. The window decides whether to open it.
         pub on_open_uri: RefCell<Option<UriHandler>>,
         /// The cursor currently set: `None` (default), "pointer" over links, "text" over text.
@@ -106,6 +108,7 @@ mod imp {
                 on_edit_text: RefCell::default(),
                 on_fill: RefCell::default(),
                 on_field_key: RefCell::default(),
+                highlight_fields: Cell::new(false),
                 on_open_uri: RefCell::default(),
                 cursor: Cell::default(),
                 presses: Cell::default(),
@@ -217,6 +220,7 @@ mod imp {
                     }
                 });
             }
+            obj.draw_fields(snapshot, d, &frame.pages, scale);
             obj.draw_picked(snapshot, d, &frame.pages, scale);
             obj.draw_field_focus(snapshot, d, &frame.pages, scale);
             obj.draw_matches(snapshot, d, &frame.pages, scale);
@@ -343,6 +347,12 @@ impl Canvas {
     /// `f` is called with where a form field that can be filled in was clicked.
     pub fn connect_fill(&self, f: impl Fn(f64, f64) + 'static) {
         self.imp().on_fill.replace(Some(Box::new(f)));
+    }
+
+    /// Marks the fields of the form that can be filled in, or stops marking them.
+    pub fn set_highlight_fields(&self, on: bool) {
+        self.imp().highlight_fields.set(on);
+        self.queue_draw();
     }
 
     /// `f` is called with a key for the form field that has the keyboard.
@@ -531,6 +541,36 @@ impl Canvas {
             }
             snapshot.push_clip(&logical(page.rect, scale));
             fill_quads(snapshot, &quads, &colour);
+            snapshot.pop();
+        }
+    }
+
+    /// A tint over the fields of the form that can be filled in, if they are to be marked.
+    fn draw_fields(
+        &self,
+        snapshot: &gtk::Snapshot,
+        d: &mut crate::document::Document,
+        pages: &[specto_view::PageDraw],
+        scale: f64,
+    ) {
+        if !self.imp().highlight_fields.get() {
+            return;
+        }
+        let positions: Vec<usize> = pages.iter().map(|p| p.page).collect();
+        let outlines = d.field_outlines(&positions);
+        let accent = adw::StyleManager::default().accent_color_rgba();
+        let tint = gdk::RGBA::new(accent.red(), accent.green(), accent.blue(), 0.18);
+        for page in pages {
+            let quads: Vec<[ViewPoint; 4]> = outlines
+                .iter()
+                .filter(|(position, _)| *position == page.page)
+                .map(|(_, corners)| *corners)
+                .collect();
+            if quads.is_empty() {
+                continue;
+            }
+            snapshot.push_clip(&logical(page.rect, scale));
+            fill_quads(snapshot, &quads, &tint);
             snapshot.pop();
         }
     }

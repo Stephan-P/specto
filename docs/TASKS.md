@@ -237,13 +237,15 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Menus and lists to choose one option from
 - [x] Comb fields, hidden passwords, and text fields on turned pages
 - [x] Android: filling in boxes, radio buttons, text fields, menus and lists
-- [ ] Typing into a comb field with its letters in their cells while typing.
-- [ ] Lists that take several choices, and menus that take typed text.
+- [x] Values a file leaves to the reader to draw are shown
+- [x] Menus that take typed text, and lists that take several choices
+- [x] Comb fields with their letters in their cells while typing
+- [x] Tab order by rows or columns, highlighting fields, and resetting a form
 - [ ] An embedded fallback font for text outside Latin.
-- [ ] Tab order by rows or columns where a page asks for it, a toggle for
-  highlighting fields, and resetting a form.
 - [ ] Android: typing into a text field on the page instead of in a dialog,
   and a way from one field to the next from the keyboard.
+- [ ] Android: lists that take several choices, typing a choice of one's own
+  into a menu that has options, highlighting fields, and resetting a form.
 - [ ] Forms of inserted files. Only the form of the opened file is kept.
 - [ ] Saving filled forms incrementally, and an optional flattened export.
 

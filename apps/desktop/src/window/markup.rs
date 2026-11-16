@@ -390,6 +390,30 @@ pub(super) enum Tool {
     Note,
 }
 
+/// The list a choice field of the form is chosen from, while it shows.
+pub(super) struct Choices {
+    pub(super) popover: gtk::Popover,
+    /// What it lists.
+    pub(super) labels: Vec<String>,
+    /// The line to type a choice of one's own, for a field that takes one.
+    pub(super) entry: Option<gtk::Entry>,
+    /// The tick of each row, for a list that takes several.
+    pub(super) ticks: Vec<gtk::CheckButton>,
+}
+
+/// The area in the page view that has `corners`.
+fn area_of(corners: [ViewPoint; 4]) -> gdk::Rectangle {
+    let (xs, ys) = (corners.map(|c| c.x), corners.map(|c| c.y));
+    let min = |v: [f64; 4]| v.into_iter().fold(f64::INFINITY, f64::min);
+    let max = |v: [f64; 4]| v.into_iter().fold(f64::NEG_INFINITY, f64::max);
+    gdk::Rectangle::new(
+        min(xs) as i32,
+        min(ys) as i32,
+        (max(xs) - min(xs)).ceil() as i32,
+        (max(ys) - min(ys)).ceil() as i32,
+    )
+}
+
 /// Typing into a text box on the page.
 pub(super) struct Typing {
     /// The text field over the page.
@@ -437,13 +461,14 @@ pub(super) enum TypingTarget {
     /// The picked text box.
     Box,
     /// A text field of the form: which, how high it is (in points), whether it takes several
-    /// lines, whether what is typed is hidden, and where its text stands (0 for left, 1 for
-    /// centered, 2 for right).
+    /// lines, whether what is typed is hidden, how many cells its letters go into if it is a
+    /// comb, and where its text stands (0 for left, 1 for centered, 2 for right).
     Field {
         field: FieldId,
         height: f64,
         multiline: bool,
         password: bool,
+        comb: Option<usize>,
         alignment: u8,
     },
 }
@@ -791,16 +816,19 @@ impl Window {
             return;
         };
         self.0.canvas.queue_draw();
-        let (field, place, height, multiline, password, alignment, text) = match clicked {
+        let (field, place, height, multiline, password, comb, alignment, text) = match clicked {
             Some(FieldClick::Text {
                 field,
                 place,
                 height,
                 multiline,
                 password,
+                comb,
                 alignment,
                 text,
-            }) => (field, place, height, multiline, password, alignment, text),
+            }) => (
+                field, place, height, multiline, password, comb, alignment, text,
+            ),
             Some(FieldClick::Edit {
                 field,
                 multiline,
@@ -812,8 +840,15 @@ impl Window {
                 field,
                 labels,
                 chosen,
+                typed,
                 corners,
-            }) => return self.choose_from(field, labels, chosen, corners),
+            }) => return self.choose_from(field, labels, chosen, typed, corners),
+            Some(FieldClick::ChooseSeveral {
+                field,
+                labels,
+                chosen,
+                corners,
+            }) => return self.choose_several(field, labels, &chosen, corners),
             _ => return,
         };
         doc.borrow_mut().begin_field_text(field);
@@ -822,6 +857,7 @@ impl Window {
             height,
             multiline,
             password,
+            comb,
             alignment,
         };
         self.type_on_page(place, &text, target);
@@ -829,11 +865,15 @@ impl Window {
 
     /// Shows what the choice field `field` offers, in a list at the field (its `corners` in the
     /// page view), with the option it holds marked. A click on a row, or Enter, chooses it.
+    ///
+    /// A field that takes text of one's own (`typed` is what it holds) has a line to type above
+    /// the list. What was typed is kept when the list closes, unless Escape closed it.
     fn choose_from(
         &self,
         field: FieldId,
         labels: Vec<String>,
         chosen: Option<usize>,
+        typed: Option<String>,
         corners: [ViewPoint; 4],
     ) {
         let inner = &self.0;
@@ -849,15 +889,7 @@ impl Window {
                 .build();
             list.append(&text);
         }
-        let (xs, ys) = (corners.map(|c| c.x), corners.map(|c| c.y));
-        let min = |v: [f64; 4]| v.into_iter().fold(f64::INFINITY, f64::min);
-        let max = |v: [f64; 4]| v.into_iter().fold(f64::NEG_INFINITY, f64::max);
-        let area = gdk::Rectangle::new(
-            min(xs) as i32,
-            min(ys) as i32,
-            (max(xs) - min(xs)).ceil() as i32,
-            (max(ys) - min(ys)).ceil() as i32,
-        );
+        let area = area_of(corners);
         let scroller = gtk::ScrolledWindow::builder()
             .child(&list)
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -866,40 +898,96 @@ impl Window {
             .max_content_height(320)
             .min_content_width(area.width().clamp(120, 480))
             .build();
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let entry = typed.as_ref().map(|text| {
+            let entry = gtk::Entry::builder().text(text.as_str()).build();
+            content.append(&entry);
+            entry
+        });
+        scroller.set_visible(!labels.is_empty());
+        content.append(&scroller);
         let popover = gtk::Popover::builder()
-            .child(&scroller)
+            .child(&content)
             .position(gtk::PositionType::Bottom)
             .build();
         popover.add_css_class("menu");
         popover.set_parent(&inner.canvas);
         popover.set_pointing_to(Some(&area));
+        // Whether what is typed is kept when the list closes: not after Escape, and not once a
+        // row was chosen.
+        let keep = Rc::new(Cell::new(true));
         let weak = Rc::downgrade(inner);
         let shown = popover.downgrade();
+        let kept = keep.clone();
         list.connect_row_activated(move |_, row| {
             let (Some(inner), Ok(index)) = (weak.upgrade(), usize::try_from(row.index())) else {
                 return;
             };
+            kept.set(false);
             if let Some(popover) = shown.upgrade() {
                 popover.popdown();
             }
             Window(inner).annotate(|d| d.choose_option(field, index));
         });
+        if let Some(entry) = &entry {
+            let shown = popover.downgrade();
+            entry.connect_activate(move |_| {
+                if let Some(popover) = shown.upgrade() {
+                    popover.popdown();
+                }
+            });
+            let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+            let kept = keep.clone();
+            keys.connect_key_pressed(move |_, key, _, _| {
+                if key == gdk::Key::Escape {
+                    kept.set(false);
+                }
+                glib::Propagation::Proceed
+            });
+            popover.add_controller(keys);
+        }
         let weak = Rc::downgrade(inner);
+        let line = entry.clone();
         popover.connect_closed(move |popover| {
             if let Some(inner) = weak.upgrade() {
-                inner.choices.take();
+                // The text at once: whatever closed the list (a save, the window closing) must
+                // find it in the document.
+                let open = inner.choices.take().is_some();
+                if let (true, true, Some(entry), Some(was)) = (open, keep.get(), &line, &typed) {
+                    let text = entry.text().to_string();
+                    if text != *was {
+                        Window(inner.clone()).annotate(|d| d.set_field_text(field, &text));
+                    }
+                }
                 inner.canvas.grab_focus();
             }
             // Later: the popover is still closing, and is taken off the page view once it has.
             let popover = popover.clone();
             glib::idle_add_local_once(move || popover.unparent());
         });
-        inner.choices.replace(Some((popover.clone(), labels)));
+        inner.choices.replace(Some(Choices {
+            popover: popover.clone(),
+            labels,
+            entry: entry.clone(),
+            ticks: Vec::new(),
+        }));
         popover.popup();
         // The keyboard on what is chosen, or on the first: the arrow keys go from there.
-        if let Some(row) = list.row_at_index(chosen.unwrap_or(0) as i32) {
-            list.select_row(Some(&row));
-            row.grab_focus();
+        let row = list.row_at_index(chosen.unwrap_or(0) as i32);
+        if chosen.is_some() || entry.is_none() {
+            list.select_row(row.as_ref());
+        }
+        match (entry, row) {
+            // To go on typing after what is there.
+            (Some(entry), _) => {
+                entry.grab_focus_without_selecting();
+                entry.set_position(-1);
+            }
+            (None, Some(row)) => {
+                row.grab_focus();
+            }
+            (None, None) => {}
         }
     }
 
@@ -909,14 +997,20 @@ impl Window {
     pub(super) fn type_on_page(&self, place: TextBoxPlace, text: &str, target: TypingTarget) {
         let inner = &self.0;
         self.finish_typing();
-        let (one_line, secret, alignment) = match target {
+        let (one_line, secret, comb, alignment) = match target {
             TypingTarget::Field {
                 multiline,
                 password,
+                comb,
                 alignment,
                 ..
-            } => (!multiline, password && !multiline, alignment),
-            _ => (false, false, 0),
+            } => (
+                !multiline,
+                password && !multiline,
+                comb.is_some(),
+                alignment,
+            ),
+            _ => (false, false, false, 0),
         };
         let input = if secret {
             let entry = gtk::Text::builder()
@@ -941,10 +1035,21 @@ impl Window {
                 .build();
             lines.buffer().set_text(text);
             lines.set_justification(match alignment {
+                _ if comb => gtk::Justification::Left,
                 1 => gtk::Justification::Center,
                 2 => gtk::Justification::Right,
                 _ => gtk::Justification::Left,
             });
+            if comb {
+                // Its letters stand in their cells, wherever the line would break.
+                lines.set_wrap_mode(gtk::WrapMode::None);
+                let weak = Rc::downgrade(inner);
+                lines.buffer().connect_changed(move |_| {
+                    if let Some(inner) = weak.upgrade() {
+                        Window(inner).space_comb();
+                    }
+                });
+            }
             TypingInput::Lines(lines)
         };
         let view: gtk::Widget = match &input {
@@ -1041,6 +1146,114 @@ impl Window {
         }
     }
 
+    /// Shows what `field`, a list that takes several choices, offers, in a list at the field (its
+    /// `corners` in the page view), each row with a tick. What is ticked when the list closes
+    /// is chosen, unless Escape closed it.
+    fn choose_several(
+        &self,
+        field: FieldId,
+        labels: Vec<String>,
+        chosen: &[usize],
+        corners: [ViewPoint; 4],
+    ) {
+        let inner = &self.0;
+        let list = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .build();
+        let ticks: Vec<gtk::CheckButton> = (labels.iter().enumerate())
+            .map(|(i, label)| {
+                let tick = gtk::CheckButton::builder()
+                    .label(label.as_str())
+                    .active(chosen.contains(&i))
+                    .margin_start(6)
+                    .margin_end(6)
+                    .build();
+                list.append(&tick);
+                tick
+            })
+            .collect();
+        // The row has the keyboard, not the tick in it: Enter on it ticks, and so does Space
+        // (below).
+        let rows = ticks.clone();
+        list.connect_row_activated(move |_, row| {
+            if let Some(tick) = usize::try_from(row.index()).ok().and_then(|i| rows.get(i)) {
+                tick.set_active(!tick.is_active());
+            }
+        });
+        for tick in &ticks {
+            tick.set_focusable(false);
+        }
+        let area = area_of(corners);
+        let scroller = gtk::ScrolledWindow::builder()
+            .child(&list)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .propagate_natural_width(true)
+            .max_content_height(320)
+            .min_content_width(area.width().clamp(120, 480))
+            .build();
+        let popover = gtk::Popover::builder()
+            .child(&scroller)
+            .position(gtk::PositionType::Bottom)
+            .build();
+        popover.add_css_class("menu");
+        popover.set_parent(&inner.canvas);
+        popover.set_pointing_to(Some(&area));
+        let keep = Rc::new(Cell::new(true));
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let kept = keep.clone();
+        let rows = list.downgrade();
+        keys.connect_key_pressed(move |_, key, _, _| {
+            if key == gdk::Key::Escape {
+                kept.set(false);
+            }
+            // The toolkit has Space do nothing on a row.
+            let row = rows
+                .upgrade()
+                .and_then(|list| list.focus_child())
+                .and_downcast::<gtk::ListBoxRow>();
+            match row {
+                Some(row) if key == gdk::Key::space => {
+                    row.emit_by_name::<()>("activate", &[]);
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        popover.add_controller(keys);
+        let weak = Rc::downgrade(inner);
+        popover.connect_closed(move |popover| {
+            if let Some(inner) = weak.upgrade() {
+                // At once: whatever closed the list (a save, the window closing) must find
+                // what is ticked in the document.
+                if let Some(choices) = inner.choices.take().filter(|_| keep.get()) {
+                    let ticked: Vec<usize> = (choices.ticks.iter().enumerate())
+                        .filter(|(_, tick)| tick.is_active())
+                        .map(|(i, _)| i)
+                        .collect();
+                    Window(inner.clone()).annotate(|d| d.choose_options(field, &ticked));
+                }
+                inner.canvas.grab_focus();
+            }
+            let popover = popover.clone();
+            glib::idle_add_local_once(move || popover.unparent());
+        });
+        inner.choices.replace(Some(Choices {
+            popover: popover.clone(),
+            labels,
+            entry: None,
+            ticks,
+        }));
+        popover.popup();
+        // The keyboard on the first that is chosen, or on the first: the arrow keys go from
+        // there.
+        let first = chosen.first().copied().unwrap_or(0);
+        if let Some(row) = list.row_at_index(first as i32) {
+            row.grab_focus();
+        }
+    }
+
     /// Asks for the text of the text field `field` in a small editor at the field (its `corners`
     /// in the page view): on pages shown turned, where it can't be typed into in place. Closing
     /// it (a click elsewhere, Escape, Enter in a field of one line) keeps the text.
@@ -1053,15 +1266,7 @@ impl Window {
         corners: [ViewPoint; 4],
     ) {
         let inner = &self.0;
-        let (xs, ys) = (corners.map(|c| c.x), corners.map(|c| c.y));
-        let min = |v: [f64; 4]| v.into_iter().fold(f64::INFINITY, f64::min);
-        let max = |v: [f64; 4]| v.into_iter().fold(f64::NEG_INFINITY, f64::max);
-        let area = gdk::Rectangle::new(
-            min(xs) as i32,
-            min(ys) as i32,
-            (max(xs) - min(xs)).ceil() as i32,
-            (max(ys) - min(ys)).ceil() as i32,
-        );
+        let area = area_of(corners);
         let popover = gtk::Popover::new();
         let mut line = None;
         // What it holds when it closes.
@@ -1213,20 +1418,95 @@ impl Window {
                 );
             }
         });
+        // A comb's letters, once the text field has the new size of its text.
+        if matches!(typing.target, TypingTarget::Field { comb: Some(_), .. }) {
+            let weak = Rc::downgrade(inner);
+            glib::idle_add_local_once(move || {
+                if let Some(inner) = weak.upgrade() {
+                    Window(inner).space_comb();
+                }
+            });
+        }
     }
 
-    /// Ends typing on the page, if there is any: what was typed is the text box's text now (a new
-    /// box, if there is text for one).
-    /// Ends whatever text is being entered, on the page or in the small editor, keeping it: before
-    /// anything that needs the document as the user sees it (saving, closing, another edit).
+    /// Sets the letters typed into a comb field in the middle of their cells, as the saved look
+    /// has them: after each change to the text, and to the size it has on screen.
+    fn space_comb(&self) {
+        let Ok(typing) = self.0.typing.try_borrow() else {
+            return;
+        };
+        let Some(Typing {
+            input: TypingInput::Lines(lines),
+            target: TypingTarget::Field {
+                comb: Some(cells), ..
+            },
+            area,
+            ..
+        }) = typing.as_ref()
+        else {
+            return;
+        };
+        let (lines, cells) = (lines.clone(), (*cells).max(1));
+        let cell = f64::from(area.get().2) / cells as f64;
+        drop(typing);
+        let buffer = lines.buffer();
+        // No more letters than cells. Later: the text is being changed right now.
+        if buffer.char_count() > cells as i32 {
+            glib::idle_add_local_once(move || {
+                let buffer = lines.buffer();
+                let (mut from, mut end) = (buffer.iter_at_offset(cells as i32), buffer.end_iter());
+                buffer.delete(&mut from, &mut end);
+            });
+            return;
+        }
+        // Each letter is as wide as a cell with the room around it, half of it on each side.
+        // The first one has none before it, which the margin makes up for.
+        let table = buffer.tag_table();
+        let mut old = Vec::new();
+        table.foreach(|tag| old.push(tag.clone()));
+        for tag in &old {
+            table.remove(tag);
+        }
+        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+        let mut first = 0.0;
+        for (i, letter) in text.chars().enumerate() {
+            let layout = lines.create_pango_layout(Some(letter.encode_utf8(&mut [0; 4])));
+            let width = f64::from(layout.size().0) / f64::from(gtk::pango::SCALE);
+            if i == 0 {
+                first = width;
+            }
+            let room = ((cell - width) * f64::from(gtk::pango::SCALE)).round() as i32;
+            let tag = gtk::TextTag::builder().letter_spacing(room).build();
+            table.add(&tag);
+            let at = i as i32;
+            buffer.apply_tag(
+                &tag,
+                &buffer.iter_at_offset(at),
+                &buffer.iter_at_offset(at + 1),
+            );
+        }
+        let margin = ((cell - first) / 2.0).round().max(0.0) as i32;
+        lines.set_left_margin(margin);
+        lines.set_right_margin(0);
+    }
+
+    /// Ends whatever text is being entered, on the page, in the small editor or above the list of
+    /// a choice field, keeping it: before anything that needs the document as the user sees it
+    /// (saving, closing, another edit).
     pub(super) fn finish_text_entry(&self) {
         self.finish_typing();
         let editor = self.0.text_editor.borrow().clone();
         if let Some(editor) = editor {
             editor.popdown();
         }
+        let choices = self.0.choices.borrow().as_ref().map(|c| c.popover.clone());
+        if let Some(choices) = choices {
+            choices.popdown();
+        }
     }
 
+    /// Ends typing on the page, if there is any: what was typed is the text box's text now (a new
+    /// box, if there is text for one).
     pub(super) fn finish_typing(&self) {
         let inner = &self.0;
         let Some(typing) = inner.typing.take() else {

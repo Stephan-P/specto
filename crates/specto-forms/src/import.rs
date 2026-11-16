@@ -26,6 +26,7 @@ const PUSH_BUTTON: u32 = 1 << 16;
 const COMBO: u32 = 1 << 17;
 const EDIT: u32 = 1 << 18;
 const MULTI_SELECT: u32 = 1 << 21;
+const COMB: u32 = 1 << 24;
 
 /// Options of a choice field beyond this many are ignored.
 const MAX_OPTIONS: usize = 10_000;
@@ -65,7 +66,61 @@ pub fn fields(source: &SourceDocument) -> Vec<Field> {
     for (node, id) in children(&roots) {
         walk(&node, id, &top, 0, &pages, &mut seen, &mut out);
     }
+    order_by_place(source, &mut out);
     out
+}
+
+/// Puts the widgets of the pages that ask for it (`/Tabs`) in the order of their places: `R`
+/// for rows from the top, each from the left, and `C` for columns from the left, each from the
+/// top. Other pages keep the order of their annotations.
+fn order_by_place(source: &SourceDocument, fields: &mut [Field]) {
+    for (page, p) in source.pdf().pages().iter().enumerate() {
+        let columns = match p.raw().get::<Name<'_>>(b"Tabs").as_deref() {
+            Some(b"R") => false,
+            Some(b"C") => true,
+            _ => continue,
+        };
+        let mut on_page: Vec<&mut Widget> = fields
+            .iter_mut()
+            .flat_map(|f| f.widgets.iter_mut())
+            .filter(|w| w.page == page)
+            .collect();
+        // Along the rows (or columns): where a widget starts and ends across them, and where
+        // it is along them. Seen from the top left, both grow.
+        let across = |w: &Widget| match columns {
+            false => (-w.rect.max.y, -w.rect.min.y, w.rect.min.x),
+            true => (w.rect.min.x, w.rect.max.x, -w.rect.max.y),
+        };
+        on_page.sort_by(|a, b| {
+            across(a)
+                .0
+                .total_cmp(&across(b).0)
+                .then(a.order.cmp(&b.order))
+        });
+        // A widget whose middle is within the first one of a row belongs to that row.
+        let mut rows: Vec<(f64, f64, Vec<&mut Widget>)> = Vec::new();
+        for w in on_page {
+            let (start, end, _) = across(w);
+            let middle = (start + end) / 2.0;
+            match rows.last_mut() {
+                Some((from, to, row)) if (*from..=*to).contains(&middle) => row.push(w),
+                _ => rows.push((start, end, vec![w])),
+            }
+        }
+        let mut order = 0;
+        for (_, _, mut row) in rows {
+            row.sort_by(|a, b| {
+                across(a)
+                    .2
+                    .total_cmp(&across(b).2)
+                    .then(a.order.cmp(&b.order))
+            });
+            for w in row {
+                w.order = order;
+                order += 1;
+            }
+        }
+    }
 }
 
 /// The dictionaries an array refers to, each with its object's number. Entries written straight
@@ -168,6 +223,12 @@ fn walk(
             multiline: flags & MULTILINE != 0,
             password: flags & PASSWORD != 0,
             max_length: node.get::<u32>(b"MaxLen"),
+            // Only with a length, and not for several lines or passwords.
+            comb: flags & COMB != 0
+                && flags & (MULTILINE | PASSWORD) == 0
+                && node
+                    .get::<u32>(b"MaxLen")
+                    .is_some_and(|m| (1..=1000).contains(&m)),
         },
         b"Btn" if flags & PUSH_BUTTON != 0 => FieldKind::Button,
         b"Btn" if flags & RADIO != 0 => FieldKind::Radio,
@@ -191,23 +252,33 @@ fn walk(
     if own {
         widgets.extend(widget(node, id, pages));
     }
-    // What it holds: the name of the state that is on, for buttons, and text for text fields.
-    let state = node
-        .get::<Name<'_>>(b"V")
-        .map(|n| String::from_utf8_lossy(n.as_ref()).into_owned())
-        .filter(|s| s != "Off");
-    let value = match kind {
-        FieldKind::Text { .. } => Some(FieldValue::Text(text(node, b"V").unwrap_or_default())),
-        FieldKind::Checkbox => Some(FieldValue::Check(state.is_some())),
-        FieldKind::Radio => Some(FieldValue::Choice(state)),
-        // Several chosen at once are an array, which isn't read.
-        FieldKind::Choice {
-            multiple: false, ..
-        } => Some(FieldValue::Text(text(node, b"V").unwrap_or_default())),
-        _ => None,
+    // What it holds, and what a reset has it hold: the name of the state that is on, for
+    // buttons, and text for text fields.
+    let held = |key: &[u8]| {
+        let state = node
+            .get::<Name<'_>>(key)
+            .map(|n| String::from_utf8_lossy(n.as_ref()).into_owned())
+            .filter(|s| s != "Off");
+        match &kind {
+            FieldKind::Text { .. } => Some(FieldValue::Text(text(node, key).unwrap_or_default())),
+            FieldKind::Checkbox => Some(FieldValue::Check(state.is_some())),
+            FieldKind::Radio => Some(FieldValue::Choice(state)),
+            FieldKind::Choice {
+                multiple: false, ..
+            } => Some(FieldValue::Text(text(node, key).unwrap_or_default())),
+            FieldKind::Choice { options, .. } => {
+                Some(FieldValue::Several(several(node, key, options)))
+            }
+            _ => None,
+        }
     };
+    let (value, default) = (held(b"V"), held(b"DV"));
     let unshown = here.unshown
-        && matches!(&value, Some(FieldValue::Text(t)) if !t.is_empty())
+        && match &value {
+            Some(FieldValue::Text(t)) => !t.is_empty(),
+            Some(FieldValue::Several(all)) => !all.is_empty(),
+            _ => false,
+        }
         && if own {
             !shows_text(node)
         } else {
@@ -221,10 +292,29 @@ fn walk(
         read_only: flags & READ_ONLY != 0,
         required: flags & REQUIRED != 0,
         value,
+        default,
         unshown,
         look: text_look(here.look.as_deref(), here.alignment),
         widgets,
     });
+}
+
+/// What is chosen in a list that takes several (under `key`, one text or an array of them):
+/// those of `options` it names, in their order.
+fn several(node: &Dict<'_>, key: &[u8], options: &[ChoiceOption]) -> Vec<String> {
+    let held: Vec<String> = match node.get::<Array<'_>>(key) {
+        Some(all) => all
+            .iter::<PdfString<'_>>()
+            .take(MAX_OPTIONS)
+            .map(|s| decode_text(s.as_bytes()))
+            .collect(),
+        None => text(node, key).into_iter().collect(),
+    };
+    options
+        .iter()
+        .filter(|o| held.contains(&o.value))
+        .map(|o| o.value.clone())
+        .collect()
 }
 
 /// What a choice field offers (`/Opt`): each a text, or a value and what to show for it.

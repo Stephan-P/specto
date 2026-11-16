@@ -32,6 +32,8 @@ pub enum FieldKind {
         password: bool,
         /// How many characters it takes at most, if it says.
         max_length: Option<u32>,
+        /// A comb: as many cells of the same width as it takes characters, one in each.
+        comb: bool,
     },
     /// A box to tick. Its widgets (usually one) each say what they are called when ticked.
     Checkbox,
@@ -45,7 +47,7 @@ pub enum FieldKind {
         list: bool,
         /// Text of one's own can be typed in instead of choosing.
         editable: bool,
-        /// More than one can be chosen. Such fields are read, but not filled in here.
+        /// More than one can be chosen.
         multiple: bool,
     },
     /// A button to press, which fills nothing in.
@@ -74,6 +76,8 @@ pub enum FieldValue {
     Check(bool),
     /// Which button of a radio group is chosen, by the name of its state. `None` for none.
     Choice(Option<String>),
+    /// The values of the options chosen in a list that takes several, in the order of the list.
+    Several(Vec<String>),
 }
 
 /// One place where a field is shown on a page.
@@ -81,8 +85,8 @@ pub enum FieldValue {
 pub struct Widget {
     /// The page of the file it is on, from 0.
     pub page: usize,
-    /// Where it is in the page's list of annotations, from 0: the order the Tab key goes through
-    /// the fields of a page in.
+    /// Where it comes among the widgets of its page when the Tab key goes through them: in the
+    /// page's list of annotations, or by rows or columns if the page asks for that.
     pub order: usize,
     /// The area it takes up on the page.
     pub rect: PdfBox,
@@ -134,6 +138,8 @@ pub struct Field {
     pub required: bool,
     /// What it holds in the file. `None` for kinds without a value here.
     pub value: Option<FieldValue>,
+    /// What it holds once the form is reset (`/DV`): nothing, if the file doesn't say.
+    pub default: Option<FieldValue>,
     /// The file has text for it that its widgets don't show: the form leaves that to the reader,
     /// and a widget's look in the file has no text. Its looks are to be made from `value`.
     pub unshown: bool,
@@ -142,14 +148,17 @@ pub struct Field {
 }
 
 impl Field {
-    /// Whether the field can be filled in here: a text field, a checkbox, a radio group or a
-    /// choice of one among some, that the form lets be changed.
+    /// Whether the field can be filled in here: a text field, a checkbox, a radio group, or a
+    /// choice among some or typed in, that the form lets be changed.
     pub fn is_fillable(&self) -> bool {
         let known = match &self.kind {
             FieldKind::Text { .. } | FieldKind::Checkbox | FieldKind::Radio => true,
             FieldKind::Choice {
-                options, multiple, ..
-            } => !multiple && !options.is_empty(),
+                options,
+                editable,
+                multiple,
+                ..
+            } => !options.is_empty() || (*editable && !multiple),
             _ => false,
         };
         known && !self.read_only
