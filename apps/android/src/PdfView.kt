@@ -226,6 +226,7 @@ fun PdfView(
             refocus,
         )
         BusyPages(state)
+        FieldDialog(state)
     }
 }
 
@@ -462,13 +463,19 @@ private fun PageCanvas(
                         if (state.hasSelection) {
                             state.clearSelection()
                         } else {
-                            // A link first, as on the desktop, then an annotation, which the tap
-                            // picks. A tap elsewhere lets go of the picked one, and does nothing
-                            // else.
+                            // A link first, as on the desktop, then a field of the form, which
+                            // the tap fills in, then an annotation, which it picks. A tap elsewhere
+                            // lets go of the picked one, and does nothing else.
                             val hadPicked = state.hasPickedAnnotation
                             when (val hit = state.tap(it / density)) {
                                 Activated.Nothing ->
-                                    if (!state.pickAnnotation(it / density) && !hadPicked) onTap()
+                                    if (
+                                        !state.tapField(it / density) &&
+                                        !state.pickAnnotation(it / density) &&
+                                        !hadPicked
+                                    ) {
+                                        onTap()
+                                    }
 
                                 Activated.Moved -> state.clearPickedAnnotation()
 

@@ -27,11 +27,12 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard, Weak};
 use std::time::Instant;
 
 use specto_annot::{Color, MarkupStyle, Segment};
-use specto_doc::SourceId;
+use specto_doc::{FieldId, SourceId};
+use specto_forms::FieldKind;
 use specto_geom::{DeviceRect, ViewPoint, ViewVector};
 use specto_render::scheduler::Scheduler;
 use specto_render::{Bitmap, OpenError};
-use specto_session::ViewShape;
+use specto_session::{FieldClick, ViewShape};
 use specto_session::{MAIN, Options, Session};
 use specto_source::{NamedAction, OutlineItem, PdfData, Target};
 use specto_view::{
@@ -126,6 +127,8 @@ pub enum EditKind {
     AddAnnotation,
     RemoveAnnotation,
     ChangeAnnotation,
+    /// A field of the form was filled in. `pages` is then 1.
+    FillField,
 }
 
 /// An edit that can be undone or redone.
@@ -147,8 +150,7 @@ impl From<specto_doc::Edit> for EditStep {
             Edit::AddAnnotation(_) => (EditKind::AddAnnotation, 1),
             Edit::RemoveAnnotation(_) => (EditKind::RemoveAnnotation, 1),
             Edit::ChangeAnnotation(_) => (EditKind::ChangeAnnotation, 1),
-            // Forms aren't filled in through this interface.
-            Edit::FillField => (EditKind::ChangeAnnotation, 1),
+            Edit::FillField => (EditKind::FillField, 1),
         };
         Self {
             kind,
@@ -312,6 +314,48 @@ pub enum Markup {
     StrikeOut,
 }
 
+/// What a tap on a field of the form did, or asks for (see [`ViewSession::tap_field`]).
+#[derive(Clone, Debug, PartialEq, uniffi::Enum)]
+pub enum FieldTap {
+    /// No field that can be filled in is there.
+    Nothing,
+    /// A box was ticked or unticked, or a radio button chosen: plan a new frame.
+    Changed,
+    /// A text field, to ask for its text. Follow with [`ViewSession::set_field_text`].
+    Text {
+        field: u64,
+        /// What the form calls the field for the user, if it says.
+        label: Option<String>,
+        /// It takes more than one line.
+        multiline: bool,
+        /// What is typed is to be hidden.
+        password: bool,
+        /// How many characters it takes at most, if it says.
+        max_length: Option<u32>,
+        /// What it holds.
+        text: String,
+    },
+    /// A menu or a list, to choose one of `options` from. Follow with
+    /// [`ViewSession::choose_option`].
+    Choose {
+        field: u64,
+        label: Option<String>,
+        options: Vec<String>,
+        /// Which of the options it holds, if any of them.
+        chosen: Option<u32>,
+    },
+}
+
+/// A field's id as the frontend has it: the number of its object and, in the low 16 bits, its
+/// generation.
+fn field_number(field: FieldId) -> u64 {
+    u64::from(field.0) << 16 | u64::from(field.1)
+}
+
+fn field_id(number: u64) -> FieldId {
+    FieldId((number >> 16) as u32, number as u16)
+}
+
 /// A piece of a [`ShapeDraw`]'s outline, from where the one before ended.
 #[derive(Clone, Copy, Debug, PartialEq, uniffi::Enum)]
 pub enum SegmentDraw {
@@ -424,7 +468,8 @@ pub struct Frame {
     /// The annotations to draw over the visible pages, in order, under the highlights.
     pub shapes: Vec<ShapeDraw>,
     /// The four corners of the box around the annotation that is picked
-    /// ([`ViewSession::pick_annotation_at`]). Empty if none is, or it is on no visible page.
+    /// ([`ViewSession::pick_annotation_at`]), or around the field of the form that is being filled
+    /// in ([`ViewSession::tap_field`]). Empty if neither is, or it is on no visible page.
     pub picked: Vec<Point>,
     /// The annotations to draw over the thumbnails, in order.
     ///
@@ -635,7 +680,10 @@ impl Shared {
             thumbnail_shapes.extend(overlay.iter().map(|s| shape_draw(slot as u32, s, 1.0)));
         }
         let visible = |position: usize| planned.pages.iter().any(|p| p.page == position);
-        let picked = match session.picked_outline() {
+        let outlined = session
+            .picked_outline()
+            .or_else(|| session.focused_field_outline());
+        let picked = match outlined {
             Some((position, corners)) if visible(position) => corners
                 .iter()
                 .map(|p| Point {
@@ -1196,6 +1244,92 @@ impl ViewSession {
             .map_err(|e| PdfError::Save {
                 reason: e.to_string(),
             })
+    }
+
+    // Forms
+    //
+    // The fields of the file that was opened. What is filled in shows in the pages as rendered,
+    // and is an edit like those of the pages: undone with [`undo`](Self::undo), saved with the
+    // document.
+
+    /// A tap at (`x`, `y`) in logical pixels on a field of the form that can be filled in.
+    ///
+    /// Ticks or unticks a checkbox and chooses a radio button right away. For a text field, a
+    /// menu or a list it says what to ask the user for. That field is outlined ([`Frame::picked`])
+    /// until [`end_field`](Self::end_field), and a picked annotation is let go of.
+    pub fn tap_field(&self, x: f64, y: f64) -> FieldTap {
+        let mut state = self.shared.lock();
+        let session = &mut state.session;
+        let Some(click) = session.click_field(&self.shared.scheduler, ViewPoint::new(x, y)) else {
+            return FieldTap::Nothing;
+        };
+        let fields = session.form_fields();
+        let field_of = |id: FieldId| fields.iter().find(|f| f.id == id);
+        let label = |id: FieldId| field_of(id).and_then(|f| f.label.clone());
+        let tap = match click {
+            FieldClick::Changed | FieldClick::Focused => FieldTap::Changed,
+            FieldClick::Text {
+                field,
+                multiline,
+                password,
+                text,
+                ..
+            }
+            | FieldClick::Edit {
+                field,
+                multiline,
+                password,
+                text,
+                ..
+            } => FieldTap::Text {
+                field: field_number(field),
+                label: label(field),
+                multiline,
+                password,
+                max_length: field_of(field).and_then(|f| match f.kind {
+                    FieldKind::Text { max_length, .. } => max_length,
+                    _ => None,
+                }),
+                text,
+            },
+            FieldClick::Choose {
+                field,
+                labels,
+                chosen,
+                ..
+            } => FieldTap::Choose {
+                field: field_number(field),
+                label: label(field),
+                options: labels,
+                chosen: chosen.map(|i| i as u32),
+            },
+        };
+        session.picked = None;
+        if tap == FieldTap::Changed {
+            // Nothing is left to ask for.
+            session.clear_field_focus();
+        }
+        tap
+    }
+
+    /// Fills `text` into the text field `field`, as far as the field takes it. Returns whether
+    /// that changed what it holds.
+    pub fn set_field_text(&self, field: u64, text: String) -> bool {
+        let mut state = self.shared.lock();
+        (state.session).set_field_text(&self.shared.scheduler, field_id(field), &text)
+    }
+
+    /// Chooses option `index` of the menu or list `field`. Returns whether that changed what it
+    /// holds.
+    pub fn choose_option(&self, field: u64, index: u32) -> bool {
+        let mut state = self.shared.lock();
+        (state.session).choose_option(&self.shared.scheduler, field_id(field), index as usize)
+    }
+
+    /// The field that [`tap_field`](Self::tap_field) asked about is done with, filled in or not:
+    /// it is no longer outlined. Returns whether one was.
+    pub fn end_field(&self) -> bool {
+        self.shared.lock().session.clear_field_focus()
     }
 
     // Editing

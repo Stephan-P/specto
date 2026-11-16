@@ -35,6 +35,7 @@
     <string name="undo_add_annotation">Anmerkung rückgängig machen</string>
     <string name="undo_remove_annotation">Löschen der Anmerkung rückgängig machen</string>
     <string name="undo_change_annotation">Ändern der Anmerkung rückgängig machen</string>
+    <string name="undo_fill_field">Ausfüllen des Felds rückgängig machen</string>
     <string name="redo_rotate">Drehen wiederholen</string>
     <string name="redo_delete">Löschen wiederholen</string>
     <string name="redo_move">Verschieben wiederholen</string>
@@ -42,6 +43,7 @@
     <string name="redo_add_annotation">Anmerkung wiederholen</string>
     <string name="redo_remove_annotation">Löschen der Anmerkung wiederholen</string>
     <string name="redo_change_annotation">Ändern der Anmerkung wiederholen</string>
+    <string name="redo_fill_field">Ausfüllen des Felds wiederholen</string>
 
     <string name="open_pdf">PDF öffnen</string>
     <string name="recent">Zuletzt geöffnet</string>
@@ -91,6 +93,10 @@
     <string name="strike_through">Durchstreichen</string>
     <string name="annotation_selected">Anmerkung ausgewählt</string>
     <string name="could_not_delete_annotation">Die Anmerkung konnte nicht gelöscht werden: %1$s</string>
+    <string name="field_text_title">Feld ausfüllen</string>
+    <string name="field_choice_title">Auswählen</string>
+    <string name="field_done">Fertig</string>
+    <string name="field_length">%1$d / %2$d</string>
     <string name="copy">Kopieren</string>
     <string name="copied">Kopiert</string>
     <string name="too_much_to_copy">Das ist zu viel Text, um ihn auf einmal zu kopieren</string>

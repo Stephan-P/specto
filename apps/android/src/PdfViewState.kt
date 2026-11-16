@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import uniffi.specto_ffi.Activated
 import uniffi.specto_ffi.DocumentInfo
 import uniffi.specto_ffi.EditState
+import uniffi.specto_ffi.FieldTap
 import uniffi.specto_ffi.Markup
 import uniffi.specto_ffi.OutlineEntry
 import uniffi.specto_ffi.PageSize
@@ -412,6 +413,62 @@ class PdfViewState(
             editState = session.editState()
             refresh()
         }
+    }
+
+    // Forms
+    //
+    // The fields of the form live in Rust. What is filled in shows in the pages as rendered.
+
+    /**
+     * The field that a tap asked to fill in: a text field to type into ([FieldTap.Text]), or a menu
+     * or list to choose from ([FieldTap.Choose]). Null if none is.
+     *
+     * A frame has the box around it. Follow with [setFieldText], [chooseOption] or [endField].
+     */
+    var askedField: FieldTap? by mutableStateOf(null)
+        private set
+
+    /**
+     * A tap at [at] on the form: ticks or unticks a checkbox, chooses a radio button, or asks for
+     * what goes into a text field, a menu or a list ([askedField]).
+     *
+     * A picked annotation is let go of. Returns whether a field that can be filled in was there.
+     */
+    fun tapField(at: Offset): Boolean {
+        if (closed) return false
+        val tap = session.tapField(at.x.toDouble(), at.y.toDouble())
+        if (tap == FieldTap.Nothing) return false
+        hasPickedAnnotation = false
+        if (tap == FieldTap.Changed) {
+            editState = session.editState()
+        } else {
+            askedField = tap
+        }
+        refresh()
+        return true
+    }
+
+    /** Fills [text] into the text field that was asked about, as far as the field takes it. */
+    fun setFieldText(text: String) {
+        val asked = askedField as? FieldTap.Text
+        if (!closed && asked != null) session.setFieldText(asked.field, text)
+        endField()
+    }
+
+    /** Chooses option [index] of the menu or list that was asked about. */
+    fun chooseOption(index: Int) {
+        val asked = askedField as? FieldTap.Choose
+        if (!closed && asked != null) session.chooseOption(asked.field, index.toUInt())
+        endField()
+    }
+
+    /** Lets go of the field that was asked about, filled in or not. */
+    fun endField() {
+        askedField = null
+        if (closed) return
+        session.endField()
+        editState = session.editState()
+        refresh()
     }
 
     // Text selection

@@ -63,13 +63,13 @@ Both apps are usable as PDF viewers. They render pages sharply at any zoom and
 on HiDPI screens, and stay responsive on huge documents. They have the usual
 layouts, thumbnails, the table of contents, links and printed page numbers,
 open encrypted files, and remember where you were in each document. In both you
-can select, copy and search text, print, and edit pages by rotating, deleting
-and reordering them.
+can select, copy and search text, print, edit pages by rotating, deleting and
+reordering them, and fill in forms: checkboxes, radio buttons, text fields,
+menus and lists.
 
 The desktop app can also insert pages from other PDFs and export a selection of
 pages. It has markup too: highlighting, underlining and striking through text,
-freehand drawing, shapes, text boxes, notes and signatures. It also fills in
-forms: checkboxes, radio buttons, text fields, menus and lists.
+freehand drawing, shapes, text boxes, notes and signatures.
 
 The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 

@@ -236,11 +236,14 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Desktop: Tab between fields, Space and Enter on the field in focus
 - [x] Menus and lists to choose one option from
 - [x] Comb fields, hidden passwords, and text fields on turned pages
+- [x] Android: filling in boxes, radio buttons, text fields, menus and lists
 - [ ] Typing into a comb field with its letters in their cells while typing.
 - [ ] Lists that take several choices, and menus that take typed text.
 - [ ] An embedded fallback font for text outside Latin.
 - [ ] Tab order by rows or columns where a page asks for it, a toggle for
   highlighting fields, and resetting a form.
+- [ ] Android: typing into a text field on the page instead of in a dialog,
+  and a way from one field to the next from the keyboard.
 - [ ] Forms of inserted files. Only the form of the opened file is kept.
 - [ ] Saving filled forms incrementally, and an optional flattened export.
 

@@ -2210,6 +2210,7 @@ dependencies = [
  "ndk",
  "specto-annot",
  "specto-doc",
+ "specto-forms",
  "specto-geom",
  "specto-render",
  "specto-session",

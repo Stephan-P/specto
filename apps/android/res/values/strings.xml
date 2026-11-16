@@ -47,6 +47,7 @@
     <string name="undo_add_annotation">Undo add annotation</string>
     <string name="undo_remove_annotation">Undo delete annotation</string>
     <string name="undo_change_annotation">Undo change annotation</string>
+    <string name="undo_fill_field">Undo fill in field</string>
     <string name="redo_rotate">Redo rotate</string>
     <string name="redo_delete">Redo delete</string>
     <string name="redo_move">Redo move</string>
@@ -54,6 +55,7 @@
     <string name="redo_add_annotation">Redo add annotation</string>
     <string name="redo_remove_annotation">Redo delete annotation</string>
     <string name="redo_change_annotation">Redo change annotation</string>
+    <string name="redo_fill_field">Redo fill in field</string>
 
     <!-- The start screen. -->
     <string name="open_pdf">Open PDF</string>
@@ -122,6 +124,12 @@
     <!-- Tells screen readers that an annotation (a mark on the text, a note, a drawing) is picked. -->
     <string name="annotation_selected">Annotation selected</string>
     <string name="could_not_delete_annotation">Couldn\'t delete the annotation: %1$s</string>
+    <!-- Titles of the dialogs that fill in a field of a form, where the form has no name for it. -->
+    <string name="field_text_title">Fill in field</string>
+    <string name="field_choice_title">Choose</string>
+    <string name="field_done">Done</string>
+    <!-- How many characters a field holds of how many it takes, such as 3 / 10. -->
+    <string name="field_length">%1$d / %2$d</string>
     <string name="copy">Copy</string>
     <string name="copied">Copied</string>
     <string name="too_much_to_copy">That is too much text to copy at once</string>

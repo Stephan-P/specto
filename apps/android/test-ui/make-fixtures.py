@@ -16,6 +16,12 @@ slow.pdf   2 pages. The first takes long to draw (about a quarter of a second
            for each part of it on a fast machine): 768,000 small curves, and
            its resources name a 120 megapixel image, which marks it as a page
            to be patient with from the start. Nothing draws the image.
+form.pdf   2 pages with a form on the first: a text field "name", which the
+           form calls "Your name", at x 150 to 450, y 690 to 712, a text field
+           "code" of at most 4 characters at x 150 to 250, y 650 to 672, a
+           checkbox "agree" at x 150 to 170, y 610 to 630, and a menu
+           "country" at x 150 to 350, y 570 to 592, which offers Germany,
+           France and Other and holds Germany.
 """
 
 import hashlib
@@ -282,9 +288,75 @@ def locked_pdf(count=3, user_password=b"secret", owner_password=b"owner"):
     )
 
 
+def form_pdf():
+    objects = dict(FONTS)
+    objects[1] = (
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [20 0 R 21 0 R 22 0 R 25 0 R] "
+        b"/DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>"
+    )
+    objects[2] = b"<< /Type /Pages /Kids [10 0 R 12 0 R] /Count 2 >>"
+    objects[3] = (
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+        b"/Encoding /WinAnsiEncoding >>"
+    )
+    fields = {
+        "Name": (150, 690, 450, 712),
+        "Code": (150, 650, 250, 672),
+        "Agree": (150, 610, 170, 630),
+        "Country": (150, 570, 350, 592),
+    }
+    # Each field has its name beside it and a frame around it.
+    content = heading(1, 2) + "0.5 G 1 w\n"
+    for label, (x0, y0, x1, y1) in fields.items():
+        content += f"BT /F2 12 Tf 62 {y0 + 6} Td ({label}) Tj ET\n"
+        content += f"{x0} {y0} {x1 - x0} {y1 - y0} re S\n"
+    for p in (1, 2):
+        annots = "/Annots [20 0 R 21 0 R 22 0 R 25 0 R]" if p == 1 else ""
+        objects[page_id(p)] = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+            f"/Contents {page_id(p) + 1} 0 R {RESOURCES} {annots} >>"
+        ).encode()
+        objects[page_id(p) + 1] = stream(content if p == 1 else heading(2, 2) + body())
+
+    def widget(kind, name, rect, more=""):
+        x0, y0, x1, y1 = rect
+        return (
+            f"<< /Type /Annot /Subtype /Widget /FT /{kind} /T ({name}) "
+            f"/Rect [{x0} {y0} {x1} {y1}] /P 10 0 R /F 4 {more} >>"
+        ).encode()
+
+    def look(content):
+        data = content.encode()
+        return (
+            b"<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Length %d >>\nstream\n"
+            % len(data)
+            + data
+            + b"endstream"
+        )
+
+    objects[20] = widget("Tx", "name", fields["Name"], "/TU (Your name)")
+    objects[21] = widget("Tx", "code", fields["Code"], "/MaxLen 4")
+    objects[22] = widget(
+        "Btn",
+        "agree",
+        fields["Agree"],
+        "/V /Off /AS /Off /AP << /N << /Yes 23 0 R /Off 24 0 R >> >>",
+    )
+    objects[23] = look("0.1 0.5 0.2 RG 3 w 4 10 m 8 5 l 16 16 l S\n")
+    objects[24] = look("")
+    objects[25] = widget(
+        "Ch",
+        "country",
+        fields["Country"],
+        "/Ff 131072 /V (de) /Opt [[(de) (Germany)] [(fr) (France)] (Other)]",
+    )
+    write("form.pdf", objects)
+
+
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
     pages_pdf()
     book_pdf()
     locked_pdf()
     slow_pdf()
+    form_pdf()

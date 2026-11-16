@@ -166,6 +166,29 @@ edits, they change nothing in a file until the document is saved.
 - The thumbnails show marks as the page does, in the strip, the page grid and
   the sidebar
 
+## Forms
+
+- A tap ticks or unticks a checkbox, and chooses a radio button
+- A tap on a text field asks for its text in a dialog, under the name the form
+  has for the field. Done, or the keyboard's own button, fills it in. Cancel
+  leaves the field as it is
+- A field of several lines takes several in the dialog. A password field hides
+  what is typed. A field that takes only so many characters takes no more, and
+  the dialog counts them
+- A tap on a menu or a list of the form shows what it offers, with what it
+  holds marked. A tap on a row chooses it
+- A box is drawn around the field while its dialog is open
+- Read-only fields are left alone
+- Where a field lies on a link, a tap follows the link. Where a mark lies on a
+  field, a tap fills in the field
+- Filling in is an edit: "Edited" shows beside the title, Undo and Redo in the
+  overflow menu take it back and repeat it ("Undo fill in field"), and it is
+  saved, shared and printed with the document
+- The thumbnails show what was filled in
+- Not yet: typing on the page itself, moving from field to field with the
+  keyboard, lists that take several choices, typing a choice of one's own into
+  a menu that allows it, text outside Latin
+
 ## Editing pages
 
 Pages can be rotated, deleted and reordered. Nothing changes a file until the
@@ -316,5 +339,4 @@ the whole app and are kept across launches.
 
 - Inserting pages from other files
 - Keeping unsaved edits when Android ends the app
-- Other annotations (notes, drawings, text boxes), choosing a mark's color, and
-  form filling
+- Other annotations (notes, drawings, text boxes), and choosing a mark's color

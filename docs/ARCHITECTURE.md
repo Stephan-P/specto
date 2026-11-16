@@ -411,7 +411,8 @@ The Android app is written in Kotlin with Jetpack Compose.
 None of this exists yet. The tasks are in [TASKS.md](TASKS.md).
 
 - **More of forms.** Lists with several choices, a fallback font for text
-  outside Latin, and forms on Android.
+  outside Latin, and typing on the page on Android, where a dialog asks for a
+  field's text today.
 - **Incremental save.** When only annotations or form values changed, append to
   the original file instead of rewriting it. This is faster and keeps existing
   digital signatures valid.

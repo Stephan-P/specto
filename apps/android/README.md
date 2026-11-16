@@ -30,6 +30,8 @@ The main features are below, and the full list is in
 - **Text**: selecting, copying and sharing
 - **Markup**: highlighting, underlining and striking through text, saved as
   annotations that other PDF programs show too
+- **Forms**: filling in text fields, checkboxes, radio buttons, menus and
+  lists
 - **Editing**: rotating, deleting and reordering pages, with undo and redo, and
   saving the result
 - **Tablets**: a sidebar, and two pages side by side on wide windows,
@@ -42,8 +44,8 @@ The main features are below, and the full list is in
   volume keys
 - **Languages**: English and German
 
-Coming next: inserting pages from other documents, more kinds of annotations,
-and filling in forms.
+Coming next: inserting pages from other documents and more kinds of
+annotations.
 
 ## Implementation
 

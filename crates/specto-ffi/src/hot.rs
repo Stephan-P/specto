@@ -11,7 +11,8 @@
 //! u32 flags            bit 0: complete, bit 1: settled, bit 2: paged,
 //!                      bit 3: two pages, bit 4: first page alone,
 //!                      bit 5: text is selected,
-//!                      bit 6: an annotation is picked and on screen
+//!                      bit 6: an annotation is picked, or a form field is
+//!                      being filled in, and it is on screen
 //! u32 zoom_mode        0 fixed, 1 fit width, 2 fit page
 //! u32 current_page
 //! i32 settles_in_ms    -1: none
@@ -57,7 +58,8 @@
 //!     }
 //! }
 //! 4 × { f32 x, y }     the corners of the box around the picked
-//!                      annotation, zeros if flag bit 6 isn't set
+//!                      annotation or the form field being filled in,
+//!                      zeros if flag bit 6 isn't set
 //! u32 shape_count      annotations to draw over the thumbnails: as the
 //! u32 unused           shapes above, with `page` an index into the
 //! shape_count × { .. } thumbnails, in units of which 1000 make the width

@@ -538,6 +538,11 @@ fn book_pdf() -> Vec<u8> {
             ),
         ));
     }
+    assemble(objects)
+}
+
+/// A well-formed file of `objects`, each with its number.
+fn assemble(mut objects: Vec<(usize, String)>) -> Vec<u8> {
     objects.sort_by_key(|(number, _)| *number);
     let size = objects.last().map_or(1, |(number, _)| number + 1);
     let mut out = String::from("%PDF-1.7\n");
@@ -557,6 +562,151 @@ fn book_pdf() -> Vec<u8> {
     }
     out += &format!("trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
     out.into_bytes()
+}
+
+/// A page of 200 by 300 points with a form: a text field "name" of at most 10 characters, which
+/// the form calls "Your name", at x 20 to 180, y 240 to 260, a checkbox "agree" at x 20 to 40, y
+/// 180 to 200, and a menu "country" at x 20 to 180, y 120 to 140, which holds "de".
+fn form_pdf() -> Vec<u8> {
+    let stream = |content: &str| {
+        format!(
+            "<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Length {} >>\nstream\n{content}\n\
+             endstream",
+            content.len()
+        )
+    };
+    assemble(vec![
+        (
+            1,
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R 7 0 R 10 0 R] \
+             /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >> >>"
+                .into(),
+        ),
+        (
+            2,
+            "<< /Type /Pages /Kids [4 0 R] /Count 1 /MediaBox [0 0 200 300] /Resources << >> >>"
+                .into(),
+        ),
+        (
+            3,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+                .into(),
+        ),
+        (
+            4,
+            "<< /Type /Page /Parent 2 0 R /Annots [6 0 R 7 0 R 10 0 R] >>".into(),
+        ),
+        (
+            6,
+            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /TU (Your name) /MaxLen 10 \
+             /Rect [20 240 180 260] /P 4 0 R >>"
+                .into(),
+        ),
+        (
+            7,
+            "<< /Type /Annot /Subtype /Widget /FT /Btn /T (agree) /Rect [20 180 40 200] /P 4 0 R \
+             /V /Off /AS /Off /AP << /N << /Yes 8 0 R /Off 9 0 R >> >> >>"
+                .into(),
+        ),
+        (8, stream("0 1 0 rg 0 0 20 20 re f")),
+        (9, stream("")),
+        (
+            10,
+            "<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (country) /V (de) \
+             /Opt [[(de) (Germany)] [(fr) (France)] (Other)] /Rect [20 120 180 140] /P 4 0 R >>"
+                .into(),
+        ),
+    ])
+}
+
+#[test]
+fn filling_in_a_form() {
+    let (tx, _rx) = mpsc::channel();
+    let listener = Arc::new(Listener(Mutex::new(tx)));
+    let session = ViewSession::open(form_pdf(), None, 1 << 20, listener).unwrap();
+    // PDF (x, y) is at (8 + x, 308 - y) in the view.
+    session.set_viewport(216.0, 316.0, 2.0);
+    session.set_view_mode(ViewMode::Paged);
+    let tap = |x: f64, y: f64| session.tap_field(8.0 + x, 308.0 - y);
+
+    // Blank paper is no field.
+    assert_eq!(tap(100.0, 50.0), FieldTap::Nothing);
+    assert!(!session.edit_state().modified);
+
+    // A tap ticks the box, and that is all there is to it: nothing is outlined.
+    assert_eq!(tap(30.0, 190.0), FieldTap::Changed);
+    let state = session.edit_state();
+    assert!(state.modified);
+    assert_eq!(state.undo.unwrap().kind, EditKind::FillField);
+    assert!(session.frame().picked.is_empty());
+    assert!(!session.end_field());
+
+    // A tap on the text field asks for its text, and outlines it meanwhile (in device pixels).
+    let FieldTap::Text {
+        field,
+        label,
+        multiline,
+        password,
+        max_length,
+        text,
+    } = tap(100.0, 250.0)
+    else {
+        panic!("a text field is there");
+    };
+    assert_eq!(label.as_deref(), Some("Your name"));
+    assert_eq!((multiline, password, max_length), (false, false, Some(10)));
+    assert_eq!(text, "");
+    let outline = session.frame().picked;
+    assert_eq!(outline.len(), 4);
+    let (left, right) = (2.0 * (8.0 + 20.0), 2.0 * (8.0 + 180.0));
+    assert!(
+        outline
+            .iter()
+            .all(|p| p.x >= left - 1.0 && p.x <= right + 1.0)
+    );
+    // It holds what was typed, as far as it takes it.
+    assert!(session.set_field_text(field, "Ada Lovelace".into()));
+    assert!(session.end_field());
+    assert!(session.frame().picked.is_empty());
+    let FieldTap::Text { text, .. } = tap(100.0, 250.0) else {
+        panic!("a text field is there");
+    };
+    assert_eq!(text, "Ada Lovela");
+    // The same text again changes nothing.
+    assert!(!session.set_field_text(field, "Ada Lovela".into()));
+    session.end_field();
+
+    // A tap on the menu says what it offers and holds.
+    let FieldTap::Choose {
+        field,
+        label,
+        options,
+        chosen,
+    } = tap(100.0, 130.0)
+    else {
+        panic!("a menu is there");
+    };
+    assert_eq!((label, chosen), (None, Some(0)));
+    assert_eq!(options, ["Germany", "France", "Other"]);
+    assert!(session.choose_option(field, 1));
+    assert!(!session.choose_option(field, 1));
+    assert!(!session.choose_option(field, 7));
+    session.end_field();
+    let FieldTap::Choose { chosen, .. } = tap(100.0, 130.0) else {
+        panic!("a menu is there");
+    };
+    assert_eq!(chosen, Some(1));
+    session.end_field();
+
+    // Each was an edit, taken back one by one.
+    for _ in 0..3 {
+        assert_eq!(session.undo().unwrap().kind, EditKind::FillField);
+    }
+    assert!(!session.edit_state().modified);
+    let FieldTap::Text { text, .. } = tap(100.0, 250.0) else {
+        panic!("a text field is there");
+    };
+    assert_eq!(text, "");
 }
 
 #[test]

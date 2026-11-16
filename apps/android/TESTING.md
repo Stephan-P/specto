@@ -43,6 +43,7 @@ Not covered, and left to the manual pass:
 - How dragging pages looks, and how the selection, its handles and the text
   menu look
 - How marks on the text look: the UI tests only know that there is one
+- How a form looks once filled in: the UI tests only know what its fields hold
 
 ## Setup
 
@@ -158,6 +159,23 @@ These need a document with real text.
   picked and deleted here.
 - Mark a line of a table of contents that is a link, then tap it: the link is
   followed. The mark can still be taken back with Undo.
+
+### Forms
+
+Use a PDF with a form, such as a tax or application form.
+
+- Tap a checkbox and a radio button: they are ticked and chosen at once, and
+  the bars stay as they are. Another button of the same group takes over.
+- Tap a text field: a dialog with the keyboard up, holding what the field
+  holds. Type and choose Done: the text is on the page, in the field's font
+  and size. Cancel and Back leave the field as it was.
+- Tap a field of several lines: Enter starts a new line in the dialog.
+- Tap a menu: its options, with the current one marked. Choose another: the
+  page shows it.
+- Undo takes back one field at a time. The thumbnails follow.
+- Save, then open the file in another PDF program: the values are there, and
+  can be changed there.
+- Rotate the device with a dialog open: it stays, with what was typed.
 
 ### Editing pages
 
