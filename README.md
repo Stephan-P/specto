@@ -5,7 +5,7 @@
 <h1 align="center">Specto</h1>
 
 <p align="center">
-  A fast document viewer and light editor for Linux and Android, written in Rust.
+  A fast PDF viewer and light editor for Linux and Android, written in Rust.
 </p>
 
 <p align="center">
@@ -21,11 +21,6 @@
   <img src="apps/android/screenshot-phone.png" width="21%" alt="Specto on a phone: a page of a manual, the page number, and a strip of page thumbnails along the bottom">
 </p>
 
-Specto is a shared core with two apps on top of it:
-
-- [Desktop](apps/desktop/README.md): GTK 4 and libadwaita, for Linux (also runs on macOS)
-- [Android](apps/android/README.md): Kotlin and Jetpack Compose
-
 ## Why?
 
 I enjoy working with Preview on macOS. When I want to read a PDF, or do some
@@ -34,8 +29,12 @@ it's what I reach for: it's fast, it stays out of the way, and it does the
 common things well. On Linux I haven't found anything equivalent, so this is my
 attempt at one.
 
-I also miss a decent open-source PDF viewer for Android that is pleasant to
-use. Since the hard parts (rendering, layout, zooming, text) are the same
+I also miss a decent open-source PDF viewer for Android. One that is pleasant
+to use, asks for no permissions, has no ads and never goes online, and does the
+common things well, such as full screen, different zoom and scroll modes, and
+filling in forms.
+
+Since the hard parts (rendering, layout, zooming, text) are the same
 everywhere, they live in a shared Rust core, and each app is a thin native
 layer on top of it.
 
@@ -57,19 +56,36 @@ Rough feature parity with Preview, not Adobe Acrobat:
 Not planned, at least for now: editing existing page content (reflowing text),
 XFA forms, creating digital signatures, JavaScript, OCR, PDF/A conversion.
 
+## Install
+
+Builds are on the [releases page](https://github.com/xfbs/specto/releases):
+
+- **Android**: the APK, for phones and tablets with a 64-bit ARM processor
+- **Linux**: a Flatpak bundle for x86_64 and one for aarch64
+
+A Flatpak bundle is installed from a terminal:
+
+```sh
+flatpak install specto-0.1-x86_64.flatpak
+```
+
+Neither updates itself, so a newer release is installed over the old one the
+same way. I plan to bring Specto to F-Droid and Flathub once it has had more
+testing.
+
 ## Status
 
 Both apps are usable as PDF viewers. They render pages sharply at any zoom and
 on HiDPI screens, and stay responsive on huge documents. They have the usual
 layouts, thumbnails, the table of contents, links and printed page numbers,
 open encrypted files, and remember where you were in each document. In both you
-can select, copy and search text, print, edit pages by rotating, deleting and
-reordering them, and fill in forms: checkboxes, radio buttons, text fields,
-menus and lists.
+can select, copy and search text, highlight, underline and strike through it,
+print, edit pages by rotating, deleting and reordering them, and fill in forms:
+checkboxes, radio buttons, text fields, menus and lists.
 
 The desktop app can also insert pages from other PDFs and export a selection of
-pages. It has markup too: highlighting, underlining and striking through text,
-freehand drawing, shapes, text boxes, notes and signatures.
+pages. It has more markup too: freehand drawing, shapes, text boxes, notes and
+signatures.
 
 The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
@@ -77,9 +93,9 @@ The detailed plan is in [docs/TASKS.md](docs/TASKS.md).
 
 Each app has its own instructions, with what to install first:
 
-- [apps/desktop/BUILDING.md](apps/desktop/BUILDING.md): Fedora and macOS, and
+- [Building the desktop app](apps/desktop/BUILDING.md): Fedora and macOS, and
   the Flatpak
-- [apps/android/BUILDING.md](apps/android/BUILDING.md): phones and emulators
+- [Building the Android app](apps/android/BUILDING.md): phones and emulators
 
 The shared crates and the tools need only Rust 1.92 or newer:
 
@@ -88,9 +104,7 @@ cargo build --release
 cargo test --workspace
 ```
 
-The tests check saved files with qpdf where it is installed. The specto
-command-line tool, for development, is described in
-[tools/README.md](tools/README.md).
+The tests check saved files with qpdf where it is installed.
 
 ## Layout
 
@@ -109,8 +123,6 @@ command-line tool, for development, is described in
 
 ## Documentation
 
-- [Crates](crates/README.md): what each crate does, and how they
-  depend on each other
 - [Architecture](docs/ARCHITECTURE.md): data model, rendering
   pipeline, how the apps plug in
 - [Decisions](docs/DECISIONS.md): technology choices, the alternatives
@@ -121,14 +133,16 @@ command-line tool, for development, is described in
 - [Specto Desktop Testing](apps/desktop/TESTING.md) and
   [Specto Android Testing](apps/android/TESTING.md): testing each app, by hand
   and automated
-- [Corpus](corpus/README.md): the test corpus and regression runs
 
 ## Similar projects
 
-- [Censor](https://codeberg.org/censor/Censor)
-- [GNOME Papers/Document Viewer](https://apps.gnome.org/Papers/)
-- [Evince](https://gitlab.gnome.org/GNOME/evince)
-- [Apple Preview](https://en.wikipedia.org/wiki/Preview_(Apple))
+- [Censor](https://codeberg.org/censor/Censor): Linux app to censor PDFs,
+  inspiration for adding that feature to Specto
+- [GNOME Papers/Document Viewer](https://apps.gnome.org/Papers/): GNOME PDF
+  reader app, inspiration for Specto
+- [Evince](https://gitlab.gnome.org/GNOME/evince): PDF reader for GNOME
+- [Apple Preview](https://en.wikipedia.org/wiki/Preview_(Apple)): Apple's PDF
+  reader app, inspiration for Specto
 
 ## License
 
