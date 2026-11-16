@@ -93,7 +93,8 @@ as secrets of the repository
 
 The workflow fails if the tag doesn't name the version in `VERSION`, or if the
 metainfo has no release entry for it. "Run workflow" in the Actions tab
-builds the Flatpak bundles of a branch without making a release.
+builds the Flatpak bundles and the signed APK of a branch without making a
+release. They are kept with the run, to download and try.
 
 A bundle is installed with:
 
