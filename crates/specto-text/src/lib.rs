@@ -173,7 +173,7 @@ impl TextPage {
         self.lines.get(i).filter(|l| l.chars.contains(&c))
     }
 
-    // --- selection ------------------------------------------------------
+    // Selection
 
     /// The position between characters (`0..=chars.len()`) closest to `p`, for selecting: on the
     /// nearest line, before or after the character nearest to `p` along it, whichever half `p` is

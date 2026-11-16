@@ -13,6 +13,9 @@
 - Say what exists. No milestone references ("M3"), no history ("this used to"),
   no plans in the present tense.
 - Be concise. Cut what the reader doesn't need.
+- No banner comments: no rules of dashes or other characters around or
+  between comments. Where a long file needs a heading for a group of items, a
+  plain comment of a word or two does it, such as `// Search`.
 
 ## Markdown files
 

@@ -679,7 +679,7 @@ impl Window {
         self.0.document.borrow().is_some()
     }
 
-    // --- the file on disk ---------------------------------------------------
+    // The file on disk
 
     fn set_document(&self, document: SharedDocument, tiles: async_channel::Receiver<()>) {
         let inner = &self.0;
@@ -885,7 +885,7 @@ impl Window {
         self.0.toasts.add_toast(adw::Toast::new(message));
     }
 
-    // --- search -------------------------------------------------------
+    // Search
 
     /// Applies an edit to the document, then updates the view, the sidebar and the menus if it
     /// changed anything. `f` returns `None` if nothing changed.

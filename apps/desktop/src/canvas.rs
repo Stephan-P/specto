@@ -459,7 +459,7 @@ impl Canvas {
         Some(f(&d.viewer))
     }
 
-    // --- text selection ---------------------------------------------------
+    // Text selection
 
     /// Highlights search matches on the visible pages: all in yellow, the current one in orange
     /// (Adwaita's palette).

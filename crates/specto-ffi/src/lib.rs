@@ -1147,7 +1147,7 @@ impl ViewSession {
         }
     }
 
-    // --- annotations -------------------------------------------------------
+    // Annotations
     //
     // Marks on the text, and whatever else a file brings along (notes, drawings, text boxes). What
     // a frame must draw of them is in [`Frame::shapes`]. The rest is part of the pages as rendered.
@@ -1198,7 +1198,7 @@ impl ViewSession {
             })
     }
 
-    // --- editing ---------------------------------------------------------------
+    // Editing
     //
     // Pages are named by their position at the time of the call, from 0. Every edit can be undone.
     // After one, positions have changed: ask again for the page count, sizes, labels and outline,
@@ -1304,7 +1304,7 @@ impl ViewSession {
         }
     }
 
-    // --- text selection ------------------------------------------------------
+    // Text selection
     //
     // Positions are in logical pixels from the view's top-left, like taps. The selection shows up
     // in frames: [`Frame::highlights`] and the edges for its handles.
@@ -1374,7 +1374,7 @@ impl ViewSession {
         self.shared.lock().session.selected_text()
     }
 
-    // --- search ---------------------------------------------------------------
+    // Search
     //
     // Matches show up in frames like the selection does ([`Frame::highlights`]). The document is
     // read for searching once, in the background, starting with the first search. Until that is

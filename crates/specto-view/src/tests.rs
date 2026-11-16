@@ -154,7 +154,7 @@ fn rotated_pages_use_displayed_size() {
     assert!(close(r.size.width, 792.0) && close(r.size.height, 612.0));
 }
 
-// --- frame planning ------------------------------------------------------------
+// Frame planning
 
 fn all_cached(_: &TileKey) -> bool {
     true
@@ -888,7 +888,7 @@ fn swiping_through_two_page_spreads() {
     assert!(close(v.zoom(), 780.0 / 792.0));
 }
 
-// --- text selection -------------------------------------------------------
+// Text selection
 
 mod selection {
     use std::collections::HashMap;
@@ -1032,7 +1032,7 @@ mod selection {
     }
 }
 
-// --- search ---------------------------------------------------------------
+// Search
 
 mod search {
     use specto_geom::{PdfBox, PdfPoint, ViewPoint};

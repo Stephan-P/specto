@@ -157,7 +157,7 @@ fn rejects_garbage_and_bad_regions() {
     assert!(doc.render(&RenderRequest::page(1, 1.0)).is_err());
 }
 
-// --- scheduler ---------------------------------------------------------------
+// Scheduler
 
 fn wait_for(
     sched: &Scheduler,

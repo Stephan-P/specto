@@ -127,7 +127,7 @@ private fun Choice(label: String, chosen: Boolean, icon: ImageVector? = null, on
     )
 }
 
-// --- icons ------------------------------------------------------------------
+// Icons
 //
 // Little pictures of the layouts: whole pages for the paged ones, and for the continuous ones a
 // page between the edges of its neighbors.

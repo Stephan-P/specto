@@ -42,7 +42,7 @@ class ReaderTest : AppTest() {
         compose.onNodeWithText("1 / 12").assertIsDisplayed()
     }
 
-    // --- turning pages ------------------------------------------------------
+    // Turning pages
 
     @Test
     fun swipingTurnsOnePage() {
@@ -173,7 +173,7 @@ class ReaderTest : AppTest() {
         chosen("Fit width").assertIsDisplayed()
     }
 
-    // --- pages, full screen, the strip --------------------------------------
+    // Pages, full screen, the strip
 
     @Test
     fun thePageGridJumpsToAPage() {
@@ -217,7 +217,7 @@ class ReaderTest : AppTest() {
         waitForText("1 / 12")
     }
 
-    // --- narrow and wide windows --------------------------------------------
+    // Narrow and wide windows
 
     @Test
     fun aWideWindowShowsPagesBesideTheDocument() {
@@ -336,7 +336,7 @@ class ReaderTest : AppTest() {
         waitForText("4 / 12")
     }
 
-    // --- what is remembered -------------------------------------------------
+    // What is remembered
 
     @Test
     fun reopeningContinuesWhereTheReaderLeftOff() {

@@ -185,7 +185,7 @@ impl Document {
             .then_some(rx)
     }
 
-    // --- editing ----------------------------------------------------------
+    // Editing
     //
     // The session's edits, each followed by what the tiles need.
 

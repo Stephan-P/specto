@@ -460,7 +460,7 @@ impl SaveJob {
 }
 
 impl Session {
-    // --- editing ----------------------------------------------------------
+    // Editing
 
     /// A copy of what's needed to save the document as it is now.
     pub fn save_job(&self) -> SaveJob {

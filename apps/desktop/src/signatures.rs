@@ -294,7 +294,7 @@ pub fn preview(signature: &Signature) -> gtk::Widget {
 pub fn new_signature(parent: &impl IsA<gtk::Widget>, done: impl Fn(String, Signature) + 'static) {
     let stack = adw::ViewStack::new();
 
-    // --- drawn ------------------------------------------------------------
+    // Drawn
     let strokes: Rc<RefCell<Strokes>> = Rc::default();
     let pad = gtk::DrawingArea::builder()
         .content_width(480)
@@ -365,8 +365,9 @@ pub fn new_signature(parent: &impl IsA<gtk::Widget>, done: impl Fn(String, Signa
         "document-edit-symbolic",
     );
 
-    // --- from a picture --------------------------------------------------- The picture chosen,
-    // and the signature made of it with the settings.
+    // From a picture
+
+    // The picture chosen, and the signature made of it with the settings.
     let photo: Rc<RefCell<Option<StampImage>>> = Rc::default();
     let result: Rc<RefCell<Option<Arc<StampImage>>>> = Rc::default();
     let result_view = gtk::Picture::builder()
@@ -475,7 +476,7 @@ pub fn new_signature(parent: &impl IsA<gtk::Widget>, done: impl Fn(String, Signa
         });
     });
 
-    // --- the dialog -------------------------------------------------------
+    // The dialog
     let cancel = gtk::Button::with_mnemonic(&gettext("_Cancel"));
     let save = gtk::Button::builder()
         .label(gettext("_Save"))

@@ -139,7 +139,7 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
 }
 
-// --- Kotlin style -------------------------------------------------------------
+// Kotlin style
 //
 // ktlint checks and formats the Kotlin sources and this build script, by the
 // rules in .editorconfig. `ktlintCheck` reports what is off, and `ktlintFormat`
@@ -164,7 +164,7 @@ tasks.register<JavaExec>("ktlintFormat") {
     ktlint("--format")
 }
 
-// --- Rust -------------------------------------------------------------------
+// Rust
 //
 // `cargoNdkBuild` cross-compiles crates/specto-ffi into jniLibs, and
 // `uniffiBindgen` generates the Kotlin bindings from the resulting library.

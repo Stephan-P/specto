@@ -200,7 +200,7 @@ class PdfViewState(
     /** Follows the frames, but only changes when the mode does: the top bar reads it. */
     private var pagedNow by mutableStateOf(true)
 
-    // --- search --------------------------------------------------------------
+    // Search
     //
     // Like the selection, a search lives in Rust and shows up in frames, as highlighted matches.
     // The first one has the whole document read in the background, so it keeps finding more for a
@@ -246,7 +246,7 @@ class PdfViewState(
         refresh()
     }
 
-    // --- editing ------------------------------------------------------------
+    // Editing
     //
     // Pages can be turned, removed and moved, and every such edit can be undone. Nothing touches
     // the file until the document is written somewhere ([writeTo]). Pages are named by their
@@ -361,7 +361,7 @@ class PdfViewState(
         editState = session.editState()
     }
 
-    // --- annotations --------------------------------------------------------
+    // Annotations
     //
     // Marks on the text, and what a file brings along. They live in Rust. A frame has what is to be
     // drawn of them, and the box around the one that is picked.
@@ -414,7 +414,7 @@ class PdfViewState(
         }
     }
 
-    // --- text selection -----------------------------------------------------
+    // Text selection
     //
     // The selection lives in Rust and shows up in frames: the highlights to draw and where its two
     // handles go.
@@ -560,7 +560,7 @@ class PdfViewState(
         return activated
     }
 
-    // --- keyboard -----------------------------------------------------------
+    // Keyboard
 
     /** The next or previous page. With two pages, the next or previous pair. */
     fun turnPage(forward: Boolean) {
@@ -628,8 +628,6 @@ class PdfViewState(
         session.fit()
         refresh()
     }
-
-    // ------------------------------------------------------------------------
 
     /** Shows [page] (zero-based) at the top of the view. */
     fun goToPage(page: Int) {

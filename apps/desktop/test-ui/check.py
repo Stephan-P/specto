@@ -156,7 +156,7 @@ LABELS = ["i", "ii", "iii"] + [str(n) for n in range(1, PAGES - 2)]
 ROTATED = 5
 
 
-# --- Test PDFs ----------------------------------------------------------
+# Test PDFs
 
 
 def write_pdf(path, objects):
@@ -266,7 +266,7 @@ def text_pdf(path):
     write_pdf(path, objects)
 
 
-# --- Screenshots ---------------------------------------------------------
+# Screenshots
 
 
 def read_ppm(path):
@@ -294,7 +294,7 @@ def page_colours(path, step=4):
     return {i: n / total for i, n in counts.items()}
 
 
-# --- Driving the app ----------------------------------------------------
+# Driving the app
 
 
 class CheckFailed(Exception):
@@ -658,7 +658,7 @@ def fmt(colours):
     return {p: round(s, 2) for p, s in sorted(colours.items())}
 
 
-# --- Tests --------------------------------------------------------------
+# Tests
 
 
 def test_start_page(ctx):
@@ -2452,7 +2452,7 @@ def test_select_after_rotating(ctx):
 TESTS = [v for k, v in list(globals().items()) if k.startswith("test_")]
 
 
-# --- Runner -------------------------------------------------------------
+# Runner
 
 
 class Context:

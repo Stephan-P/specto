@@ -251,7 +251,7 @@ private fun PageCanvas(
     val annotationSelected = stringResource(R.string.annotation_selected)
     var origin by remember { mutableStateOf(Offset.Zero) }
 
-    // --- text selection -----------------------------------------------------
+    // Text selection
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val view = LocalView.current

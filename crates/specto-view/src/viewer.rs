@@ -282,7 +282,7 @@ impl Viewer {
         v
     }
 
-    // --- queries ------------------------------------------------------------
+    // Queries
 
     pub fn pages(&self) -> &[ViewPage] {
         &self.pages
@@ -515,7 +515,7 @@ impl Viewer {
         Some((i, pdf))
     }
 
-    // --- changes ------------------------------------------------------------
+    // Changes
 
     /// Replaces the page list (after reorder, delete, merge, rotate), trying to keep the current
     /// page in view.
@@ -896,7 +896,7 @@ impl Viewer {
         }
     }
 
-    // --- drawing ------------------------------------------------------------
+    // Drawing
 
     /// Plans a frame at time `now`. `cached` tells whether the frontend has a tile.
     ///
@@ -1076,7 +1076,7 @@ impl Viewer {
         frame
     }
 
-    // --- internals ----------------------------------------------------------
+    // Internals
 
     fn regroup(&mut self) {
         self.spreads = group_spreads(

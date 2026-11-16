@@ -243,7 +243,7 @@ fun PagesGrid(
         }
     }
 
-    // --- picking and dragging ---------------------------------------------
+    // Picking and dragging
     val drag = remember(state) { PageDragState() }
     val accent = MaterialTheme.colorScheme.primary
     var origin by remember { mutableStateOf(Offset.Zero) }

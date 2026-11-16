@@ -217,7 +217,7 @@ internal fun File.writableDescriptor(): Int {
     return android.os.ParcelFileDescriptor.open(this, mode).detachFd()
 }
 
-// --- icons ------------------------------------------------------------------
+// Icons
 
 /** Three quarters of a circle with an arrowhead where it ends, at the top. */
 private fun rotateIcon(name: String, clockwise: Boolean): ImageVector {
