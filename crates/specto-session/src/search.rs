@@ -21,6 +21,8 @@ pub(crate) struct Search {
     results: SearchResults,
     /// The page the search started from: the first match after it is the first one shown.
     start: usize,
+    /// The view went to a match, and where it was before is remembered for going back.
+    left: bool,
 }
 
 /// Flags shared with the search indexer thread.
@@ -202,6 +204,7 @@ impl Session {
             query,
             results,
             start,
+            left: self.search.as_ref().is_some_and(|s| s.left),
         });
         found
     }
@@ -231,6 +234,7 @@ impl Session {
                 query: s.query,
                 results,
                 start,
+                left: s.left,
             });
         }
     }
@@ -261,7 +265,14 @@ impl Session {
             let quads = text.selection_quads(m.chars.clone());
             specto_geom::PdfBox::from_points(quads.iter().flat_map(|q| q.points))
         };
-        self.viewer.reveal(m.page, area);
+        // Back returns to where the search began, not to each match on the way.
+        if self.search.as_ref().is_some_and(|s| s.left) {
+            self.viewer.reveal(m.page, area);
+        } else if self.viewer.jump(|v| v.reveal(m.page, area))
+            && let Some(s) = self.search.as_mut()
+        {
+            s.left = true;
+        }
     }
 
     pub fn current_match(&self) -> Option<SearchMatch> {

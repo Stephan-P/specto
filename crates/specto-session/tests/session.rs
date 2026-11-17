@@ -244,7 +244,20 @@ fn search_follows_indexing_and_edits() {
     // All done: no second run.
     assert_eq!(index(&mut session, 0), 0);
 
+    // Going to matches remembers where the search began, once.
+    assert!(!session.viewer.can_go_back());
+    session.reveal_match();
+    assert!(!session.viewer.can_go_back(), "the match is in view");
     assert!(session.search_step(true));
+    assert_eq!(session.current_match().unwrap().page, 1);
+    session.reveal_match();
+    assert!(session.search_step(true));
+    session.reveal_match();
+    assert_eq!(session.viewer.current_page(), 2);
+    assert!(session.viewer.go_back());
+    assert_eq!(session.viewer.current_page(), 0);
+    assert!(!session.viewer.can_go_back());
+    assert!(session.search_step(false));
     assert_eq!(session.current_match().unwrap().page, 1);
     assert_eq!(session.matches_on(1).len(), 1);
     assert!(session.matches_on(1)[0].1, "the current one");

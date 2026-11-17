@@ -174,6 +174,21 @@ struct Anchor {
     view: ViewPoint,
 }
 
+/// A position in the document that survives a different window size or zoom: a page, and how far
+/// down it the viewport starts as a fraction of its height (see [`ViewState::page_offset`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Place {
+    page: usize,
+    offset: f64,
+}
+
+/// How many places Back remembers. The oldest are forgotten.
+const MAX_HISTORY: usize = 100;
+
+/// How far apart two places on a page must be to count as different, as a fraction of the page's
+/// height.
+const SAME_PLACE: f64 = 0.05;
+
 /// UI-agnostic viewer state: layout, zoom and scrolling, plus planning which tiles to draw and
 /// request. Frontends feed it input and draw its [`Frame`]s.
 pub struct Viewer {
@@ -212,6 +227,10 @@ pub struct Viewer {
     /// Swipe mode with `ZoomMode::Fixed`: zoom relative to fitting the page (1 = the whole page is
     /// visible), shared by all spreads.
     factor: f64,
+    /// Where the reader jumped away from, the oldest first: what Back returns to.
+    back: Vec<Place>,
+    /// Where Back was taken from, the oldest first: what Forward returns to.
+    forward: Vec<Place>,
     /// Whether the last layout was a swipe strip.
     was_strip: bool,
     /// Swipe mode: the fit the reader had before zooming in, which a page turn returns to.
@@ -252,6 +271,14 @@ impl Scales {
     }
 }
 
+/// Adds `place` to `places`, forgetting the oldest beyond [`MAX_HISTORY`].
+fn remember(places: &mut Vec<Place>, place: Place) {
+    if places.len() == MAX_HISTORY {
+        places.remove(0);
+    }
+    places.push(place);
+}
+
 impl Viewer {
     pub fn new(pages: Vec<ViewPage>, settings: Settings) -> Self {
         let mut v = Self {
@@ -275,6 +302,8 @@ impl Viewer {
             framed: false,
             spread_zoom: Vec::new(),
             factor: 1.0,
+            back: Vec::new(),
+            forward: Vec::new(),
             was_strip: false,
             strip_fit: ZoomMode::default(),
         };
@@ -626,6 +655,19 @@ impl Viewer {
 
     /// The current position and view settings, to restore later.
     pub fn view_state(&self) -> ViewState {
+        let Place { page, offset } = self.place();
+        ViewState {
+            page,
+            page_offset: offset,
+            layout: self.mode,
+            cover_alone: self.settings.cover_alone,
+            zoom_mode: self.zoom_mode,
+            zoom: self.zoom,
+        }
+    }
+
+    /// Where the viewport starts.
+    fn place(&self) -> Place {
         let top = self.scroll.y.max(0.0);
         let page = if self.is_strip() {
             // Vertical scrolling belongs to the current spread.
@@ -637,7 +679,7 @@ impl Viewer {
                 .find(|&i| self.layout.page_rects[i].is_some_and(|r| r.max_y() > top))
                 .unwrap_or_else(|| self.current_page())
         };
-        let page_offset = self
+        let offset = self
             .layout
             .page_rects
             .get(page)
@@ -648,14 +690,81 @@ impl Viewer {
                 // (at the very top of the document, for example).
                 ((top - r.origin.y) / r.size.height).clamp(-0.5, 1.0)
             });
-        ViewState {
-            page,
-            page_offset,
-            layout: self.mode,
-            cover_alone: self.settings.cover_alone,
-            zoom_mode: self.zoom_mode,
-            zoom: self.zoom,
+        Place { page, offset }
+    }
+
+    /// Scrolls so that the viewport starts `offset` of the way down `page`, which is on screen.
+    fn scroll_within(&mut self, page: usize, offset: f64) {
+        if let Some(Some(r)) = self.layout.page_rects.get(page) {
+            let offset = if offset.is_finite() {
+                offset.clamp(-0.5, 1.0)
+            } else {
+                0.0
+            };
+            self.scroll.y = r.origin.y + offset * r.size.height;
+            self.clamp_scroll();
         }
+    }
+
+    // Back and forward
+
+    /// Does `go`, which takes the reader somewhere else (a link, an outline entry, a page number),
+    /// and remembers where they were for [`go_back`](Self::go_back). Returns whether the view
+    /// moved.
+    ///
+    /// A `go` that leaves the view where it was isn't remembered. One that moves it makes
+    /// [`go_forward`](Self::go_forward) forget what it had.
+    pub fn jump(&mut self, go: impl FnOnce(&mut Self)) -> bool {
+        let from = self.place();
+        go(self);
+        let to = self.place();
+        if from.page == to.page && (from.offset - to.offset).abs() < SAME_PLACE {
+            return false;
+        }
+        remember(&mut self.back, from);
+        self.forward.clear();
+        true
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        !self.back.is_empty()
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        !self.forward.is_empty()
+    }
+
+    /// Returns to where the reader was before the last jump. Returns whether there was one.
+    pub fn go_back(&mut self) -> bool {
+        let Some(place) = self.back.pop() else {
+            return false;
+        };
+        let here = self.place();
+        remember(&mut self.forward, here);
+        self.go_to_place(place);
+        true
+    }
+
+    /// Undoes the last [`go_back`](Self::go_back). Returns whether there was one to undo.
+    pub fn go_forward(&mut self) -> bool {
+        let Some(place) = self.forward.pop() else {
+            return false;
+        };
+        let here = self.place();
+        remember(&mut self.back, here);
+        self.go_to_place(place);
+        true
+    }
+
+    /// Shows `place`, or the last page if the document has fewer pages by now: places are kept by
+    /// page number, whatever is done to the pages meanwhile.
+    fn go_to_place(&mut self, place: Place) {
+        if self.pages.is_empty() {
+            return;
+        }
+        let page = place.page.min(self.pages.len() - 1);
+        self.go_to_page(page);
+        self.scroll_within(page, place.offset);
     }
 
     /// Restores a [`ViewState`].
@@ -677,15 +786,7 @@ impl Viewer {
         }
         let page = state.page.min(self.pages.len() - 1);
         self.show_page(page);
-        if let Some(Some(r)) = self.layout.page_rects.get(page) {
-            let offset = if state.page_offset.is_finite() {
-                state.page_offset.clamp(-0.5, 1.0)
-            } else {
-                0.0
-            };
-            self.scroll.y = r.origin.y + offset * r.size.height;
-            self.clamp_scroll();
-        }
+        self.scroll_within(page, state.page_offset);
     }
 
     /// A zoom gesture (pinch) started: until [`end_zoom_gesture`](Self::end_zoom_gesture) the view

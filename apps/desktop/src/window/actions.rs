@@ -113,6 +113,19 @@ impl Window {
         }
     }
 
+    /// Enables Back and Forward where there is a place to go to.
+    pub(super) fn update_history_actions(&self) {
+        let (back, forward) = (self.0.canvas)
+            .with_viewer(|v| (v.can_go_back(), v.can_go_forward()))
+            .unwrap_or_default();
+        for (name, enabled) in [("go-back", back), ("go-forward", forward)] {
+            if let Some(a) = (self.0.window.lookup_action(name)).and_downcast::<gio::SimpleAction>()
+            {
+                a.set_enabled(enabled);
+            }
+        }
+    }
+
     pub(super) fn set_document_actions_enabled(&self, enabled: bool) {
         for w in &self.0.document_widgets {
             w.set_visible(enabled);
@@ -127,6 +140,7 @@ impl Window {
                 a.set_enabled(enabled);
             }
         }
+        self.update_history_actions();
         // Those for a form only where there is one.
         let form = enabled
             && (self.0.document.borrow().as_ref()).is_some_and(|d| d.borrow_mut().has_form());
@@ -315,12 +329,26 @@ impl Window {
                 .activate(with(|w| w.0.canvas.update_viewer(Viewer::previous_page)))
                 .build(),
             gio::ActionEntry::builder("first-page")
-                .activate(with(|w| w.0.canvas.update_viewer(|v| v.go_to_page(0))))
+                .activate(with(|w| w.0.canvas.jump(|v| v.go_to_page(0))))
                 .build(),
             gio::ActionEntry::builder("last-page")
                 .activate(with(|w| {
                     w.0.canvas
-                        .update_viewer(|v| v.go_to_page(v.page_count().saturating_sub(1)))
+                        .jump(|v| v.go_to_page(v.page_count().saturating_sub(1)))
+                }))
+                .build(),
+            gio::ActionEntry::builder("go-back")
+                .activate(with(|w| {
+                    w.0.canvas.update_viewer(|v| {
+                        v.go_back();
+                    })
+                }))
+                .build(),
+            gio::ActionEntry::builder("go-forward")
+                .activate(with(|w| {
+                    w.0.canvas.update_viewer(|v| {
+                        v.go_forward();
+                    })
                 }))
                 .build(),
         ]);
@@ -499,7 +527,7 @@ impl Window {
                 .and_then(|d| d.borrow().find_page(&e.text()));
             match target {
                 Some(page) => {
-                    inner.canvas.update_viewer(|v| v.go_to_page(page));
+                    inner.canvas.jump(|v| v.go_to_page(page));
                     inner.canvas.grab_focus();
                 }
                 None => {

@@ -454,6 +454,63 @@ fn view_state_round_trips_across_viewers_and_sizes() {
 }
 
 #[test]
+fn back_and_forward_after_jumps() {
+    let mut v = viewer(letters(20));
+    assert!(!v.can_go_back() && !v.can_go_forward());
+    assert!(!v.go_back() && !v.go_forward());
+
+    // Scrolling isn't a jump, and neither is a jump to where the reader is.
+    v.scroll_by(ViewVector::new(0.0, 300.0));
+    let start = v.view_state();
+    assert!(!v.jump(|v| v.restore_view_state(&start)));
+    assert!(!v.can_go_back());
+
+    assert!(v.jump(|v| v.go_to_page(7)));
+    assert!(v.jump(|v| v.go_to_pdf_position(12, None, Some(400.0))));
+    let far = v.view_state();
+    assert_eq!(far.page, 12);
+
+    // Back returns to the page and the place on it, and Forward to where Back was taken from.
+    assert!(v.go_back());
+    assert_eq!(v.current_page(), 7);
+    assert!(v.go_back());
+    let back = v.view_state();
+    assert_eq!(back.page, start.page);
+    assert!(close(back.page_offset, start.page_offset));
+    assert!(!v.can_go_back() && v.can_go_forward());
+    assert!(v.go_forward() && v.go_forward());
+    let again = v.view_state();
+    assert_eq!(again.page, 12);
+    assert!(close(again.page_offset, far.page_offset));
+    assert!(!v.can_go_forward());
+
+    // A jump after going back drops what was ahead.
+    assert!(v.go_back());
+    assert!(v.jump(|v| v.go_to_page(3)));
+    assert!(!v.can_go_forward());
+
+    // A place on a page that is gone becomes the last page.
+    assert!(v.jump(|v| v.go_to_page(19)));
+    assert!(v.jump(|v| v.go_to_page(0)));
+    v.set_pages(letters(5));
+    assert!(v.go_back());
+    assert_eq!(v.current_page(), 4);
+}
+
+#[test]
+fn back_remembers_only_so_many_places() {
+    let mut v = viewer(letters(3));
+    for i in 0..250 {
+        assert!(v.jump(|v| v.go_to_page(1 + i % 2)));
+    }
+    let mut steps = 0;
+    while v.go_back() {
+        steps += 1;
+    }
+    assert_eq!(steps, 100);
+}
+
+#[test]
 fn mode_names_round_trip() {
     for m in LayoutMode::ALL {
         assert_eq!(LayoutMode::from_name(m.name()), Some(m));

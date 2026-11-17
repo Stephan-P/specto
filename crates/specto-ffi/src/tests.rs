@@ -462,6 +462,22 @@ fn outline_and_links() {
     assert_eq!(session.frame().current_page, 1);
     assert_eq!(session.activate_outline(7), Activated::Nothing);
 
+    // Back returns to where each entry was activated from, and Forward to where it led.
+    assert!(session.can_go_back() && !session.can_go_forward());
+    assert!(session.go_back());
+    assert_eq!(session.frame().current_page, 3);
+    assert!(session.go_back());
+    assert_eq!(session.frame().current_page, 0);
+    assert!(!session.go_back());
+    assert!(session.go_forward());
+    assert_eq!(session.frame().current_page, 3);
+    // A page asked for by its number is a jump, and following the reader isn't.
+    session.jump_to_page(2);
+    assert!(!session.can_go_forward());
+    session.go_to_page(1);
+    assert!(session.go_back());
+    assert_eq!(session.frame().current_page, 3);
+
     // The links on page 1: PDF y 200 to 240 is 60 to 100 points from the page's top.
     session.go_to_page(0);
     assert_eq!(session.tap(108.0, 8.0 + 20.0), Activated::Nothing);

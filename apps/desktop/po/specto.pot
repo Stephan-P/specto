@@ -19,7 +19,7 @@ msgstr ""
 
 #. Translators: {apache} and {mit} are the names of the two licenses,
 #. which stay in English and become links.
-#: src/main.rs:130
+#: src/main.rs:144
 #, rust-format
 msgid ""
 "Specto is licensed under either of the {apache} or the {mit}, at your "
@@ -28,231 +28,239 @@ msgid ""
 "It comes with no warranty of any kind."
 msgstr ""
 
-#: src/main.rs:149
+#: src/main.rs:163
 msgid "The Specto contributors"
 msgstr ""
 
-#: src/main.rs:150
+#: src/main.rs:164
 msgid "© 2026 The Specto contributors"
 msgstr ""
 
 #. Translators: what the library is used for stays in brackets.
-#: src/main.rs:159
+#: src/main.rs:173
 msgid "hayro (rendering)"
 msgstr ""
 
 #. Translators: what the library is used for stays in brackets.
-#: src/main.rs:161
+#: src/main.rs:175
 msgid "lopdf (saving)"
 msgstr ""
 
-#: src/main.rs:163
+#: src/main.rs:177
 msgid "Built with"
 msgstr ""
 
-#: src/main.rs:193
+#: src/main.rs:207
 #, rust-format
 msgid "Quit {app}"
 msgstr ""
 
-#: src/main.rs:194 src/window.rs:251
+#: src/main.rs:208 src/window.rs:251
 #, rust-format
 msgid "About {app}"
 msgstr ""
 
-#: src/main.rs:211 src/window.rs:152
+#: src/main.rs:225 src/window.rs:152
 msgid "Open…"
 msgstr ""
 
-#: src/main.rs:213 src/window.rs:213
+#: src/main.rs:227 src/window.rs:213
 msgid "Save"
 msgstr ""
 
-#: src/main.rs:214 src/window.rs:214
+#: src/main.rs:228 src/window.rs:214
 msgid "Save As…"
 msgstr ""
 
-#: src/main.rs:215 src/window.rs:216
+#: src/main.rs:229 src/window.rs:216
 msgid "Export Selected Pages…"
 msgstr ""
 
-#: src/main.rs:218 src/window.rs:219
+#: src/main.rs:232 src/window.rs:219
 msgid "Print…"
 msgstr ""
 
-#: src/main.rs:219 src/properties.rs:201 src/window.rs:220
+#: src/main.rs:233 src/properties.rs:201 src/window.rs:220
 msgid "Properties"
 msgstr ""
 
-#: src/main.rs:221
+#: src/main.rs:235
 msgid "Close Window"
 msgstr ""
 
-#: src/main.rs:226 src/window/actions.rs:93
+#: src/main.rs:240 src/window/actions.rs:93
 msgid "Undo"
 msgstr ""
 
-#: src/main.rs:227 src/window/actions.rs:97
+#: src/main.rs:241 src/window/actions.rs:97
 msgid "Redo"
 msgstr ""
 
-#: src/main.rs:230
+#: src/main.rs:244
 msgid "Copy"
 msgstr ""
 
-#: src/main.rs:231
+#: src/main.rs:245
 msgid "Select All"
 msgstr ""
 
-#: src/main.rs:234 src/window.rs:234
+#: src/main.rs:248 src/window.rs:234
 msgid "Insert Pages from File…"
 msgstr ""
 
-#: src/main.rs:235 src/window.rs:228
+#: src/main.rs:249 src/window.rs:228
 msgid "Delete Pages"
 msgstr ""
 
-#: src/main.rs:238
+#: src/main.rs:252
 msgid "Find…"
 msgstr ""
 
-#: src/main.rs:239
+#: src/main.rs:253
 msgid "Find Next"
 msgstr ""
 
-#: src/main.rs:240
+#: src/main.rs:254
 msgid "Find Previous"
 msgstr ""
 
-#: src/main.rs:245 src/window.rs:267
+#: src/main.rs:259 src/window.rs:267
 msgid "Single Page"
 msgstr ""
 
-#: src/main.rs:246 src/window.rs:268
+#: src/main.rs:260 src/window.rs:268
 msgid "Continuous"
 msgstr ""
 
-#: src/main.rs:247 src/window.rs:269
+#: src/main.rs:261 src/window.rs:269
 msgid "Two Pages"
 msgstr ""
 
-#: src/main.rs:249 src/window.rs:270
+#: src/main.rs:263 src/window.rs:270
 msgid "Two Pages, Continuous"
 msgstr ""
 
-#: src/main.rs:253 src/window.rs:278
+#: src/main.rs:267 src/window.rs:278
 msgid "Show Cover Page Alone"
 msgstr ""
 
-#: src/main.rs:255 src/window.rs:295
+#: src/main.rs:269 src/window.rs:295
 msgid "Actual Size"
 msgstr ""
 
-#: src/main.rs:256 src/window.rs:293
+#: src/main.rs:270 src/window.rs:293
 msgid "Fit Width"
 msgstr ""
 
-#: src/main.rs:257 src/window.rs:294
+#: src/main.rs:271 src/window.rs:294
 msgid "Fit Page"
 msgstr ""
 
-#: src/main.rs:258 src/window.rs:300
+#: src/main.rs:272 src/window.rs:300
 msgid "Zoom In"
 msgstr ""
 
-#: src/main.rs:259 src/window.rs:301
+#: src/main.rs:273 src/window.rs:301
 msgid "Zoom Out"
 msgstr ""
 
-#: src/main.rs:262
+#: src/main.rs:276
 msgid "Show Sidebar"
 msgstr ""
 
-#: src/main.rs:263 src/window.rs:743
+#: src/main.rs:277 src/window.rs:755
 msgid "Thumbnails"
 msgstr ""
 
-#: src/main.rs:264 src/window.rs:768
+#: src/main.rs:278 src/window.rs:780
 msgid "Contents"
 msgstr ""
 
-#: src/main.rs:265 src/window.rs:784 src/window/markup.rs:200
+#: src/main.rs:279 src/window.rs:796 src/window/markup.rs:200
 msgid "Markup"
 msgstr ""
 
-#: src/main.rs:270
+#: src/main.rs:284
 msgid "Previous Page"
 msgstr ""
 
-#: src/main.rs:271
+#: src/main.rs:285
 msgid "Next Page"
 msgstr ""
 
-#: src/main.rs:274
+#: src/main.rs:288
 msgid "First Page"
 msgstr ""
 
-#: src/main.rs:275
+#: src/main.rs:289
 msgid "Last Page"
 msgstr ""
 
-#: src/main.rs:277
+#: src/main.rs:291
 msgid "Go to Page…"
 msgstr ""
 
-#: src/main.rs:282 src/window.rs:226
+#: src/main.rs:293
+msgid "Back"
+msgstr ""
+
+#: src/main.rs:294
+msgid "Forward"
+msgstr ""
+
+#: src/main.rs:300 src/window.rs:226
 msgid "Rotate Left"
 msgstr ""
 
-#: src/main.rs:283 src/window.rs:227
+#: src/main.rs:301 src/window.rs:227
 msgid "Rotate Right"
 msgstr ""
 
-#: src/main.rs:286
+#: src/main.rs:304
 msgid "Show Markup Toolbar"
 msgstr ""
 
-#: src/main.rs:287 src/markup_list.rs:43 src/window/markup.rs:27
+#: src/main.rs:305 src/markup_list.rs:43 src/window/markup.rs:27
 msgid "Highlight"
 msgstr ""
 
-#: src/main.rs:288 src/markup_list.rs:44 src/window/markup.rs:28
+#: src/main.rs:306 src/markup_list.rs:44 src/window/markup.rs:28
 msgid "Underline"
 msgstr ""
 
-#: src/main.rs:289 src/markup_list.rs:45 src/window/markup.rs:29
+#: src/main.rs:307 src/markup_list.rs:45 src/window/markup.rs:29
 msgid "Strikethrough"
 msgstr ""
 
-#: src/main.rs:292 src/window.rs:242
+#: src/main.rs:310 src/window.rs:242
 msgid "Highlight Form Fields"
 msgstr ""
 
-#: src/main.rs:293 src/window.rs:245
+#: src/main.rs:311 src/window.rs:245
 msgid "Reset Form"
 msgstr ""
 
-#: src/main.rs:298
+#: src/main.rs:316
 msgid "File"
 msgstr ""
 
-#: src/main.rs:299
+#: src/main.rs:317
 msgid "Edit"
 msgstr ""
 
-#: src/main.rs:300
+#: src/main.rs:318
 msgid "View"
 msgstr ""
 
-#: src/main.rs:301
+#: src/main.rs:319
 msgid "Go"
 msgstr ""
 
-#: src/main.rs:302
+#: src/main.rs:320
 msgid "Tools"
 msgstr ""
 
-#: src/main.rs:304
+#: src/main.rs:322
 msgid "Help"
 msgstr ""
 
@@ -569,19 +577,19 @@ msgstr ""
 msgid "Search ({shortcut})"
 msgstr ""
 
-#: src/window.rs:887
+#: src/window.rs:900
 #, rust-format
 msgid "Links of this kind aren't opened: {address}"
 msgstr ""
 
-#: src/window.rs:896
+#: src/window.rs:909
 #, rust-format
 msgid "Couldn't open link: {error}"
 msgstr ""
 
 #. Translators: a keyboard shortcut as tooltips show it, the
 #. Control key with another.
-#: src/window.rs:947
+#: src/window.rs:960
 #, rust-format
 msgid "Ctrl+{key}"
 msgstr ""
@@ -608,7 +616,7 @@ msgstr ""
 
 #. Translators: follows the box with a printed page number:
 #. "iv (4 of 120)".
-#: src/window/actions.rs:483
+#: src/window/actions.rs:511
 #, rust-format
 msgid "({position} of {pages})"
 msgstr ""

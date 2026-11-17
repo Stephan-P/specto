@@ -67,7 +67,8 @@ Tests (run some by naming them, such as `zoom layouts`):
 
 With the virtual pointer and keyboard, on a Courier text PDF:
 
-- link_click: clicking a link follows it
+- link_click: clicking a link follows it, Alt+Left goes back to where it
+  was clicked and Alt+Right forward again
 - markup_bar: with a tool of the markup bar pressed in, text is marked as
   it is selected, in the tool's color. A color chosen while an annotation
   is picked recolors it. Closing the bar lets go of the tool
@@ -116,6 +117,9 @@ With the virtual pointer and keyboard, on a Courier text PDF:
   not the page, Escape lets go. Undo. Saved, they're in the file and shown.
   one the file has is picked and deleted the same way, and the page is
   then shown without it
+- back_and_forward: Back and Forward after going to the last page or to a
+  page by its number, not after turning a page. A jump after going back
+  drops what was ahead
 - select_by_dragging: the I-beam cursor over text. Dragging selects,
   forwards and backwards over lines. Escape and a click clear it
 - select_words_and_lines: double-click selects a word, triple-click a line,
@@ -387,7 +391,7 @@ class Input:
     # Keys as Linux input key codes (linux/input-event-codes.h), which
     # don't depend on the keyboard layout.
     ESCAPE, CONTROL, SHIFT, ENTER, KEY_A, KEY_C, KEY_F = 1, 29, 42, 28, 30, 46, 33
-    LEFT, RIGHT, KEY_Z = 105, 106, 44
+    LEFT, RIGHT, KEY_Z, ALT = 105, 106, 44, 56
     BACKSPACE, DELETE, TAB, SPACE, DOWN = 14, 111, 15, 57, 108
     # Key codes for typing, on a US layout (mutter's default).
     TYPING = {
@@ -886,8 +890,44 @@ def selected(w, text):
 
 def test_link_click(ctx):
     w, inp = selection_window(ctx)
+    check(w.state()["history"] == [False, False], "a place to go back to at the start")
     inp.click(*w.char(0, LINK_LINE, 3))
-    w.wait("the link to page 2", lambda s: s["page"] == 1)
+    s = w.wait("the link to page 2", lambda s: s["page"] == 1)
+    check(s["history"] == [True, False], s["history"])
+    # Back returns to where the link was clicked, and Forward to its target.
+    inp.keys(Input.ALT, Input.LEFT)
+    w.wait("back on page 1", lambda s: s["page"] == 0 and s["history"] == [False, True])
+    inp.keys(Input.ALT, Input.RIGHT)
+    w.wait("forward on page 2", lambda s: s["page"] == 1 and s["history"] == [True, False])
+
+
+def test_back_and_forward(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    at = lambda page, history: lambda s: s["page"] == page and s["history"] == history
+    # Turning pages isn't a jump.
+    w.action("next-page")
+    w.wait("page 2", at(1, [False, False]))
+    # The last page, a page by its number, and an outline entry are.
+    w.action("last-page")
+    w.wait("the last page", at(PAGES - 1, [True, False]))
+    w.action("debug-go-to", gvariant_str("ii"))
+    w.wait("page ii", at(1, [True, False]))
+    w.action("go-back")
+    w.wait("back on the last page", at(PAGES - 1, [True, True]))
+    w.action("go-back")
+    w.wait("back on page 2", at(1, [False, True]))
+    w.action("go-forward")
+    w.action("go-forward")
+    w.wait("forward again", at(1, [True, False]))
+    # A jump after going back drops what was ahead.
+    w.action("go-back")
+    w.wait("back on the last page", at(PAGES - 1, [True, True]))
+    w.action("first-page")
+    w.wait("the first page", at(0, [True, False]))
+    w.action("go-back")
+    w.action("go-back")
+    w.wait("back at the start", at(1, [False, True]))
 
 
 def test_select_by_dragging(ctx):

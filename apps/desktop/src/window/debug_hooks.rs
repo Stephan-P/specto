@@ -372,6 +372,15 @@ impl Window {
                 )
                 .str("subtitle", &inner.title.subtitle())
                 .num("printed", f64::from(inner.printed.get()))
+                // Whether there is a place to go back to, and one to go forward to.
+                .raw(
+                    "history",
+                    &format!(
+                        "[{}, {}]",
+                        d.viewer.can_go_back(),
+                        d.viewer.can_go_forward()
+                    ),
+                )
                 .raw("properties", &{
                     let rows: Vec<String> = (inner.properties.borrow().iter())
                         .map(|(label, value)| {

@@ -290,7 +290,7 @@ impl Session {
         };
         self.picked = Some((position, id));
         self.selection = None;
-        self.viewer.reveal(position, a.rect);
+        self.viewer.jump(|v| v.reveal(position, a.rect));
         true
     }
 

@@ -310,13 +310,13 @@ impl Canvas {
                 let Some(page) = doc.borrow().position_of(source, d.page) else {
                     return;
                 };
-                self.update_viewer(|v| v.go_to_pdf_position(page, d.left, d.top))
+                self.jump(|v| v.go_to_pdf_position(page, d.left, d.top))
             }
             Target::Named(NamedAction::NextPage) => self.update_viewer(Viewer::next_page),
             Target::Named(NamedAction::PrevPage) => self.update_viewer(Viewer::previous_page),
-            Target::Named(NamedAction::FirstPage) => self.update_viewer(|v| v.go_to_page(0)),
+            Target::Named(NamedAction::FirstPage) => self.jump(|v| v.go_to_page(0)),
             Target::Named(NamedAction::LastPage) => {
-                self.update_viewer(|v| v.go_to_page(v.page_count().saturating_sub(1)))
+                self.jump(|v| v.go_to_page(v.page_count().saturating_sub(1)))
             }
             Target::Uri(uri) => {
                 if let Some(f) = self.imp().on_open_uri.borrow().as_ref() {
@@ -475,6 +475,14 @@ impl Canvas {
         if let Some(cb) = self.imp().on_view_changed.borrow().as_ref() {
             cb();
         }
+    }
+
+    /// [`update_viewer`](Self::update_viewer) for a change that takes the reader somewhere else:
+    /// where they were is remembered for going back.
+    pub fn jump(&self, f: impl FnOnce(&mut Viewer)) {
+        self.update_viewer(|v| {
+            v.jump(f);
+        });
     }
 
     /// Whether the last frame was drawn completely, with sharp tiles.
@@ -1381,10 +1389,8 @@ impl Canvas {
                 }
                 gdk::Key::Down => c.update_viewer(|v| v.scroll_by(ViewVector::new(0.0, 50.0))),
                 gdk::Key::Up => c.update_viewer(|v| v.scroll_by(ViewVector::new(0.0, -50.0))),
-                gdk::Key::Home => c.update_viewer(|v| v.go_to_page(0)),
-                gdk::Key::End => {
-                    c.update_viewer(|v| v.go_to_page(v.page_count().saturating_sub(1)))
-                }
+                gdk::Key::Home => c.jump(|v| v.go_to_page(0)),
+                gdk::Key::End => c.jump(|v| v.go_to_page(v.page_count().saturating_sub(1))),
                 _ => return glib::Propagation::Proceed,
             }
             glib::Propagation::Stop

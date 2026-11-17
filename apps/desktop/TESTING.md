@@ -142,6 +142,16 @@ below refer to the files by these names:
   browser.
 - Pressing on a link, moving a few pixels and releasing still follows it. A
   longer drag selects text instead.
+- LINKS: scroll to the middle of a page and click a link. Alt+Left (Cmd+[ on
+  macOS) returns to the same place mid-page, and Alt+Right goes to the link's
+  target again. The back and forward buttons of a mouse do the same.
+- LONG: click a Contents entry, type a page number, then search for a word and
+  step through several matches. Alt+Left goes back through them one by one:
+  to where the search began, to the Contents entry's target, and to the start.
+- Go back, then follow another link: Alt+Right does nothing now.
+- Scrolling and turning pages with the keyboard leave nothing to go back to.
+- macOS: Back and Forward are in the Go menu, disabled when there is nowhere
+  to go.
 
 ### Text
 

@@ -80,14 +80,12 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Desktop: links
 - [x] Android: outline and links
 - [x] Desktop: Properties dialog, with how the file is protected
+- [x] Back and forward after a jump, in the viewer and on the desktop
 - [ ] Upstream in hayro: decode images only for the region and resolution
   being drawn. One tile of a 212-megapixel JPEG 2000 page still costs 4.5 GB
   and 10 seconds at 100%, which no scheduling can fix.
 - [ ] Confirm the HiDPI sharpness by eye, on the Mac at scale 2 and on a real
   Linux display with fractional scaling.
-- [ ] Back and forward after a jump (a link, an outline entry, going to a page,
-  a search result). The viewer keeps the position left behind. This is the
-  cheap answer to looking at a footnote and then carrying on reading.
 - [ ] Trim margins: a view option that lays pages out by the box of what is
   drawn on them, not by the crop box. It matters most on a phone, where white
   margins take up to a third of the width. It only crops the view. Open
@@ -321,7 +319,8 @@ point to [DECISIONS.md](DECISIONS.md).
 - [ ] F-Droid: check that the Gradle dependencies are all free software, make
   the build reproducible, and write the metadata.
 - [ ] Back after a jump: the system's Back returns to where a link or outline
-  entry was followed from. Depends on back and forward in M1.
+  entry was followed from. The shared code keeps the places and has the calls
+  for it.
 - [ ] Trim margins: a switch in the view menu, remembered per document. Depends
   on the task in M1.
 - [ ] Bookmarks in the Pages and Contents view. Depends on the task in M1.

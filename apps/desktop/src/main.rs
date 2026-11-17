@@ -42,6 +42,18 @@ const PROPERTIES_ACCELS: &[&str] = if cfg!(target_os = "macos") {
     &["<Alt>Return"]
 };
 
+/// The keys for going back and forward after a jump: what the platform's browsers use.
+const BACK_ACCELS: &[&str] = if cfg!(target_os = "macos") {
+    &["<Meta>bracketleft"]
+} else {
+    &["<Alt>Left"]
+};
+const FORWARD_ACCELS: &[&str] = if cfg!(target_os = "macos") {
+    &["<Meta>bracketright"]
+} else {
+    &["<Alt>Right"]
+};
+
 fn main() -> glib::ExitCode {
     i18n::init();
     let app = adw::Application::builder()
@@ -67,6 +79,8 @@ fn main() -> glib::ExitCode {
             ("win.fit-width", &["<Primary>8"]),
             ("win.fit-page", &["<Primary>9"]),
             ("win.go-to-page", &["<Primary>l"]),
+            ("win.go-back", BACK_ACCELS),
+            ("win.go-forward", FORWARD_ACCELS),
             ("win.copy", &["<Primary>c"]),
             ("win.select-all", &["<Primary>a"]),
             ("win.find", &["<Primary>f"]),
@@ -275,6 +289,10 @@ fn menubar() -> gio::Menu {
             (&gettext("Last Page"), "win.last-page"),
         ]),
         section(&[(&gettext("Go to Page…"), "win.go-to-page")]),
+        section(&[
+            (&gettext("Back"), "win.go-back"),
+            (&gettext("Forward"), "win.go-forward"),
+        ]),
     ]);
 
     let tools = submenu(&[

@@ -565,16 +565,20 @@ impl State {
             },
             _ => None,
         };
+        // Where the reader was is remembered for going back, except when only turning a page.
         let viewer = &mut self.session.viewer;
         match target {
             Target::Destination(d) => {
-                viewer.go_to_pdf_position(destination.unwrap_or(d.page), d.left, d.top);
+                let page = destination.unwrap_or(d.page);
+                viewer.jump(|v| v.go_to_pdf_position(page, d.left, d.top));
             }
             Target::Named(NamedAction::NextPage) => viewer.next_page(),
             Target::Named(NamedAction::PrevPage) => viewer.previous_page(),
-            Target::Named(NamedAction::FirstPage) => viewer.go_to_page(0),
+            Target::Named(NamedAction::FirstPage) => {
+                viewer.jump(|v| v.go_to_page(0));
+            }
             Target::Named(NamedAction::LastPage) => {
-                viewer.go_to_page(viewer.page_count().saturating_sub(1));
+                viewer.jump(|v| v.go_to_page(v.page_count().saturating_sub(1)));
             }
             Target::Uri(uri) => return Activated::Uri { uri: uri.clone() },
         }
@@ -1848,8 +1852,39 @@ impl ViewSession {
     }
 
     /// Shows `page` (zero-based) at the top of the view.
+    ///
+    /// For following the reader, as a strip of thumbnails does. A page the reader asked for is for
+    /// [`jump_to_page`](Self::jump_to_page).
     pub fn go_to_page(&self, page: u32) {
         self.shared.lock().session.viewer.go_to_page(page as usize);
+    }
+
+    /// Shows `page` (zero-based) at the top of the view, and remembers where the reader was for
+    /// [`go_back`](Self::go_back): for a page number the reader typed.
+    pub fn jump_to_page(&self, page: u32) {
+        let mut state = self.shared.lock();
+        (state.session.viewer).jump(|v| v.go_to_page(page as usize));
+    }
+
+    /// Whether there is a place to go back to: the reader followed a link or an outline entry,
+    /// went to a search result, a markup or a page by its number.
+    pub fn can_go_back(&self) -> bool {
+        self.shared.lock().session.viewer.can_go_back()
+    }
+
+    /// Whether [`go_back`](Self::go_back) left a place to return to.
+    pub fn can_go_forward(&self) -> bool {
+        self.shared.lock().session.viewer.can_go_forward()
+    }
+
+    /// Returns to where the reader was before the last jump. Returns whether there was one.
+    pub fn go_back(&self) -> bool {
+        self.shared.lock().session.viewer.go_back()
+    }
+
+    /// Undoes the last [`go_back`](Self::go_back). Returns whether there was one to undo.
+    pub fn go_forward(&self) -> bool {
+        self.shared.lock().session.viewer.go_forward()
     }
 
     /// Goes to the next or previous page: the next pair with two pages, and the top of the

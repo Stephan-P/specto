@@ -61,6 +61,12 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
 - Links: in-document links and named actions (such as "next page") are
   followed, web and mail links open in the default app, and other kinds are
   refused
+- Back and Forward (Alt+Left and Alt+Right, Cmd+[ and Cmd+] on macOS, or the
+  back and forward buttons of a mouse): after a link, a Contents entry, a page
+  typed into the page entry, the first or last page, a search result or an
+  entry of the Markup list, Back returns to the place left behind, and Forward
+  undoes it. A search counts once, from where it began. Turning pages,
+  scrolling and thumbnails aren't remembered. The last 100 places are kept
 
 ## Text
 

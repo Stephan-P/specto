@@ -509,6 +509,18 @@ impl Window {
             }
         });
         this.0.canvas.add_controller(press);
+        // The back and forward buttons of a mouse.
+        for (button, action) in [(8, "win.go-back"), (9, "win.go-forward")] {
+            let click = gtk::GestureClick::new();
+            click.set_button(button);
+            let weak = Rc::downgrade(&this.0);
+            click.connect_pressed(move |_, _, _, _| {
+                if let Some(inner) = weak.upgrade() {
+                    let _ = WidgetExt::activate_action(&inner.window, action, None);
+                }
+            });
+            this.0.window.add_controller(click);
+        }
         // From the size and font controls: Escape ends typing, as in the text field, and so
         // does the keyboard going elsewhere than back to it.
         let keys = gtk::EventControllerKey::new();
@@ -841,6 +853,7 @@ impl Window {
     /// Updates header bar and sidebar after the view changed.
     fn view_changed(&self) {
         self.place_typing();
+        self.update_history_actions();
         let inner = &self.0;
         let Some((page, zoom, mode, cover)) = inner.canvas.with_viewer(|v| {
             (
