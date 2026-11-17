@@ -1891,6 +1891,14 @@ def test_fill_form_choices(ctx):
     fields = lambda s: dict(map(tuple, s["fields"]))
     shown = lambda s: s["choices"] == ["Berlin", "Paris"]
     gone = lambda s: s["choices"] == [] and s["focus"] == "SpectoCanvas"
+
+    def closed(what, test=lambda s: True):
+        """Waits for the choices to be gone, and for the keyboard to be back with the window:
+        a key pressed just after they close can still go to them."""
+        s = w.wait(what, lambda s: gone(s) and test(s))
+        time.sleep(0.4)
+        return s
+
     # Highlight Form Fields tints what can be filled in.
     plain = pixel(w, "plain", *at(280, 612))
     w.action("highlight-fields")
@@ -1908,8 +1916,8 @@ def test_fill_form_choices(ctx):
     inp.type("rome")
     w.wait("typed", lambda s: s.get("choice_typed") == "rome")
     inp.keys(Input.ENTER)
-    s = w.wait("the city", lambda s: fields(s)["city"] == "rome")
-    check(gone(s) and s["undo"] == "FillField", s)
+    s = closed("the city", lambda s: fields(s)["city"] == "rome")
+    check(s["undo"] == "FillField", s)
     # It shows what the field holds, to go on from. Escape drops what was
     # typed.
     inp.keys(Input.SPACE)
@@ -1918,7 +1926,7 @@ def test_fill_form_choices(ctx):
     inp.type("x")
     w.wait("typed", lambda s: s.get("choice_typed") == "romex")
     inp.keys(Input.ESCAPE)
-    s = w.wait("the choices gone", gone)
+    s = closed("the choices gone")
     check(fields(s)["city"] == "rome", s["fields"])
     # From the line, the arrow keys go to the options.
     inp.keys(Input.SPACE)
@@ -1927,7 +1935,7 @@ def test_fill_form_choices(ctx):
     inp.keys(Input.DOWN)
     inp.keys(Input.DOWN)
     inp.keys(Input.ENTER)
-    w.wait("Paris chosen", lambda s: fields(s)["city"] == "Paris" and gone(s))
+    closed("Paris chosen", lambda s: fields(s)["city"] == "Paris")
     # A save keeps what is being typed.
     inp.keys(Input.SPACE)
     w.wait("the choices", lambda s: shown(s) and s.get("choice_typed") == "Paris")
@@ -1953,8 +1961,8 @@ def test_fill_form_choices(ctx):
     # A click elsewhere closes it: beside the page view, which doesn't see
     # the pointer while the list shows.
     inp.click(130, 900)
-    s = w.wait("French and Greek", lambda s: fields(s)["langs"] == "fr,el")
-    check(gone(s) and s["undo"] == "FillField", s)
+    s = closed("French and Greek", lambda s: fields(s)["langs"] == "fr,el")
+    check(s["undo"] == "FillField", s)
     # Escape leaves the field as it is.
     inp.click(*at(200, 530))
     w.wait("the list", langs([1, 2]))
@@ -1962,7 +1970,7 @@ def test_fill_form_choices(ctx):
     inp.keys(Input.SPACE)
     w.wait("French unticked", langs([2]))
     inp.keys(Input.ESCAPE)
-    s = w.wait("the list gone", gone)
+    s = closed("the list gone")
     check(fields(s)["langs"] == "fr,el", s["fields"])
     # Reset Form empties every field in one step.
     w.action("reset-form")
