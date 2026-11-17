@@ -79,6 +79,7 @@ point to [DECISIONS.md](DECISIONS.md).
 - [x] Desktop: headless checks with a virtual pointer and keyboard
 - [x] Desktop: links
 - [x] Android: outline and links
+- [x] Desktop: Properties dialog, with how the file is protected
 - [ ] Upstream in hayro: decode images only for the region and resolution
   being drawn. One tile of a 212-megapixel JPEG 2000 page still costs 4.5 GB
   and 10 seconds at 100%, which no scheduling can fix.
@@ -97,10 +98,8 @@ point to [DECISIONS.md](DECISIONS.md).
     placeholder tile that aren't background.
   - How to keep it steady from page to page. One box per document, or one each
     for left and right pages, would be steadier than one per page.
-- [ ] Document properties dialog on the desktop: the metadata, file size, page
-  count and page size, and how the file is protected (D9). Android has the
-  dialog already. Fonts would be a follow-up, since they need a walk over every
-  page's resources in the background.
+- [ ] The fonts of a document in the Properties dialog. They need a walk over
+  every page's resources in the background.
 - [ ] Bookmarks set by the reader, listed with the contents. Decide where they
   live. Kept by the app per document, there is nothing to save, but they stay
   on the device. Written as outline entries, they travel with the file, but

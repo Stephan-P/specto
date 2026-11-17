@@ -9,6 +9,7 @@ mod i18n;
 mod markup_list;
 mod outline;
 mod print;
+mod properties;
 mod signatures;
 mod state;
 mod thumbnails;
@@ -34,6 +35,13 @@ pub const APP_NAME: &str = "Specto";
 const WEBSITE: &str = "https://github.com/xfbs/specto";
 const ISSUES: &str = "https://github.com/xfbs/specto/issues";
 
+/// The keys for the Properties dialog: what the platform's file manager uses.
+const PROPERTIES_ACCELS: &[&str] = if cfg!(target_os = "macos") {
+    &["<Meta>i"]
+} else {
+    &["<Alt>Return"]
+};
+
 fn main() -> glib::ExitCode {
     i18n::init();
     let app = adw::Application::builder()
@@ -49,6 +57,7 @@ fn main() -> glib::ExitCode {
             ("win.save", &["<Primary>s"]),
             ("win.save-as", &["<Shift><Primary>s"]),
             ("win.print", &["<Primary>p"]),
+            ("win.properties", PROPERTIES_ACCELS),
             (
                 "win.zoom-in",
                 &["<Primary>plus", "<Primary>equal", "<Primary>KP_Add"],
@@ -205,7 +214,10 @@ fn menubar() -> gio::Menu {
             (&gettext("Save As…"), "win.save-as"),
             (&gettext("Export Selected Pages…"), "win.export-pages"),
         ]),
-        section(&[(&gettext("Print…"), "win.print")]),
+        section(&[
+            (&gettext("Print…"), "win.print"),
+            (&gettext("Properties"), "win.properties"),
+        ]),
         section(&[(&gettext("Close Window"), "window.close")]),
         section(&[(&quit, "app.quit")]),
     ]);

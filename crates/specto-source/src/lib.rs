@@ -16,7 +16,9 @@ use hayro_syntax::object::dict::keys::{
     A, ANNOTS, D, DEST, DESTS, FIRST, KIDS, LIMITS, NAMES, NEXT, NUMS, OUTLINES, P, PAGE_LABELS,
     RECT, S, ST, SUBTYPE, TITLE, URI,
 };
-use hayro_syntax::object::{Array, DateTime, Dict, MaybeRef, Name, Object, ObjectIdentifier};
+use hayro_syntax::object::{
+    Array, DateTime, Dict, FromBytes, MaybeRef, Name, Object, ObjectIdentifier,
+};
 use hayro_syntax::{DecryptionError, LoadPdfError, Pdf, PdfVersion};
 use specto_geom::{PdfBox, PdfPoint};
 
@@ -67,6 +69,38 @@ pub struct Metadata {
     pub producer: Option<String>,
     pub created: Option<Date>,
     pub modified: Option<Date>,
+}
+
+/// What an encrypted file allows to be done with it (the `/P` flags of its `/Encrypt` dictionary).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Permissions {
+    pub printing: bool,
+    /// Changing the document other than by annotating it or filling in its form.
+    pub changing: bool,
+    /// Copying text and pictures out of it.
+    pub copying: bool,
+    /// Adding annotations and filling in the form.
+    pub annotating: bool,
+}
+
+/// The trailer dictionary the end of the file points to: that of a cross-reference table, or the
+/// dictionary of a cross-reference stream.
+///
+/// `None` for a file so damaged that its end doesn't lead there.
+fn trailer(data: &[u8]) -> Option<Dict<'_>> {
+    let find = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).position(|w| w == needle);
+    let tail = &data[data.len().saturating_sub(2048)..];
+    let start = tail.windows(9).rposition(|w| w == b"startxref")? + 9;
+    let digits: String = (tail[start..].iter())
+        .skip_while(|b| b.is_ascii_whitespace())
+        .take_while(|b| b.is_ascii_digit())
+        .map(|&b| b as char)
+        .collect();
+    let mut rest = data.get(digits.parse::<usize>().ok()?..)?;
+    if rest.starts_with(b"xref") {
+        rest = &rest[find(rest, b"trailer")?..];
+    }
+    Dict::from_bytes(&rest[find(rest, b"<<")?..])
 }
 
 /// A date and time as a document states it: on the clock of wherever it was written, with that
@@ -324,6 +358,25 @@ impl SourceDocument {
             PdfVersion::Pdf17 => "1.7",
             PdfVersion::Pdf20 => "2.0",
         }
+    }
+
+    /// What the file allows where it is encrypted, and `None` where it isn't.
+    ///
+    /// These are requests of whoever protected the file. Nothing in the file enforces them.
+    pub fn permissions(&self) -> Option<Permissions> {
+        let trailer = trailer(self.pdf.data().as_ref())?;
+        let encrypt = match trailer.get_ref(b"Encrypt") {
+            Some(reference) => self.pdf.xref().get::<Dict<'_>>(reference.into())?,
+            None => trailer.get::<Dict<'_>>(b"Encrypt")?,
+        };
+        // A set bit allows. A file that doesn't say allows everything.
+        let flags = encrypt.get::<i64>(P).unwrap_or(-1);
+        Some(Permissions {
+            printing: flags & 1 << 2 != 0,
+            changing: flags & 1 << 3 != 0,
+            copying: flags & 1 << 4 != 0,
+            annotating: flags & 1 << 5 != 0,
+        })
     }
 
     /// The document's catalog: the dictionary everything else in it hangs on.

@@ -15,6 +15,8 @@ Tests (run some by naming them, such as `zoom layouts`):
 
 - start_page: no file opens the start page
 - about: the About dialog, with the version
+- properties: the Properties dialog says what the file is: its name and
+  folder, the pages and their size, the file size and how it is protected
 - open_and_render: title, page labels in the entry, default layout, zoom and
   sidebar. The screenshot is at device resolution and shows page 1
 - navigation: next, previous, first and last page. A rotated page renders
@@ -692,6 +694,27 @@ def test_about(ctx):
     gdbus_activate(APP_PATH, "quit")
     w.wait("the About dialog to go", lambda s: s["dialog"] == "")
     app.quit()
+
+
+def test_properties(ctx):
+    w = ctx.app([ctx.pages]).window()
+    w.settled()
+    inp = ctx.input().attach(w)
+    check(w.state()["properties"] == [], "rows without the dialog")
+    w.action("properties")
+    s = w.wait("the Properties dialog", lambda s: s["dialog"] == "Properties")
+    rows = dict(map(tuple, s["properties"]))
+    check(rows["File Name"] == "pages.pdf" and rows["Folder"] == os.path.dirname(ctx.pages), rows)
+    check(rows["Pages"] == str(PAGES) and rows["PDF Version"] == "1.7", rows)
+    # One page is rotated.
+    check(rows["Page Size"] == "8.5 × 11 in (Letter), other pages differ", rows)
+    check(rows["File Size"].endswith("kB") and rows["Protection"] == "None", rows)
+    # The file says nothing about itself.
+    check("Title" not in rows and "Created" not in rows and "Not Allowed" not in rows, rows)
+    time.sleep(0.5)  # the dialog's animation
+    w.screenshot("properties")
+    inp.keys(Input.ESCAPE)
+    w.wait("the dialog to go", lambda s: s["dialog"] == "" and s["properties"] == [])
 
 
 def test_open_and_render(ctx):

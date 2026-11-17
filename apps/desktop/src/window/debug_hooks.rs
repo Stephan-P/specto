@@ -372,6 +372,14 @@ impl Window {
                 )
                 .str("subtitle", &inner.title.subtitle())
                 .num("printed", f64::from(inner.printed.get()))
+                .raw("properties", &{
+                    let rows: Vec<String> = (inner.properties.borrow().iter())
+                        .map(|(label, value)| {
+                            format!("[{}, {}]", debug::quote(label), debug::quote(value))
+                        })
+                        .collect();
+                    format!("[{}]", rows.join(", "))
+                })
                 .str(
                     "banner",
                     &if inner.banner.is_revealed() {

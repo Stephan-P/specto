@@ -290,6 +290,21 @@ Shortcuts use *Primary*, which is Ctrl on Linux and Cmd on macOS.
   every action
 - Shortcuts with Cmd
 
+## Properties
+
+- Properties (Alt+Enter, Cmd+I on macOS, the main menu) shows what is known
+  about the file: its name and folder, what it says about itself (title,
+  author, subject, keywords, the programs it was made with, when it was created
+  and changed), the number of pages and their size, the file size and the PDF
+  version
+- What the file doesn't state is left out
+- Dates are on the reader's clock, and page sizes carry the name of the paper
+  where it has one, such as "210 × 297 mm (A4)"
+- Protection: whether the file is encrypted, whether it needs a password to
+  open, and what it asks not to be done with it (printing, copying, changing
+  the pages, marking up)
+- The values can be selected and copied
+
 ## About
 
 - About Specto (the main menu): the version, the license, and links to the

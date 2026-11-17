@@ -37,6 +37,7 @@ const DOCUMENT_ACTIONS: &[&str] = &[
     "export-pages",
     "reload",
     "print",
+    "properties",
 ];
 
 /// Actions that need a document with a form that can be filled in.
@@ -259,6 +260,9 @@ impl Window {
                 .build(),
             gio::ActionEntry::builder("print")
                 .activate(with(|w| w.print(None)))
+                .build(),
+            gio::ActionEntry::builder("properties")
+                .activate(with(Window::show_properties))
                 .build(),
             gio::ActionEntry::builder("reload")
                 .activate(with(|w| {

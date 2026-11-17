@@ -525,6 +525,20 @@ the same.
 - macOS: Print in the File menu, and Cmd+P. Whether real printers appear
   depends on how Homebrew's GTK was built, so note what the dialog offers.
 
+### Properties
+
+- LONG: Alt+Enter (Cmd+I on macOS) or Properties in the main menu. The dialog
+  shows the file name and folder, the title and the other things the file
+  states, 352 pages, a page size with "other pages differ", the file size, the
+  PDF version and "None" for the protection.
+- The dates are in your language and on your clock.
+- A value can be selected with the mouse and copied.
+- ENCRYPTED: the protection is "Password to open".
+- A file that restricts printing or copying, where you have one: "Not Allowed"
+  lists what it restricts.
+- After deleting a page (unsaved), the dialog shows the new number of pages.
+- On the start page, Properties is disabled.
+
 ### Changes by other programs
 
 Use a copy of LONG, and another program that saves PDFs (qpdf, a PDF editor, or

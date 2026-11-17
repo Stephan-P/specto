@@ -534,6 +534,48 @@ impl Window {
         (response == "unlock").then(|| entry.text().to_string())
     }
 
+    /// Shows the Properties dialog for the document as it is now.
+    pub(super) fn show_properties(&self) {
+        let inner = &self.0;
+        let Some(doc) = inner.document.borrow().clone() else {
+            return;
+        };
+        let rows = {
+            let d = doc.borrow();
+            let source = d.main();
+            let page_sizes = (d.viewer.pages().iter())
+                .map(|page| {
+                    let size = page.displayed().size();
+                    (size.width, size.height)
+                })
+                .collect();
+            properties::rows(&properties::Facts {
+                name: d.name.clone(),
+                folder: (inner.uri.borrow().as_ref())
+                    .and_then(|u| folder(&gio::File::for_uri(u)))
+                    .map(|f| f.parse_name().to_string()),
+                bytes: source.pdf().data().as_ref().len() as u64,
+                metadata: source.metadata(),
+                version: source.version(),
+                page_sizes,
+                permissions: source.permissions(),
+                password: inner
+                    .password
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|p| !p.is_empty()),
+            })
+        };
+        let dialog = properties::show(&inner.window, &rows);
+        inner.properties.replace(rows);
+        let weak = Rc::downgrade(inner);
+        dialog.connect_closed(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                inner.properties.take();
+            }
+        });
+    }
+
     /// Shows the print dialog for the document as edited (or prints to a PDF file without it: see
     /// `print::print`).
     pub(super) fn print(&self, export: Option<(std::path::PathBuf, bool)>) {

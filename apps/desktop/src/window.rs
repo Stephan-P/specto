@@ -19,6 +19,7 @@ use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::markup_list::{Entry, MarkupList};
 use crate::outline::OutlineView;
 use crate::print;
+use crate::properties;
 use crate::signatures::{self, Signature};
 use crate::state;
 use crate::thumbnails::Sidebar;
@@ -116,6 +117,8 @@ pub struct Inner {
     banner: adw::Banner,
     /// How many print jobs finished (for tests).
     printed: Cell<u32>,
+    /// The rows of the Properties dialog while it shows (for tests).
+    properties: RefCell<Vec<(String, String)>>,
 }
 
 impl Window {
@@ -214,6 +217,7 @@ impl Window {
                 Some("win.export-pages"),
             );
             m.append(Some(&gettext("Print…")), Some("win.print"));
+            m.append(Some(&gettext("Properties")), Some("win.properties"));
             m
         });
         main_menu.append_section(None, &undo_section);
@@ -461,6 +465,7 @@ impl Window {
             password: RefCell::default(),
             banner,
             printed: Cell::new(0),
+            properties: RefCell::default(),
         }));
         this.setup_actions();
         this.setup_page_entry();

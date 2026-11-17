@@ -100,6 +100,10 @@ fn fixture() -> Vec<u8> {
 }
 
 fn encrypted(data: &[u8], password: &str) -> Vec<u8> {
+    encrypted_allowing(data, password, Permissions::all())
+}
+
+fn encrypted_allowing(data: &[u8], password: &str, permissions: Permissions) -> Vec<u8> {
     let mut doc = Document::load_mem(data).unwrap();
     let filter: Arc<dyn CryptFilter> = Arc::new(Aes256CryptFilter);
     let key = [7u8; 32];
@@ -111,7 +115,7 @@ fn encrypted(data: &[u8], password: &str) -> Vec<u8> {
         string_filter: b"StdCF".to_vec(),
         owner_password: "owner",
         user_password: password,
-        permissions: Permissions::all(),
+        permissions,
     })
     .unwrap();
     doc.encrypt(&state).unwrap();
@@ -355,6 +359,29 @@ fn changing_one_of_the_files() {
     assert_eq!(
         reply.get(b"IRT").unwrap().as_reference().unwrap(),
         square_id
+    );
+}
+
+#[test]
+fn what_an_encrypted_file_allows() {
+    let plain = SourceDocument::open(fixture(), None).unwrap();
+    assert_eq!(plain.permissions(), None);
+
+    let all = SourceDocument::open(encrypted(&fixture(), "secret"), Some("secret")).unwrap();
+    let allowed = all.permissions().unwrap();
+    assert!(allowed.printing && allowed.changing && allowed.copying && allowed.annotating);
+
+    // Without a password to open it, and only printing and annotating allowed.
+    let some = Permissions::PRINTABLE | Permissions::ANNOTABLE;
+    let some = SourceDocument::open(encrypted_allowing(&fixture(), "", some), None).unwrap();
+    assert_eq!(
+        some.permissions(),
+        Some(specto_source::Permissions {
+            printing: true,
+            changing: false,
+            copying: false,
+            annotating: true,
+        })
     );
 }
 
