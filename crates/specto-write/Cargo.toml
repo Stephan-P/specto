@@ -7,7 +7,8 @@ license.workspace = true
 description = "Saving for Specto: writes the pages of an edited document as a new PDF"
 
 [dependencies]
-lopdf = "0.47"
+# Without its default chrono, which is unmaintained and which nothing here uses.
+lopdf = { version = "0.47", default-features = false, features = ["rayon"] }
 specto-annot.workspace = true
 specto-doc.workspace = true
 specto-source.workspace = true
